@@ -49,6 +49,7 @@ class ConnectionRequest extends FormRequest
             $existing = $this->route('connection');
             if ($existing instanceof SavedConnection && $existing->user_id === $this->user()?->id
                 && ! $validator->errors()->has('password')
+                && filled($existing->password)
                 && $this->identityChangedFrom($existing)
                 && ! filled($this->input('password')) && ! $this->boolean('clear_password')) {
                 $validator->errors()->add('password', 'Re-enter the password when changing the server.');

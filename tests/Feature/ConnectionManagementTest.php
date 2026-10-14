@@ -166,3 +166,12 @@ it('keeps only known option keys', function () {
 
     expect(SavedConnection::sole()->options)->toBe(['ssl_ca' => '/ca.pem']);
 });
+
+it('allows changing the host of a passwordless connection with a blank password', function () {
+    $connection = SavedConnection::factory()->for($this->user)->create(['host' => 'old.internal', 'port' => 3306, 'username' => 'app', 'password' => null]);
+
+    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload(['host' => 'new.internal', 'password' => '']))
+        ->assertSessionHasNoErrors();
+
+    expect($connection->fresh()->host)->toBe('new.internal')->and($connection->fresh()->password)->toBeNull();
+});
