@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8fec11f6ade77fb7aaa2890985e3401e",
+    "content-hash": "1a62f4116f6e48318068ff59e01a4204",
     "packages": [
         {
             "name": "bacon/bacon-qr-code",
@@ -9104,6 +9104,78 @@
                 {
                     "url": "https://www.paypal.com/paypalme/enunomaduro",
                     "type": "custom"
+                },
+                {
+                    "url": "https://github.com/nunomaduro",
+                    "type": "github"
+                }
+            ],
+            "time": "2026-07-21T07:48:55+00:00"
+        },
+        {
+            "name": "pestphp/pest-plugin-drift",
+            "version": "v5.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/pestphp/pest-plugin-drift.git",
+                "reference": "1b544c770710f6fefe98446a7048a28e65b2ddd5"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/pestphp/pest-plugin-drift/zipball/1b544c770710f6fefe98446a7048a28e65b2ddd5",
+                "reference": "1b544c770710f6fefe98446a7048a28e65b2ddd5",
+                "shasum": ""
+            },
+            "require": {
+                "nikic/php-parser": "^5.8.0",
+                "pestphp/pest": "^5.0.0",
+                "php": "^8.4",
+                "symfony/finder": "^8.1.1"
+            },
+            "conflict": {
+                "pestphp/pest": "<5.0.0"
+            },
+            "require-dev": {
+                "pestphp/pest-dev-tools": "^5.0.0"
+            },
+            "type": "library",
+            "extra": {
+                "pest": {
+                    "plugins": [
+                        "Pest\\Drift\\Plugin"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Pest\\Drift\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "The Pest Drift Plugin",
+            "keywords": [
+                "framework",
+                "laravel",
+                "pest",
+                "php",
+                "test",
+                "testing",
+                "unit"
+            ],
+            "support": {
+                "source": "https://github.com/pestphp/pest-plugin-drift/tree/v5.0.0"
+            },
+            "funding": [
+                {
+                    "url": "https://www.paypal.com/paypalme/enunomaduro",
+                    "type": "custom"
+                },
+                {
+                    "url": "https://github.com/mandisma",
+                    "type": "github"
                 },
                 {
                     "url": "https://github.com/nunomaduro",
