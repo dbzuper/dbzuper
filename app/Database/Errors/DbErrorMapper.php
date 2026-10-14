@@ -25,6 +25,9 @@ final class DbErrorMapper
 
         $pdo = $e instanceof PDOException ? $e : ($e->getPrevious() instanceof PDOException ? $e->getPrevious() : null);
         if ($pdo === null && ! $e instanceof QueryException) {
+            // Not a database error, so most likely a bug: the user sees a generic message, the log gets the details.
+            report($e);
+
             return new DbError('unknown', 'An unexpected error occurred.', null, null);
         }
 

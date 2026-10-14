@@ -3,6 +3,12 @@
 use App\Database\Errors\DbErrorMapper;
 use App\Database\Exceptions\InvalidConnectionOption;
 use App\Database\Exceptions\SqlitePathNotAllowed;
+use Illuminate\Support\Facades\Exceptions;
+use Tests\TestCase;
+
+// The mapper reports unexpected exceptions, which needs the application's exception handler.
+uses(TestCase::class);
+beforeEach(fn () => Exceptions::fake());
 
 function pdoError(string $message, int|string $code = 0, ?array $errorInfo = null): PDOException
 {
