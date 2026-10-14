@@ -22,9 +22,12 @@ Then add `storage/app/demo` (absolute path) to `DBSUPERB_SQLITE_PATHS` in `.env`
 
 ## Security notes
 
+- The setup screen is public until the first administrator exists. Run `php artisan dbsuperb:install` before exposing the app to a network.
+- Behind a reverse proxy, set `TRUSTED_PROXIES` (comma-separated IPs/CIDRs, or `*`) so client IPs and HTTPS are detected. Leave it unset when the app is reached directly: then no `X-Forwarded-*` header is trusted.
 - Saved credentials are encrypted with `APP_KEY`. Back it up: losing it makes saved passwords unrecoverable.
 - DBSuperb connects to any host reachable from the server. Only the administrator can create connections.
-- Changing a saved connection's host, port, username or driver requires re-entering its password.
+- Changing anything that reaches the connection string (driver, host, port, username, database, SSL options or PostgreSQL schema) requires re-entering the stored password. PostgreSQL host, database, username and CA path may not contain spaces, quotes or backslashes.
+- Accounts cannot be deleted from the UI: DBSuperb has a single administrator.
 - SQLite files are only opened inside directories listed in `DBSUPERB_SQLITE_PATHS`.
 - Connections marked read-only are enforced by the database session (MySQL/MariaDB `READ ONLY` transactions, PostgreSQL read-only session, SQLite read-only open mode).
 
@@ -34,7 +37,7 @@ Then add `storage/app/demo` (absolute path) to `DBSUPERB_SQLITE_PATHS` in `.env`
     npm run test         # Vitest
     npm run e2e          # Playwright (run `npm run build` first)
 
-Engine integration tests use real servers and skip any that are unreachable:
+Engine integration tests use real servers and skip any that are unreachable (set `DBSUPERB_REQUIRE_ENGINES=1`, as CI does, to fail instead):
 
 - MySQL 8.4 (port 3307) and MariaDB 11.4 (port 3308): `docker compose -f docker-compose.test.yml up -d`
   (on Windows: `wsl -d Ubuntu -- docker compose -f /mnt/c/<path>/docker-compose.test.yml up -d`).
