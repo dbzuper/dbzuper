@@ -7,7 +7,6 @@ use App\Database\Contracts\SchemaInspector;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
 use App\Database\Exceptions\InvalidConnectionOption;
-use LogicException;
 use PDO;
 
 class PostgresDriver implements Driver
@@ -62,7 +61,7 @@ class PostgresDriver implements Driver
 
     public function inspector(): SchemaInspector
     {
-        throw new LogicException('Implemented in Task 10');
+        return app(PostgresInspector::class);
     }
 
     public function versionQuery(): string

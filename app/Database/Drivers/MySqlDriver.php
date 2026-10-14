@@ -6,7 +6,6 @@ use App\Database\Contracts\Driver;
 use App\Database\Contracts\SchemaInspector;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
-use LogicException;
 use PDO;
 use Pdo\Mysql;
 
@@ -49,7 +48,7 @@ class MySqlDriver implements Driver
 
     public function inspector(): SchemaInspector
     {
-        throw new LogicException('Implemented in Task 10');
+        return app(MySqlInspector::class);
     }
 
     public function versionQuery(): string

@@ -7,7 +7,6 @@ use App\Database\Contracts\SchemaInspector;
 use App\Database\SqlitePathPolicy;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
-use LogicException;
 use Pdo\Sqlite;
 
 class SqliteDriver implements Driver
@@ -32,7 +31,7 @@ class SqliteDriver implements Driver
 
     public function inspector(): SchemaInspector
     {
-        throw new LogicException('Implemented in Task 10');
+        return app(SqliteInspector::class);
     }
 
     public function versionQuery(): string
