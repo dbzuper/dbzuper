@@ -65,15 +65,25 @@ final class Engines
         $p = self::params($engine);
         $socket = @fsockopen($p['host'], $p['port'], $errno, $errstr, 1);
         if ($socket === false) {
-            test()->markTestSkipped("{$engine} test server not reachable on {$p['host']}:{$p['port']}");
+            self::unavailable("{$engine} test server not reachable on {$p['host']}:{$p['port']}");
         }
         fclose($socket);
 
         try {
             self::prepare($engine);
         } catch (Throwable $e) {
-            test()->markTestSkipped("{$engine} test server unusable: ".$e->getMessage());
+            self::unavailable("{$engine} test server unusable: ".$e->getMessage());
         }
+    }
+
+    /** Skips locally; fails when DBSUPERB_REQUIRE_ENGINES=1 (CI) so a missing engine cannot pass silently. */
+    private static function unavailable(string $reason): never
+    {
+        if (filter_var(env('DBSUPERB_REQUIRE_ENGINES', false), FILTER_VALIDATE_BOOLEAN)) {
+            test()->fail($reason.' (DBSUPERB_REQUIRE_ENGINES=1)');
+        }
+
+        test()->markTestSkipped($reason);
     }
 
     public static function prepare(string $engine): void
