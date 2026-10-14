@@ -1,18 +1,7 @@
 <?php
 
-namespace Tests\Feature;
+use App\Models\User;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
-
-class ExampleTest extends TestCase
-{
-    use RefreshDatabase;
-
-    public function test_returns_a_successful_response()
-    {
-        $response = $this->get(route('home'));
-
-        $response->assertOk();
-    }
-}
+it('redirects the home page to connections for an authenticated user', function () {
+    $this->actingAs(User::factory()->create())->get('/')->assertRedirect('/connections');
+});

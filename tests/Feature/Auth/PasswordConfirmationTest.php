@@ -26,6 +26,7 @@ class PasswordConfirmationTest extends TestCase
 
     public function test_password_confirmation_requires_authentication()
     {
+        User::factory()->create();
         $response = $this->get(route('password.confirm'));
 
         $response->assertRedirect(route('login'));
