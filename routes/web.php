@@ -10,7 +10,9 @@ Route::post('setup', [SetupController::class, 'store'])->middleware('throttle:10
 Route::middleware('auth')->group(function () {
     Route::redirect('/', '/connections')->name('home');
     Route::redirect('dashboard', '/connections')->name('dashboard');
-    Route::inertia('connections', 'dashboard')->name('connections.index'); // replaced in Task 12
+    Route::post('connections/test', \App\Http\Controllers\ConnectionTestController::class)
+        ->middleware('throttle:dbsuperb-api')->name('connections.test');
+    Route::resource('connections', \App\Http\Controllers\ConnectionController::class)->except('show');
 
     Route::prefix('api/c/{connection}')->name('api.')->middleware('throttle:dbsuperb-api')->group(function () {
         Route::get('schema', [SchemaController::class, 'show'])->name('schema.show');
