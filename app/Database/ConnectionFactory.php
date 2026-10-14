@@ -3,8 +3,10 @@
 namespace App\Database;
 
 use App\Models\SavedConnection;
+use Closure;
 use Illuminate\Database\Connection;
 use Illuminate\Database\DatabaseManager;
+use Throwable;
 
 final class ConnectionFactory
 {
@@ -13,9 +15,21 @@ final class ConnectionFactory
         private readonly DriverRegistry $drivers,
     ) {}
 
+    /** Runs the callback with a connection and always releases it, even when the callback throws. */
+    public function using(SavedConnection $connection, Closure $callback): mixed
+    {
+        $db = $this->make($connection);
+
+        try {
+            return $callback($db);
+        } finally {
+            $this->release($db);
+        }
+    }
+
     public function make(SavedConnection $connection): Connection
     {
-        $name = 'dbsuperb_'.($connection->getKey() ?? 'transient').'_'.bin2hex(random_bytes(3));
+        $name = 'dbsuperb_'.($connection->getKey() ?? 'transient').'_'.bin2hex(random_bytes(8));
         $config = $this->drivers->for($connection->driver)->config($connection);
 
         // Registered in config so Laravel can rebuild the connection by name on reconnect. This matters on
@@ -23,7 +37,13 @@ final class ConnectionFactory
         // reconnect() and a retry; the guard is re-applied then and the QueryException still surfaces.
         config(["database.connections.{$name}" => $config]);
 
-        return $this->manager->connectUsing($name, $config, force: true);
+        try {
+            return $this->manager->connectUsing($name, $config, force: true);
+        } catch (Throwable $e) {
+            $this->forget($name);
+
+            throw $e;
+        }
     }
 
     public function release(Connection $db): void
@@ -31,6 +51,13 @@ final class ConnectionFactory
         $name = $db->getName();
 
         $this->manager->purge($name);
-        config(["database.connections.{$name}" => null]);
+        $this->forget($name);
+    }
+
+    private function forget(string $name): void
+    {
+        $all = config('database.connections', []);
+        unset($all[$name]);
+        config(['database.connections' => $all]);
     }
 }

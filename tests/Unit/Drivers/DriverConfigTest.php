@@ -51,3 +51,26 @@ it('defaults PostgreSQL to the public schema and sslmode prefer without read-onl
     expect($config)->toMatchArray(['search_path' => 'public', 'sslmode' => 'prefer'])
         ->and($config)->not->toHaveKey('isolation_level');
 });
+
+it('rejects a malicious PostgreSQL sslmode', function () {
+    app(DriverRegistry::class)->for(DriverName::Postgres)
+        ->config(saved(['driver' => DriverName::Postgres, 'options' => ['sslmode' => 'prefer;host=evil']]));
+})->throws(InvalidArgumentException::class);
+
+it('rejects a malicious PostgreSQL schema', function () {
+    app(DriverRegistry::class)->for(DriverName::Postgres)
+        ->config(saved(['driver' => DriverName::Postgres, 'options' => ['schema' => 'public; drop table x']]));
+})->throws(InvalidArgumentException::class);
+
+it('rejects hosts containing DSN separators', function (DriverName $driver, string $host) {
+    app(DriverRegistry::class)->for($driver)->config(saved(['driver' => $driver, 'host' => $host]));
+})->with([
+    [DriverName::Postgres, 'db;host=evil'],
+    [DriverName::MySql, "db\nevil"],
+    [DriverName::MariaDb, "db\0evil"],
+])->throws(InvalidArgumentException::class);
+
+it('rejects an ssl_ca containing a semicolon', function () {
+    app(DriverRegistry::class)->for(DriverName::Postgres)
+        ->config(saved(['driver' => DriverName::Postgres, 'options' => ['ssl_ca' => '/a;sslmode=disable']]));
+})->throws(InvalidArgumentException::class);

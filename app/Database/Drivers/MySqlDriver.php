@@ -20,6 +20,8 @@ class MySqlDriver implements Driver
     public function config(SavedConnection $connection): array
     {
         $options = $connection->options ?? [];
+        DsnValue::assertSafe(['host' => $connection->host, 'database' => $connection->database, 'username' => $connection->username, 'ssl_ca' => $options['ssl_ca'] ?? null]);
+
         $pdo = [PDO::ATTR_TIMEOUT => (int) config('dbsuperb.connect_timeout')];
 
         if (! empty($options['ssl_ca'])) {

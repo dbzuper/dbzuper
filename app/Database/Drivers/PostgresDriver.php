@@ -6,6 +6,7 @@ use App\Database\Contracts\Driver;
 use App\Database\Contracts\SchemaInspector;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
+use InvalidArgumentException;
 use LogicException;
 use PDO;
 
@@ -20,6 +21,18 @@ class PostgresDriver implements Driver
     {
         $options = $connection->options ?? [];
 
+        $sslmode = $options['sslmode'] ?? 'prefer';
+        if (! in_array($sslmode, ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'], true)) {
+            throw new InvalidArgumentException('Invalid sslmode.');
+        }
+
+        $schema = $options['schema'] ?? 'public';
+        if (! is_string($schema) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_$]*$/', $schema)) {
+            throw new InvalidArgumentException('Invalid schema name.');
+        }
+
+        DsnValue::assertSafe(['host' => $connection->host, 'database' => $connection->database, 'username' => $connection->username, 'ssl_ca' => $options['ssl_ca'] ?? null]);
+
         $config = [
             'driver' => 'pgsql',
             'host' => $connection->host,
@@ -29,8 +42,8 @@ class PostgresDriver implements Driver
             'password' => $connection->password ?? '',
             'charset' => 'utf8',
             'prefix' => '',
-            'search_path' => $options['schema'] ?? 'public',
-            'sslmode' => $options['sslmode'] ?? 'prefer',
+            'search_path' => $schema,
+            'sslmode' => $sslmode,
             'options' => [PDO::ATTR_TIMEOUT => (int) config('dbsuperb.connect_timeout')],
         ];
 
