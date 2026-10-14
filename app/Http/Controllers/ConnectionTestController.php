@@ -17,7 +17,7 @@ class ConnectionTestController extends Controller
         if ($request->filled('connection_id') && ! array_key_exists('password', $attributes)) {
             $existing = $request->user()->connections()->findOrFail($request->integer('connection_id'));
             if (filled($existing->password) && $request->identityChangedFrom($existing)) {
-                throw ValidationException::withMessages(['password' => 'Re-enter the password to test a different server.']);
+                throw ValidationException::withMessages(['password' => 'Re-enter the password to test different server or connection settings.']);
             }
             $attributes['password'] = $existing->password;
         }

@@ -77,7 +77,7 @@ it('accepts SQLite paths inside the allowlist without host or credentials', func
 it('keeps the stored password when the edit form leaves it blank', function () {
     $connection = SavedConnection::factory()->for($this->user)->create(['password' => 'original']);
 
-    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload(['password' => '', 'name' => 'Renamed', 'host' => '127.0.0.1', 'username' => 'root']))
+    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload(['password' => '', 'name' => 'Renamed', 'host' => '127.0.0.1', 'username' => 'root', 'database' => 'app']))
         ->assertRedirect(route('connections.index'));
 
     expect($connection->fresh()->password)->toBe('original')->and($connection->fresh()->name)->toBe('Renamed');
@@ -174,4 +174,82 @@ it('allows changing the host of a passwordless connection with a blank password'
         ->assertSessionHasNoErrors();
 
     expect($connection->fresh()->host)->toBe('new.internal')->and($connection->fresh()->password)->toBeNull();
+});
+
+function pgPayload(array $overrides = []): array
+{
+    return array_replace_recursive([
+        'name' => 'Pg', 'driver' => 'pgsql', 'host' => 'db.internal', 'port' => 5432,
+        'database' => 'shop', 'username' => 'app', 'password' => 'p@ss',
+        'options' => ['sslmode' => 'prefer', 'schema' => 'public', 'ssl_ca' => null],
+        'read_only' => false, 'color' => '#14b8a6', 'store_history' => true,
+    ], $overrides);
+}
+
+it('rejects libpq keyword injection as validation errors on store', function () {
+    $this->actingAs($this->user)->post(route('connections.store'), pgPayload([
+        'database' => "shop' hostaddr='203.0.113.9",
+        'options' => ['ssl_ca' => '/tmp/ca.pem hostaddr=203.0.113.10'],
+    ]))->assertSessionHasErrors(['database', 'options.ssl_ca']);
+
+    expect(SavedConnection::count())->toBe(0);
+});
+
+it('rejects libpq keyword injection as JSON validation errors on the test endpoint', function () {
+    $this->actingAs($this->user)->postJson(route('connections.test'), pgPayload([
+        'host' => 'db.internal hostaddr=203.0.113.9',
+        'database' => "shop' hostaddr='203.0.113.9",
+        'username' => 'app\\',
+        'options' => ['ssl_ca' => '/tmp/ca.pem hostaddr=203.0.113.10'],
+    ]))->assertUnprocessable()->assertJsonValidationErrors(['host', 'database', 'username', 'options.ssl_ca']);
+});
+
+it('rejects DSN separators in MySQL fields as validation errors', function () {
+    $this->actingAs($this->user)->postJson(route('connections.test'), mysqlPayload(['database' => 'shop;host=203.0.113.9']))
+        ->assertUnprocessable()->assertJsonValidationErrors(['database']);
+});
+
+it('requires the password again when any DSN field changes on update', function (array $change) {
+    $connection = SavedConnection::factory()->for($this->user)->create([
+        'driver' => DriverName::Postgres, 'host' => 'db.internal', 'port' => 5432, 'database' => 'shop', 'username' => 'app',
+        'password' => 'original', 'options' => ['sslmode' => 'prefer', 'schema' => 'public'],
+    ]);
+
+    $this->actingAs($this->user)->put(route('connections.update', $connection), pgPayload(['password' => '', ...$change]))
+        ->assertSessionHasErrors('password');
+
+    expect($connection->fresh()->database)->toBe('shop')->and($connection->fresh()->password)->toBe('original');
+})->with([
+    'database' => [['database' => 'other']],
+    'ssl_ca' => [['options' => ['sslmode' => 'prefer', 'schema' => 'public', 'ssl_ca' => '/tmp/ca.pem']]],
+    'sslmode' => [['options' => ['sslmode' => 'disable', 'schema' => 'public']]],
+    'schema' => [['options' => ['sslmode' => 'prefer', 'schema' => 'sales']]],
+]);
+
+it('requires the password again when only the database changes on the test endpoint', function () {
+    $connection = SavedConnection::factory()->for($this->user)->create(['host' => 'db.internal', 'port' => 3306, 'database' => 'shop', 'username' => 'app', 'password' => 'original']);
+
+    $this->actingAs($this->user)->postJson(route('connections.test'), mysqlPayload([
+        'connection_id' => $connection->id, 'database' => 'attacker_db', 'password' => '',
+    ]))->assertUnprocessable()->assertJsonValidationErrors('password');
+});
+
+it('requires the password again when the ssl_verify flag changes', function () {
+    $connection = SavedConnection::factory()->for($this->user)->create(['host' => 'db.internal', 'port' => 3306, 'database' => 'shop', 'username' => 'app', 'password' => 'original', 'options' => ['ssl_ca' => '/ca.pem']]);
+
+    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload([
+        'password' => '', 'options' => ['ssl_ca' => '/ca.pem', 'ssl_verify' => false],
+    ]))->assertSessionHasErrors('password');
+});
+
+it('keeps the stored password when unchanged PostgreSQL defaults are resubmitted', function () {
+    $connection = SavedConnection::factory()->for($this->user)->create([
+        'driver' => DriverName::Postgres, 'host' => 'db.internal', 'port' => 5432, 'database' => 'shop', 'username' => 'app',
+        'password' => 'original', 'options' => [],
+    ]);
+
+    $this->actingAs($this->user)->put(route('connections.update', $connection), pgPayload(['password' => '', 'name' => 'Renamed']))
+        ->assertSessionHasNoErrors();
+
+    expect($connection->fresh()->password)->toBe('original')->and($connection->fresh()->name)->toBe('Renamed');
 });

@@ -2,10 +2,12 @@
 
 namespace App\Http\Requests;
 
+use App\Database\Drivers\DsnValue;
 use App\Database\Exceptions\SqlitePathNotAllowed;
 use App\Database\SqlitePathPolicy;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
@@ -22,19 +24,21 @@ class ConnectionRequest extends FormRequest
     {
         $server = Rule::requiredIf(fn () => $this->input('driver') !== DriverName::Sqlite->value);
 
+        $dsn = $this->dsnSafe();
+
         return [
             'connection_id' => ['nullable', 'integer'],
             'name' => ['required', 'string', 'max:100'],
             'driver' => ['required', Rule::enum(DriverName::class)],
-            'host' => [$server, 'nullable', 'string', 'max:255'],
+            'host' => [$server, 'nullable', 'string', 'max:255', $dsn],
             'port' => ['nullable', 'integer', 'between:1,65535'],
-            'database' => ['required', 'string', 'max:1024'],
-            'username' => [$server, 'nullable', 'string', 'max:255'],
+            'database' => ['required', 'string', 'max:1024', $dsn],
+            'username' => [$server, 'nullable', 'string', 'max:255', $dsn],
             'password' => ['nullable', 'string', 'max:1024'],
             'clear_password' => ['sometimes', 'boolean'],
             'options' => ['nullable', 'array'],
             'options.sslmode' => ['nullable', Rule::in(['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'])],
-            'options.ssl_ca' => ['nullable', 'string', 'max:1024'],
+            'options.ssl_ca' => ['nullable', 'string', 'max:1024', $dsn],
             'options.ssl_verify' => ['nullable', 'boolean'],
             'options.schema' => ['nullable', 'string', 'max:63', 'regex:/^[A-Za-z_][A-Za-z0-9_$]*$/'],
             'read_only' => ['sometimes', 'boolean'],
@@ -52,7 +56,7 @@ class ConnectionRequest extends FormRequest
                 && filled($existing->password)
                 && $this->identityChangedFrom($existing)
                 && ! filled($this->input('password')) && ! $this->boolean('clear_password')) {
-                $validator->errors()->add('password', 'Re-enter the password when changing the server.');
+                $validator->errors()->add('password', 'Re-enter the password when changing the server or connection settings.');
             }
             if ($this->input('driver') !== DriverName::Sqlite->value || $validator->errors()->has('database')) {
                 return;
@@ -67,7 +71,32 @@ class ConnectionRequest extends FormRequest
         }];
     }
 
-    /** True when this is a server connection whose driver, host, port or username differ from the saved one. */
+    /**
+     * Mirrors the driver-level DsnValue checks so unsafe values become field errors instead of failing later.
+     * Server drivers reject PDO DSN separators; PostgreSQL also rejects libpq conninfo metacharacters.
+     * SQLite paths are checked by SqlitePathPolicy instead.
+     */
+    private function dsnSafe(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail) {
+            $driver = DriverName::tryFrom((string) $this->input('driver'));
+            if ($driver === null || ! $driver->isServer() || ! is_scalar($value)) {
+                return;
+            }
+            $pattern = $driver === DriverName::Postgres ? DsnValue::LIBPQ_UNSAFE : DsnValue::PDO_UNSAFE;
+            if (preg_match($pattern, (string) $value)) {
+                $fail($driver === DriverName::Postgres
+                    ? 'The :attribute may not contain spaces, quotes, backslashes, semicolons or line breaks.'
+                    : 'The :attribute may not contain semicolons or line breaks.');
+            }
+        };
+    }
+
+    /**
+     * True when this is a server connection and any value that reaches the DSN (driver, host, port, username,
+     * database, sslmode, ssl_ca, ssl_verify, schema) differs from the saved one, so the stored password
+     * must not be reused without being re-entered.
+     */
     public function identityChangedFrom(SavedConnection $existing): bool
     {
         $driver = DriverName::tryFrom((string) $this->input('driver'));
@@ -79,7 +108,26 @@ class ConnectionRequest extends FormRequest
         return $existing->driver !== $driver
             || (string) $existing->host !== (string) $this->input('host')
             || (int) ($existing->port ?: $existing->driver->defaultPort()) !== (int) $port
-            || (string) $existing->username !== (string) $this->input('username');
+            || (string) $existing->username !== (string) $this->input('username')
+            || (string) $existing->database !== (string) $this->input('database')
+            || self::dsnOptions((array) ($existing->options ?? [])) !== self::dsnOptions((array) $this->input('options', []));
+    }
+
+    /**
+     * DSN-relevant options with the driver defaults applied, so resubmitting a default is not a change.
+     *
+     * @return array{sslmode: string, ssl_ca: string, ssl_verify: bool, schema: string}
+     */
+    private static function dsnOptions(array $options): array
+    {
+        $value = fn (string $key) => ($options[$key] ?? null) === '' ? null : ($options[$key] ?? null);
+
+        return [
+            'sslmode' => (string) ($value('sslmode') ?? 'prefer'),
+            'ssl_ca' => (string) ($value('ssl_ca') ?? ''),
+            'ssl_verify' => filter_var($value('ssl_verify') ?? true, FILTER_VALIDATE_BOOLEAN),
+            'schema' => (string) ($value('schema') ?? 'public'),
+        ];
     }
 
     /** Attributes to persist. A blank password means "unchanged" unless clear_password is set. */
