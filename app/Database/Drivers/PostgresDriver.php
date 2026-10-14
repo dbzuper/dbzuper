@@ -6,7 +6,7 @@ use App\Database\Contracts\Driver;
 use App\Database\Contracts\SchemaInspector;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
-use InvalidArgumentException;
+use App\Database\Exceptions\InvalidConnectionOption;
 use LogicException;
 use PDO;
 
@@ -23,12 +23,12 @@ class PostgresDriver implements Driver
 
         $sslmode = $options['sslmode'] ?? 'prefer';
         if (! in_array($sslmode, ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'], true)) {
-            throw new InvalidArgumentException('Invalid sslmode.');
+            throw new InvalidConnectionOption('Invalid sslmode.');
         }
 
         $schema = $options['schema'] ?? 'public';
         if (! is_string($schema) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_$]*$/', $schema)) {
-            throw new InvalidArgumentException('Invalid schema name.');
+            throw new InvalidConnectionOption('Invalid schema name.');
         }
 
         DsnValue::assertSafe(['host' => $connection->host, 'database' => $connection->database, 'username' => $connection->username, 'ssl_ca' => $options['ssl_ca'] ?? null]);
