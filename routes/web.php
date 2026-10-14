@@ -14,6 +14,8 @@ Route::middleware('auth')->group(function () {
         ->middleware('throttle:dbsuperb-api')->name('connections.test');
     Route::resource('connections', \App\Http\Controllers\ConnectionController::class)->except('show');
 
+    Route::get('c/{connection}', \App\Http\Controllers\WorkspaceController::class)->name('workspace.show');
+
     Route::prefix('api/c/{connection}')->name('api.')->middleware('throttle:dbsuperb-api')->group(function () {
         Route::get('schema', [SchemaController::class, 'show'])->name('schema.show');
         Route::post('schema/refresh', [SchemaController::class, 'refresh'])->name('schema.refresh');
