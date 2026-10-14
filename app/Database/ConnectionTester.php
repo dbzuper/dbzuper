@@ -1,0 +1,45 @@
+<?php
+
+namespace App\Database;
+
+use App\Database\Errors\DbErrorMapper;
+use App\Models\SavedConnection;
+use Illuminate\Database\Connection;
+use Throwable;
+
+final class ConnectionTester
+{
+    public function __construct(
+        private readonly ConnectionFactory $factory,
+        private readonly DriverRegistry $drivers,
+        private readonly DbErrorMapper $errors,
+    ) {}
+
+    /** @return array{ok: bool, version: ?string, latency_ms: int, error: ?array} */
+    public function test(SavedConnection $connection): array
+    {
+        $started = hrtime(true);
+
+        try {
+            $version = $this->factory->using(
+                $connection,
+                function (Connection $db) use ($connection): string {
+                    // Resolve the PDO first: connecting here avoids the query-level reconnect retry that would
+                    // multiply the connect timeout on an unreachable host.
+                    $db->getPdo();
+
+                    return (string) $db->selectOne($this->drivers->for($connection->driver)->versionQuery())->version;
+                },
+            );
+
+            return ['ok' => true, 'version' => $version, 'latency_ms' => $this->elapsed($started), 'error' => null];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'version' => null, 'latency_ms' => $this->elapsed($started), 'error' => $this->errors->map($e)->toArray()];
+        }
+    }
+
+    private function elapsed(int $started): int
+    {
+        return (int) round((hrtime(true) - $started) / 1_000_000);
+    }
+}
