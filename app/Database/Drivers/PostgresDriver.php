@@ -30,7 +30,7 @@ class PostgresDriver implements Driver
             throw new InvalidConnectionOption('Invalid schema name.');
         }
 
-        DsnValue::assertSafe(['host' => $connection->host, 'database' => $connection->database, 'username' => $connection->username, 'ssl_ca' => $options['ssl_ca'] ?? null]);
+        DsnValue::assertSafeForLibpq(['host' => $connection->host, 'database' => $connection->database, 'username' => $connection->username, 'ssl_ca' => $options['ssl_ca'] ?? null]);
 
         $config = [
             'driver' => 'pgsql',

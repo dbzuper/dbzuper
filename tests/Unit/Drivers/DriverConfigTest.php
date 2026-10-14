@@ -1,6 +1,7 @@
 <?php
 
 use App\Database\DriverRegistry;
+use App\Database\Exceptions\InvalidConnectionOption;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
 use Pdo\Mysql;
@@ -74,3 +75,21 @@ it('rejects an ssl_ca containing a semicolon', function () {
     app(DriverRegistry::class)->for(DriverName::Postgres)
         ->config(saved(['driver' => DriverName::Postgres, 'options' => ['ssl_ca' => '/a;sslmode=disable']]));
 })->throws(InvalidArgumentException::class);
+
+it('rejects libpq keyword injection in PostgreSQL DSN values', function (array $attributes) {
+    app(DriverRegistry::class)->for(DriverName::Postgres)->config(saved(['driver' => DriverName::Postgres, ...$attributes]));
+})->with([
+    'database with quote and space' => [['database' => "shop' hostaddr='203.0.113.9"]],
+    'database with space' => [['database' => 'shop hostaddr=203.0.113.9']],
+    'database with backslash' => [['database' => 'shop\\']],
+    'ssl_ca with space' => [['options' => ['ssl_ca' => '/tmp/ca.pem hostaddr=203.0.113.10']]],
+    'ssl_ca with quote' => [['options' => ['ssl_ca' => "/tmp/ca.pem'"]]],
+    'host with space' => [['host' => 'db.internal hostaddr=203.0.113.9']],
+    'username with tab' => [['username' => "app\thostaddr=203.0.113.9"]],
+])->throws(InvalidConnectionOption::class);
+
+it('still allows spaces and quotes in MySQL database names, which the MySQL DSN treats literally', function () {
+    $config = app(DriverRegistry::class)->for(DriverName::MySql)->config(saved(['driver' => DriverName::MySql, 'database' => "my shop's=db"]));
+
+    expect($config['database'])->toBe("my shop's=db");
+});
