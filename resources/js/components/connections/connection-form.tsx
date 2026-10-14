@@ -2,7 +2,12 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { defaultsFor, isServerDriver } from '@/lib/connections';
+import {
+    defaultsFor,
+    firstErrors,
+    isServerDriver,
+    testFailureMessage,
+} from '@/lib/connections';
 import { ApiError, apiFetch } from '@/lib/http';
 import type {
     ConnectionFormData,
@@ -49,6 +54,7 @@ export function ConnectionForm({
     const runTest = async () => {
         setTesting(true);
         setTest(null);
+        form.clearErrors();
         try {
             setTest(
                 await apiFetch<ConnectionTestResult>('/connections/test', {
@@ -57,10 +63,15 @@ export function ConnectionForm({
                 }),
             );
         } catch (e) {
-            const message =
-                e instanceof ApiError
-                    ? 'Please fix the highlighted fields first.'
-                    : 'Test request failed.';
+            const status = e instanceof ApiError ? e.status : null;
+            if (e instanceof ApiError && e.status === 422) {
+                form.setError(
+                    firstErrors(
+                        (e.body as { errors?: unknown } | null)?.errors,
+                    ) as Partial<Record<keyof ConnectionFormData, string>>,
+                );
+            }
+            const message = testFailureMessage(status);
             setTest({
                 ok: false,
                 version: null,
