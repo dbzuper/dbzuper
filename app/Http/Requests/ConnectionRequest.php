@@ -5,7 +5,9 @@ namespace App\Http\Requests;
 use App\Database\Exceptions\SqlitePathNotAllowed;
 use App\Database\SqlitePathPolicy;
 use App\Enums\DriverName;
+use App\Models\SavedConnection;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -44,6 +46,13 @@ class ConnectionRequest extends FormRequest
     public function after(): array
     {
         return [function (Validator $validator) {
+            $existing = $this->route('connection');
+            if ($existing instanceof SavedConnection && $existing->user_id === $this->user()?->id
+                && ! $validator->errors()->has('password')
+                && $this->identityChangedFrom($existing)
+                && ! filled($this->input('password')) && ! $this->boolean('clear_password')) {
+                $validator->errors()->add('password', 'Re-enter the password when changing the server.');
+            }
             if ($this->input('driver') !== DriverName::Sqlite->value || $validator->errors()->has('database')) {
                 return;
             }
@@ -57,6 +66,21 @@ class ConnectionRequest extends FormRequest
         }];
     }
 
+    /** True when this is a server connection whose driver, host, port or username differ from the saved one. */
+    public function identityChangedFrom(SavedConnection $existing): bool
+    {
+        $driver = DriverName::tryFrom((string) $this->input('driver'));
+        if ($driver === null || ! $driver->isServer()) {
+            return false;
+        }
+        $port = $this->input('port') ?: $driver->defaultPort();
+
+        return $existing->driver !== $driver
+            || (string) $existing->host !== (string) $this->input('host')
+            || (int) ($existing->port ?: $existing->driver->defaultPort()) !== (int) $port
+            || (string) $existing->username !== (string) $this->input('username');
+    }
+
     /** Attributes to persist. A blank password means "unchanged" unless clear_password is set. */
     public function connectionAttributes(): array
     {
@@ -68,7 +92,7 @@ class ConnectionRequest extends FormRequest
             'port' => $driver->isServer() ? ($this->input('port') ?: $driver->defaultPort()) : null,
             'database' => $this->input('database'),
             'username' => $driver->isServer() ? $this->input('username') : null,
-            'options' => array_filter((array) $this->input('options', []), fn ($v) => $v !== null && $v !== ''),
+            'options' => array_filter(Arr::only((array) $this->input('options', []), ['sslmode', 'ssl_ca', 'ssl_verify', 'schema']), fn ($v) => $v !== null && $v !== ''),
             'read_only' => $this->boolean('read_only'),
             'color' => $this->input('color'),
             'store_history' => $this->boolean('store_history', true),

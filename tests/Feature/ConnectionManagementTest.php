@@ -6,7 +6,10 @@ use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\Engines;
 
-beforeEach(fn () => $this->user = User::factory()->create());
+beforeEach(function () {
+    $this->withoutVite();
+    $this->user = User::factory()->create();
+});
 afterEach(fn () => Engines::resetSqlite());
 
 function mysqlPayload(array $overrides = []): array
@@ -74,7 +77,7 @@ it('accepts SQLite paths inside the allowlist without host or credentials', func
 it('keeps the stored password when the edit form leaves it blank', function () {
     $connection = SavedConnection::factory()->for($this->user)->create(['password' => 'original']);
 
-    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload(['password' => '', 'name' => 'Renamed']))
+    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload(['password' => '', 'name' => 'Renamed', 'host' => '127.0.0.1', 'username' => 'root']))
         ->assertRedirect(route('connections.index'));
 
     expect($connection->fresh()->password)->toBe('original')->and($connection->fresh()->name)->toBe('Renamed');
@@ -123,4 +126,43 @@ it('tests an edited connection using the stored password when the field is blank
         'connection_id' => $connection->id, 'name' => 'x', 'driver' => 'mysql', 'host' => $p['host'], 'port' => $p['port'],
         'database' => $p['database'], 'username' => $p['username'], 'password' => '',
     ])->assertOk()->assertJsonPath('ok', true);
+});
+
+it('refuses to reuse the stored password when testing a different host', function () {
+    $connection = SavedConnection::factory()->for($this->user)->create(['host' => 'old.internal', 'port' => 3306, 'username' => 'app', 'password' => 'original']);
+
+    $this->actingAs($this->user)->postJson(route('connections.test'), mysqlPayload([
+        'connection_id' => $connection->id, 'host' => 'evil.internal', 'password' => '',
+    ]))->assertUnprocessable()->assertJsonValidationErrors('password');
+});
+
+it('returns 404 when testing with another user\'s connection id', function () {
+    $theirs = SavedConnection::factory()->create();
+
+    $this->actingAs($this->user)->postJson(route('connections.test'), mysqlPayload(['connection_id' => $theirs->id, 'password' => '']))
+        ->assertNotFound();
+});
+
+it('rejects changing the host with a blank password on update', function () {
+    $connection = SavedConnection::factory()->for($this->user)->create(['host' => 'old.internal', 'port' => 3306, 'username' => 'app', 'password' => 'original']);
+
+    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload(['host' => 'new.internal', 'password' => '']))
+        ->assertSessionHasErrors('password');
+
+    expect($connection->fresh()->password)->toBe('original')->and($connection->fresh()->host)->toBe('old.internal');
+});
+
+it('allows changing the host when a new password is supplied', function () {
+    $connection = SavedConnection::factory()->for($this->user)->create(['host' => 'old.internal', 'port' => 3306, 'username' => 'app', 'password' => 'original']);
+
+    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload(['host' => 'new.internal', 'password' => 'fresh']))
+        ->assertSessionHasNoErrors();
+
+    expect($connection->fresh()->password)->toBe('fresh')->and($connection->fresh()->host)->toBe('new.internal');
+});
+
+it('keeps only known option keys', function () {
+    $this->actingAs($this->user)->post(route('connections.store'), mysqlPayload(['options' => ['ssl_ca' => '/ca.pem', 'evil' => 'x']]));
+
+    expect(SavedConnection::sole()->options)->toBe(['ssl_ca' => '/ca.pem']);
 });

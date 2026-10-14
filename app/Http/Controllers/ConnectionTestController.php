@@ -6,7 +6,7 @@ use App\Database\ConnectionTester;
 use App\Http\Requests\ConnectionRequest;
 use App\Models\SavedConnection;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 class ConnectionTestController extends Controller
 {
@@ -15,8 +15,10 @@ class ConnectionTestController extends Controller
         $attributes = $request->connectionAttributes();
 
         if ($request->filled('connection_id') && ! array_key_exists('password', $attributes)) {
-            $existing = SavedConnection::findOrFail($request->integer('connection_id'));
-            Gate::authorize('update', $existing);
+            $existing = $request->user()->connections()->findOrFail($request->integer('connection_id'));
+            if ($request->identityChangedFrom($existing)) {
+                throw ValidationException::withMessages(['password' => 'Re-enter the password to test a different server.']);
+            }
             $attributes['password'] = $existing->password;
         }
 

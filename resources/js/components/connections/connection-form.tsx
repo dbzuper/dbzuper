@@ -107,6 +107,7 @@ export function ConnectionForm({ connection, drivers }: { connection: Connection
                                     onChange={(e) => form.setData('options', { ...form.data.options, sslmode: e.target.value as never })}>
                                     {['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'].map((m) => <option key={m}>{m}</option>)}
                                 </select>
+                                <InputError message={form.errors['options.sslmode' as keyof ConnectionFormData]} />
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="schema">Schema</Label>
@@ -120,6 +121,7 @@ export function ConnectionForm({ connection, drivers }: { connection: Connection
                             <Label htmlFor="ssl_ca">TLS CA certificate path (optional)</Label>
                             <Input id="ssl_ca" value={form.data.options.ssl_ca ?? ''}
                                 onChange={(e) => form.setData('options', { ...form.data.options, ssl_ca: e.target.value })} />
+                            <InputError message={form.errors['options.ssl_ca' as keyof ConnectionFormData]} />
                         </div>
                     )}
                 </>
