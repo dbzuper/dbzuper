@@ -9,8 +9,18 @@ describe('connection helpers', () => {
     });
 
     it('gives per-driver defaults', () => {
-        expect(defaultsFor('mysql')).toMatchObject({ port: 3306, host: '127.0.0.1' });
-        expect(defaultsFor('pgsql')).toMatchObject({ port: 5432, options: { sslmode: 'prefer', schema: 'public' } });
-        expect(defaultsFor('sqlite')).toMatchObject({ host: '', port: null, username: '' });
+        expect(defaultsFor('mysql')).toMatchObject({
+            port: 3306,
+            host: '127.0.0.1',
+        });
+        expect(defaultsFor('pgsql')).toMatchObject({
+            port: 5432,
+            options: { sslmode: 'prefer', schema: 'public' },
+        });
+        expect(defaultsFor('sqlite')).toMatchObject({
+            host: '',
+            port: null,
+            username: '',
+        });
     });
 });

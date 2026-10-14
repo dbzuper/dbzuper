@@ -4,9 +4,9 @@ namespace App\Database\Drivers;
 
 use App\Database\Contracts\Driver;
 use App\Database\Contracts\SchemaInspector;
+use App\Database\Exceptions\InvalidConnectionOption;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
-use App\Database\Exceptions\InvalidConnectionOption;
 use PDO;
 
 class PostgresDriver implements Driver

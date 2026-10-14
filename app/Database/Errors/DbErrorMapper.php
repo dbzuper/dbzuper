@@ -5,7 +5,6 @@ namespace App\Database\Errors;
 use App\Database\Exceptions\InvalidConnectionOption;
 use App\Database\Exceptions\SqlitePathNotAllowed;
 use Illuminate\Database\QueryException;
-
 use PDOException;
 use Throwable;
 

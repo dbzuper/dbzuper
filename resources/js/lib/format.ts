@@ -1,6 +1,9 @@
 import type { RowCountSchema } from '@/types/schema';
 
-const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
+const compact = new Intl.NumberFormat('en', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+});
 const full = new Intl.NumberFormat('en');
 
 export function formatRowCount(rc: RowCountSchema): string {

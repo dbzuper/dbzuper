@@ -1,7 +1,13 @@
 export type DriverValue = 'mysql' | 'mariadb' | 'pgsql' | 'sqlite';
 
 export interface ConnectionOptions {
-    sslmode?: 'disable' | 'allow' | 'prefer' | 'require' | 'verify-ca' | 'verify-full';
+    sslmode?:
+        | 'disable'
+        | 'allow'
+        | 'prefer'
+        | 'require'
+        | 'verify-ca'
+        | 'verify-full';
     ssl_ca?: string;
     ssl_verify?: boolean;
     schema?: string;
@@ -49,5 +55,10 @@ export interface ConnectionTestResult {
     ok: boolean;
     version: string | null;
     latency_ms: number;
-    error: { kind: string; message: string; sqlstate: string | null; reason: string | null } | null;
+    error: {
+        kind: string;
+        message: string;
+        sqlstate: string | null;
+        reason: string | null;
+    } | null;
 }

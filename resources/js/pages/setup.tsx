@@ -36,7 +36,12 @@ export default function Setup() {
             <Head title="Setup" />
             <form onSubmit={submit} className="flex flex-col gap-5">
                 {(
-                    ['name', 'email', 'password', 'password_confirmation'] as const
+                    [
+                        'name',
+                        'email',
+                        'password',
+                        'password_confirmation',
+                    ] as const
                 ).map((field) => (
                     <div key={field} className="grid gap-2">
                         <Label htmlFor={field}>{labels[field]}</Label>
@@ -50,7 +55,9 @@ export default function Setup() {
                                       : 'text'
                             }
                             value={form.data[field]}
-                            onChange={(e) => form.setData(field, e.target.value)}
+                            onChange={(e) =>
+                                form.setData(field, e.target.value)
+                            }
                             autoComplete={
                                 field.startsWith('password')
                                     ? 'new-password'

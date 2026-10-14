@@ -15,7 +15,7 @@ abstract class LaravelSchemaInspector implements SchemaInspector
     abstract protected function schema(Connection $db, SavedConnection $saved): string;
 
     /**
-     * @param list<string> $tables
+     * @param  list<string>  $tables
      * @return array<string, RowCount> keyed by table name
      */
     abstract protected function rowCounts(Connection $db, string $schema, array $tables): array;

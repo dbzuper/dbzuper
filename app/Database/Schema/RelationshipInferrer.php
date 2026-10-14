@@ -11,8 +11,8 @@ final class RelationshipInferrer
     private const STRING = '/char|uuid|text|binary/i';
 
     /**
-     * @param list<TableInfo> $tables
-     * @param list<Relationship> $declared
+     * @param  list<TableInfo>  $tables
+     * @param  list<Relationship>  $declared
      * @return list<Relationship>
      */
     public function infer(array $tables, array $declared): array
@@ -72,7 +72,7 @@ final class RelationshipInferrer
      * First valid parent in candidate order (prefixed names first). The source table is never a
      * candidate, and an invalid candidate falls through to the next one rather than ending the search.
      *
-     * @param array<string, TableInfo> $byName
+     * @param  array<string, TableInfo>  $byName
      * @return array{0: TableInfo, 1: ColumnInfo}|null
      */
     private function findTarget(array $byName, TableInfo $source, ColumnInfo $column, string $base): ?array

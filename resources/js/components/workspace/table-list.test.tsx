@@ -4,13 +4,42 @@ import type { SchemaSnapshot } from '@/types/schema';
 import { TableList } from './table-list';
 
 const snapshot: SchemaSnapshot = {
-    driver: 'sqlite', database: 'x', schema: 'main', generated_at: '2026-10-14T00:00:00Z', hash: 'h',
+    driver: 'sqlite',
+    database: 'x',
+    schema: 'main',
+    generated_at: '2026-10-14T00:00:00Z',
+    hash: 'h',
     tables: [
-        { name: 'users', kind: 'table', row_count: { count: 3, kind: 'exact' }, size_bytes: null, primary_key: ['id'], columns: [], indexes: [] },
-        { name: 'order_totals', kind: 'view', row_count: { count: null, kind: 'unknown' }, size_bytes: null, primary_key: [], columns: [], indexes: [] },
+        {
+            name: 'users',
+            kind: 'table',
+            row_count: { count: 3, kind: 'exact' },
+            size_bytes: null,
+            primary_key: ['id'],
+            columns: [],
+            indexes: [],
+        },
+        {
+            name: 'order_totals',
+            kind: 'view',
+            row_count: { count: null, kind: 'unknown' },
+            size_bytes: null,
+            primary_key: [],
+            columns: [],
+            indexes: [],
+        },
     ],
     relationships: [
-        { id: 'r1', from_table: 'orders', from_columns: ['user_id'], to_table: 'users', to_columns: ['id'], inferred: true, confidence: 0.9, name: null },
+        {
+            id: 'r1',
+            from_table: 'orders',
+            from_columns: ['user_id'],
+            to_table: 'users',
+            to_columns: ['id'],
+            inferred: true,
+            confidence: 0.9,
+            name: null,
+        },
     ],
 };
 
@@ -20,7 +49,9 @@ describe('TableList', () => {
         expect(screen.getByText('users')).toBeInTheDocument();
         expect(screen.getByText('view')).toBeInTheDocument();
         expect(screen.getByText('3')).toBeInTheDocument();
-        expect(screen.getByLabelText('users relationships')).toHaveTextContent('1');
+        expect(screen.getByLabelText('users relationships')).toHaveTextContent(
+            '1',
+        );
     });
 
     it('filters by name', () => {

@@ -5,8 +5,8 @@ namespace App\Database\Schema;
 final readonly class Relationship
 {
     /**
-     * @param list<string> $fromColumns
-     * @param list<string> $toColumns
+     * @param  list<string>  $fromColumns
+     * @param  list<string>  $toColumns
      */
     public function __construct(
         public string $id,

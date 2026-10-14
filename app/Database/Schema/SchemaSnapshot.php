@@ -7,8 +7,8 @@ use Carbon\CarbonImmutable;
 final readonly class SchemaSnapshot
 {
     /**
-     * @param list<TableInfo> $tables
-     * @param list<Relationship> $relationships
+     * @param  list<TableInfo>  $tables
+     * @param  list<Relationship>  $relationships
      */
     public function __construct(
         public string $driver,

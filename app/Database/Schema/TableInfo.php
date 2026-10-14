@@ -5,10 +5,10 @@ namespace App\Database\Schema;
 final readonly class TableInfo
 {
     /**
-     * @param 'table'|'view' $kind
-     * @param list<ColumnInfo> $columns
-     * @param list<string> $primaryKey
-     * @param list<IndexInfo> $indexes
+     * @param  'table'|'view'  $kind
+     * @param  list<ColumnInfo>  $columns
+     * @param  list<string>  $primaryKey
+     * @param  list<IndexInfo>  $indexes
      */
     public function __construct(
         public string $name,
