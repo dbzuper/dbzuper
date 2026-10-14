@@ -2,6 +2,7 @@
 
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
+use App\Models\StoredSnapshot;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\Engines;
@@ -252,4 +253,42 @@ it('keeps the stored password when unchanged PostgreSQL defaults are resubmitted
         ->assertSessionHasNoErrors();
 
     expect($connection->fresh()->password)->toBe('original')->and($connection->fresh()->name)->toBe('Renamed');
+});
+
+it('drops stored snapshots when the connection points somewhere else', function (array $change) {
+    $connection = SavedConnection::factory()->for($this->user)->create(['host' => 'db.internal', 'port' => 3306, 'database' => 'shop', 'username' => 'app', 'password' => null]);
+    StoredSnapshot::create(['connection_id' => $connection->id, 'hash' => str_repeat('a', 40), 'payload' => []]);
+
+    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload(['password' => '', ...$change]))
+        ->assertSessionHasNoErrors();
+
+    expect($connection->snapshots()->count())->toBe(0);
+})->with([
+    'database' => [['database' => 'other']],
+    'host' => [['host' => 'db2.internal']],
+    'port' => [['port' => 3307]],
+    'driver' => [['driver' => 'mariadb']],
+]);
+
+it('drops stored snapshots when the PostgreSQL schema changes', function () {
+    $connection = SavedConnection::factory()->for($this->user)->create([
+        'driver' => DriverName::Postgres, 'host' => 'db.internal', 'port' => 5432, 'database' => 'shop', 'username' => 'app',
+        'password' => null, 'options' => ['schema' => 'public'],
+    ]);
+    StoredSnapshot::create(['connection_id' => $connection->id, 'hash' => str_repeat('a', 40), 'payload' => []]);
+
+    $this->actingAs($this->user)->put(route('connections.update', $connection), pgPayload(['password' => '', 'options' => ['schema' => 'sales']]))
+        ->assertSessionHasNoErrors();
+
+    expect($connection->snapshots()->count())->toBe(0);
+});
+
+it('keeps stored snapshots when only cosmetic settings change', function () {
+    $connection = SavedConnection::factory()->for($this->user)->create(['host' => 'db.internal', 'port' => 3306, 'database' => 'shop', 'username' => 'app', 'password' => null]);
+    StoredSnapshot::create(['connection_id' => $connection->id, 'hash' => str_repeat('a', 40), 'payload' => []]);
+
+    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload(['password' => '', 'name' => 'Renamed', 'color' => '#000000']))
+        ->assertSessionHasNoErrors();
+
+    expect($connection->snapshots()->count())->toBe(1);
 });

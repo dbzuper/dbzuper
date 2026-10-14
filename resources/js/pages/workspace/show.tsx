@@ -2,6 +2,7 @@ import { TableList } from '@/components/workspace/table-list';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/app-layout';
+import { formatSnapshotAge } from '@/lib/format';
 import { ApiError, apiFetch } from '@/lib/http';
 import type { ConnectionSummary } from '@/types/connection';
 import type { DbErrorPayload, SchemaResponse } from '@/types/schema';
@@ -109,7 +110,14 @@ export default function WorkspaceShow({
                         <p className="text-sm text-muted-foreground">
                             {snapshot.tables.length} tables and views ·{' '}
                             {snapshot.relationships.length} relationships (
-                            {inferred} inferred)
+                            {inferred} inferred) ·{' '}
+                            <time
+                                dateTime={data?.stored_at}
+                                title={data?.stored_at}
+                            >
+                                Snapshot from{' '}
+                                {data ? formatSnapshotAge(data.stored_at) : ''}
+                            </time>
                         </p>
                         <div className="rounded-lg border">
                             <TableList snapshot={snapshot} filter={filter} />

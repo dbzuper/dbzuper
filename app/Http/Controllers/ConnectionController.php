@@ -43,7 +43,13 @@ class ConnectionController extends Controller
     public function update(ConnectionRequest $request, SavedConnection $connection): RedirectResponse
     {
         Gate::authorize('update', $connection);
+        $before = $this->schemaSource($connection);
         $connection->update($request->connectionAttributes());
+
+        // A snapshot describes one server/database/schema; once the connection points elsewhere it is stale.
+        if ($this->schemaSource($connection) !== $before) {
+            $connection->snapshots()->delete();
+        }
 
         return redirect()->route('connections.index');
     }
@@ -54,6 +60,18 @@ class ConnectionController extends Controller
         $connection->delete();
 
         return redirect()->route('connections.index');
+    }
+
+    /** The values that decide which schema a snapshot describes. */
+    private function schemaSource(SavedConnection $connection): array
+    {
+        return [
+            $connection->driver->value,
+            (string) $connection->host,
+            (int) $connection->port,
+            (string) $connection->database,
+            (string) ($connection->options['schema'] ?? 'public'),
+        ];
     }
 
     private function drivers(): array
