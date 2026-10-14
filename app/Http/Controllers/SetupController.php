@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Actions\Fortify\CreateNewUser;
+use App\Actions\CreateFirstAdmin;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,12 +19,12 @@ class SetupController extends Controller
         return Inertia::render('setup');
     }
 
-    public function store(Request $request, CreateNewUser $creator): RedirectResponse
+    public function store(Request $request, CreateFirstAdmin $createFirstAdmin): RedirectResponse
     {
         abort_if(User::query()->exists(), 404);
 
-        $user = $creator->create($request->only('name', 'email', 'password', 'password_confirmation'));
-        $user->forceFill(['email_verified_at' => now()])->save();
+        $user = $createFirstAdmin->handle($request->only('name', 'email', 'password', 'password_confirmation'));
+        abort_if($user === null, 404);
 
         Auth::login($user);
         $request->session()->regenerate();

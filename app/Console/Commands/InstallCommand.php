@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Actions\Fortify\CreateNewUser;
+use App\Actions\CreateFirstAdmin;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Validation\ValidationException;
@@ -16,12 +16,10 @@ class InstallCommand extends Command
 
     protected $description = 'Create the DBSuperb administrator account';
 
-    public function handle(CreateNewUser $creator): int
+    public function handle(CreateFirstAdmin $createFirstAdmin): int
     {
         if (User::query()->exists()) {
-            $this->error('DBSuperb is already installed: an administrator exists.');
-
-            return self::FAILURE;
+            return $this->alreadyInstalled();
         }
 
         $name = $this->option('name') ?? text('Name', required: true);
@@ -29,7 +27,7 @@ class InstallCommand extends Command
         $password = $this->option('password') ?? password('Password', required: true);
 
         try {
-            $user = $creator->create([
+            $user = $createFirstAdmin->handle([
                 'name' => $name, 'email' => $email,
                 'password' => $password, 'password_confirmation' => $password,
             ]);
@@ -43,9 +41,19 @@ class InstallCommand extends Command
             return self::FAILURE;
         }
 
-        $user->forceFill(['email_verified_at' => now()])->save();
+        if ($user === null) {
+            return $this->alreadyInstalled();
+        }
+
         $this->info("Administrator {$user->email} created.");
 
         return self::SUCCESS;
+    }
+
+    private function alreadyInstalled(): int
+    {
+        $this->error('DBSuperb is already installed: an administrator exists.');
+
+        return self::FAILURE;
     }
 }
