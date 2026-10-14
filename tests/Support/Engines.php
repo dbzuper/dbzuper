@@ -2,6 +2,8 @@
 
 namespace Tests\Support;
 
+use App\Enums\DriverName;
+use App\Models\SavedConnection;
 use PDO;
 use Throwable;
 
@@ -85,6 +87,23 @@ final class Engines
         if (! $exists) {
             $pdo->exec('create database '.self::DATABASE);
         }
+    }
+
+    public static function savedConnection(string $engine, array $overrides = []): SavedConnection
+    {
+        $p = self::params($engine);
+
+        return new SavedConnection(array_merge([
+            'name' => "{$engine} test",
+            'driver' => DriverName::from($engine),
+            'host' => $p['host'],
+            'port' => $p['port'],
+            'database' => $p['database'],
+            'username' => $p['username'],
+            'password' => $p['password'],
+            'options' => [],
+            'read_only' => false,
+        ], $overrides));
     }
 
     public static function pdo(string $engine): PDO
