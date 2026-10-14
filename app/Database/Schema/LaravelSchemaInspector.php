@@ -51,7 +51,7 @@ abstract class LaravelSchemaInspector implements SchemaInspector
             );
 
             foreach ($builder->getForeignKeys($qualified) as $fk) {
-                if (($fk['foreign_schema'] ?? $schema) !== $schema && $fk['foreign_schema'] !== null) {
+                if (! $this->sameSchema($fk['foreign_schema'] ?? null, $schema)) {
                     continue; // cross-schema relationships are out of scope for the MVP
                 }
                 $declared[] = Relationship::declared($raw['name'], $fk['columns'], $fk['foreign_table'], $fk['foreign_columns'], $fk['name'] ?: null);
@@ -78,6 +78,12 @@ abstract class LaravelSchemaInspector implements SchemaInspector
             $tables,
             $relationships,
         );
+    }
+
+    /** Whether a foreign key's target schema is the inspected one (null means the same schema). */
+    protected function sameSchema(?string $foreign, string $schema): bool
+    {
+        return $foreign === null || $foreign === $schema;
     }
 
     protected function includeTable(string $name): bool

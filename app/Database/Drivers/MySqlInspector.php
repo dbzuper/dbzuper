@@ -14,6 +14,12 @@ class MySqlInspector extends LaravelSchemaInspector
         return $saved->database;
     }
 
+    /** MySQL/MariaDB may report the referenced database name in a different case (e.g. lower_case_table_names). */
+    protected function sameSchema(?string $foreign, string $schema): bool
+    {
+        return $foreign === null || strcasecmp($foreign, $schema) === 0;
+    }
+
     protected function rowCounts(Connection $db, string $schema, array $tables): array
     {
         $rows = $db->select(
