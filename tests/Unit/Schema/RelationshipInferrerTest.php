@@ -84,3 +84,51 @@ it('matches case-insensitively and scores equal types higher', function () {
         ->and($result['posts.USER_ID']->confidence)->toBe(0.9)
         ->and($result['likes.user_id']->confidence)->toBe(0.75);
 });
+
+it('never targets the source table and falls through to the real parent for a prefixed name', function () {
+    $result = inferred([
+        tbl('user_roles', [col('id'), col('user_id'), col('role_id')]),
+        tbl('users', [col('id')]),
+        tbl('roles', [col('id')]),
+    ]);
+
+    expect($result['user_roles.role_id']->toTable)->toBe('roles')
+        ->and($result['user_roles.user_id']->toTable)->toBe('users')
+        ->and(collect($result)->pluck('toTable')->all())->not->toContain('user_roles');
+});
+
+it('falls through a composite-PK candidate to the next valid parent', function () {
+    $result = inferred([
+        tbl('post_tags', [col('post_id'), col('tag_id')], ['post_id', 'tag_id']),
+        tbl('posts', [col('id')]),
+        tbl('tags', [col('id')]),
+    ]);
+
+    expect($result['post_tags.post_id']->toTable)->toBe('posts')
+        ->and($result['post_tags.tag_id']->toTable)->toBe('tags');
+});
+
+it('prefers a prefixed parent but uses the unprefixed table for a non-prefixed source', function () {
+    $result = inferred([
+        tbl('app_users', [col('id')]),
+        tbl('users', [col('id')]),
+        tbl('app_sessions', [col('id'), col('user_id')]),
+        tbl('audit', [col('id'), col('user_id')]),
+    ]);
+
+    expect($result['app_sessions.user_id']->toTable)->toBe('app_users')
+        ->and($result['audit.user_id']->toTable)->toBe('users');
+});
+
+it('skips both columns covered by a declared composite foreign key', function () {
+    $result = inferred(
+        [
+            tbl('orders', [col('id')], ['id']),
+            tbl('shops', [col('id')]),
+            tbl('order_lines', [col('id'), col('order_id'), col('shop_id')]),
+        ],
+        [Relationship::declared('order_lines', ['order_id', 'shop_id'], 'orders', ['id', 'shop_id'], null)],
+    );
+
+    expect($result)->toBe([]);
+});

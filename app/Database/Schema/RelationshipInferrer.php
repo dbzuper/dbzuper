@@ -43,24 +43,24 @@ final class RelationshipInferrer
                 }
 
                 $base = strtolower($m[1]);
-                [$target, $confidence] = $base === 'parent'
-                    ? [$table, 0.7]
-                    : [$this->findTarget($byName, $table->name, $base), null];
-
-                if ($target === null || count($target->primaryKey) !== 1) {
-                    continue;
+                if ($base === 'parent') {
+                    // Self reference: the only rule that may point back at the source table.
+                    $target = $table;
+                    $targetColumn = $this->primaryKeyFor($table, $column);
+                    $confidence = 0.7;
+                } else {
+                    $hit = $this->findTarget($byName, $table, $column, $base);
+                    [$target, $targetColumn] = $hit ?? [null, null];
+                    $confidence = $targetColumn !== null && strcasecmp($column->typeName, $targetColumn->typeName) === 0 ? 0.9 : 0.75;
                 }
 
-                $targetColumn = $target->column($target->primaryKey[0]);
-                if ($targetColumn === null || ! $this->compatible($column->typeName, $targetColumn->typeName)) {
+                if ($target === null || $targetColumn === null) {
                     continue;
                 }
-
-                $confidence ??= strcasecmp($column->typeName, $targetColumn->typeName) === 0 ? 0.9 : 0.75;
 
                 $result[] = new Relationship(
-                    Relationship::makeId('inferred', $table->name, [$column->name], $target->name, $target->primaryKey),
-                    $table->name, [$column->name], $target->name, $target->primaryKey, true, $confidence, null,
+                    Relationship::makeId('inferred', $table->name, [$column->name], $target->name, [$targetColumn->name]),
+                    $table->name, [$column->name], $target->name, [$targetColumn->name], true, $confidence, null,
                 );
             }
         }
@@ -68,23 +68,49 @@ final class RelationshipInferrer
         return $result;
     }
 
-    /** @param array<string, TableInfo> $byName */
-    private function findTarget(array $byName, string $sourceTable, string $base): ?TableInfo
+    /**
+     * First valid parent in candidate order (prefixed names first). The source table is never a
+     * candidate, and an invalid candidate falls through to the next one rather than ending the search.
+     *
+     * @param array<string, TableInfo> $byName
+     * @return array{0: TableInfo, 1: ColumnInfo}|null
+     */
+    private function findTarget(array $byName, TableInfo $source, ColumnInfo $column, string $base): ?array
     {
         $candidates = array_unique([Str::plural($base), $base, Str::singular($base)]);
 
-        $prefix = str_contains($sourceTable, '_') ? strtolower(Str::before($sourceTable, '_')).'_' : null;
+        $sourceName = strtolower($source->name);
+        $prefix = str_contains($sourceName, '_') ? strtolower(Str::before($sourceName, '_')).'_' : null;
         if ($prefix !== null) {
             $candidates = [...array_map(fn ($c) => $prefix.$c, $candidates), ...$candidates];
         }
 
         foreach ($candidates as $candidate) {
-            if (isset($byName[$candidate])) {
-                return $byName[$candidate];
+            if ($candidate === $sourceName || ! isset($byName[$candidate])) {
+                continue;
+            }
+
+            $targetColumn = $this->primaryKeyFor($byName[$candidate], $column);
+            if ($targetColumn !== null) {
+                return [$byName[$candidate], $targetColumn];
             }
         }
 
         return null;
+    }
+
+    /** The target's single primary-key column, when it exists and is type-compatible with $column. */
+    private function primaryKeyFor(TableInfo $target, ColumnInfo $column): ?ColumnInfo
+    {
+        if (count($target->primaryKey) !== 1) {
+            return null;
+        }
+
+        $targetColumn = $target->column($target->primaryKey[0]);
+
+        return $targetColumn !== null && $this->compatible($column->typeName, $targetColumn->typeName)
+            ? $targetColumn
+            : null;
     }
 
     private function compatible(string $a, string $b): bool
