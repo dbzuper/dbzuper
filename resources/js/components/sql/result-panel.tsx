@@ -42,7 +42,7 @@ function ErrorView({
 }
 
 const openForeign = (table: string, column: string, value: string) =>
-    useWorkspace.getState().openDataFilter(table, column, value);
+    useWorkspace.getState().openDataFilter(table, [{ column, value }]);
 
 const FORMATS = [
     { label: 'TSV', run: toTSV },

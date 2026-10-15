@@ -19,12 +19,12 @@ const PER_PAGE = 100;
 type Sort = RowsRequest['sort'];
 
 const openForeign = (table: string, column: string, value: string) =>
-    useWorkspace.getState().openDataFilter(table, column, value);
+    useWorkspace.getState().openDataFilter(table, [{ column, value }]);
 
 const incoming = (table: string): RowFilter[] => {
     const f = useWorkspace.getState().dataFilter;
     return f && f.table === table
-        ? [{ column: f.column, op: 'eq', value: f.value }]
+        ? f.filters.map((p) => ({ column: p.column, op: 'eq', value: p.value }))
         : [];
 };
 

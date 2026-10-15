@@ -7,6 +7,7 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
+import { useRecords } from '@/records/records-store';
 import { useSqlTabs } from '@/sql/tabs-store';
 import { useWorkspace } from '@/universe/store';
 
@@ -27,6 +28,9 @@ vi.mock('@inertiajs/react', () => ({
 }));
 vi.mock('@/components/sql/sql-dock', () => ({
     default: () => <section aria-label="SQL editor" />,
+}));
+vi.mock('@/components/records/records-view', () => ({
+    default: () => <section aria-label="Record explorer" />,
 }));
 vi.mock('@/universe/webgl', () => ({ hasWebGL: () => false }));
 
@@ -100,6 +104,20 @@ beforeEach(() => {
 });
 
 describe('workspace page', () => {
+    it('opens the records view from the rail and binds the records store to the connection', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByText('orders');
+        expect(useRecords.getState().connectionId).toBe(1);
+        const records = screen.getByRole('button', { name: 'Records' });
+        expect(records).toBeEnabled();
+        fireEvent.click(records);
+        expect(useWorkspace.getState().view).toBe('records');
+        expect(
+            await screen.findByRole('region', { name: 'Record explorer' }),
+        ).toBeInTheDocument();
+        expect(records).toHaveAttribute('aria-pressed', 'true');
+    });
+
     it('falls back to the list view when WebGL is unavailable', async () => {
         render(<WorkspaceShow connection={connection} />);
         expect(

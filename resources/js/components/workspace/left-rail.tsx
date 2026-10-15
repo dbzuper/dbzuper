@@ -71,7 +71,9 @@ export function LeftRail({
                     setView('list'),
                 )}
                 <div className="my-1 h-px w-6 bg-border" />
-                {item('Records', Database, false, undefined, true)}
+                {item('Records', Database, view === 'records', () =>
+                    setView('records'),
+                )}
                 {item('SQL', TerminalSquare, dockOpen, () =>
                     setDockOpen(!dockOpen),
                 )}

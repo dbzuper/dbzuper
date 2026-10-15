@@ -220,7 +220,9 @@ describe('InspectorPanel', () => {
     });
 
     it('turns a pending FK filter into an eq chip and consumes it', async () => {
-        useWorkspace.getState().openDataFilter('orders', 'user_id', '9');
+        useWorkspace
+            .getState()
+            .openDataFilter('orders', [{ column: 'user_id', value: '9' }]);
         render(
             <InspectorPanel
                 connectionId={1}

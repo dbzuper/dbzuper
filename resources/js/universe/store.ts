@@ -8,14 +8,15 @@ export type InspectorTab =
     | 'data'
     | 'ddl';
 
-export type DataFilter = { table: string; column: string; value: string };
+export type DataFilterPair = { column: string; value: string };
+export type DataFilter = { table: string; filters: DataFilterPair[] };
 
 type State = {
     selected: string | null;
     hovered: string | null;
     focus: { table: string; depth: 1 | 2 } | null;
     showInferred: boolean;
-    view: 'universe' | 'list';
+    view: 'universe' | 'list' | 'records';
     zoomLevel: ZoomLevel;
     inspectorTab: InspectorTab;
     pathFrom: string | null;
@@ -45,7 +46,7 @@ type Actions = {
     setDockOpen: (open: boolean) => void;
     setHistoryOpen: (open: boolean) => void;
     setDockHeight: (px: number) => void;
-    openDataFilter: (table: string, column: string, value: string) => void;
+    openDataFilter: (table: string, filters: DataFilterPair[]) => void;
     clearDataFilter: () => void;
     bumpRuns: () => void;
     reset: () => void;
@@ -95,12 +96,12 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
     setHistoryOpen: (historyOpen) => set({ historyOpen }),
     setDockHeight: (px) =>
         set({ dockHeight: Math.max(160, Math.min(px, 900)) }),
-    openDataFilter: (table, column, value) =>
+    openDataFilter: (table, filters) =>
         set({
             selected: table,
             inspectorTab: 'data',
             historyOpen: false,
-            dataFilter: { table, column, value },
+            dataFilter: { table, filters },
         }),
     clearDataFilter: () => set({ dataFilter: null }),
     bumpRuns: () => set({ runCount: get().runCount + 1 }),

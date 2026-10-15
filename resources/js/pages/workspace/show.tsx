@@ -22,6 +22,7 @@ import { TableList } from '@/components/workspace/table-list';
 import { WorkspaceHeader } from '@/components/workspace/workspace-header';
 import { historyApi } from '@/lib/history-api';
 import { dbErrorFrom, workspaceApi } from '@/lib/workspace-api';
+import { useRecords } from '@/records/records-store';
 import { useSqlTabs } from '@/sql/tabs-store';
 import type { ConnectionSummary } from '@/types/connection';
 import type {
@@ -46,6 +47,8 @@ const UniverseCanvas = lazy(() =>
 );
 
 const SqlDock = lazy(() => import('@/components/sql/sql-dock'));
+// React Flow stays out of the main and workspace chunks until the records view is opened.
+const RecordsView = lazy(() => import('@/components/records/records-view'));
 
 const centered =
     'flex h-full items-center justify-center text-sm text-muted-foreground';
@@ -70,6 +73,8 @@ export default function WorkspaceShow({
 
     useEffect(() => {
         useWorkspace.getState().reset();
+        useRecords.getState().reset();
+        useRecords.getState().setConnection(connection.id);
         if (!universeAvailable) useWorkspace.getState().setView('list');
     }, [connection.id, universeAvailable]);
 
@@ -383,6 +388,16 @@ export default function WorkspaceShow({
                                 )}
                             </>
                         )}
+
+                    {snapshot && view === 'records' && (
+                        <Suspense
+                            fallback={
+                                <div className={centered}>Loading records…</div>
+                            }
+                        >
+                            <RecordsView connection={connection} />
+                        </Suspense>
+                    )}
 
                     {!snapshot && loading && (
                         <div className={centered}>Loading schema…</div>

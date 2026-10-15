@@ -58,28 +58,41 @@ describe('data filter', () => {
     beforeEach(() => s().reset());
 
     it('openDataFilter selects the table, opens the data tab and stores the filter', () => {
-        s().openDataFilter('users', 'id', '2');
+        s().openDataFilter('users', [{ column: 'id', value: '2' }]);
         expect(s().selected).toBe('users');
         expect(s().inspectorTab).toBe('data');
         expect(s().dataFilter).toEqual({
             table: 'users',
-            column: 'id',
-            value: '2',
+            filters: [{ column: 'id', value: '2' }],
         });
     });
 
     it('openDataFilter closes the history panel so the Data tab shows', () => {
         s().setHistoryOpen(true);
-        s().openDataFilter('users', 'id', '2');
+        s().openDataFilter('users', [{ column: 'id', value: '2' }]);
         expect(s().historyOpen).toBe(false);
     });
 
     it('clearDataFilter and reset drop the filter', () => {
-        s().openDataFilter('users', 'id', '2');
+        s().openDataFilter('users', [{ column: 'id', value: '2' }]);
         s().clearDataFilter();
         expect(s().dataFilter).toBeNull();
-        s().openDataFilter('users', 'id', '2');
+        s().openDataFilter('users', [{ column: 'id', value: '2' }]);
         s().reset();
         expect(s().dataFilter).toBeNull();
+    });
+});
+
+describe('multi-column data filter', () => {
+    beforeEach(() => s().reset());
+
+    it('stores several column/value pairs and allows the records view', () => {
+        s().setView('records');
+        expect(s().view).toBe('records');
+        s().openDataFilter('order_items', [
+            { column: 'order_id', value: '1' },
+            { column: 'shop_id', value: '2' },
+        ]);
+        expect(s().dataFilter?.filters).toHaveLength(2);
     });
 });

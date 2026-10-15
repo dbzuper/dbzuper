@@ -205,3 +205,22 @@
 .dark .rdg-dbsuperb {
     color-scheme: dark;
 }
+
+/* React Flow (record explorer): map its variables to the app theme tokens (follows light/dark). */
+.react-flow.records-flow {
+    --xy-background-color: var(--universe-bg);
+    --xy-background-pattern-color: var(--universe-grid);
+    --xy-edge-stroke: var(--universe-edge);
+    --xy-edge-stroke-selected: var(--universe-accent);
+    --xy-edge-stroke-width: 1.5;
+    --xy-handle-background-color: var(--universe-edge);
+    --xy-handle-border-color: var(--universe-edge);
+    --xy-controls-button-background-color: var(--card);
+    --xy-controls-button-background-color-hover: var(--muted);
+    --xy-controls-button-color: var(--foreground);
+    --xy-controls-button-color-hover: var(--foreground);
+    --xy-controls-button-border-color: var(--border);
+    --xy-controls-box-shadow: 0 0 2px 1px var(--border);
+    --xy-node-color: var(--card-foreground);
+    --xy-node-background-color: var(--card);
+}
