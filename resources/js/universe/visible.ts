@@ -41,3 +41,16 @@ export function fkColumnsByTable(
     }
     return out;
 }
+
+/** Distance order picks which nodes make the cap; the result is name-sorted so it is stable while the set is unchanged. */
+export function stableCardKeys(
+    points: { key: string; x: number; y: number }[],
+    width: number,
+    height: number,
+    max: number,
+    margin?: number,
+): string[] {
+    return pickCardNodes(points, width, height, max, margin).sort((a, b) =>
+        a < b ? -1 : a > b ? 1 : 0,
+    );
+}

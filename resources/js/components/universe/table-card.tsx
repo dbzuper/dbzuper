@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { KeyRound, Link2 } from 'lucide-react';
 import { formatRowCount } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -12,16 +13,28 @@ type Props = {
     onSelect: (table: string) => void;
 };
 
-export function TableCard({ table, fk, selected, onSelect }: Props) {
+export const TableCard = memo(function TableCard({
+    table,
+    fk,
+    selected,
+    onSelect,
+}: Props) {
     const shown = table.columns.slice(0, CARD_COLUMNS);
     const rest = table.columns.length - shown.length;
     const pk = new Set(table.primary_key);
 
     return (
-        <button
-            type="button"
+        <div
+            role="button"
+            tabIndex={0}
             aria-label={`Table ${table.name}`}
             onClick={() => onSelect(table.name)}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelect(table.name);
+                }
+            }}
             className={cn(
                 'pointer-events-auto w-56 rounded-lg border bg-card/95 text-left text-card-foreground shadow-sm backdrop-blur transition-colors motion-reduce:transition-none',
                 selected
@@ -78,6 +91,6 @@ export function TableCard({ table, fk, selected, onSelect }: Props) {
                     </li>
                 )}
             </ul>
-        </button>
+        </div>
     );
-}
+});

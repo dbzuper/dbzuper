@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SchemaSnapshot } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
-import { fkColumnsByTable, pickCardNodes } from '@/universe/visible';
+import { fkColumnsByTable, stableCardKeys } from '@/universe/visible';
 import { TableCard } from './table-card';
 import type { UniverseSigma } from './universe-canvas';
 
@@ -25,7 +25,10 @@ export function TableCards({
 }) {
     const zoomLevel = useWorkspace((s) => s.zoomLevel);
     const selected = useWorkspace((s) => s.selected);
-    const select = useWorkspace((s) => s.select);
+    const onSelect = useCallback(
+        (t: string) => useWorkspace.getState().select(t),
+        [],
+    );
     const [keys, setKeys] = useState<string[]>([]);
     const refs = useRef(new Map<string, HTMLDivElement>());
     const tables = useMemo(
@@ -49,7 +52,7 @@ export function TableCards({
                 const p = sigma.graphToViewport({ x: attrs.x, y: attrs.y });
                 points.push({ key, x: p.x, y: p.y });
             });
-            const next = pickCardNodes(points, width, height, MAX_CARDS);
+            const next = stableCardKeys(points, width, height, MAX_CARDS);
             setKeys((prev) =>
                 prev.length === next.length &&
                 prev.every((k, i) => k === next[i])
@@ -81,18 +84,32 @@ export function TableCards({
                         key={key}
                         className="absolute top-0 left-0"
                         ref={(el) => {
-                            if (el) {
-                                refs.current.set(key, el);
-                                // Position immediately so a new card never flashes at (0, 0).
-                                place(sigma, key, el);
-                            } else refs.current.delete(key);
+                            if (!el) return;
+                            refs.current.set(key, el);
+                            // Position immediately so a new card never flashes at (0, 0).
+                            place(sigma, key, el);
+                            // Non-passive native listener so the wheel can zoom the graph from over a card.
+                            const onWheel = (e: WheelEvent) => {
+                                e.preventDefault();
+                                sigma
+                                    .getMouseLayer()
+                                    .dispatchEvent(new WheelEvent('wheel', e));
+                            };
+                            el.addEventListener('wheel', onWheel, {
+                                passive: false,
+                            });
+                            return () => {
+                                el.removeEventListener('wheel', onWheel);
+                                if (refs.current.get(key) === el)
+                                    refs.current.delete(key);
+                            };
                         }}
                     >
                         <TableCard
                             table={table}
                             fk={fk.get(key) ?? EMPTY_FK}
                             selected={selected === key}
-                            onSelect={(t) => select(t)}
+                            onSelect={onSelect}
                         />
                     </div>
                 );

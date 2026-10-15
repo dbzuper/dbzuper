@@ -44,6 +44,23 @@ describe('TableCard', () => {
         ).toBeInTheDocument();
     });
 
+    it('selects on Enter and Space', () => {
+        const onSelect = vi.fn();
+        render(
+            <TableCard
+                table={makeTable({ name: 'orders' })}
+                fk={{ declared: new Set(), inferred: new Set() }}
+                selected={false}
+                onSelect={onSelect}
+            />,
+        );
+        const card = screen.getByRole('button', { name: 'Table orders' });
+        fireEvent.keyDown(card, { key: 'Enter' });
+        fireEvent.keyDown(card, { key: ' ' });
+        expect(onSelect).toHaveBeenCalledTimes(2);
+        expect(onSelect).toHaveBeenCalledWith('orders');
+    });
+
     it('marks views and reports clicks', () => {
         const onSelect = vi.fn();
         render(
