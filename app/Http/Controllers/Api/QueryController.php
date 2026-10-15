@@ -57,7 +57,7 @@ class QueryController extends Controller
         // smuggled ANALYZE option (also in parentheses) is seen as the statement it would run and refused here.
         $plan = $drivers->for($connection->driver)->explainPrefix().$sql;
         $classification = StatementClassifier::classify($plan, $dialect);
-        if ($classification->kind !== 'read' || preg_match('/^\s*\(?\s*analy[sz]e/i', $sql)) {
+        if ($classification->kind !== 'read' || preg_match('/^\s*\(?\s*analy[sz]e\b/i', $sql)) {
             throw ValidationException::withMessages(['sql' => 'Explain cannot run statements that execute; remove ANALYZE.']);
         }
 

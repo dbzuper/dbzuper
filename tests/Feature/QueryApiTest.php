@@ -145,6 +145,7 @@ it('refuses to explain statements that would execute', function (string $sql) {
     'analyze' => ['analyze delete from audit_log'],
     'parenthesised analyze' => ['(analyze) delete from audit_log'],
     'analyse' => ['analyse delete from audit_log'],
+    'analyze of a read' => ['analyze select * from audit_log'],
 ]);
 
 it('requires typing the keyword when a destructive statement has no target', function () {
