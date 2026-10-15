@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { persist, type PersistStorage } from 'zustand/middleware';
 
 export type SqlTab = { id: string; title: string; sql: string };
 type ConnectionTabs = { tabs: SqlTab[]; activeId: string };
@@ -67,6 +67,52 @@ function sanitize(input: unknown): Record<number, ConnectionTabs> {
     }
     return out;
 }
+
+const STORAGE_KEY = 'dbsuperb.sql-tabs';
+
+type Persisted = { byConnection: Record<number, ConnectionTabs> };
+
+/** The map as last read from or written to storage, to tell which connections this browser tab changed. */
+let lastSynced: Record<number, ConnectionTabs> = {};
+
+/**
+ * Another browser tab may have saved drafts since this one loaded, so a write replaces only the connections whose
+ * tabs changed here and keeps the rest of what is stored.
+ */
+const mergingStorage: PersistStorage<Persisted> = {
+    getItem: (name) => {
+        const raw = safeStorage.getItem(name);
+        if (!raw) return null;
+        try {
+            return JSON.parse(raw);
+        } catch {
+            return null;
+        }
+    },
+    setItem: (name, value) => {
+        const next = value.state.byConnection;
+        const merged: Record<string, unknown> = {
+            ...(
+                mergingStorage.getItem(name) as {
+                    state?: { byConnection?: Record<string, unknown> };
+                } | null
+            )?.state?.byConnection,
+        };
+        const ids = new Set([...Object.keys(next), ...Object.keys(lastSynced)]);
+        for (const key of ids) {
+            const id = Number(key);
+            if (next[id] === lastSynced[id]) continue;
+            if (next[id]) merged[key] = next[id];
+            else delete merged[key];
+        }
+        lastSynced = next;
+        safeStorage.setItem(
+            name,
+            JSON.stringify({ ...value, state: { byConnection: merged } }),
+        );
+    },
+    removeItem: (name) => safeStorage.removeItem(name),
+};
 
 export const useSqlTabs = create<State>()(
     persist(
@@ -152,23 +198,29 @@ export const useSqlTabs = create<State>()(
             };
         },
         {
-            name: 'dbsuperb.sql-tabs',
+            name: STORAGE_KEY,
             version: 1,
-            storage: createJSONStorage(() => safeStorage),
+            storage: mergingStorage,
             migrate: (persisted) => ({
                 byConnection: sanitize(
                     (persisted as { byConnection?: unknown } | null)
                         ?.byConnection,
                 ),
             }),
-            merge: (persisted, current) => ({
-                ...current,
-                byConnection: sanitize(
+            merge: (persisted, current) => {
+                lastSynced = sanitize(
                     (persisted as { byConnection?: unknown } | null)
                         ?.byConnection,
-                ),
-            }),
+                );
+                return { ...current, byConnection: lastSynced };
+            },
             partialize: (s) => ({ byConnection: s.byConnection }),
         },
     ),
 );
+
+// Drafts saved by another browser tab replace this tab's copy.
+if (typeof window !== 'undefined')
+    window.addEventListener('storage', (e) => {
+        if (e.key === STORAGE_KEY) void useSqlTabs.persist.rehydrate();
+    });
