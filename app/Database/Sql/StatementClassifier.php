@@ -12,9 +12,31 @@ final class StatementClassifier
 
     private const SESSION = ['SET', 'USE', 'RESET', 'DISCARD', 'LISTEN', 'NOTIFY', 'UNLISTEN'];
 
+    /** EXPLAIN (...) options and values that cannot execute the statement; anything else counts as ANALYZE. */
+    private const EXPLAIN_HARMLESS = ['VERBOSE', 'COSTS', 'SETTINGS', 'BUFFERS', 'WAL', 'TIMING', 'SUMMARY', 'MEMORY', 'SERIALIZE', 'GENERIC_PLAN', 'FORMAT', 'TEXT', 'XML', 'JSON', 'YAML', 'TRUE', 'FALSE', 'ON', 'OFF', 'NONE', 'BINARY'];
+
+    /** SQLite introspection pragmas that are read-only with or without an argument. */
+    private const PRAGMA_WITH_ARG = ['TABLE_INFO', 'TABLE_XINFO', 'TABLE_LIST', 'INDEX_LIST', 'INDEX_INFO', 'INDEX_XINFO', 'FOREIGN_KEY_LIST', 'FOREIGN_KEY_CHECK', 'DATABASE_LIST', 'COLLATION_LIST', 'FUNCTION_LIST', 'MODULE_LIST', 'PRAGMA_LIST', 'COMPILE_OPTIONS', 'INTEGRITY_CHECK', 'QUICK_CHECK', 'PAGE_COUNT', 'FREELIST_COUNT'];
+
+    /** SQLite setting pragmas that only read when given no argument. */
+    private const PRAGMA_NO_ARG = ['SCHEMA_VERSION', 'USER_VERSION', 'APPLICATION_ID', 'PAGE_SIZE', 'ENCODING', 'JOURNAL_MODE', 'FOREIGN_KEYS'];
+
     public static function classify(string $sql, string $dialect): Classification
     {
-        $tokens = array_values(array_filter(SqlLexer::tokenize($sql, $dialect), fn (Token $t) => $t->type !== 'comment' && $t->type !== 'semicolon'));
+        $all = SqlLexer::tokenize($sql, $dialect);
+        $tokens = array_values(array_filter($all, fn (Token $t) => $t->type !== 'comment' && $t->type !== 'semicolon'));
+
+        // Anything significant after a semicolon means multi-statement input: never trust the first keyword.
+        $seenSemicolon = false;
+        foreach ($all as $token) {
+            if ($token->type === 'semicolon') {
+                $seenSemicolon = true;
+            } elseif ($seenSemicolon && $token->type !== 'comment') {
+                $first = isset($tokens[0]) && $tokens[0]->type === 'word' ? $tokens[0]->upper() : '';
+
+                return new Classification('write', $first);
+            }
+        }
 
         return self::classifyTokens($tokens);
     }
@@ -30,13 +52,14 @@ final class StatementClassifier
         return match (true) {
             in_array($first, ['EXPLAIN', 'DESCRIBE', 'DESC'], true) => self::explain($t, $first),
             $first === 'SELECT' => self::select($t),
-            $first === 'WITH' => self::hasWord($t, ['INSERT', 'UPDATE', 'DELETE', 'MERGE']) ? new Classification('write', 'WITH') : self::select($t, 'WITH'),
-            in_array($first, ['SHOW', 'VALUES', 'TABLE'], true) => new Classification('read', $first),
-            $first === 'PRAGMA' => self::hasPunct($t, '=') ? new Classification('session', 'PRAGMA') : new Classification('read', 'PRAGMA'),
+            $first === 'WITH' => self::with($t),
+            $first === 'SHOW' => new Classification('read', $first),
+            $first === 'VALUES', $first === 'TABLE' => self::select($t, $first),
+            $first === 'PRAGMA' => self::pragma($t),
             $first === 'UPDATE', $first === 'DELETE' => self::updateOrDelete($t, $first),
             $first === 'DROP' => new Classification('destructive', 'DROP', self::nameAfter($t, 1, ['TABLE', 'VIEW', 'INDEX', 'DATABASE', 'SCHEMA', 'SEQUENCE', 'FUNCTION', 'PROCEDURE', 'TRIGGER', 'TYPE', 'MATERIALIZED', 'TEMPORARY', 'TEMP', 'IF', 'EXISTS', 'CONCURRENTLY', 'EXTENSION', 'ROLE', 'USER'])),
             $first === 'TRUNCATE' => new Classification('destructive', 'TRUNCATE', self::nameAfter($t, 1, ['TABLE', 'ONLY'])),
-            in_array($first, self::TRANSACTION, true) => self::readWritePair($t) ? new Classification('session', $first) : new Classification('transaction', $first),
+            in_array($first, self::TRANSACTION, true) => self::transaction($t, $first),
             in_array($first, self::SESSION, true) => new Classification('session', $first),
             in_array($first, self::DDL, true) => new Classification('ddl', $first),
             in_array($first, self::WRITE, true) => new Classification('write', $first),
@@ -52,15 +75,23 @@ final class StatementClassifier
         // Skip option words and a parenthesised option list.
         while (isset($t[$i])) {
             $w = $t[$i]->type === 'word' ? $t[$i]->upper() : null;
-            if ($t[$i]->type === 'punct' && $t[$i]->value === '(') {
+            if (self::isPunct($t[$i], '(')) {
                 $depth = 0;
                 for (; isset($t[$i]); $i++) {
-                    if ($t[$i]->type === 'word' && $t[$i]->upper() === 'ANALYZE') {
-                        $analyze = true;
+                    $tok = $t[$i];
+                    if (in_array($tok->type, ['word', 'quoted', 'string'], true)) {
+                        $name = match ($tok->type) {
+                            'word' => $tok->value,
+                            'string' => trim($tok->value, "'"),
+                            default => $tok->identifier(),
+                        };
+                        if (! in_array(strtoupper($name), self::EXPLAIN_HARMLESS, true)) {
+                            $analyze = true;
+                        }
                     }
-                    if ($t[$i]->value === '(') {
+                    if (self::isPunct($tok, '(')) {
                         $depth++;
-                    } elseif ($t[$i]->value === ')' && --$depth === 0) {
+                    } elseif (self::isPunct($tok, ')') && --$depth === 0) {
                         $i++;
                         break;
                     }
@@ -93,11 +124,16 @@ final class StatementClassifier
     private static function select(array $t, string $keyword = 'SELECT'): Classification
     {
         $depth = 0;
+        $session = false;
         foreach ($t as $k => $token) {
-            if ($token->value === '(') {
+            // set_config() changes session settings (e.g. default_transaction_read_only).
+            if (($token->type === 'word' || $token->type === 'quoted') && strtolower($token->identifier()) === 'set_config') {
+                $session = true;
+            }
+            if (self::isPunct($token, '(')) {
                 $depth++;
-            } elseif ($token->value === ')') {
-                $depth--;
+            } elseif (self::isPunct($token, ')')) {
+                $depth = max(0, $depth - 1);
             } elseif ($depth === 0 && $token->type === 'word') {
                 $w = $token->upper();
                 if ($w === 'INTO') {
@@ -112,7 +148,121 @@ final class StatementClassifier
             }
         }
 
-        return new Classification('read', $keyword);
+        return new Classification($session ? 'session' : 'read', $keyword);
+    }
+
+    /** @param list<Token> $t */
+    private static function with(array $t): Classification
+    {
+        $main = self::mainStatementIndex($t);
+        if ($main !== null && in_array($t[$main]->upper(), ['UPDATE', 'DELETE'], true)) {
+            $c = self::updateOrDelete(array_slice($t, $main), $t[$main]->upper());
+
+            return new Classification($c->kind, 'WITH', $c->target);
+        }
+        if (self::hasWord($t, ['INSERT', 'UPDATE', 'DELETE', 'MERGE'])) {
+            return new Classification('write', 'WITH');
+        }
+
+        return self::select($t, 'WITH');
+    }
+
+    /**
+     * Index of the statement keyword that follows the CTE list, or null when the list cannot be parsed.
+     *
+     * @param  list<Token>  $t
+     */
+    private static function mainStatementIndex(array $t): ?int
+    {
+        $i = 1;
+        if (isset($t[$i]) && $t[$i]->type === 'word' && $t[$i]->upper() === 'RECURSIVE') {
+            $i++;
+        }
+        while (true) {
+            if (! isset($t[$i]) || ! in_array($t[$i]->type, ['word', 'quoted'], true)) {
+                return null;
+            }
+            $i++;
+            if (isset($t[$i]) && self::isPunct($t[$i], '(')) {
+                $i = self::skipGroup($t, $i);
+            }
+            if (! isset($t[$i]) || $t[$i]->type !== 'word' || $t[$i]->upper() !== 'AS') {
+                return null;
+            }
+            $i++;
+            if (isset($t[$i]) && $t[$i]->type === 'word' && $t[$i]->upper() === 'NOT') {
+                $i++;
+            }
+            if (isset($t[$i]) && $t[$i]->type === 'word' && $t[$i]->upper() === 'MATERIALIZED') {
+                $i++;
+            }
+            if (! isset($t[$i]) || ! self::isPunct($t[$i], '(')) {
+                return null;
+            }
+            $i = self::skipGroup($t, $i);
+            if (isset($t[$i]) && self::isPunct($t[$i], ',')) {
+                $i++;
+
+                continue;
+            }
+
+            return isset($t[$i]) && $t[$i]->type === 'word' ? $i : null;
+        }
+    }
+
+    /**
+     * Index just past the balanced group opening at $i.
+     *
+     * @param  list<Token>  $t
+     */
+    private static function skipGroup(array $t, int $i): int
+    {
+        $depth = 0;
+        for (; isset($t[$i]); $i++) {
+            if (self::isPunct($t[$i], '(')) {
+                $depth++;
+            } elseif (self::isPunct($t[$i], ')') && --$depth === 0) {
+                return $i + 1;
+            }
+        }
+
+        return $i;
+    }
+
+    private static function isPunct(Token $token, string $value): bool
+    {
+        return $token->type === 'punct' && $token->value === $value;
+    }
+
+    /** @param list<Token> $t */
+    private static function pragma(array $t): Classification
+    {
+        $i = 1;
+        if (isset($t[$i + 1]) && self::isPunct($t[$i + 1], '.')) {
+            $i += 2; // schema prefix
+        }
+        $name = isset($t[$i]) && in_array($t[$i]->type, ['word', 'quoted'], true) ? strtoupper($t[$i]->identifier()) : '';
+        $hasArg = isset($t[$i + 1]) && self::isPunct($t[$i + 1], '(');
+        $readOnly = ! self::hasPunct($t, '=') && (
+            in_array($name, self::PRAGMA_WITH_ARG, true)
+            || (in_array($name, self::PRAGMA_NO_ARG, true) && ! $hasArg)
+        );
+
+        return new Classification($readOnly ? 'read' : 'session', 'PRAGMA');
+    }
+
+    /** @param list<Token> $t */
+    private static function transaction(array $t, string $first): Classification
+    {
+        $second = isset($t[1]) && $t[1]->type === 'word' ? $t[1]->upper() : '';
+        if ($first === 'START' && $second !== 'TRANSACTION') {
+            return new Classification('write', $first);
+        }
+        if (($first === 'COMMIT' || $first === 'ROLLBACK') && $second === 'PREPARED') {
+            return new Classification('write', $first);
+        }
+
+        return self::readWritePair($t) ? new Classification('session', $first) : new Classification('transaction', $first);
     }
 
     /** @param list<Token> $t */
@@ -120,10 +270,10 @@ final class StatementClassifier
     {
         $depth = 0;
         foreach ($t as $token) {
-            if ($token->value === '(') {
+            if (self::isPunct($token, '(')) {
                 $depth++;
-            } elseif ($token->value === ')') {
-                $depth--;
+            } elseif (self::isPunct($token, ')')) {
+                $depth = max(0, $depth - 1);
             } elseif ($depth === 0 && $token->type === 'word' && $token->upper() === 'WHERE') {
                 return new Classification('write', $first);
             }
