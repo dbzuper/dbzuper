@@ -187,8 +187,11 @@ describe('ResultGrid', () => {
                 />
             </div>,
         );
+        expect(
+            screen.queryByRole('button', { name: 'Open users where id = 2' }),
+        ).toBeNull();
         fireEvent.click(
-            screen.getByRole('button', { name: 'Open users where id = 2' }),
+            screen.getByRole('button', { name: 'Open record users 2' }),
         );
         expect(onOpenRecord).toHaveBeenCalledWith({
             table: 'users',
@@ -238,6 +241,10 @@ describe('ResultGrid', () => {
         );
         const buttons = screen.getAllByRole('button', { name: 'Open record' });
         expect(buttons).toHaveLength(3);
+        expect(buttons[0]).toHaveClass(
+            'focus-visible:ring-2',
+            'focus-visible:ring-[var(--universe-accent)]',
+        );
         fireEvent.click(buttons[1]);
         expect(onOpenRecord).toHaveBeenCalledWith({
             table: 'orders',

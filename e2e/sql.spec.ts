@@ -49,7 +49,10 @@ test('records: entry points (result row, Data tab row) and tables without a prim
     await expect(
         dock.getByRole('gridcell', { name: 'paid', exact: true }),
     ).toBeVisible({ timeout: 15_000 });
-    await dock.getByRole('button', { name: 'Open record' }).first().click();
+    await dock
+        .getByRole('button', { name: 'Open record', exact: true })
+        .first()
+        .click();
     const explorer = page.getByRole('region', { name: 'Record explorer' });
     await expect(explorer.locator('.react-flow__node-record')).toHaveCount(1);
     await expect(
@@ -71,7 +74,7 @@ test('records: entry points (result row, Data tab row) and tables without a prim
     await inspector
         .getByRole('row')
         .filter({ hasText: 'Grace Hopper' })
-        .getByRole('button', { name: 'Open record' })
+        .getByRole('button', { name: 'Open record', exact: true })
         .click();
     await expect(explorer.getByText('Grace Hopper').first()).toBeVisible();
 
@@ -97,7 +100,7 @@ test('records: entry points (result row, Data tab row) and tables without a prim
         .poll(() => inspector.getByRole('row').count())
         .toBeGreaterThan(1);
     await expect(
-        inspector.getByRole('button', { name: 'Open record' }),
+        inspector.getByRole('button', { name: 'Open record', exact: true }),
     ).toHaveCount(0);
 });
 

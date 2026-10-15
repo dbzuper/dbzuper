@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { cellKind, fkTarget, isLong } from '@/grid/cells';
 import {
     foreignRecordTarget,
+    keyDisplay,
     rowRecordTarget,
     type RecordTarget,
 } from '@/records/open-record';
@@ -168,7 +169,7 @@ export function ResultGrid({
                                       );
                                       if (target) onOpenRecord(target);
                                   }}
-                                  className="text-muted-foreground hover:text-[var(--universe-accent)]"
+                                  className="rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
                               >
                                   <ExternalLink className="size-3.5" />
                               </button>
@@ -193,21 +194,27 @@ export function ResultGrid({
                         minWidth: 60,
                         renderCell: ({ row }) => {
                             const value = row.cells[index];
+                            // The parent record when the cell opens one, else the Data-tab filter.
+                            const record =
+                                target &&
+                                value !== null &&
+                                snapshot &&
+                                onOpenRecord
+                                    ? foreignRecordTarget(
+                                          snapshot,
+                                          column,
+                                          value,
+                                      )
+                                    : null;
                             const foreign =
                                 target &&
                                 value !== null &&
                                 (onOpenForeign || onOpenRecord)
                                     ? {
-                                          label: `Open ${target.table} where ${target.column} = ${String(value)}`,
+                                          label: record
+                                              ? `Open record ${record.table} ${keyDisplay(record.key)}`
+                                              : `Open ${target.table} where ${target.column} = ${String(value)}`,
                                           onClick: () => {
-                                              const record =
-                                                  snapshot && onOpenRecord
-                                                      ? foreignRecordTarget(
-                                                            snapshot,
-                                                            column,
-                                                            value,
-                                                        )
-                                                      : null;
                                               if (record)
                                                   onOpenRecord?.(record);
                                               else
