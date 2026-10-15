@@ -72,6 +72,11 @@ class MySqlDriver implements Driver
         return 'transaction_read_only';
     }
 
+    public function enforceReadOnly(Connection $db): void
+    {
+        $db->getPdo()->prepare('SET SESSION '.$this->readOnlyVariable().' = 1')->execute();
+    }
+
     public function explainPrefix(): string
     {
         return 'EXPLAIN ';

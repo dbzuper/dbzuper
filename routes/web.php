@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\LayoutController;
+use App\Http\Controllers\Api\QueryController;
 use App\Http\Controllers\Api\SchemaController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\ConnectionController;
@@ -28,6 +29,8 @@ Route::middleware('auth')->group(function () {
         Route::put('layout', [LayoutController::class, 'update'])->name('layout.update');
         Route::get('tables/{table}/sample', [TableController::class, 'sample'])->where('table', '.+')->name('tables.sample');
         Route::get('tables/{table}/ddl', [TableController::class, 'ddl'])->where('table', '.+')->name('tables.ddl');
+        Route::post('query', [QueryController::class, 'run'])->name('query.run');
+        Route::post('query/explain', [QueryController::class, 'explain'])->name('query.explain');
     });
 });
 

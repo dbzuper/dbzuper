@@ -114,6 +114,11 @@ class PostgresDriver implements Driver
         return $out.substr($sql, $last);
     }
 
+    public function enforceReadOnly(Connection $db): void
+    {
+        $db->getPdo()->prepare('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY')->execute();
+    }
+
     public function explainPrefix(): string
     {
         return 'EXPLAIN ';

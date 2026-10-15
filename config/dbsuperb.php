@@ -24,4 +24,7 @@ return [
 
     // Maximum tables + views kept in one snapshot; larger schemas are truncated alphabetically.
     'schema_max_objects' => (int) env('DBSUPERB_SCHEMA_MAX_OBJECTS') ?: 5000,
+
+    // Query history entries kept per connection.
+    'history_keep' => (int) env('DBSUPERB_HISTORY_KEEP') ?: 5000,
 ];

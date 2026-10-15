@@ -27,6 +27,9 @@ interface Driver
     /** Run one statement, returning capped rows or the affected count. Throws on DB errors. */
     public function execute(Connection $db, string $sql, Classification $classification, int $maxRows, int $maxBytes): StatementResult;
 
+    /** Re-assert the session's read-only mode; dynamic SQL could have switched it off. Throws on DB errors. */
+    public function enforceReadOnly(Connection $db): void;
+
     /** Prefix that turns a statement into its plan. */
     public function explainPrefix(): string;
 

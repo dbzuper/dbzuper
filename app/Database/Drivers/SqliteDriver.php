@@ -35,6 +35,11 @@ class SqliteDriver implements Driver
         ];
     }
 
+    public function enforceReadOnly(Connection $db): void
+    {
+        // The file is opened OPEN_READONLY; nothing a statement does can change that.
+    }
+
     public function explainPrefix(): string
     {
         return 'EXPLAIN QUERY PLAN ';
