@@ -212,3 +212,7 @@ it('rolls back a transaction left open at the end of a run and says so', functio
     ($this->run)([['sql' => 'begin'], ['sql' => 'select 1'], ['sql' => 'commit']])->assertOk()->assertJsonPath('open_transaction_rolled_back', false);
     ($this->run)([['sql' => 'select 1']])->assertOk()->assertJsonPath('open_transaction_rolled_back', false);
 });
+
+it('forbids explaining on another user\'s connection', function () {
+    $this->actingAs(User::factory()->create())->postJson(route('api.query.explain', $this->connection), ['sql' => 'select 1'])->assertForbidden();
+});

@@ -72,3 +72,8 @@ it('forbids showing an entry of another user\'s connection', function () {
     $entry = QueryHistoryEntry::where('connection_id', $this->b->id)->first();
     $this->actingAs(User::factory()->create())->getJson(route('api.history.show', [$this->b, $entry->id]))->assertForbidden();
 });
+
+it('forbids clearing another user\'s connection history', function () {
+    $this->actingAs(User::factory()->create())->deleteJson(route('api.history.clear', $this->a))->assertForbidden();
+    expect(QueryHistoryEntry::count())->toBe(62);
+});

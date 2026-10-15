@@ -141,3 +141,7 @@ it('appends the primary key as a sort tiebreaker', function () {
         ->assertOk()->json('sql');
     expect($sql)->toContain('order by "id" desc')->and($sql)->not->toContain('"id" desc, "id"');
 });
+
+it('forbids reading rows of another user\'s connection', function () {
+    $this->actingAs(User::factory()->create())->postJson(route('api.tables.rows', [$this->connection, 'users']), [])->assertForbidden();
+});
