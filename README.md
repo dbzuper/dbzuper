@@ -53,7 +53,7 @@ Open the SQL editor with Ctrl/⌘+J or the rail. It autocompletes tables, column
 - DBSuperb connects to any host reachable from the server. Only the administrator can create connections.
 - Changing anything that reaches the connection string (driver, host, port, username, database, SSL options or PostgreSQL schema) requires re-entering the stored password. PostgreSQL host, database, username and CA path may not contain spaces, quotes or backslashes.
 - Accounts cannot be deleted from the UI: DBSuperb has a single administrator.
-- SQLite files are only opened inside directories listed in `DBSUPERB_SQLITE_PATHS`.
+- SQLite files are only opened inside directories listed in `DBSUPERB_SQLITE_PATHS`. The SQL editor therefore refuses `ATTACH`, `DETACH`, `VACUUM INTO` and the `temp_store_directory`/`data_store_directory` pragmas on SQLite connections, which would reach other files.
 - Connections marked read-only are enforced by the database session (MySQL/MariaDB `READ ONLY` transactions, PostgreSQL read-only session, SQLite read-only open mode).
 
 ## Testing

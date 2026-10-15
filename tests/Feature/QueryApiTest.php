@@ -168,3 +168,31 @@ it('reports a failed connection as one failed result', function () {
         ->and($res->json('results.0.error.kind'))->not->toBeNull();
     expect(QueryHistoryEntry::where('connection_id', $this->connection->id)->count())->toBe(1);
 });
+
+it('refuses SQLite statements that open files outside the allowed directories, before running anything', function (string $template) {
+    $target = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbsuperb-escape-'.uniqid().'.sqlite';
+    $sql = str_replace('{path}', str_replace("'", "''", $target), $template);
+    $message = 'ATTACH, DETACH and VACUUM INTO are not allowed: SQLite files may only be opened inside the configured directories.';
+
+    ($this->run)([['sql' => 'select 1'], ['sql' => $sql, 'confirmed' => true, 'typed' => 'x']])
+        ->assertUnprocessable()->assertJsonValidationErrors(['statements.1.sql' => $message]);
+    $this->actingAs($this->user)->postJson(route('api.query.explain', $this->connection), ['sql' => $sql])
+        ->assertUnprocessable()->assertJsonValidationErrors(['sql' => $message]);
+
+    expect(file_exists($target))->toBeFalse()
+        ->and(QueryHistoryEntry::count())->toBe(0);
+})->with([
+    'attach' => ["ATTACH DATABASE '{path}' AS x"],
+    'attach lowercase' => ["attach '{path}' as x"],
+    'attach after comments' => ["/* c */ -- line\n attach database '{path}' as x"],
+    'detach' => ['detach database x'],
+    'vacuum into' => ["VACUUM INTO '{path}'"],
+    'vacuum schema into, lowercase, commented' => ["-- c\nvacuum /* c */ main into '{path}'"],
+    'pragma temp_store_directory' => ["PRAGMA temp_store_directory = '{path}'"],
+    'pragma data_store_directory with schema' => ["/* c */ pragma main.data_store_directory = '{path}'"],
+    'pragma quoted name' => ["pragma \"TEMP_STORE_DIRECTORY\" = '{path}'"],
+]);
+
+it('still runs a plain VACUUM on SQLite', function () {
+    ($this->run)([['sql' => 'vacuum', 'confirmed' => true]])->assertOk()->assertJsonPath('results.0.error', null);
+});

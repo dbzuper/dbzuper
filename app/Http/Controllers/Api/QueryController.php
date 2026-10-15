@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Database\DriverRegistry;
 use App\Database\Query\QueryGuard;
 use App\Database\Query\QueryRunner;
+use App\Database\Sql\SqlLexer;
 use App\Database\Sql\SqlSplitter;
 use App\Database\Sql\StatementClassifier;
+use App\Database\Sql\Token;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\QueryRequest;
 use App\Models\SavedConnection;
@@ -25,6 +27,7 @@ class QueryController extends Controller
         $items = [];
         foreach ($request->validated('statements') as $i => $statement) {
             $sql = $this->single($statement['sql'], $dialect, "statements.{$i}.sql");
+            $this->refuseSqliteFileAccess($sql, $dialect, "statements.{$i}.sql");
             $items[] = [
                 'sql' => $sql,
                 'classification' => StatementClassifier::classify($sql, $dialect),
@@ -45,6 +48,7 @@ class QueryController extends Controller
         $data = $request->validate(['sql' => ['required', 'string', 'max:200000']]);
         $dialect = $connection->driver->value;
         $sql = $this->single($data['sql'], $dialect, 'sql');
+        $this->refuseSqliteFileAccess($sql, $dialect, 'sql');
         if (preg_match('/^\s*(explain|describe|desc)\b/i', $sql)) {
             throw ValidationException::withMessages(['sql' => 'Enter the statement to explain without EXPLAIN.']);
         }
@@ -60,6 +64,34 @@ class QueryController extends Controller
         $results = $runner->run($connection, [['sql' => $plan, 'classification' => $classification]], 1000, record: false);
 
         return response()->json(['results' => array_map(fn ($r) => $r->toArray(), $results)]);
+    }
+
+    /**
+     * SqlitePathPolicy only vets the main file when the connection opens. ATTACH, VACUUM INTO and the directory
+     * pragmas would read or write any other path, so they are refused outright. Read from lexer tokens, so comments
+     * and quoting cannot hide the keyword.
+     */
+    private function refuseSqliteFileAccess(string $sql, string $dialect, string $field): void
+    {
+        if ($dialect !== 'sqlite') {
+            return;
+        }
+        $tokens = array_values(array_filter(SqlLexer::tokenize($sql, $dialect), fn (Token $t) => $t->type !== 'comment' && $t->type !== 'semicolon'));
+        $words = array_map(fn (Token $t) => $t->type === 'word' ? $t->upper() : '', $tokens);
+        // PRAGMA [schema.]name: the name may be quoted.
+        $pragmaAt = isset($tokens[2]) && $tokens[2]->type === 'punct' && $tokens[2]->value === '.' ? 3 : 1;
+        $pragma = isset($tokens[$pragmaAt]) && in_array($tokens[$pragmaAt]->type, ['word', 'quoted'], true) ? strtoupper($tokens[$pragmaAt]->identifier()) : '';
+
+        $refused = match ($words[0] ?? '') {
+            'ATTACH', 'DETACH' => true,
+            'VACUUM' => in_array('INTO', $words, true),
+            'PRAGMA' => in_array($pragma, ['TEMP_STORE_DIRECTORY', 'DATA_STORE_DIRECTORY'], true),
+            default => false,
+        };
+
+        if ($refused) {
+            throw ValidationException::withMessages([$field => 'ATTACH, DETACH and VACUUM INTO are not allowed: SQLite files may only be opened inside the configured directories.']);
+        }
     }
 
     private function single(string $sql, string $dialect, string $field): string
