@@ -201,3 +201,28 @@ it('strips composite sql modes that re-enable ANSI_QUOTES', function (string $en
     array_map(fn ($m) => ['mysql', $m], ['ANSI', 'ANSI_QUOTES,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES']),
     array_map(fn ($m) => ['mariadb', $m], ['ANSI', 'ORACLE', 'MSSQL', 'POSTGRESQL', 'DB2', 'ANSI_QUOTES,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES']),
 ));
+
+it('caps reads server-side on MySQL and MariaDB and resets the cap afterwards, also after an error', function (string $engine) {
+    Engines::skipUnlessAvailable($engine);
+
+    [$capped, $limitDuring, $limitAfter, $limitAfterError, $all] = withBigTable($engine, function ($db, $driver, $dialect) {
+        $read = StatementClassifier::classify('select 1', $dialect);
+        $capped = $driver->execute($db, 'select id from exec_big order by id', $read, 10, 20_000_000);
+        $limitDuring = $driver->execute($db, 'select @@session.sql_select_limit', $read, 10, 20_000_000)->rows[0][0];
+        $limitAfter = $db->selectOne('select @@session.sql_select_limit as l')->l;
+        try {
+            $driver->execute($db, 'select * from no_such_table', $read, 10, 20_000_000);
+        } catch (Throwable) {
+        }
+        $limitAfterError = $db->selectOne('select @@session.sql_select_limit as l')->l;
+
+        return [$capped, $limitDuring, $limitAfter, $limitAfterError, count($db->select('select id from exec_big'))];
+    });
+
+    expect($capped->truncated)->toBeTrue()
+        ->and(array_column($capped->rows, 0))->toBe(range(1, 10))
+        ->and((string) $limitDuring)->toBe('11')
+        ->and((string) $limitAfter)->toBe('18446744073709551615')
+        ->and((string) $limitAfterError)->toBe('18446744073709551615')
+        ->and($all)->toBe(20000);
+})->with(['mysql', 'mariadb']);

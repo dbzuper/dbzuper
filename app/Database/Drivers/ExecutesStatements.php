@@ -15,7 +15,7 @@ trait ExecutesStatements
     {
         $started = hrtime(true);
         $pdo = $db->getPdo();
-        $restore = $this->beforeStatement($pdo);
+        $restore = $this->beforeStatement($pdo, $classification, $maxRows);
 
         try {
             $statement = $pdo->prepare($this->prepareSql($sql));
@@ -81,7 +81,7 @@ trait ExecutesStatements
     }
 
     /** @return mixed state for afterStatement */
-    protected function beforeStatement(PDO $pdo): mixed
+    protected function beforeStatement(PDO $pdo, Classification $classification, int $maxRows): mixed
     {
         return null;
     }

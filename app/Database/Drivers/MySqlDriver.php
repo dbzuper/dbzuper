@@ -7,6 +7,7 @@ use App\Database\ColumnKind;
 use App\Database\Contracts\Driver;
 use App\Database\Contracts\SchemaInspector;
 use App\Database\Drivers\Concerns\AppliesTimeoutBestEffort;
+use App\Database\Sql\Classification;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
 use Illuminate\Contracts\Database\Query\Expression;
@@ -82,9 +83,15 @@ class MySqlDriver implements Driver
         return 'EXPLAIN ';
     }
 
-    protected function beforeStatement(PDO $pdo): mixed
+    protected function beforeStatement(PDO $pdo, Classification $classification, int $maxRows): mixed
     {
-        $state = [$pdo->getAttribute(Mysql::ATTR_USE_BUFFERED_QUERY), $pdo->getAttribute(PDO::ATTR_EMULATE_PREPARES)];
+        // closeCursor() on an unbuffered result reads every remaining row, so a capped read would still drain the
+        // whole table. The server-side limit stops it after one row past the cap (an explicit LIMIT still wins).
+        $capped = $classification->kind === 'read';
+        if ($capped) {
+            $pdo->exec('SET SESSION sql_select_limit = '.($maxRows + 1));
+        }
+        $state = [$pdo->getAttribute(Mysql::ATTR_USE_BUFFERED_QUERY), $pdo->getAttribute(PDO::ATTR_EMULATE_PREPARES), $capped];
         $pdo->setAttribute(Mysql::ATTR_USE_BUFFERED_QUERY, false); // stream rows instead of loading them all
         $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);      // any statement type, still one statement only
 
@@ -95,6 +102,9 @@ class MySqlDriver implements Driver
     {
         $pdo->setAttribute(Mysql::ATTR_USE_BUFFERED_QUERY, $state[0]);
         $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, $state[1]);
+        if ($state[2]) {
+            $pdo->exec('SET SESSION sql_select_limit = DEFAULT');
+        }
     }
 
     public function inspector(): SchemaInspector
