@@ -5,12 +5,12 @@ import type {
     DbErrorPayload,
     StatementResultPayload,
 } from '@/types/schema';
-import { queryApi, type StatementInput } from './query-api';
+import { queryApi, type RunResponse, type StatementInput } from './query-api';
 
 export type ConfirmAnswer = { confirmed: true; typed?: string } | null;
 
 export type RunOutcome =
-    | { results: StatementResultPayload[] }
+    | RunResponse
     | { cancelled: true }
     | { error: DbErrorPayload };
 

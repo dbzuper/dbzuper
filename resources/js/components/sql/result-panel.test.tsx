@@ -111,4 +111,60 @@ describe('ResultPanel', () => {
             screen.getByRole('button', { name: 'Download CSV' }),
         ).toBeInTheDocument();
     });
+
+    it('shows a row count and runtime status line for every result with columns', () => {
+        render(
+            <ResultPanel
+                results={[{ ...result(1234), duration_ms: 42 }]}
+                error={null}
+                running={false}
+            />,
+        );
+        expect(screen.getByText('1,234 rows · 42 ms')).toBeInTheDocument();
+        expect(screen.queryByText(/limit reached/)).toBeNull();
+    });
+
+    it('warns when a run ended inside a transaction that was rolled back', () => {
+        render(
+            <ResultPanel
+                results={[result(1)]}
+                error={null}
+                running={false}
+                openTransactionRolledBack
+            />,
+        );
+        expect(
+            screen.getByText(
+                'This run ended inside an open transaction; it was rolled back. Transactions only span a single Run all.',
+            ),
+        ).toBeInTheDocument();
+    });
+
+    it('warns when a run consists only of transaction-control statements', () => {
+        const commit: StatementResultPayload = {
+            ...result(0),
+            sql: 'commit',
+            kind: 'transaction',
+            columns: [],
+            rows: [],
+            affected: 0,
+        };
+        const { rerender } = render(
+            <ResultPanel results={[commit]} error={null} running={false} />,
+        );
+        expect(
+            screen.getByText(
+                'Transactions only span a single Run all — run BEGIN … COMMIT together.',
+            ),
+        ).toBeInTheDocument();
+
+        rerender(
+            <ResultPanel
+                results={[commit, result(1)]}
+                error={null}
+                running={false}
+            />,
+        );
+        expect(screen.queryByText(/Transactions only span/)).toBeNull();
+    });
 });

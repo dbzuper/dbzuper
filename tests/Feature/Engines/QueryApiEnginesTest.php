@@ -107,3 +107,14 @@ it('rejects a comment-hidden second statement on MySQL', function (string $engin
         $pdo->exec('drop table if exists m3_multi_probe');
     }
 })->with(['mysql', 'mariadb']);
+
+it('rolls back a transaction left open at the end of a run on server engines', function (string $engine) {
+    Engines::skipUnlessAvailable($engine);
+    $user = User::factory()->create();
+    $connection = engineConnection($engine, $user, ['read_only' => false]);
+
+    $this->actingAs($user)->postJson(route('api.query.run', $connection), ['statements' => [['sql' => 'begin'], ['sql' => 'select 1']]])
+        ->assertOk()->assertJsonPath('open_transaction_rolled_back', true);
+    $this->actingAs($user)->postJson(route('api.query.run', $connection), ['statements' => [['sql' => 'begin'], ['sql' => 'commit']]])
+        ->assertOk()->assertJsonPath('open_transaction_rolled_back', false);
+})->with(['mysql', 'mariadb', 'pgsql']);

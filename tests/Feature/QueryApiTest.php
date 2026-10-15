@@ -197,3 +197,18 @@ it('refuses SQLite statements that open files outside the allowed directories, b
 it('still runs a plain VACUUM on SQLite', function () {
     ($this->run)([['sql' => 'vacuum', 'confirmed' => true]])->assertOk()->assertJsonPath('results.0.error', null);
 });
+
+it('rolls back a transaction left open at the end of a run and says so', function () {
+    $res = ($this->run)([
+        ['sql' => 'begin'],
+        ['sql' => "update users set name = 'changed' where id = 1", 'confirmed' => true],
+    ])->assertOk();
+
+    expect($res->json('open_transaction_rolled_back'))->toBeTrue()
+        ->and(DB::connectUsing('check', ['driver' => 'sqlite', 'database' => $this->connection->database, 'prefix' => ''], force: true)
+            ->table('users')->where('id', 1)->value('name'))->toBe('Ada Lovelace');
+    DB::purge('check');
+
+    ($this->run)([['sql' => 'begin'], ['sql' => 'select 1'], ['sql' => 'commit']])->assertOk()->assertJsonPath('open_transaction_rolled_back', false);
+    ($this->run)([['sql' => 'select 1']])->assertOk()->assertJsonPath('open_transaction_rolled_back', false);
+});

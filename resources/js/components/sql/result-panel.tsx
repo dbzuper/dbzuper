@@ -96,16 +96,30 @@ function ResultActions({ result }: { result: StatementResultPayload }) {
     );
 }
 
+/** Each run uses its own connection, so a transaction cannot outlive one request. */
+function transactionNotice(
+    results: StatementResultPayload[],
+    rolledBack: boolean,
+): string | null {
+    if (rolledBack)
+        return 'This run ended inside an open transaction; it was rolled back. Transactions only span a single Run all.';
+    if (results.length > 0 && results.every((r) => r.kind === 'transaction'))
+        return 'Transactions only span a single Run all — run BEGIN … COMMIT together.';
+    return null;
+}
+
 export const ResultPanel = memo(function ResultPanel({
     results,
     error,
     running,
     snapshot = null,
+    openTransactionRolledBack = false,
 }: {
     results: StatementResultPayload[];
     error: DbErrorPayload | null;
     running: boolean;
     snapshot?: SchemaSnapshot | null;
+    openTransactionRolledBack?: boolean;
 }) {
     const [index, setIndex] = useState(0);
     useEffect(() => setIndex(0), [results]);
@@ -121,8 +135,17 @@ export const ResultPanel = memo(function ResultPanel({
         );
 
     const current = results[Math.min(index, results.length - 1)];
+    const notice = transactionNotice(results, openTransactionRolledBack);
     return (
         <div className="flex h-full min-h-0 flex-col">
+            {notice && (
+                <p
+                    role="status"
+                    className="shrink-0 border-b bg-amber-500/10 px-3 py-1 text-xs text-amber-800 dark:text-amber-300"
+                >
+                    {notice}
+                </p>
+            )}
             <div
                 role="tablist"
                 aria-label="Statement results"
@@ -168,10 +191,19 @@ export const ResultPanel = memo(function ResultPanel({
                     </p>
                 )}
             </div>
-            {current.truncated && (
+            {!current.error && current.columns.length > 0 && (
                 <div className="shrink-0 border-t bg-muted px-3 py-1 text-xs text-muted-foreground">
-                    Showing first {current.rows.length.toLocaleString('en-US')}{' '}
-                    rows (limit reached)
+                    <span>
+                        {`${current.rows.length.toLocaleString('en-US')} rows · ${current.duration_ms} ms`}
+                    </span>
+                    {current.truncated && (
+                        <>
+                            {' · '}
+                            <span>
+                                {`Showing first ${current.rows.length.toLocaleString('en-US')} rows (limit reached)`}
+                            </span>
+                        </>
+                    )}
                 </div>
             )}
         </div>

@@ -37,9 +37,8 @@ class QueryController extends Controller
         }
 
         $guard->check($connection, $items);
-        $results = $runner->run($connection, $items, (int) $request->validated('max_rows', 1000));
 
-        return response()->json(['results' => array_map(fn ($r) => $r->toArray(), $results)]);
+        return response()->json($runner->run($connection, $items, (int) $request->validated('max_rows', 1000))->toArray());
     }
 
     public function explain(Request $request, SavedConnection $connection, DriverRegistry $drivers, QueryRunner $runner): JsonResponse
@@ -61,9 +60,7 @@ class QueryController extends Controller
             throw ValidationException::withMessages(['sql' => 'Explain cannot run statements that execute; remove ANALYZE.']);
         }
 
-        $results = $runner->run($connection, [['sql' => $plan, 'classification' => $classification]], 1000, record: false);
-
-        return response()->json(['results' => array_map(fn ($r) => $r->toArray(), $results)]);
+        return response()->json($runner->run($connection, [['sql' => $plan, 'classification' => $classification]], 1000, record: false)->toArray());
     }
 
     /**

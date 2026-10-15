@@ -7,6 +7,12 @@ export type StatementInput = {
     typed?: string;
 };
 
+export type RunResponse = {
+    results: StatementResultPayload[];
+    /** The batch ended inside a transaction, which the server rolled back. */
+    open_transaction_rolled_back?: boolean;
+};
+
 export const queryApi = {
     run: (
         id: number,
@@ -14,14 +20,15 @@ export const queryApi = {
         maxRows: number,
         signal?: AbortSignal,
     ) =>
-        apiFetch<{ results: StatementResultPayload[] }>(`/api/c/${id}/query`, {
+        apiFetch<RunResponse>(`/api/c/${id}/query`, {
             method: 'POST',
             body: { statements, max_rows: maxRows },
             signal,
         }),
     explain: (id: number, sql: string, signal?: AbortSignal) =>
-        apiFetch<{ results: StatementResultPayload[] }>(
-            `/api/c/${id}/query/explain`,
-            { method: 'POST', body: { sql }, signal },
-        ),
+        apiFetch<RunResponse>(`/api/c/${id}/query/explain`, {
+            method: 'POST',
+            body: { sql },
+            signal,
+        }),
 };

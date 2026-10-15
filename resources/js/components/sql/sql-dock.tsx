@@ -33,6 +33,7 @@ const NO_RESULTS: StatementResultPayload[] = [];
 type TabResults = {
     results: StatementResultPayload[];
     error: DbErrorPayload | null;
+    rolledBack?: boolean;
 };
 
 /** Statement texts plus each one's start offset in the full model text. */
@@ -193,7 +194,11 @@ export default function SqlDock({
                 show({ results: [], error: outcome.error });
                 return;
             }
-            show({ results: outcome.results, error: null });
+            show({
+                results: outcome.results,
+                error: null,
+                rolledBack: outcome.open_transaction_rolled_back ?? false,
+            });
 
             if (!markErrors || !target || model.isDisposed()) return;
             const markers: Monaco.editor.IMarkerData[] = [];
@@ -376,6 +381,7 @@ export default function SqlDock({
                     error={tabResults?.error ?? null}
                     running={running}
                     snapshot={snapshot}
+                    openTransactionRolledBack={tabResults?.rolledBack ?? false}
                 />
             </div>
             <ConfirmDialog

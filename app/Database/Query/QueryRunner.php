@@ -22,18 +22,19 @@ final class QueryRunner
     ) {}
 
     /**
-     * Runs the items in order on one connection, stopping after the first error.
+     * Runs the items in order on one connection, stopping after the first error. A transaction still open at the
+     * end is rolled back: each run gets its own connection, so it could never be committed later.
      *
      * @param  list<array{sql: string, classification: Classification}>  $items
-     * @return list<StatementResult>
      */
-    public function run(SavedConnection $connection, array $items, int $maxRows, bool $record = true): array
+    public function run(SavedConnection $connection, array $items, int $maxRows, bool $record = true): BatchResult
     {
         $driver = $this->drivers->for($connection->driver);
         $results = [];
+        $rolledBack = false;
 
         try {
-            $this->factory->using($connection, function (Connection $db) use ($driver, $items, $maxRows, $connection, &$results) {
+            $this->factory->using($connection, function (Connection $db) use ($driver, $items, $maxRows, $connection, &$results, &$rolledBack) {
                 $budget = self::MAX_BYTES;
                 foreach ($items as $item) {
                     $started = hrtime(true);
@@ -53,6 +54,12 @@ final class QueryRunner
                         break;
                     }
                 }
+
+                $pdo = $db->getPdo();
+                if ($pdo->inTransaction()) {
+                    $pdo->exec('ROLLBACK');
+                    $rolledBack = true;
+                }
             }, (int) config('dbsuperb.query_timeout'));
         } catch (Throwable $e) {
             if ($results === []) {
@@ -68,7 +75,7 @@ final class QueryRunner
             $this->recordAll($connection, $results);
         }
 
-        return $results;
+        return new BatchResult($results, $rolledBack);
     }
 
     /** @param list<StatementResult> $results */
