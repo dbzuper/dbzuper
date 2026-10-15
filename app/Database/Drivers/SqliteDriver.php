@@ -15,6 +15,8 @@ use Pdo\Sqlite;
 
 class SqliteDriver implements Driver
 {
+    use ExecutesStatements;
+
     public function __construct(private readonly SqlitePathPolicy $paths) {}
 
     public function name(): DriverName
@@ -31,6 +33,11 @@ class SqliteDriver implements Driver
             'foreign_key_constraints' => true,
             'options' => $connection->read_only ? [Sqlite::ATTR_OPEN_FLAGS => Sqlite::OPEN_READONLY] : [],
         ];
+    }
+
+    public function explainPrefix(): string
+    {
+        return 'EXPLAIN QUERY PLAN ';
     }
 
     public function inspector(): SchemaInspector

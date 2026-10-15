@@ -17,6 +17,7 @@ use Pdo\Mysql;
 class MySqlDriver implements Driver
 {
     use AppliesTimeoutBestEffort;
+    use ExecutesStatements;
 
     public function name(): DriverName
     {
@@ -28,17 +29,23 @@ class MySqlDriver implements Driver
         $options = $connection->options ?? [];
         DsnValue::assertSafe(['host' => $connection->host, 'database' => $connection->database, 'username' => $connection->username, 'ssl_ca' => $options['ssl_ca'] ?? null]);
 
-        $pdo = [PDO::ATTR_TIMEOUT => (int) config('dbsuperb.connect_timeout')];
+        $pdo = [
+            PDO::ATTR_TIMEOUT => (int) config('dbsuperb.connect_timeout'),
+            Mysql::ATTR_MULTI_STATEMENTS => false,
+        ];
 
         if (! empty($options['ssl_ca'])) {
             $pdo[Mysql::ATTR_SSL_CA] = $options['ssl_ca'];
             $pdo[Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = (bool) ($options['ssl_verify'] ?? true);
         }
 
+        // Runs on every (re)connect, so these survive reconnects. Strings must lex the way SqlLexer reads them:
+        // backslash escapes on, double quotes as string delimiters (not identifiers).
+        $init = "SESSION sql_mode = TRIM(BOTH ',' FROM REGEXP_REPLACE(REPLACE(REPLACE(@@sql_mode, 'NO_BACKSLASH_ESCAPES', ''), 'ANSI_QUOTES', ''), ',+', ','))";
         if ($connection->read_only) {
-            // Runs on every (re)connect, so the guard survives reconnects.
-            $pdo[Mysql::ATTR_INIT_COMMAND] = 'SET SESSION TRANSACTION READ ONLY';
+            $init .= ', SESSION '.$this->readOnlyVariable().' = 1';
         }
+        $pdo[Mysql::ATTR_INIT_COMMAND] = 'SET '.$init;
 
         return [
             'driver' => $this->name()->value,
@@ -51,6 +58,32 @@ class MySqlDriver implements Driver
             'prefix' => '',
             'options' => $pdo,
         ];
+    }
+
+    /** Session variable for the read-only guard; SET can combine it with sql_mode, unlike SET TRANSACTION. */
+    protected function readOnlyVariable(): string
+    {
+        return 'transaction_read_only';
+    }
+
+    public function explainPrefix(): string
+    {
+        return 'EXPLAIN ';
+    }
+
+    protected function beforeStatement(PDO $pdo): mixed
+    {
+        $state = [$pdo->getAttribute(Mysql::ATTR_USE_BUFFERED_QUERY), $pdo->getAttribute(PDO::ATTR_EMULATE_PREPARES)];
+        $pdo->setAttribute(Mysql::ATTR_USE_BUFFERED_QUERY, false); // stream rows instead of loading them all
+        $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);      // any statement type, still one statement only
+
+        return $state;
+    }
+
+    protected function afterStatement(PDO $pdo, mixed $state): void
+    {
+        $pdo->setAttribute(Mysql::ATTR_USE_BUFFERED_QUERY, $state[0]);
+        $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, $state[1]);
     }
 
     public function inspector(): SchemaInspector

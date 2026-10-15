@@ -2,6 +2,8 @@
 
 namespace App\Database\Contracts;
 
+use App\Database\Query\StatementResult;
+use App\Database\Sql\Classification;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
 use Illuminate\Contracts\Database\Query\Expression;
@@ -21,6 +23,12 @@ interface Driver
 
     /** Bound how long any single statement on this session may run. */
     public function applyStatementTimeout(Connection $db, int $seconds): void;
+
+    /** Run one statement, returning capped rows or the affected count. Throws on DB errors. */
+    public function execute(Connection $db, string $sql, Classification $classification, int $maxRows, int $maxBytes): StatementResult;
+
+    /** Prefix that turns a statement into its plan. */
+    public function explainPrefix(): string;
 
     /** Native CREATE statement for a table or view, or null when the engine has none. */
     public function ddl(Connection $db, string $table, string $kind): ?string;

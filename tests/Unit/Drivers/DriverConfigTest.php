@@ -26,14 +26,15 @@ it('builds a MySQL config with timeout, default port and optional TLS', function
         ->and($config['options'][PDO::ATTR_TIMEOUT])->toBe(4)
         ->and($config['options'][Mysql::ATTR_SSL_CA])->toBe('/ca.pem')
         ->and($config['options'][Mysql::ATTR_SSL_VERIFY_SERVER_CERT])->toBeTrue()
-        ->and($config['options'])->not->toHaveKey(Mysql::ATTR_INIT_COMMAND);
+        ->and($config['options'][Mysql::ATTR_MULTI_STATEMENTS])->toBeFalse()
+        ->and($config['options'][Mysql::ATTR_INIT_COMMAND])->toContain('sql_mode')->not->toContain('READ ONLY')->not->toContain('read_only');
 });
 
 it('adds a read-only init command for MySQL and MariaDB', function (DriverName $driver) {
     $config = app(DriverRegistry::class)->for($driver)->config(saved(['driver' => $driver, 'read_only' => true]));
 
     expect($config['driver'])->toBe($driver->value)
-        ->and($config['options'][Mysql::ATTR_INIT_COMMAND])->toBe('SET SESSION TRANSACTION READ ONLY');
+        ->and($config['options'][Mysql::ATTR_INIT_COMMAND])->toContain('sql_mode')->toEndWith('SESSION '.($driver === DriverName::MariaDb ? 'tx_read_only' : 'transaction_read_only').' = 1');
 })->with([DriverName::MySql, DriverName::MariaDb]);
 
 it('builds a PostgreSQL config with schema, sslmode and read-only session', function () {
@@ -43,7 +44,7 @@ it('builds a PostgreSQL config with schema, sslmode and read-only session', func
     expect($config)->toMatchArray([
         'driver' => 'pgsql', 'port' => 5432, 'search_path' => 'sales', 'sslmode' => 'require',
         'isolation_level' => 'read committed, read only',
-    ]);
+    ])->and($config['server_options'])->toBe(['standard_conforming_strings' => 'on']);
 });
 
 it('defaults PostgreSQL to the public schema and sslmode prefer without read-only', function () {

@@ -15,12 +15,23 @@ final class ConnectionFactory
         private readonly DriverRegistry $drivers,
     ) {}
 
-    /** Runs the callback with a connection and always releases it, even when the callback throws. */
-    public function using(SavedConnection $connection, Closure $callback): mixed
+    /** Runs the callback with a connection and always releases it, even when the callback throws.
+     * A timeout is applied now and again after every reconnect. */
+    public function using(SavedConnection $connection, Closure $callback, ?int $timeoutSeconds = null): mixed
     {
         $db = $this->make($connection);
 
         try {
+            if ($timeoutSeconds !== null) {
+                $driver = $this->drivers->for($connection->driver);
+                $driver->applyStatementTimeout($db, $timeoutSeconds);
+                // Laravel reconnects transparently on some errors; session settings must follow.
+                $db->setReconnector(function (Connection $reconnecting) use ($driver, $timeoutSeconds) {
+                    $this->manager->reconnect($reconnecting->getName());
+                    $driver->applyStatementTimeout($reconnecting, $timeoutSeconds);
+                });
+            }
+
             return $callback($db);
         } finally {
             $this->release($db);

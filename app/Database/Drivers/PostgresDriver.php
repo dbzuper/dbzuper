@@ -8,15 +8,25 @@ use App\Database\Contracts\Driver;
 use App\Database\Contracts\SchemaInspector;
 use App\Database\Drivers\Concerns\AppliesTimeoutBestEffort;
 use App\Database\Exceptions\InvalidConnectionOption;
+use App\Database\Exceptions\OffsetQueryException;
+use App\Database\Query\StatementResult;
+use App\Database\Sql\Classification;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
 use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Connection;
 use PDO;
+use PDOException;
+use Throwable;
 
 class PostgresDriver implements Driver
 {
     use AppliesTimeoutBestEffort;
+    use ExecutesStatements {
+        execute as executePlain;
+    }
+
+    private const CURSOR_PREFIX = 'DECLARE dbsuperb_cursor NO SCROLL CURSOR FOR ';
 
     public function name(): DriverName
     {
@@ -51,6 +61,9 @@ class PostgresDriver implements Driver
             'search_path' => $schema,
             'sslmode' => $sslmode,
             'options' => [PDO::ATTR_TIMEOUT => (int) config('dbsuperb.connect_timeout')],
+            // Sent in the startup packet, so it holds on every (re)connect: backslashes in '...' stay literal,
+            // matching SqlLexer.
+            'server_options' => ['standard_conforming_strings' => 'on'],
         ];
 
         if (! empty($options['ssl_ca'])) {
@@ -64,6 +77,52 @@ class PostgresDriver implements Driver
         }
 
         return $config;
+    }
+
+    public function explainPrefix(): string
+    {
+        return 'EXPLAIN ';
+    }
+
+    public function execute(Connection $db, string $sql, Classification $classification, int $maxRows, int $maxBytes): StatementResult
+    {
+        $first = strtoupper(strtok(ltrim($sql), " \t\n\r(") ?: '');
+        if ($classification->kind !== 'read' || ! in_array($first, ['SELECT', 'WITH', 'VALUES', 'TABLE'], true)) {
+            return $this->executePlain($db, $sql, $classification, $maxRows, $maxBytes);
+        }
+
+        // libpq buffers whole results client-side; a server-side cursor bounds memory to the fetched page.
+        // prepare()/execute() uses the extended protocol, which accepts exactly one command, so a smuggled
+        // second statement is a syntax error rather than being run.
+        $started = hrtime(true);
+        $pdo = $db->getPdo();
+        $ownTransaction = ! $pdo->inTransaction();
+        if ($ownTransaction) {
+            $pdo->beginTransaction();
+        }
+        try {
+            try {
+                $pdo->prepare(self::CURSOR_PREFIX.$sql)->execute();
+            } catch (PDOException $e) {
+                throw new OffsetQueryException($e, strlen(self::CURSOR_PREFIX));
+            }
+            $fetch = $pdo->prepare('FETCH FORWARD '.($maxRows + 1).' FROM dbsuperb_cursor');
+            $fetch->execute();
+            $result = $this->collect($fetch, $sql, $classification, $maxRows, $maxBytes, $started);
+            $pdo->prepare('CLOSE dbsuperb_cursor')->execute();
+
+            if ($ownTransaction) {
+                $pdo->commit();
+            }
+
+            return $result;
+        } catch (Throwable $t) {
+            if ($ownTransaction && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+
+            throw $t;
+        }
     }
 
     public function inspector(): SchemaInspector

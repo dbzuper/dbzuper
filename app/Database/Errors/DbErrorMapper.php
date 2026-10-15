@@ -3,6 +3,7 @@
 namespace App\Database\Errors;
 
 use App\Database\Exceptions\InvalidConnectionOption;
+use App\Database\Exceptions\OffsetQueryException;
 use App\Database\Exceptions\SqlitePathNotAllowed;
 use Illuminate\Database\QueryException;
 use PDOException;
@@ -10,8 +11,13 @@ use Throwable;
 
 final class DbErrorMapper
 {
-    public function map(Throwable $e): DbError
+    /** @param int $columnOffset characters prepended to the user's SQL, subtracted from line-1 positions */
+    public function map(Throwable $e, int $columnOffset = 0): DbError
     {
+        if ($e instanceof OffsetQueryException) {
+            return $this->map($e->original, $e->columnOffset);
+        }
+
         if ($e instanceof SqlitePathNotAllowed) {
             return $e->reason === 'missing'
                 ? new DbError('not_found', $e->getMessage(), null, 'sqlite_missing')
@@ -35,6 +41,7 @@ final class DbErrorMapper
         $sqlstate = $pdo?->errorInfo[0] ?? (preg_match('/SQLSTATE\[(\w{5})\]/', $raw, $m) ? $m[1] : null);
         $driverCode = $pdo?->errorInfo[1] ?? (preg_match('/SQLSTATE\[\w{5}\]\s*\[(\d+)\]/', $raw, $m) ? (int) $m[1] : null);
         $message = $this->clean($raw);
+        $position = $this->position($raw, $columnOffset);
         // Match on the cleaned message only: the raw QueryException suffix embeds user SQL text.
         $lower = strtolower($message);
         $connectionClass = str_starts_with((string) $sqlstate, '08')
@@ -57,7 +64,7 @@ final class DbErrorMapper
             default => ['unknown', null],
         };
 
-        return new DbError($kind, $message, $sqlstate, $reason);
+        return new DbError($kind, $message, $sqlstate, $reason, $position);
     }
 
     private function mentionsTls(string $lower): bool
@@ -76,6 +83,27 @@ final class DbErrorMapper
         $message = preg_replace('/\s*\(Connection: .*$/s', '', $message) ?? $message;
         $message = preg_replace('/^SQLSTATE\[\w{5}\](:\s*[^:]+:)?\s*(\[\d+\]\s*)?(\d+\s+)?/', '', $message) ?? $message;
 
-        return trim($message);
+        // PostgreSQL appends LINE/caret context on further lines; the position is reported separately.
+        return trim((string) strtok(trim($message), "\n"));
+    }
+
+    /** @return array{line: int, column: ?int}|null */
+    private function position(string $raw, int $columnOffset): ?array
+    {
+        if (preg_match('/LINE (\d+): (.*)\n(\s*)\^/', $raw, $m)) {
+            $prefix = strlen('LINE '.$m[1].': ');
+            $column = strlen($m[3]) - $prefix + 1;
+            $line = (int) $m[1];
+            if ($line === 1) {
+                $column -= $columnOffset;
+            }
+
+            return ['line' => $line, 'column' => max(1, $column)];
+        }
+        if (preg_match('/ at line (\d+)\s*$/', $raw, $m)) {
+            return ['line' => (int) $m[1], 'column' => null];
+        }
+
+        return null;
     }
 }

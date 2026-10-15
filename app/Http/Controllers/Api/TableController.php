@@ -72,11 +72,7 @@ class TableController extends Controller
     private function run(SavedConnection $connection, callable $callback): mixed
     {
         try {
-            return $this->factory->using($connection, function (Connection $db) use ($connection, $callback) {
-                $this->drivers->for($connection->driver)->applyStatementTimeout($db, (int) config('dbsuperb.query_timeout'));
-
-                return $callback($db);
-            });
+            return $this->factory->using($connection, $callback, (int) config('dbsuperb.query_timeout'));
         } catch (Throwable $e) {
             throw new DatabaseOperationFailed($this->errors->map($e));
         }

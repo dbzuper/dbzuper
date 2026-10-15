@@ -18,6 +18,11 @@ class MariaDbDriver extends MySqlDriver
         $this->setTimeoutBestEffort($db, 'SET SESSION max_statement_time = '.max(1, $seconds));
     }
 
+    protected function readOnlyVariable(): string
+    {
+        return 'tx_read_only'; // available on every MariaDB version
+    }
+
     public function inspector(): SchemaInspector
     {
         return app(MariaDbInspector::class);

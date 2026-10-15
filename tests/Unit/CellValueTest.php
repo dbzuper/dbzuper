@@ -31,3 +31,7 @@ it('reads stream resources', function () {
 
     expect(CellValue::present($stream))->toBe('abc');
 });
+
+it('accepts a custom character cap', function () {
+    expect(CellValue::present(str_repeat('é', 5000), CellValue::RESULT_CHARS))->toBe(str_repeat('é', 4000).'…');
+});

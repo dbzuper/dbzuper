@@ -75,3 +75,17 @@ it('maps a plain InvalidArgumentException to the generic message', function () {
 
     expect($error->message)->toBe('An unexpected error occurred.');
 });
+
+it('extracts error positions', function (string $message, ?array $errorInfo, ?array $position, int $offset = 0) {
+    $e = new PDOException($message);
+    if ($errorInfo) {
+        $e->errorInfo = $errorInfo;
+    }
+
+    expect((new DbErrorMapper)->map($e, $offset)->position)->toBe($position);
+})->with([
+    'pg caret' => ["SQLSTATE[42601]: Syntax error: 7 ERROR:  syntax error at or near \"form\"\nLINE 2: select * form users\n                 ^", ['42601', 7, 'x'], ['line' => 2, 'column' => 10]],
+    'pg line 1 with offset' => ["SQLSTATE[42601]: Syntax error: 7 ERROR:  syntax error at or near \"x\"\nLINE 1: DECLARE c NO SCROLL CURSOR FOR select x y\n                                              ^", ['42601', 7, 'x'], ['line' => 1, 'column' => 8], 31],
+    'mysql at line' => ["SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual near 'form users' at line 3", ['42000', 1064, 'x'], ['line' => 3, 'column' => null]],
+    'none' => ['SQLSTATE[HY000]: General error: 1 no such table: x', ['HY000', 1, 'x'], null],
+]);

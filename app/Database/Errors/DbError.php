@@ -10,10 +10,17 @@ final readonly class DbError
         public string $message,
         public ?string $sqlstate,
         public ?string $reason,
+        /** @var array{line: int, column: ?int}|null */
+        public ?array $position = null,
     ) {}
 
     public function toArray(): array
     {
-        return ['kind' => $this->kind, 'message' => $this->message, 'sqlstate' => $this->sqlstate, 'reason' => $this->reason];
+        $out = ['kind' => $this->kind, 'message' => $this->message, 'sqlstate' => $this->sqlstate, 'reason' => $this->reason];
+        if ($this->position !== null) {
+            $out['position'] = $this->position;
+        }
+
+        return $out;
     }
 }

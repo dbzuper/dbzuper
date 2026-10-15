@@ -28,11 +28,8 @@ final class SnapshotService
     {
         try {
             $snapshot = $this->factory->using($connection, function (Connection $db) use ($connection) {
-                $driver = $this->drivers->for($connection->driver);
-                $driver->applyStatementTimeout($db, (int) config('dbsuperb.introspection_timeout'));
-
-                return $driver->inspector()->inspect($db, $connection);
-            });
+                return $this->drivers->for($connection->driver)->inspector()->inspect($db, $connection);
+            }, (int) config('dbsuperb.introspection_timeout'));
         } catch (Throwable $e) {
             throw new DatabaseOperationFailed($this->errors->map($e));
         }
