@@ -13,28 +13,62 @@ final class RecordReader
 
     public const MAX_COUNTED = 12;
 
+    private const RAW_PREFIX = '__r';
+
     /** @return array{table:string,key:array,columns:list<array{name:string,type:string}>,values:list<mixed>,relationships:list<array>}|null */
     public function read(Connection $db, Driver $driver, array $snapshot, array $table, RecordKey $key): ?array
     {
+        // Raw copies of the key and relationship columns: the display values are truncated or replaced
+        // (long text, binary), which would corrupt availability checks, counts and the canonical key.
+        $rawNames = array_values(array_unique(array_merge($key->columns(), $this->relationshipColumns($snapshot, $table['name']))));
+        $select = array_map(fn ($c) => $driver->sampleColumn($db, $c['name'], strtolower((string) ($c['type_name'] ?? '')), CellValue::RESULT_CHARS), $table['columns']);
+        foreach ($rawNames as $i => $name) {
+            $select[] = $db->raw($driver->quoteIdentifier($name).' AS '.$driver->quoteIdentifier(self::RAW_PREFIX.$i));
+        }
+
         $row = $this->where($db->table($db->raw($driver->quoteIdentifier($table['name']))), $driver, $key->columns(), $key->values())
-            ->select(array_map(fn ($c) => $driver->sampleColumn($db, $c['name'], strtolower((string) ($c['type_name'] ?? '')), CellValue::RESULT_CHARS), $table['columns']))
+            ->select($select)
             ->first();
         if ($row === null) {
             return null;
         }
         $assoc = (array) $row;
-        $raw = [];
+        $display = [];
         foreach ($table['columns'] as $c) {
-            $raw[$c['name']] = $assoc[$c['name']] ?? null;
+            $display[] = CellValue::present($assoc[$c['name']] ?? null, CellValue::RESULT_CHARS);
+        }
+        $raw = [];
+        foreach ($rawNames as $i => $name) {
+            $raw[$name] = $assoc[self::RAW_PREFIX.$i] ?? null;
+        }
+        $canonical = [];
+        foreach ($key->columns() as $name) {
+            $canonical[$name] = CellValue::present($raw[$name], PHP_INT_MAX);
         }
 
         return [
             'table' => $table['name'],
-            'key' => $key->toArray(),
+            'key' => $canonical,
             'columns' => array_map(fn ($c) => ['name' => $c['name'], 'type' => $c['type']], $table['columns']),
-            'values' => array_map(fn ($v) => CellValue::present($v, CellValue::RESULT_CHARS), array_values($raw)),
+            'values' => $display,
             'relationships' => $this->relationships($db, $driver, $snapshot, $table['name'], $raw),
         ];
+    }
+
+    /** @return list<string> */
+    private function relationshipColumns(array $snapshot, string $table): array
+    {
+        $names = [];
+        foreach ($snapshot['relationships'] ?? [] as $rel) {
+            if ($rel['from_table'] === $table) {
+                array_push($names, ...$rel['from_columns']);
+            }
+            if ($rel['to_table'] === $table) {
+                array_push($names, ...$rel['to_columns']);
+            }
+        }
+
+        return $names;
     }
 
     /** @param list<string> $columns @param list<mixed> $values */

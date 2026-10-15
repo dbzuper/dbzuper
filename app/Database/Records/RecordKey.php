@@ -35,7 +35,12 @@ final readonly class RecordKey
     /** @param list<string|int|float> $values */
     public static function fromValues(array $table, array $values): self
     {
-        return new self(array_combine($table['primary_key'], $values));
+        $pk = $table['primary_key'] ?? [];
+        if (count($pk) !== count($values)) {
+            throw new \InvalidArgumentException('Expected '.count($pk).' key values, got '.count($values).'.');
+        }
+
+        return new self(array_combine($pk, array_values($values)));
     }
 
     /** @return list<string> */

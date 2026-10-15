@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Database\ColumnKind;
 use App\Database\ConnectionFactory;
 use App\Database\DriverRegistry;
 use App\Database\Errors\DbErrorMapper;
@@ -40,7 +41,9 @@ class RecordController extends Controller
         try {
             $record = $this->factory->using($connection, fn (Connection $db) => $this->reader->read($db, $driver, $snapshot, $info, $key), (int) config('dbsuperb.query_timeout'));
         } catch (Throwable $e) {
-            throw new DatabaseOperationFailed($this->errors->map($e));
+            $error = $this->errors->map($e);
+            // SQLSTATE class 22 (data exception): the key value cannot be a value of the column, so no such record.
+            $record = str_starts_with((string) $error->sqlstate, '22') ? null : throw new DatabaseOperationFailed($error);
         }
 
         return $record === null
@@ -58,9 +61,21 @@ class RecordController extends Controller
         return [$snapshot, $info];
     }
 
+    /** Binary keys cannot travel through a JSON key, so such records are not addressable. */
+    private function hasBinaryKey(array $info): bool
+    {
+        foreach ($info['columns'] as $column) {
+            if (in_array($column['name'], $info['primary_key'], true) && ColumnKind::classify(strtolower((string) ($column['type_name'] ?? ''))) === ColumnKind::Binary) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function notExplorable(array $info): ?JsonResponse
     {
-        if (($info['kind'] ?? 'table') === 'table' && ($info['primary_key'] ?? []) !== []) {
+        if (($info['kind'] ?? 'table') === 'table' && ($info['primary_key'] ?? []) !== [] && ! $this->hasBinaryKey($info)) {
             return null;
         }
 

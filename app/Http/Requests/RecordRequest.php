@@ -13,6 +13,6 @@ class RecordRequest extends FormRequest
 
     public function rules(): array
     {
-        return ['key' => ['required', 'string', 'max:4096']];
+        return ['key' => ['required', 'string', 'max:8192']];
     }
 }

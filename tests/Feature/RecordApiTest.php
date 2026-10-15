@@ -113,3 +113,35 @@ it('caps counts at 10,000+', function () {
 it('forbids other users', function () {
     $this->actingAs(User::factory()->create())->getJson(route('api.records.show', [$this->connection, 'orders', 'key' => '{"id":1}']))->assertForbidden();
 });
+
+it('refuses tables whose primary key is binary', function () {
+    $w = DB::connectUsing('w', ['driver' => 'sqlite', 'database' => $this->connection->database, 'prefix' => ''], force: true);
+    $w->statement('CREATE TABLE blobs (id BLOB PRIMARY KEY, label TEXT)');
+    DB::purge('w');
+
+    ($this->show)('blobs', ['id' => 'x'])->assertUnprocessable()->assertJsonPath('error.reason', 'no_primary_key');
+});
+
+it('counts children and round-trips string keys that are long or contain special characters', function (string $code) {
+    $w = DB::connectUsing('w', ['driver' => 'sqlite', 'database' => $this->connection->database, 'prefix' => '', 'foreign_key_constraints' => true], force: true);
+    $w->statement('CREATE TABLE docs (code TEXT PRIMARY KEY, label TEXT)');
+    $w->statement('CREATE TABLE doc_notes (id INTEGER PRIMARY KEY, doc_code TEXT REFERENCES docs(code), note TEXT)');
+    $w->table('docs')->insert(['code' => $code, 'label' => 'x']);
+    $w->table('doc_notes')->insert([['doc_code' => $code, 'note' => 'a'], ['doc_code' => $code, 'note' => 'b'], ['doc_code' => $code, 'note' => 'c']]);
+    DB::purge('w');
+
+    $res = ($this->show)('docs', ['code' => $code])->assertOk();
+    $notes = collect($res->json('relationships'))->firstWhere('table', 'doc_notes');
+
+    expect($res->json('key'))->toBe(['code' => $code])
+        ->and($notes['count'])->toBe(['value' => 3, 'capped' => false]);
+})->with([
+    'short' => ['abc'],
+    '300 chars' => [str_repeat('k', 300)],
+    '4500 chars' => [str_repeat('k', 4500)],
+    'special' => ["O'Re\illy \"100%\" 🚀"],
+]);
+
+it('echoes the canonical key of the row, not the request values', function () {
+    ($this->show)('orders', '{"id":"1"}')->assertOk()->assertJsonPath('key', ['id' => 1]);
+});
