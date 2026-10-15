@@ -487,4 +487,59 @@ describe('trail replacement and removal', () => {
         await flush();
         expect(s().records[item(1)]).toBeUndefined();
     });
+
+    it('a page requested before setTrail does not apply to the restored trail', async () => {
+        await openAndLoad();
+        let resolve!: (p: RelatedPayload) => void;
+        api.related.mockReturnValue(
+            new Promise<RelatedPayload>((r) => {
+                resolve = r;
+            }),
+        );
+        s().expand(root, inSummary);
+        s().setTrail(openRoot('orders', { id: 1 }));
+        resolve(related('items', rows(1, 3), 'c'));
+        await flush();
+        await flush();
+        expect(s().trail.nodes).toHaveLength(1);
+        expect(s().clusters).toEqual({});
+    });
+
+    it('aborts removed-source page requests even when the rel id contains a pipe', async () => {
+        await openAndLoad();
+        api.related.mockResolvedValueOnce(related('items', rows(1, 1), null));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(2));
+        let signal!: AbortSignal;
+        api.related.mockImplementation(
+            (
+                _c: number,
+                _t: string,
+                _k: unknown,
+                _p: unknown,
+                sig: AbortSignal,
+            ) => {
+                signal = sig;
+                return new Promise(() => undefined);
+            },
+        );
+        s().expand(item(1), { ...inSummary, id: 'a|b', direction: 'in' });
+        s().remove(item(1));
+        expect(signal.aborted).toBe(true);
+    });
+
+    it('recomputes the remaining count of kept clusters against the new trail', async () => {
+        await openAndLoad();
+        api.related.mockResolvedValue(related('items', rows(1, 25), 'c1'));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(26));
+        const key = clusterKey(root, inSummary.id, 'in');
+        expect(s().clusters[key].remaining).toBe(5);
+        const t = structuredClone(s().trail);
+        t.nodes = t.nodes.slice(0, 11);
+        t.edges = t.edges.slice(0, 10);
+        s().setTrail(t);
+        expect(s().clusters[key].remaining).toBe(20);
+        expect(s().clusters[key].loading).toBe(false);
+    });
 });

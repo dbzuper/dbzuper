@@ -97,13 +97,16 @@ const initial = (): State => ({
 type Queue = { active: number; pending: (() => void)[] };
 let generation = 0;
 let recordRequests = new Map<string, AbortController>();
-let pageRequests = new Map<string, AbortController>();
+let pageRequests = new Map<string, { from: string; ctl: AbortController }>();
+// Advanced whenever the trail is replaced wholesale (also by setTrail, which keeps the generation).
+let trailToken = 0;
 let queue: Queue = { active: 0, pending: [] };
 
 function bump() {
     generation += 1;
     for (const c of recordRequests.values()) c.abort();
-    for (const c of pageRequests.values()) c.abort();
+    for (const r of pageRequests.values()) r.ctl.abort();
+    trailToken += 1;
     recordRequests = new Map();
     pageRequests = new Map();
     queue = { active: 0, pending: [] };
@@ -116,11 +119,9 @@ function abortRemoved(keep: (id: string) => boolean) {
             c.abort();
             recordRequests.delete(id);
         }
-    for (const [key, c] of pageRequests)
-        if (
-            !keep(key.slice(0, key.lastIndexOf('|', key.lastIndexOf('|') - 1)))
-        ) {
-            c.abort();
+    for (const [key, r] of pageRequests)
+        if (!keep(r.from)) {
+            r.ctl.abort();
             pageRequests.delete(key);
         }
 }
@@ -254,9 +255,10 @@ export const useRecords = create<RecordsState>()((set, get) => {
         if (pageRequests.has(key)) return;
         const ctl = new AbortController();
         const signal = ctl.signal;
-        pageRequests.set(key, ctl);
+        const token = trailToken;
+        pageRequests.set(key, { from: fromId, ctl });
         const finish = () => {
-            if (pageRequests.get(key) === ctl) pageRequests.delete(key);
+            if (pageRequests.get(key)?.ctl === ctl) pageRequests.delete(key);
         };
         if (existing)
             set({
@@ -281,7 +283,8 @@ export const useRecords = create<RecordsState>()((set, get) => {
             .then((page) => {
                 finish();
                 // The trail was replaced, or the source card was removed meanwhile.
-                if (!fresh(gen) || !inTrail(fromId)) return;
+                if (!fresh(gen) || token !== trailToken || !inTrail(fromId))
+                    return;
                 const state = get();
                 const targets = page.rows.map((r) => ({
                     table: page.table,
@@ -345,7 +348,13 @@ export const useRecords = create<RecordsState>()((set, get) => {
             })
             .catch((e) => {
                 finish();
-                if (!fresh(gen) || !inTrail(fromId) || isAbort(e)) return;
+                if (
+                    !fresh(gen) ||
+                    token !== trailToken ||
+                    !inTrail(fromId) ||
+                    isAbort(e)
+                )
+                    return;
                 const cluster = get().clusters[key];
                 if (cluster)
                     set({
@@ -448,20 +457,45 @@ export const useRecords = create<RecordsState>()((set, get) => {
             const ids = new Set(trail.nodes.map((n) => n.id));
             const state = get();
             abortRemoved((id) => ids.has(id));
+            // A page requested for the old trail must not be applied to the new one.
+            for (const r of pageRequests.values()) r.ctl.abort();
+            pageRequests = new Map();
+            trailToken += 1;
             const records = Object.fromEntries(
                 Object.entries(state.records).filter(([id]) => ids.has(id)),
             );
             const clusters = Object.fromEntries(
-                Object.entries(state.clusters).filter(
-                    ([, c]) =>
-                        ids.has(c.from) &&
-                        trail.edges.some(
+                Object.entries(state.clusters)
+                    .filter(
+                        ([, c]) =>
+                            ids.has(c.from) &&
+                            trail.edges.some(
+                                (e) =>
+                                    e.from === c.from &&
+                                    e.rel === c.summary.id &&
+                                    e.dir === c.summary.direction,
+                            ),
+                    )
+                    .map(([key, c]) => {
+                        const count = trail.edges.filter(
                             (e) =>
                                 e.from === c.from &&
                                 e.rel === c.summary.id &&
                                 e.dir === c.summary.direction,
-                        ),
-                ),
+                        ).length;
+                        const total = c.summary.count;
+                        return [
+                            key,
+                            {
+                                ...c,
+                                loading: false,
+                                remaining:
+                                    total && !total.capped
+                                        ? Math.max(0, total.value - count)
+                                        : null,
+                            },
+                        ];
+                    }),
             );
             set({
                 trail,
