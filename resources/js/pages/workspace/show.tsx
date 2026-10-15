@@ -12,6 +12,7 @@ import { InspectorPanel } from '@/components/inspector/inspector-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UniverseBoundary } from '@/components/universe/universe-boundary';
+import { PathDialog } from '@/components/workspace/path-dialog';
 import { LeftRail } from '@/components/workspace/left-rail';
 import { TableList } from '@/components/workspace/table-list';
 import { WorkspaceHeader } from '@/components/workspace/workspace-header';
@@ -262,6 +263,7 @@ export default function WorkspaceShow({
                     </aside>
                 )}
             </div>
+            {snapshot && <PathDialog snapshot={snapshot} />}
         </div>
     );
 }
