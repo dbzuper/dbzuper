@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\LayoutController;
 use App\Http\Controllers\Api\SchemaController;
+use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\ConnectionController;
 use App\Http\Controllers\ConnectionTestController;
 use App\Http\Controllers\SetupController;
@@ -25,6 +26,8 @@ Route::middleware('auth')->group(function () {
         Route::post('schema/refresh', [SchemaController::class, 'refresh'])->name('schema.refresh');
         Route::get('layout', [LayoutController::class, 'show'])->name('layout.show');
         Route::put('layout', [LayoutController::class, 'update'])->name('layout.update');
+        Route::get('tables/{table}/sample', [TableController::class, 'sample'])->where('table', '.+')->name('tables.sample');
+        Route::get('tables/{table}/ddl', [TableController::class, 'ddl'])->where('table', '.+')->name('tables.ddl');
     });
 });
 

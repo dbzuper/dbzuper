@@ -61,4 +61,12 @@ class MySqlDriver implements Driver
     {
         $db->statement('SET SESSION max_execution_time = '.max(1, $seconds) * 1000);
     }
+
+    public function ddl(Connection $db, string $table, string $kind): ?string
+    {
+        $isView = $kind === 'view';
+        $row = (array) $db->selectOne(($isView ? 'SHOW CREATE VIEW ' : 'SHOW CREATE TABLE ').$db->getQueryGrammar()->wrapTable($table));
+
+        return $row[$isView ? 'Create View' : 'Create Table'] ?? null;
+    }
 }

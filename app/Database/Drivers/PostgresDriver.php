@@ -74,4 +74,9 @@ class PostgresDriver implements Driver
     {
         $db->statement('SET statement_timeout = '.max(1, $seconds) * 1000);
     }
+
+    public function ddl(Connection $db, string $table, string $kind): ?string
+    {
+        return null; // PostgreSQL has no native SHOW CREATE; the UI generates an approximation.
+    }
 }

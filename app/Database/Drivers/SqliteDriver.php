@@ -44,4 +44,9 @@ class SqliteDriver implements Driver
     {
         // SQLite is in-process; there is no server-side statement timeout to set.
     }
+
+    public function ddl(Connection $db, string $table, string $kind): ?string
+    {
+        return $db->selectOne("select sql from sqlite_master where name = ? and type in ('table', 'view')", [$table])?->sql;
+    }
 }

@@ -20,4 +20,7 @@ interface Driver
 
     /** Bound how long any single statement on this session may run. */
     public function applyStatementTimeout(Connection $db, int $seconds): void;
+
+    /** Native CREATE statement for a table or view, or null when the engine has none. */
+    public function ddl(Connection $db, string $table, string $kind): ?string;
 }
