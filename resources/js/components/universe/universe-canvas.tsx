@@ -158,10 +158,16 @@ export function UniverseCanvas({
         const readyFrame = requestAnimationFrame(() => setReady(true));
 
         // Styles are fixed at construction; a theme switch re-creates the instance with the new colours.
-        const themeObserver = new MutationObserver(() =>
-            setThemeNonce((n) => n + 1),
-        );
-        themeObserver.observe(document.documentElement, {
+        // Only the `dark` class matters; other class changes on <html> must not rebuild the renderer.
+        const root = document.documentElement;
+        let dark = root.classList.contains('dark');
+        const themeObserver = new MutationObserver(() => {
+            const nowDark = root.classList.contains('dark');
+            if (nowDark === dark) return;
+            dark = nowDark;
+            setThemeNonce((n) => n + 1);
+        });
+        themeObserver.observe(root, {
             attributes: true,
             attributeFilter: ['class'],
         });

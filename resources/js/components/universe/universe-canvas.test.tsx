@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { syntheticSnapshot } from '@/universe/__fixtures__/synthetic';
 import { assignClusters } from '@/universe/clusters';
@@ -97,5 +97,43 @@ describe('UniverseCanvas', () => {
         expect(useWorkspace.getState().zoomLevel).toBe('galaxy');
         expect(sigmaCalls.refresh).toBe(0);
         expect(sigmaCalls.scheduleRender).toBe(0);
+    });
+
+    it('rebuilds for a theme switch but not for unrelated class changes on <html>', async () => {
+        const snapshot = syntheticSnapshot(20);
+        const graph = buildSchemaGraph(snapshot);
+        const model = { graph, clusters: assignClusters(graph) };
+        const root = document.documentElement;
+        root.classList.remove('dark');
+
+        render(
+            <UniverseCanvas
+                model={model}
+                snapshot={snapshot}
+                onRelayout={() => undefined}
+                onPositionsChanged={() => undefined}
+                onError={() => undefined}
+            />,
+        );
+        await waitFor(() =>
+            expect(
+                screen.getByRole('img', { name: /Schema universe of 20/ }),
+            ).toHaveAttribute('data-universe-ready', 'true'),
+        );
+        const before = sigmaCalls.constructed;
+
+        await act(async () => {
+            root.classList.add('some-unrelated-class');
+            await new Promise((r) => setTimeout(r, 0));
+        });
+        expect(sigmaCalls.constructed).toBe(before);
+
+        await act(async () => {
+            root.classList.add('dark');
+            await new Promise((r) => setTimeout(r, 0));
+        });
+        expect(sigmaCalls.constructed).toBe(before + 1);
+
+        root.classList.remove('dark', 'some-unrelated-class');
     });
 });
