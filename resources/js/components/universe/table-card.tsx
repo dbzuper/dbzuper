@@ -39,7 +39,7 @@ export const TableCard = memo(function TableCard({
                 }
             }}
             className={cn(
-                'pointer-events-auto w-56 rounded-lg border bg-card/95 text-left text-card-foreground shadow-sm backdrop-blur transition-colors motion-reduce:transition-none',
+                'pointer-events-auto w-56 rounded-lg border bg-card/95 text-left text-card-foreground shadow-sm backdrop-blur transition-colors select-none motion-reduce:transition-none',
                 selected
                     ? 'border-[var(--universe-accent)]'
                     : 'hover:border-foreground/30',

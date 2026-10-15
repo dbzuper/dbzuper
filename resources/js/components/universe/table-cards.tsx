@@ -1,7 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    type ReactNode,
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 import type { SchemaSnapshot } from '@/types/schema';
+import { pickPathTarget } from '@/universe/path-pick';
 import { useWorkspace } from '@/universe/store';
 import { fkColumnsByTable, stableCardKeys } from '@/universe/visible';
+import { attachCardPan } from './card-pan';
 import { TableCard } from './table-card';
 import type { UniverseSigma } from './universe-canvas';
 
@@ -16,6 +26,48 @@ function place(sigma: UniverseSigma, key: string, el: HTMLElement) {
     el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`;
 }
 
+/**
+ * Positions one card over its node and wires its native listeners once per mount. (An inline ref
+ * callback would detach and re-attach them on every overlay render, dropping a pan in progress.)
+ */
+function CardSlot({
+    sigma,
+    nodeKey,
+    refs,
+    children,
+}: {
+    sigma: UniverseSigma;
+    nodeKey: string;
+    refs: Map<string, HTMLDivElement>;
+    children: ReactNode;
+}) {
+    const ref = useRef<HTMLDivElement>(null);
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        refs.set(nodeKey, el);
+        // Position before paint so a new card never flashes at (0, 0).
+        place(sigma, nodeKey, el);
+        // Non-passive native listener so the wheel can zoom the graph from over a card.
+        const onWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            sigma.getMouseLayer().dispatchEvent(new WheelEvent('wheel', e));
+        };
+        el.addEventListener('wheel', onWheel, { passive: false });
+        const detachPan = attachCardPan(el, sigma);
+        return () => {
+            el.removeEventListener('wheel', onWheel);
+            detachPan();
+            if (refs.get(nodeKey) === el) refs.delete(nodeKey);
+        };
+    }, [sigma, nodeKey, refs]);
+    return (
+        <div ref={ref} className="absolute top-0 left-0">
+            {children}
+        </div>
+    );
+}
+
 export function TableCards({
     sigma,
     snapshot,
@@ -26,8 +78,10 @@ export function TableCards({
     const zoomLevel = useWorkspace((s) => s.zoomLevel);
     const selected = useWorkspace((s) => s.selected);
     const onSelect = useCallback(
-        (t: string) => useWorkspace.getState().select(t),
-        [],
+        (t: string) => {
+            if (!pickPathTarget(snapshot, t)) useWorkspace.getState().select(t);
+        },
+        [snapshot],
     );
     const onFocus = useCallback(
         (t: string) => useWorkspace.getState().setFocus(t, 1),
@@ -84,30 +138,11 @@ export function TableCards({
                 const table = tables.get(key);
                 if (!table) return null;
                 return (
-                    <div
+                    <CardSlot
                         key={key}
-                        className="absolute top-0 left-0"
-                        ref={(el) => {
-                            if (!el) return;
-                            refs.current.set(key, el);
-                            // Position immediately so a new card never flashes at (0, 0).
-                            place(sigma, key, el);
-                            // Non-passive native listener so the wheel can zoom the graph from over a card.
-                            const onWheel = (e: WheelEvent) => {
-                                e.preventDefault();
-                                sigma
-                                    .getMouseLayer()
-                                    .dispatchEvent(new WheelEvent('wheel', e));
-                            };
-                            el.addEventListener('wheel', onWheel, {
-                                passive: false,
-                            });
-                            return () => {
-                                el.removeEventListener('wheel', onWheel);
-                                if (refs.current.get(key) === el)
-                                    refs.current.delete(key);
-                            };
-                        }}
+                        sigma={sigma}
+                        nodeKey={key}
+                        refs={refs.current}
                     >
                         <TableCard
                             table={table}
@@ -116,7 +151,7 @@ export function TableCards({
                             onSelect={onSelect}
                             onFocus={onFocus}
                         />
-                    </div>
+                    </CardSlot>
                 );
             })}
         </div>
