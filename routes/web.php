@@ -1,11 +1,13 @@
 <?php
 
+use App\Http\Controllers\Api\HistoryController;
 use App\Http\Controllers\Api\LayoutController;
 use App\Http\Controllers\Api\QueryController;
 use App\Http\Controllers\Api\SchemaController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\ConnectionController;
 use App\Http\Controllers\ConnectionTestController;
+use App\Http\Controllers\HistoryPageController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\WorkspaceController;
 use Illuminate\Support\Facades\Route;
@@ -22,6 +24,9 @@ Route::middleware('auth')->group(function () {
 
     Route::get('c/{connection}', WorkspaceController::class)->name('workspace.show');
 
+    Route::get('history', HistoryPageController::class)->name('history.index');
+    Route::get('api/history', [HistoryController::class, 'all'])->middleware('throttle:dbsuperb-api')->name('api.history.all');
+
     Route::prefix('api/c/{connection}')->name('api.')->middleware('throttle:dbsuperb-api')->group(function () {
         Route::get('schema', [SchemaController::class, 'show'])->name('schema.show');
         Route::post('schema/refresh', [SchemaController::class, 'refresh'])->name('schema.refresh');
@@ -31,6 +36,8 @@ Route::middleware('auth')->group(function () {
         Route::get('tables/{table}/ddl', [TableController::class, 'ddl'])->where('table', '.+')->name('tables.ddl');
         Route::post('query', [QueryController::class, 'run'])->name('query.run');
         Route::post('query/explain', [QueryController::class, 'explain'])->name('query.explain');
+        Route::get('history', [HistoryController::class, 'index'])->name('history.index');
+        Route::delete('history', [HistoryController::class, 'clear'])->name('history.clear');
     });
 });
 

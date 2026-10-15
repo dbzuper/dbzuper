@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class QueryHistoryEntry extends Model
 {
@@ -20,6 +21,11 @@ class QueryHistoryEntry extends Model
             'affected' => 'integer',
             'created_at' => 'immutable_datetime',
         ];
+    }
+
+    public function connection(): BelongsTo
+    {
+        return $this->belongsTo(SavedConnection::class, 'connection_id');
     }
 
     public function toApiArray(): array
