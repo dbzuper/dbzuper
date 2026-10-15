@@ -13,9 +13,13 @@ test('universe: explore, inspect and find a path', async ({ page }) => {
     );
     await page.getByRole('link', { name: /Universe demo/ }).click();
 
-    await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
-        timeout: 30_000,
-    });
+    const stage = page.locator('[data-universe-ready="true"]');
+    await expect(stage).toBeVisible({ timeout: 30_000 });
+    // A small schema is labelled on first view (10 tables and views; the label grid may drop a
+    // colliding one or two).
+    await expect
+        .poll(async () => Number(await stage.getAttribute('data-labels-shown')))
+        .toBeGreaterThanOrEqual(8);
 
     await page.keyboard.press('Control+k');
     await page

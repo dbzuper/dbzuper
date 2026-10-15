@@ -91,7 +91,7 @@ export function UniverseCanvas({
                 {
                     primitives: universePrimitives(),
                     styles: universeStyles(colors),
-                    settings: universeSettings(),
+                    settings: universeSettings(graph.order),
                     nodeReducer: (key, _data, attrs) =>
                         nodeDisplay(key, attrs, display),
                     edgeReducer: (key, _data, attrs) =>
@@ -130,6 +130,17 @@ export function UniverseCanvas({
         };
         camera.on('updated', onCamera);
         onCamera();
+
+        // How many node labels Sigma drew in the last frame, for tests and debugging.
+        let labelsShown = -1;
+        const onRendered = () => {
+            const n = instance.getNodeDisplayedLabels().size;
+            if (n === labelsShown) return;
+            labelsShown = n;
+            container.dataset.labelsShown = String(n);
+        };
+        instance.on('afterRender', onRendered);
+        onRendered();
 
         instance.on('enterNode', ({ node }) =>
             useWorkspace.getState().hover(node),
@@ -234,6 +245,7 @@ export function UniverseCanvas({
             unsubscribe();
             unsubscribeCamera();
             camera.removeListener('updated', onCamera);
+            instance.removeListener('afterRender', onRendered);
             instance.kill();
             setSigma(null);
             setReady(false);

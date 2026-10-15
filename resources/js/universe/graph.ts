@@ -23,9 +23,12 @@ export type RelationEdgeAttributes = {
 
 export type SchemaGraph = Graph<TableNodeAttributes, RelationEdgeAttributes>;
 
+/** Smallest node radius in screen pixels: big enough to see, hit and carry a label. */
+export const MIN_NODE_SIZE = 6;
+
 export function nodeSizeFor(rows: number | null): number {
-    if (rows === null || rows < 0) return 5;
-    return Math.min(20, 4 + 3 * Math.log10(1 + rows));
+    if (rows === null || rows < 0) return MIN_NODE_SIZE;
+    return Math.min(20, Math.max(MIN_NODE_SIZE, 4 + 3 * Math.log10(1 + rows)));
 }
 
 export function edgeSizeFor(weight: number): number {

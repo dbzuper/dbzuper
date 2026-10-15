@@ -1,5 +1,6 @@
 import type { Settings } from 'sigma/settings';
 import { layerDashed, layerPlain, pathCurved, pathLoop } from 'sigma/rendering';
+import { MIN_NODE_SIZE } from './graph';
 import type { UniverseColors } from './reducers';
 
 /** Gap between dashes for inferred relationships, in pixels (0 = solid). */
@@ -39,7 +40,7 @@ export function universeStyles(colors: UniverseColors) {
         nodes: {
             x: { attribute: 'x' },
             y: { attribute: 'y' },
-            size: { attribute: 'size', defaultValue: 5 },
+            size: { attribute: 'size', defaultValue: MIN_NODE_SIZE },
             color: { attribute: 'color', defaultValue: '#8a8f98' },
             label: { attribute: 'label' },
             labelColor: colors.label,
@@ -63,12 +64,19 @@ export function universeStyles(colors: UniverseColors) {
     };
 }
 
-export function universeSettings(): Partial<Settings> {
+/** Graphs up to this many nodes label every node the label grid has room for, whatever its size. */
+export const SMALL_GRAPH_ORDER = 100;
+
+export function universeSettings(
+    order = Number.POSITIVE_INFINITY,
+): Partial<Settings> {
     return {
         allowInvalidContainer: true,
         // Sigma 4 defaults to "positions" (sizes in graph units); node/edge sizes are screen pixels.
         itemSizesReference: 'screen',
-        labelRenderedSizeThreshold: 6,
+        // Large graphs only label nodes drawn at 6 px or more. Small ones label everything: the
+        // label grid (labelDensity per cell) still drops labels that would collide.
+        labelRenderedSizeThreshold: order <= SMALL_GRAPH_ORDER ? 0 : 6,
         minCameraRatio: 0.02,
         maxCameraRatio: 4,
         enableNodeDrag: true,

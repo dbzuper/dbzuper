@@ -104,27 +104,65 @@ export function computeLayout(
         .filter((n) => outer.has(n.cluster) && !n.fixed)
         .map((n) => n.key)
         .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    if (ring.length > 0) {
-        const pts = Object.values(out);
-        const cx = pts.length
-            ? pts.reduce((s, p) => s + p.x, 0) / pts.length
-            : 0;
-        const cy = pts.length
-            ? pts.reduce((s, p) => s + p.y, 0) / pts.length
-            : 0;
-        const rmax = pts.reduce(
-            (m, p) => Math.max(m, Math.hypot(p.x - cx, p.y - cy)),
-            0,
-        );
-        const R = rmax * 1.25 + 30;
+    if (ring.length > 0) placeOuter(ring, out, typicalSpacing(graph, out));
+
+    return out;
+}
+
+/** Outer tables this few sit in a column beside the core rather than on a ring around it. */
+export const OUTER_COLUMN_MAX = 5;
+
+/** Median edge length of the laid-out core (a fallback when it has no edges). */
+function typicalSpacing(graph: Graph, out: Positions): number {
+    const lengths: number[] = [];
+    graph.forEachEdge((_e, _a, source, target) => {
+        const p = out[source];
+        const q = out[target];
+        lengths.push(Math.hypot(p.x - q.x, p.y - q.y));
+    });
+    lengths.sort((a, b) => a - b);
+    const median = lengths[Math.floor(lengths.length / 2)];
+    return median !== undefined && median > 0 ? median : 30;
+}
+
+/**
+ * Places unrelated tables just outside the core, about one typical edge length away, so the camera's
+ * fit-to-graph does not shrink the core. A handful go in a column on the left; more go on rings.
+ */
+function placeOuter(ring: string[], out: Positions, spacing: number): void {
+    const pts = Object.values(out);
+    const cx = pts.length ? pts.reduce((s, p) => s + p.x, 0) / pts.length : 0;
+    const cy = pts.length ? pts.reduce((s, p) => s + p.y, 0) / pts.length : 0;
+    const rmax = pts.reduce(
+        (m, p) => Math.max(m, Math.hypot(p.x - cx, p.y - cy)),
+        0,
+    );
+
+    if (ring.length <= OUTER_COLUMN_MAX) {
+        // On the left, one spacing from the core: labels are drawn to the right of their node, so
+        // they run into the gap instead of off the edge of the fitted view.
+        const minX = pts.reduce((m, p) => Math.min(m, p.x), cx);
+        const x = minX - spacing;
         ring.forEach((key, i) => {
-            const angle = (2 * Math.PI * i) / ring.length;
-            out[key] = {
+            out[key] = { x, y: cy + (i - (ring.length - 1) / 2) * spacing };
+        });
+        return;
+    }
+
+    // Concentric rings, each filled with neighbours about one spacing apart, then the next ring out.
+    let placed = 0;
+    for (let k = 0; placed < ring.length; k++) {
+        const R = rmax + (2 + k) * spacing;
+        const capacity = Math.max(1, Math.floor((2 * Math.PI * R) / spacing));
+        const count = Math.min(capacity, ring.length - placed);
+        const offset = k % 2 === 0 ? 0 : Math.PI / count;
+        for (let i = 0; i < count; i++) {
+            const angle = offset + (2 * Math.PI * i) / count;
+            out[ring[placed + i]] = {
                 x: cx + R * Math.cos(angle),
                 y: cy + R * Math.sin(angle),
             };
-        });
+        }
+        placed += count;
     }
-
-    return out;
 }

@@ -76,9 +76,14 @@ describe('buildSchemaGraph', () => {
 
 describe('helpers', () => {
     it('sizes nodes monotonically with rows and clamps', () => {
-        expect(nodeSizeFor(null)).toBe(5);
-        expect(nodeSizeFor(0)).toBeLessThan(nodeSizeFor(1000));
+        expect(nodeSizeFor(null)).toBe(6);
+        expect(nodeSizeFor(10)).toBeLessThan(nodeSizeFor(1000));
         expect(nodeSizeFor(1e12)).toBe(20);
+    });
+
+    it('never draws a table or view smaller than 6 px', () => {
+        for (const rows of [null, -1, 0, 1, 2, 5])
+            expect(nodeSizeFor(rows)).toBeGreaterThanOrEqual(6);
     });
 
     it('builds symmetric edge keys', () => {

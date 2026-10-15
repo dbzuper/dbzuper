@@ -65,6 +65,9 @@ vi.mock('sigma', () => {
         getNodeDisplayData() {
             return undefined;
         }
+        getNodeDisplayedLabels() {
+            return new Set(['t0', 't1', 't2']);
+        }
     }
     return { default: FakeSigma };
 });
@@ -94,6 +97,9 @@ describe('UniverseCanvas', () => {
             ).toHaveAttribute('data-universe-ready', 'true'),
         );
         expect(sigmaCalls.constructed).toBe(1);
+        expect(
+            screen.getByRole('img', { name: /Schema universe of 200/ }),
+        ).toHaveAttribute('data-labels-shown', '3');
         expect(useWorkspace.getState().zoomLevel).toBe('galaxy');
         expect(sigmaCalls.refresh).toBe(0);
         expect(sigmaCalls.scheduleRender).toBe(0);
