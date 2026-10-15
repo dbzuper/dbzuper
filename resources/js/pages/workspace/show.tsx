@@ -33,9 +33,10 @@ import { hasWebGL } from '@/universe/webgl';
 
 // Sigma touches the WebGL2RenderingContext global at import time, so the canvas
 // is only imported after hasWebGL() says it is safe (and stays out of the main
-// bundle).
+// bundle). The chunk is prefetched while the schema loads so it is ready on first render.
+const loadCanvas = () => import('@/components/universe/universe-canvas');
 const UniverseCanvas = lazy(() =>
-    import('@/components/universe/universe-canvas').then((m) => ({
+    loadCanvas().then((m) => ({
         default: m.UniverseCanvas,
     })),
 );
@@ -65,6 +66,10 @@ export default function WorkspaceShow({
         useWorkspace.getState().reset();
         if (!universeAvailable) useWorkspace.getState().setView('list');
     }, [connection.id, universeAvailable]);
+
+    useEffect(() => {
+        if (universeAvailable) void loadCanvas().catch(() => undefined);
+    }, [universeAvailable]);
 
     const load = useCallback(
         async (refresh: boolean) => {

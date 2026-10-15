@@ -14,4 +14,11 @@ export default function globalSetup() {
         stdio: 'inherit',
         env: { ...process.env, DB_DATABASE: appDb },
     });
+    execSync(
+        `php artisan dbsuperb:demo-database ${path.resolve('storage/app/demo/large.sqlite')} --tables=2000 --force`,
+        {
+            stdio: 'inherit',
+            env: { ...process.env, DB_DATABASE: appDb },
+        },
+    );
 }

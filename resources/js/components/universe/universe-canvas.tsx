@@ -69,6 +69,14 @@ export function UniverseCanvas({
         if (!container) return;
         const graph = model.graph;
         const colors = readUniverseColors(container);
+        // Seed the zoom level for the camera we are about to show, so the display state is built
+        // for it up front. Otherwise the first camera update changes a display input and forces a
+        // full re-index and re-render straight after the constructor's render.
+        const restored =
+            cameraRef.current?.graph === graph ? cameraRef.current.state : null;
+        useWorkspace
+            .getState()
+            .setZoomLevel(zoomLevelFor(restored?.ratio ?? 1, graph.order));
         let display: DisplayState = buildDisplayState(
             graph,
             useWorkspace.getState(),
@@ -108,8 +116,7 @@ export function UniverseCanvas({
         });
 
         const camera = instance.getCamera();
-        if (cameraRef.current?.graph === graph)
-            camera.setState(cameraRef.current.state);
+        if (restored) camera.setState(restored);
         let gridSize = '';
         const onCamera = () => {
             const ratio = camera.getState().ratio;
@@ -153,9 +160,9 @@ export function UniverseCanvas({
             event.preventSigmaDefault();
             useWorkspace.getState().setFocus(event.node, 1);
         });
-        // The constructor renders synchronously, so schedule one more frame to observe a render.
-        instance.once('afterRender', () => setReady(true));
-        instance.scheduleRender();
+        // The constructor has already rendered synchronously. Mark ready on the next frame rather than
+        // forcing a second full render, which costs a whole extra frame on software-rasterised WebGL.
+        const readyFrame = requestAnimationFrame(() => setReady(true));
 
         // Styles are fixed at construction; a theme switch re-creates the instance with the new colours.
         const themeObserver = new MutationObserver(() =>
@@ -221,6 +228,7 @@ export function UniverseCanvas({
         setSigma(instance);
 
         return () => {
+            cancelAnimationFrame(readyFrame);
             cameraRef.current = { graph, state: camera.getState() };
             registerUniverse(null);
             themeObserver.disconnect();

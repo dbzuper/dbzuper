@@ -20,6 +20,19 @@ PHP 8.4 (pdo_mysql, pdo_pgsql, pdo_sqlite), Composer 2, Node 24.
 
 Then add `storage/app/demo` (absolute path) to `DBSUPERB_SQLITE_PATHS` in `.env` and create a SQLite connection to `storage/app/demo/commerce.sqlite`.
 
+## The Schema Universe
+
+Open a connection to see its schema as a graph: tables are nodes (sized by row count), relationships are edges
+(lighter edges are inferred from `*_id` naming), and colours mark clusters of related tables.
+
+- Scroll to zoom: far out shows cluster names, mid-range shows table names, close up shows column cards.
+- Hover to highlight neighbours, click to open the inspector, double-click to focus on a neighbourhood.
+- Drag a table to pin it; layouts are saved per connection.
+- ⌘K / Ctrl+K searches tables, columns and actions. Esc clears the path, focus, then selection.
+- "Find path to…" in the inspector shows the relationship chain between two tables and a ready-to-copy JOIN.
+- Large schemas: `php artisan dbsuperb:demo-database storage/app/demo/large.sqlite --tables=2000` builds a test schema.
+  Snapshots keep at most `DBSUPERB_SCHEMA_MAX_OBJECTS` (default 5000) tables and views.
+
 ## Security notes
 
 - The setup screen is public until the first administrator exists. Run `php artisan dbsuperb:install` before exposing the app to a network.

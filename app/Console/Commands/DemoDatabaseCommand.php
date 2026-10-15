@@ -3,17 +3,25 @@
 namespace App\Console\Commands;
 
 use App\Support\Demo\CommerceSchema;
+use App\Support\Demo\SyntheticSchema;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 class DemoDatabaseCommand extends Command
 {
-    protected $signature = 'dbsuperb:demo-database {path? : Target SQLite file (default storage/app/demo/commerce.sqlite)} {--force : Overwrite the target file if it exists}';
+    protected $signature = 'dbsuperb:demo-database {path? : Target SQLite file (default storage/app/demo/commerce.sqlite)} {--force : Overwrite the target file if it exists} {--tables=0 : Also create N synthetic tables (0-20000) for large-schema testing}';
 
     protected $description = 'Create a small commerce SQLite database to explore in DBSuperb';
 
     public function handle(): int
     {
+        $extra = (int) $this->option('tables');
+        if ($extra < 0 || $extra > 20000) {
+            $this->error('--tables must be between 0 and 20000.');
+
+            return self::FAILURE;
+        }
+
         $path = $this->argument('path') ?? storage_path('app/demo/commerce.sqlite');
 
         if (file_exists($path)) {
@@ -44,6 +52,9 @@ class DemoDatabaseCommand extends Command
         $db = DB::connectUsing('dbsuperb_demo', ['driver' => 'sqlite', 'database' => $path, 'prefix' => '', 'foreign_key_constraints' => true], force: true);
         try {
             CommerceSchema::create($db);
+            if ($extra > 0) {
+                SyntheticSchema::create($db, $extra);
+            }
         } finally {
             DB::purge('dbsuperb_demo');
         }
