@@ -9,6 +9,10 @@ export function handleEscape(s: WorkspaceState): boolean {
         s.setFocus(null);
         return true;
     }
+    if (s.historyOpen) {
+        s.setHistoryOpen(false);
+        return true;
+    }
     if (s.selected) {
         s.select(null);
         return true;

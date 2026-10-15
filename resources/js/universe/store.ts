@@ -23,6 +23,7 @@ type State = {
     path: string[] | null;
     paletteOpen: boolean;
     dockOpen: boolean;
+    historyOpen: boolean;
     dockHeight: number;
     dataFilter: DataFilter | null;
 };
@@ -40,6 +41,7 @@ type Actions = {
     clearPath: () => void;
     setPaletteOpen: (open: boolean) => void;
     setDockOpen: (open: boolean) => void;
+    setHistoryOpen: (open: boolean) => void;
     setDockHeight: (px: number) => void;
     openDataFilter: (table: string, column: string, value: string) => void;
     clearDataFilter: () => void;
@@ -61,6 +63,7 @@ const initial: State = {
     path: null,
     paletteOpen: false,
     dockOpen: false,
+    historyOpen: false,
     dockHeight: 320,
     dataFilter: null,
 };
@@ -85,6 +88,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
     clearPath: () => set({ pathFrom: null, pathTo: null, path: null }),
     setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
     setDockOpen: (dockOpen) => set({ dockOpen }),
+    setHistoryOpen: (historyOpen) => set({ historyOpen }),
     setDockHeight: (px) =>
         set({ dockHeight: Math.max(160, Math.min(px, 900)) }),
     openDataFilter: (table, column, value) =>

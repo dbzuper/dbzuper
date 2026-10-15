@@ -43,6 +43,9 @@ vi.mock('@/lib/workspace-api', async (orig) => ({
     workspaceApi: api,
 }));
 
+const historyApi = vi.hoisted(() => ({ list: vi.fn(), clear: vi.fn() }));
+vi.mock('@/lib/history-api', () => ({ historyApi }));
+
 import WorkspaceShow from '@/pages/workspace/show';
 
 const connection = {
@@ -65,6 +68,22 @@ beforeEach(() => {
     vi.clearAllMocks();
     useWorkspace.getState().reset();
     useSqlTabs.setState({ byConnection: {} });
+    historyApi.list.mockResolvedValue({
+        entries: [
+            {
+                id: 5,
+                sql: 'select * from users',
+                kind: 'read',
+                status: 'ok',
+                duration_ms: 3,
+                row_count: 2,
+                affected: null,
+                error: null,
+                created_at: new Date().toISOString(),
+            },
+        ],
+        next_before_id: null,
+    });
     api.layout.mockResolvedValue({ positions: [] });
     api.schema.mockResolvedValue({
         snapshot: makeSnapshot(
@@ -224,5 +243,33 @@ describe('workspace page', () => {
         expect(
             await screen.findByRole('region', { name: 'SQL editor' }),
         ).toBeInTheDocument();
+    });
+
+    it('opens the history panel from the rail and an entry opens the dock with its SQL', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByText('orders');
+        fireEvent.click(screen.getByRole('button', { name: 'History' }));
+        expect(
+            screen.getByRole('complementary', { name: 'History' }),
+        ).toBeInTheDocument();
+        fireEvent.click(await screen.findByRole('button', { name: 'Open' }));
+        expect(useWorkspace.getState().dockOpen).toBe(true);
+        const state = useSqlTabs.getState().byConnection[1];
+        const tab = state.tabs.find((t) => t.id === state.activeId);
+        expect(tab?.sql).toBe('select * from users');
+        fireEvent.keyDown(window, { key: 'Escape' });
+        expect(useWorkspace.getState().historyOpen).toBe(false);
+    });
+
+    it('opens ?sql= in a new tab once and strips the param', async () => {
+        window.history.replaceState(null, '', '/c/1?sql=select%201&keep=1');
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByText('orders');
+        const state = useSqlTabs.getState().byConnection[1];
+        const tab = state.tabs.find((t) => t.id === state.activeId);
+        expect(tab?.sql).toBe('select 1');
+        expect(useWorkspace.getState().dockOpen).toBe(true);
+        expect(window.location.search).toBe('?keep=1');
+        window.history.replaceState(null, '', '/');
     });
 });

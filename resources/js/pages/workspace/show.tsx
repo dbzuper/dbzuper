@@ -8,6 +8,7 @@ import {
     useState,
 } from 'react';
 import { toast } from 'sonner';
+import { HistoryList } from '@/components/history/history-list';
 import { InspectorPanel } from '@/components/inspector/inspector-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,7 @@ import { LeftRail } from '@/components/workspace/left-rail';
 import { TableList } from '@/components/workspace/table-list';
 import { WorkspaceHeader } from '@/components/workspace/workspace-header';
 import { dbErrorFrom, workspaceApi } from '@/lib/workspace-api';
+import { useSqlTabs } from '@/sql/tabs-store';
 import type { ConnectionSummary } from '@/types/connection';
 import type {
     DbErrorPayload,
@@ -43,6 +45,8 @@ const UniverseCanvas = lazy(() =>
 );
 
 const SqlDock = lazy(() => import('@/components/sql/sql-dock'));
+
+const MAX_SQL_PARAM = 100_000;
 
 const centered =
     'flex h-full items-center justify-center text-sm text-muted-foreground';
@@ -69,6 +73,26 @@ export default function WorkspaceShow({
         useWorkspace.getState().reset();
         if (!universeAvailable) useWorkspace.getState().setView('list');
     }, [connection.id, universeAvailable]);
+
+    // `?sql=` (from the global history page) opens a new tab once; it is never auto-run.
+    useEffect(() => {
+        const url = new URL(window.location.href);
+        const sql = url.searchParams.get('sql');
+        if (sql === null) return;
+        url.searchParams.delete('sql');
+        window.history.replaceState(
+            window.history.state,
+            '',
+            url.pathname + url.search + url.hash,
+        );
+        if (sql === '') return;
+        useSqlTabs
+            .getState()
+            .openTab(connection.id, sql.slice(0, MAX_SQL_PARAM), 'History');
+        useWorkspace.getState().setDockOpen(true);
+        // Read once on mount.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         if (universeAvailable) void loadCanvas().catch(() => undefined);
@@ -190,6 +214,7 @@ export default function WorkspaceShow({
     }, []);
 
     const dockOpen = useWorkspace((s) => s.dockOpen);
+    const historyOpen = useWorkspace((s) => s.historyOpen);
     const pathFrom = useWorkspace((s) => s.pathFrom);
     const setPaletteOpen = useWorkspace((s) => s.setPaletteOpen);
     useEffect(() => {
@@ -372,7 +397,23 @@ export default function WorkspaceShow({
                     <PathPickChip />
                 </main>
 
-                {selectedTable && (
+                {historyOpen && (
+                    <aside
+                        aria-label="History"
+                        className="flex w-[420px] shrink-0 flex-col border-l"
+                    >
+                        <HistoryList
+                            connectionId={connection.id}
+                            onOpen={(e) => {
+                                useSqlTabs
+                                    .getState()
+                                    .openTab(connection.id, e.sql, 'History');
+                                useWorkspace.getState().setDockOpen(true);
+                            }}
+                        />
+                    </aside>
+                )}
+                {!historyOpen && selectedTable && (
                     <aside
                         aria-label="Inspector"
                         className="flex w-[420px] shrink-0 flex-col border-l"

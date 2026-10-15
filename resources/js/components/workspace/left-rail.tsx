@@ -17,6 +17,8 @@ export function LeftRail({
     const setView = useWorkspace((s) => s.setView);
     const dockOpen = useWorkspace((s) => s.dockOpen);
     const setDockOpen = useWorkspace((s) => s.setDockOpen);
+    const historyOpen = useWorkspace((s) => s.historyOpen);
+    const setHistoryOpen = useWorkspace((s) => s.setHistoryOpen);
 
     const item = (
         label: string,
@@ -73,7 +75,9 @@ export function LeftRail({
                 {item('SQL', TerminalSquare, dockOpen, () =>
                     setDockOpen(!dockOpen),
                 )}
-                {item('History', History, false, undefined, true)}
+                {item('History', History, historyOpen, () =>
+                    setHistoryOpen(!historyOpen),
+                )}
             </nav>
         </TooltipProvider>
     );

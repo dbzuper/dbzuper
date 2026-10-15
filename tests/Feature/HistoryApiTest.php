@@ -51,3 +51,8 @@ it('forbids other users and renders the page', function () {
     $this->actingAs(User::factory()->create())->getJson(route('api.history.index', $this->a))->assertForbidden();
     $this->withoutVite()->actingAs($this->user)->get(route('history.index'))->assertOk();
 });
+
+it('passes the user connections to the history page', function () {
+    $this->withoutVite()->actingAs($this->user)->get(route('history.index'))
+        ->assertInertia(fn ($page) => $page->component('history/index')->has('connections', 2));
+});
