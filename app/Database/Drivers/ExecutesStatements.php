@@ -18,7 +18,7 @@ trait ExecutesStatements
         $restore = $this->beforeStatement($pdo);
 
         try {
-            $statement = $pdo->prepare($sql);
+            $statement = $pdo->prepare($this->prepareSql($sql));
             $statement->execute();
 
             return $this->collect($statement, $sql, $classification, $maxRows, $maxBytes, $started);
@@ -87,6 +87,12 @@ trait ExecutesStatements
     }
 
     protected function afterStatement(PDO $pdo, mixed $state): void {}
+
+    /** The text sent to prepare(); drivers may escape placeholder-like syntax. The result keeps the user's SQL. */
+    protected function prepareSql(string $sql): string
+    {
+        return $sql;
+    }
 
     protected function elapsed(int $started): int
     {

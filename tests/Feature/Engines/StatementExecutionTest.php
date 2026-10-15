@@ -168,17 +168,19 @@ it('keeps jsonb question-mark operators and literal question marks on PostgreSQL
     $saved = Engines::savedConnection('pgsql');
 
     $value = app(ConnectionFactory::class)->using($saved, fn (Connection $db) => app(DriverRegistry::class)->for($saved->driver)
-        ->execute($db, $sql, StatementClassifier::classify($sql, 'pgsql'), 10, 1_000_000)->rows[0][0]);
+        ->execute($db, $sql, StatementClassifier::classify($sql, 'pgsql'), 10, 1_000_000));
 
-    expect($value)->toBe($expected);
+    expect($value->rows[0][0])->toBe($expected)->and($value->sql)->toBe($sql);
 
     // The same text through the non-cursor path (a write classification) must escape identically.
     $plain = app(ConnectionFactory::class)->using($saved, fn (Connection $db) => app(DriverRegistry::class)->for($saved->driver)
-        ->execute($db, $sql, StatementClassifier::classify('update x set a=1 where b', 'pgsql'), 10, 1_000_000)->rows[0][0]);
-    expect($plain)->toBe($expected);
+        ->execute($db, $sql, StatementClassifier::classify('update x set a=1 where b', 'pgsql'), 10, 1_000_000));
+    expect($plain->rows[0][0])->toBe($expected)->and($plain->sql)->toBe($sql);
 })->with([
     'jsonb ?' => ['select \'{"a":1}\'::jsonb ? \'a\' as has_a', true],
     'jsonb ?|' => ['select \'{"a":1}\'::jsonb ?| array[\'a\',\'b\'] as x', true],
+    'array slice' => ['select (array[1,2,3])[lo:hi] from (select 1 as lo, 2 as hi) s', '{1,2}'],
+    'cast stays' => ['select \'{"a":1}\'::jsonb as j', '{"a": 1}'],
     'string literal' => ['select \'?\' as q', '?'],
     'comment and quoted identifier' => ["select 1 as \"a?b\" -- why?\n", 1],
 ]);

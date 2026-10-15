@@ -82,17 +82,31 @@ class PostgresDriver implements Driver
         return $config;
     }
 
-    /** Doubles every "?" outside strings, quoted identifiers, comments and dollar quotes (PDO pgsql escape). */
-    private function escapeQuestionMarks(string $sql): string
+    /**
+     * Native prepares treat "?" and ":name" as placeholders. Outside strings, quoted identifiers, comments and
+     * dollar quotes, "?" becomes "??" (PDO pgsql escape) and a ":" starting a name (array slice) gets a space.
+     */
+    protected function prepareSql(string $sql): string
     {
-        if (! str_contains($sql, '?')) {
+        if (! str_contains($sql, '?') && ! str_contains($sql, ':')) {
             return $sql;
         }
+        $tokens = SqlLexer::tokenize($sql, 'pgsql');
         $out = '';
         $last = 0;
-        foreach (SqlLexer::tokenize($sql, 'pgsql') as $token) {
-            if ($token->type === 'punct' && $token->value === '?') {
-                $out .= substr($sql, $last, $token->start - $last).'??';
+        foreach ($tokens as $k => $token) {
+            if ($token->type !== 'punct') {
+                continue;
+            }
+            $replacement = null;
+            if ($token->value === '?') {
+                $replacement = '??';
+            } elseif ($token->value === ':' && ($sql[$token->start - 1] ?? '') !== ':' && ($sql[$token->end] ?? '') !== ':'
+                && isset($tokens[$k + 1]) && $tokens[$k + 1]->type === 'word' && $tokens[$k + 1]->start === $token->end) {
+                $replacement = ': ';
+            }
+            if ($replacement !== null) {
+                $out .= substr($sql, $last, $token->start - $last).$replacement;
                 $last = $token->end;
             }
         }
@@ -107,9 +121,6 @@ class PostgresDriver implements Driver
 
     public function execute(Connection $db, string $sql, Classification $classification, int $maxRows, int $maxBytes): StatementResult
     {
-        // Native prepares rewrite "?" placeholders; jsonb operators need them literal.
-        $sql = $this->escapeQuestionMarks($sql);
-
         // The classifier's keyword is comment-free, unlike the raw text.
         if ($classification->kind !== 'read' || ! in_array($classification->keyword, ['SELECT', 'WITH', 'VALUES', 'TABLE'], true)) {
             return $this->executePlain($db, $sql, $classification, $maxRows, $maxBytes);
@@ -126,7 +137,7 @@ class PostgresDriver implements Driver
         }
         try {
             try {
-                $pdo->prepare(self::CURSOR_PREFIX.$sql)->execute();
+                $pdo->prepare(self::CURSOR_PREFIX.$this->prepareSql($sql))->execute();
             } catch (PDOException $e) {
                 throw new OffsetQueryException($e, strlen(self::CURSOR_PREFIX));
             }
