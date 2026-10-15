@@ -53,6 +53,14 @@ it('rejects more than 10000 entries', function () {
         ->assertUnprocessable()->assertJsonValidationErrors('positions');
 });
 
+it('accepts a layout for every object when the schema cap is above 10000', function () {
+    config(['dbsuperb.schema_max_objects' => 10001]);
+    $positions = array_map(fn ($i) => ['table' => "t{$i}", 'x' => 0, 'y' => 0, 'pinned' => false], range(0, 10000));
+
+    $this->actingAs($this->user)->putJson(route('api.layout.update', $this->connection), ['positions' => $positions])
+        ->assertOk();
+});
+
 it('forbids other users', function () {
     $other = User::factory()->create();
 
