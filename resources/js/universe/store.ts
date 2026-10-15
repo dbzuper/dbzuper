@@ -26,6 +26,8 @@ type State = {
     historyOpen: boolean;
     dockHeight: number;
     dataFilter: DataFilter | null;
+    /** Bumped after every SQL run, so views of the history can reload. */
+    runCount: number;
 };
 
 type Actions = {
@@ -45,6 +47,7 @@ type Actions = {
     setDockHeight: (px: number) => void;
     openDataFilter: (table: string, column: string, value: string) => void;
     clearDataFilter: () => void;
+    bumpRuns: () => void;
     reset: () => void;
 };
 
@@ -66,6 +69,7 @@ const initial: State = {
     historyOpen: false,
     dockHeight: 320,
     dataFilter: null,
+    runCount: 0,
 };
 
 export const useWorkspace = create<WorkspaceState>()((set, get) => ({
@@ -95,8 +99,10 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
         set({
             selected: table,
             inspectorTab: 'data',
+            historyOpen: false,
             dataFilter: { table, column, value },
         }),
     clearDataFilter: () => set({ dataFilter: null }),
+    bumpRuns: () => set({ runCount: get().runCount + 1 }),
     reset: () => set({ ...initial }),
 }));

@@ -256,8 +256,8 @@ export default function SqlDock({
     );
 
     const runTarget = useCallback(
-        (target: RunTarget | null) =>
-            execute(
+        async (target: RunTarget | null) => {
+            await execute(
                 target,
                 (signal) =>
                     runWithConfirmations({
@@ -268,7 +268,10 @@ export default function SqlDock({
                         confirm,
                     }),
                 true,
-            ),
+            );
+            // The run may have added history entries.
+            useWorkspace.getState().bumpRuns();
+        },
         [confirm, connection.id, execute, maxRows],
     );
 

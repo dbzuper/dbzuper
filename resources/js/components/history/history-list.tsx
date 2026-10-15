@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { formatSnapshotAge } from '@/lib/format';
 import { historyApi } from '@/lib/history-api';
 import type { HistoryEntry, HistoryParams } from '@/lib/history-api';
+import { useWorkspace } from '@/universe/store';
 
 type StatusFilter = 'all' | 'ok' | 'error';
 
@@ -40,6 +41,8 @@ export function HistoryList({
     const [clearing, setClearing] = useState(false);
     const [reload, setReload] = useState(0);
     const controller = useRef<AbortController | null>(null);
+    // In the workspace, every finished run may have added entries.
+    const runs = useWorkspace((s) => (connectionId === null ? 0 : s.runCount));
 
     useEffect(() => {
         const id = setTimeout(() => setQ(search.trim()), 250);
@@ -79,7 +82,7 @@ export function HistoryList({
                 setLoading(false);
             });
         return () => ctl.abort();
-    }, [connectionId, params, reload]);
+    }, [connectionId, params, reload, runs]);
 
     const loadMore = () => {
         if (next === null) return;

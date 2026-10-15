@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HistoryList } from '@/components/history/history-list';
 import type { HistoryEntry } from '@/lib/history-api';
+import { useWorkspace } from '@/universe/store';
 
 const entry = (over: Partial<HistoryEntry> = {}): HistoryEntry => ({
     id: 1,
@@ -190,5 +191,24 @@ describe('HistoryList', () => {
         expect(
             screen.getByRole('button', { name: 'Confirm clear' }),
         ).toBeDisabled();
+    });
+
+    it('reloads after a run finishes in workspace mode, but not on the global page', async () => {
+        const { unmount } = render(
+            <HistoryList connectionId={7} onOpen={vi.fn()} />,
+        );
+        await flush();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        act(() => useWorkspace.getState().bumpRuns());
+        await flush();
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        unmount();
+
+        render(<HistoryList connectionId={null} onOpen={vi.fn()} />);
+        await flush();
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        act(() => useWorkspace.getState().bumpRuns());
+        await flush();
+        expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 });

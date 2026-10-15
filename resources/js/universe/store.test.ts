@@ -68,6 +68,12 @@ describe('data filter', () => {
         });
     });
 
+    it('openDataFilter closes the history panel so the Data tab shows', () => {
+        s().setHistoryOpen(true);
+        s().openDataFilter('users', 'id', '2');
+        expect(s().historyOpen).toBe(false);
+    });
+
     it('clearDataFilter and reset drop the filter', () => {
         s().openDataFilter('users', 'id', '2');
         s().clearDataFilter();
