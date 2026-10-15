@@ -49,6 +49,8 @@ export interface SchemaSnapshot {
     hash: string;
     tables: TableSchema[];
     relationships: RelationshipSchema[];
+    truncated?: boolean;
+    total_objects?: number;
 }
 
 export interface SchemaResponse {
@@ -62,4 +64,27 @@ export interface DbErrorPayload {
     message: string;
     sqlstate: string | null;
     reason: string | null;
+}
+
+export type Dialect = 'mysql' | 'mariadb' | 'pgsql' | 'sqlite';
+
+export interface LayoutPositionEntry {
+    table: string;
+    x: number;
+    y: number;
+    pinned: boolean;
+}
+
+export interface LayoutResponse {
+    positions: LayoutPositionEntry[];
+}
+
+export interface SampleResponse {
+    columns: string[];
+    rows: (string | number | boolean | null)[][];
+    limit: number;
+}
+
+export interface DdlResponse {
+    ddl: string | null;
 }
