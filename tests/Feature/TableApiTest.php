@@ -65,3 +65,28 @@ it('returns a normalized error when the database is gone', function () {
     $this->actingAs($this->user)->getJson(tableUrl($this->connection, 'users', 'sample'))
         ->assertStatus(422)->assertJsonPath('error.reason', 'sqlite_missing');
 });
+
+it('bounds large text and binary values in SQL', function () {
+    $db = DB::connectUsing('fixture', ['driver' => 'sqlite', 'database' => $this->connection->database, 'prefix' => '', 'foreign_key_constraints' => true], force: true);
+    $db->statement("insert into users (name, email, profile, avatar) values ('Big', 'big@example.test', ?, x'".str_repeat('ab', 3000)."')", [str_repeat('p', 5000)]);
+    DB::purge('fixture');
+
+    $response = $this->actingAs($this->user)->getJson(tableUrl($this->connection, 'users', 'sample'))->assertOk();
+    $row = collect($response->json('rows'))->firstWhere(2, 'Big');
+
+    expect($row[4])->toBe(str_repeat('p', 200).'…')
+        ->and($row[5])->toBe('[binary 3000 bytes]');
+});
+
+it('handles table names containing dots', function () {
+    $db = DB::connectUsing('fixture', ['driver' => 'sqlite', 'database' => $this->connection->database, 'prefix' => '', 'foreign_key_constraints' => true], force: true);
+    $db->statement('create table "my.table" ("a.b" text)');
+    $db->statement('insert into "my.table" ("a.b") values (?)', ['x']);
+    DB::purge('fixture');
+
+    $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/schema/refresh")->assertOk();
+
+    $this->actingAs($this->user)->getJson(tableUrl($this->connection, 'my.table', 'sample'))
+        ->assertOk()->assertJsonPath('columns', ['a.b'])->assertJsonPath('rows.0.0', 'x');
+    expect($this->actingAs($this->user)->getJson(tableUrl($this->connection, 'my.table', 'ddl'))->assertOk()->json('ddl'))->toContain('my.table');
+});

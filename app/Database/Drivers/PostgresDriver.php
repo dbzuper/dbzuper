@@ -79,4 +79,21 @@ class PostgresDriver implements Driver
     {
         return null; // PostgreSQL has no native SHOW CREATE; the UI generates an approximation.
     }
+
+    public function quoteIdentifier(string $name): string
+    {
+        return '"'.str_replace('"', '""', $name).'"';
+    }
+
+    public function sampleColumn(Connection $db, string $column, string $typeName): \Illuminate\Contracts\Database\Query\Expression|string
+    {
+        $q = $this->quoteIdentifier($column);
+        $sql = match (\App\Database\ColumnKind::classify($typeName)) {
+            \App\Database\ColumnKind::Text => "left({$q}::text, ".(\App\Database\CellValue::MAX_CHARS + 1).')',
+            \App\Database\ColumnKind::Binary => "CASE WHEN {$q} IS NULL THEN NULL ELSE '[binary ' || octet_length({$q}) || ' bytes]' END",
+            default => $q,
+        };
+
+        return $db->raw("{$sql} AS {$q}");
+    }
 }

@@ -49,4 +49,21 @@ class SqliteDriver implements Driver
     {
         return $db->selectOne("select sql from sqlite_master where name = ? and type in ('table', 'view')", [$table])?->sql;
     }
+
+    public function quoteIdentifier(string $name): string
+    {
+        return '"'.str_replace('"', '""', $name).'"';
+    }
+
+    public function sampleColumn(Connection $db, string $column, string $typeName): \Illuminate\Contracts\Database\Query\Expression|string
+    {
+        $q = $this->quoteIdentifier($column);
+        $sql = match (\App\Database\ColumnKind::classify($typeName)) {
+            \App\Database\ColumnKind::Text => "substr({$q}, 1, ".(\App\Database\CellValue::MAX_CHARS + 1).')',
+            \App\Database\ColumnKind::Binary => "CASE WHEN {$q} IS NULL THEN NULL ELSE '[binary ' || length({$q}) || ' bytes]' END",
+            default => $q,
+        };
+
+        return $db->raw("{$sql} AS {$q}");
+    }
 }

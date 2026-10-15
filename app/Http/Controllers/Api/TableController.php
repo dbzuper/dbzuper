@@ -32,7 +32,12 @@ class TableController extends Controller
         $info = $this->tableFromSnapshot($connection, $table);
         $columns = array_column($info['columns'], 'name');
 
-        $rows = $this->run($connection, fn (Connection $db) => $db->table($info['name'])->limit(self::SAMPLE_LIMIT)->get()->all());
+        $driver = $this->drivers->for($connection->driver);
+        $rows = $this->run($connection, fn (Connection $db) => $db
+            ->table($db->raw($driver->quoteIdentifier($info['name'])))
+            ->select(array_map(fn (array $c) => $driver->sampleColumn($db, $c['name'], strtolower((string) ($c['type_name'] ?? ''))), $info['columns']))
+            ->limit(self::SAMPLE_LIMIT)
+            ->get()->all());
 
         return response()->json([
             'columns' => $columns,

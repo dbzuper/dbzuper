@@ -65,8 +65,25 @@ class MySqlDriver implements Driver
     public function ddl(Connection $db, string $table, string $kind): ?string
     {
         $isView = $kind === 'view';
-        $row = (array) $db->selectOne(($isView ? 'SHOW CREATE VIEW ' : 'SHOW CREATE TABLE ').$db->getQueryGrammar()->wrapTable($table));
+        $row = (array) $db->selectOne(($isView ? 'SHOW CREATE VIEW ' : 'SHOW CREATE TABLE ').$this->quoteIdentifier($table));
 
         return $row[$isView ? 'Create View' : 'Create Table'] ?? null;
+    }
+
+    public function quoteIdentifier(string $name): string
+    {
+        return '`'.str_replace('`', '``', $name).'`';
+    }
+
+    public function sampleColumn(Connection $db, string $column, string $typeName): \Illuminate\Contracts\Database\Query\Expression|string
+    {
+        $q = $this->quoteIdentifier($column);
+        $sql = match (\App\Database\ColumnKind::classify($typeName)) {
+            \App\Database\ColumnKind::Text => "LEFT({$q}, ".(\App\Database\CellValue::MAX_CHARS + 1).')',
+            \App\Database\ColumnKind::Binary => "CASE WHEN {$q} IS NULL THEN NULL ELSE CONCAT('[binary ', LENGTH({$q}), ' bytes]') END",
+            default => $q,
+        };
+
+        return $db->raw("{$sql} AS {$q}");
     }
 }

@@ -12,6 +12,9 @@ it('presents values safely for JSON', function (mixed $in, mixed $out) {
     'short string' => ['hello', 'hello'],
     'long string' => [str_repeat('a', 250), str_repeat('a', 200).'…'],
     'multibyte' => [str_repeat('é', 201), str_repeat('é', 200).'…'],
+    'nan' => [NAN, 'NaN'],
+    'inf' => [INF, 'Infinity'],
+    '-inf' => [-INF, '-Infinity'],
     'binary' => ["\xff\xfe\x00\x01", '[binary 4 bytes]'],
 ]);
 

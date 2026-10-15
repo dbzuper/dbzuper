@@ -23,4 +23,10 @@ interface Driver
 
     /** Native CREATE statement for a table or view, or null when the engine has none. */
     public function ddl(Connection $db, string $table, string $kind): ?string;
+
+    /** Select expression, aliased to the column name, that bounds a value's size in SQL for sampling. */
+    public function sampleColumn(Connection $db, string $column, string $typeName): \Illuminate\Contracts\Database\Query\Expression|string;
+
+    /** Quote one identifier as a single name (no splitting on dots). */
+    public function quoteIdentifier(string $name): string;
 }

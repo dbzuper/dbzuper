@@ -12,6 +12,9 @@ final class CellValue
         if (is_resource($value)) {
             $value = stream_get_contents($value);
         }
+        if (is_float($value) && ! is_finite($value)) {
+            return is_nan($value) ? 'NaN' : ($value > 0 ? 'Infinity' : '-Infinity');
+        }
         if ($value === null || is_bool($value) || is_int($value) || is_float($value)) {
             return $value;
         }
