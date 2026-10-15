@@ -39,6 +39,17 @@ const rel = (
     name: null,
 });
 
+const snap = (tables: TableSchema[], relationships: RelationshipSchema[]) =>
+    ({
+        driver: 'sqlite',
+        database: 'd',
+        schema: null,
+        generated_at: '',
+        hash: '',
+        tables,
+        relationships,
+    }) as SchemaSnapshot;
+
 const s = {
     driver: 'sqlite',
     database: 'd',
@@ -122,5 +133,78 @@ describe('buildTrailSql', () => {
             edges: b.trail.edges.map((e) => ({ ...e, rel: 'zzz' })),
         };
         expect(buildTrailSql(bad, b.added[0], s, 'sqlite')).toBeNull();
+    });
+
+    it('decides bare vs quoted literals from the column type', () => {
+        const t = snap(
+            [
+                table('texts', ['code'], { code: 'varchar(10)' }),
+                table('big', ['id'], { id: 'bigint' }),
+                table('money', ['amt'], { amt: 'numeric(10,2)' }),
+                table('unk', ['k'], { k: 'citext' }),
+                table('iv', ['v'], { v: 'interval' }),
+            ],
+            [],
+        );
+        const sql = (tb: string, key: Record<string, string>) => {
+            const r = openRoot(tb, key);
+            return buildTrailSql(r, r.nodes[0].id, t, 'pgsql');
+        };
+        expect(sql('texts', { code: '1' })).toContain(`= '1'`);
+        expect(sql('texts', { code: '007' })).toContain(`= '007'`);
+        expect(sql('big', { id: '9007199254740993' })).toContain(
+            '= 9007199254740993',
+        );
+        expect(sql('money', { amt: '1.50' })).toContain('= 1.50');
+        expect(sql('unk', { k: '5' })).toContain(`= '5'`);
+        expect(sql('iv', { v: '5' })).toContain(`= '5'`);
+    });
+
+    it('returns null when the relationship does not connect the hop tables', () => {
+        const root = openRoot('users', { id: 2 });
+        const wrongDir = addRelated(root, root.nodes[0].id, 'o', 'out', [
+            { table: 'orders', key: { id: 7 } },
+        ]);
+        expect(
+            buildTrailSql(wrongDir.trail, wrongDir.added[0], s, 'sqlite'),
+        ).toBeNull();
+        const wrongTable = addRelated(root, root.nodes[0].id, 'i', 'in', [
+            { table: 'orders', key: { id: 7 } },
+        ]);
+        expect(
+            buildTrailSql(wrongTable.trail, wrongTable.added[0], s, 'sqlite'),
+        ).toBeNull();
+    });
+
+    it('handles a self-referential parent to child hop', () => {
+        const root = openRoot('categories', { id: 5 });
+        const a = addRelated(root, root.nodes[0].id, 'c', 'in', [
+            { table: 'categories', key: { id: 9 } },
+        ]);
+        expect(buildTrailSql(a.trail, a.added[0], s, 'sqlite')).toContain(
+            'JOIN "categories" AS t1 ON t1."parent_id" = t0."id"',
+        );
+    });
+
+    it('joins composite foreign keys with AND and backticks for mysql', () => {
+        const t = snap(
+            [
+                table('products', ['product_id', 'tag']),
+                table('variants', ['id']),
+            ],
+            [
+                rel('v', 'variants', ['product_id', 'tag'], 'products', [
+                    'product_id',
+                    'tag',
+                ]),
+            ],
+        );
+        const root = openRoot('products', { product_id: 1, tag: 'a' });
+        const a = addRelated(root, root.nodes[0].id, 'v', 'in', [
+            { table: 'variants', key: { id: 3 } },
+        ]);
+        expect(buildTrailSql(a.trail, a.added[0], t, 'mysql')).toContain(
+            'JOIN `variants` AS t1 ON t1.`product_id` = t0.`product_id` AND t1.`tag` = t0.`tag`',
+        );
     });
 });

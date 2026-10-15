@@ -3,6 +3,8 @@ import type { Dialect, SchemaSnapshot } from '@/types/schema';
 import { pathTo, type Trail } from './trail';
 
 const NUMERIC = /^-?(0|[1-9]\d*)(\.\d+)?$/;
+const NUMERIC_TYPE =
+    /^((tiny|small|medium|big)?int|integer|serial|bigserial|smallserial|numeric|decimal|real|double|float)(?![a-z])/i;
 const BOOLEAN_TYPE = /^(bool|boolean|tinyint\(1\))$/i;
 
 function literal(
@@ -10,17 +12,19 @@ function literal(
     dialect: Dialect,
     columnType: string | undefined,
 ): string {
-    if (typeof value === 'number') return String(value);
+    const type = columnType?.trim();
     if (
         (value === 'true' || value === 'false') &&
-        columnType !== undefined &&
-        BOOLEAN_TYPE.test(columnType.trim())
+        type !== undefined &&
+        BOOLEAN_TYPE.test(type)
     ) {
         if (dialect === 'pgsql') return value === 'true' ? 'TRUE' : 'FALSE';
         return value === 'true' ? '1' : '0';
     }
-    if (NUMERIC.test(value)) return value;
-    const escaped = value.replaceAll("'", "''");
+    const text = String(value);
+    if (type !== undefined && NUMERIC_TYPE.test(type) && NUMERIC.test(text))
+        return text;
+    const escaped = text.replaceAll("'", "''");
     return `'${dialect === 'mysql' || dialect === 'mariadb' ? escaped.replaceAll('\\', '\\\\') : escaped}'`;
 }
 
@@ -48,6 +52,11 @@ export function buildTrailSql(
         const edge = path.edges[i - 1];
         const rel = snapshot.relationships.find((r) => r.id === edge.rel);
         if (!rel) return null;
+        const [prev, cur] = [path.nodes[i - 1].table, path.nodes[i].table];
+        const [childTable, parentTable] =
+            edge.dir === 'out' ? [prev, cur] : [cur, prev];
+        if (rel.from_table !== childTable || rel.to_table !== parentTable)
+            return null;
         const [mine, theirs] =
             edge.dir === 'out'
                 ? [rel.to_columns, rel.from_columns]

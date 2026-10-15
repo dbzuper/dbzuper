@@ -122,7 +122,15 @@ export function decodeTrail(
                 return null;
             const from = kept[item[0]];
             const to = kept[item[1]];
-            if (from && to)
+            const rel = snapshot.relationships.find((r) => r.id === item[2]);
+            const [child, parent] = item[3] === 'out' ? [from, to] : [to, from];
+            if (
+                from &&
+                to &&
+                rel &&
+                rel.from_table === child?.table &&
+                rel.to_table === parent?.table
+            )
                 edges.push({
                     from: from.id,
                     to: to.id,
@@ -140,13 +148,29 @@ export function decodeTrail(
             }
         }
         if (nodes.length > MAX_NODES) return null;
+        // Only nodes reachable from the root through valid edges survive.
+        const reach = new Set<string>(nodes.length > 0 ? [nodes[0].id] : []);
+        for (let grew = true; grew;) {
+            grew = false;
+            for (const edge of edges) {
+                if (reach.has(edge.from) && !reach.has(edge.to)) {
+                    reach.add(edge.to);
+                    grew = true;
+                }
+            }
+        }
+        const finalNodes = nodes.filter((node) => reach.has(node.id));
+        const finalEdges = edges.filter(
+            (edge) => reach.has(edge.from) && reach.has(edge.to),
+        );
         const selectedNode = s >= 0 ? kept[s] : null;
-        const selected = selectedNode
-            ? selectedNode.id
-            : (nodes[0]?.id ?? null);
+        const selected =
+            selectedNode && reach.has(selectedNode.id)
+                ? selectedNode.id
+                : (finalNodes[0]?.id ?? null);
         return {
-            trail: { nodes, edges, selected },
-            dropped: kept.filter((k) => k === null).length,
+            trail: { nodes: finalNodes, edges: finalEdges, selected },
+            dropped: n.length - finalNodes.length,
         };
     } catch {
         return null;

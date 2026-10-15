@@ -67,4 +67,17 @@ describe('record heuristics', () => {
             'c',
         ]);
     });
+
+    it('never prints undefined or null for missing primary key parts', () => {
+        expect(recordTitle(cols(['id', 'int']), [1], ['id', 'gone'])).toBe(
+            '1 · —',
+        );
+        expect(
+            recordTitle(
+                cols(['a', 'int'], ['b', 'int']),
+                [null, 2],
+                ['a', 'b'],
+            ),
+        ).toBe('— · 2');
+    });
 });

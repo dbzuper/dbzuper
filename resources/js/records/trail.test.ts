@@ -121,4 +121,19 @@ describe('trail', () => {
         expect(pos2.get(b.added[0])).toEqual({ x: 360, y: 450 });
         expect(placements(structuredClone(b.trail))).toEqual(pos2);
     });
+
+    it('ignores an unknown source and counts duplicate targets once', () => {
+        const root = openRoot('users', { id: 1 });
+        const bad = addRelated(root, 'ghost', 'r', 'in', [t('orders', 1)]);
+        expect(bad.trail).toEqual(root);
+        expect(bad.added).toEqual([]);
+        expect(bad.refused).toBe(0);
+        const dup = addRelated(root, root.nodes[0].id, 'r', 'in', [
+            t('orders', 1),
+            t('orders', 1),
+        ]);
+        expect(dup.trail.nodes).toHaveLength(2);
+        expect(dup.trail.edges).toHaveLength(1);
+        expect(dup.added).toHaveLength(1);
+    });
 });

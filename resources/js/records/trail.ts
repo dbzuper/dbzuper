@@ -46,16 +46,18 @@ export function addRelated(
     dir: 'out' | 'in',
     targets: { table: string; key: RecordKeyValues }[],
 ) {
+    if (!trail.nodes.some((n) => n.id === fromId))
+        return { trail, added: [] as string[], refused: 0 };
     const nodes = [...trail.nodes];
     const edges = [...trail.edges];
     const ids = new Set(nodes.map((n) => n.id));
     const added: string[] = [];
-    let refused = 0;
+    const refusedIds = new Set<string>();
     for (const t of targets) {
         const id = nodeId(t.table, t.key);
         if (!ids.has(id)) {
             if (nodes.length >= MAX_NODES) {
-                refused++;
+                refusedIds.add(id);
                 continue;
             }
             nodes.push({ id, table: t.table, key: t.key });
@@ -73,7 +75,11 @@ export function addRelated(
         )
             edges.push({ from: fromId, to: id, rel, dir });
     }
-    return { trail: { ...trail, nodes, edges }, added, refused };
+    return {
+        trail: { ...trail, nodes, edges },
+        added,
+        refused: refusedIds.size,
+    };
 }
 
 export const select = (trail: Trail, id: string): Trail => ({

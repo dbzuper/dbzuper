@@ -23,7 +23,10 @@ export function recordTitle(
         if (v !== null && v !== undefined && String(v) !== '') return String(v);
     }
     return primaryKey
-        .map((k) => String(values[columns.findIndex((c) => c.name === k)]))
+        .map((k) => {
+            const v = values[columns.findIndex((c) => c.name === k)];
+            return v === null || v === undefined ? '—' : String(v);
+        })
         .join(' · ');
 }
 
