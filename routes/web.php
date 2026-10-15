@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\LayoutController;
 use App\Http\Controllers\Api\QueryController;
 use App\Http\Controllers\Api\SchemaController;
 use App\Http\Controllers\Api\TableController;
+use App\Http\Controllers\Api\TableRowsController;
 use App\Http\Controllers\ConnectionController;
 use App\Http\Controllers\ConnectionTestController;
 use App\Http\Controllers\HistoryPageController;
@@ -34,6 +35,7 @@ Route::middleware('auth')->group(function () {
         Route::put('layout', [LayoutController::class, 'update'])->name('layout.update');
         Route::get('tables/{table}/sample', [TableController::class, 'sample'])->where('table', '.+')->name('tables.sample');
         Route::get('tables/{table}/ddl', [TableController::class, 'ddl'])->where('table', '.+')->name('tables.ddl');
+        Route::post('tables/{table}/rows', TableRowsController::class)->where('table', '.+')->name('tables.rows');
         Route::post('query', [QueryController::class, 'run'])->name('query.run');
         Route::post('query/explain', [QueryController::class, 'explain'])->name('query.explain');
         Route::get('history', [HistoryController::class, 'index'])->name('history.index');

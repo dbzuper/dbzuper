@@ -1,0 +1,80 @@
+<?php
+
+use App\Enums\DriverName;
+use App\Models\SavedConnection;
+use App\Models\User;
+use App\Support\Demo\CommerceSchema;
+use Illuminate\Support\Facades\DB;
+use Tests\Support\Engines;
+
+beforeEach(function () {
+    $this->user = User::factory()->create();
+    $path = Engines::sqlitePath();
+    $db = DB::connectUsing('fixture', ['driver' => 'sqlite', 'database' => $path, 'prefix' => '', 'foreign_key_constraints' => true], force: true);
+    CommerceSchema::create($db);
+    $db->table('audit_log')->update(['payload' => str_repeat('x', 5000)]);
+    DB::purge('fixture');
+    $this->connection = SavedConnection::factory()->for($this->user)->create([
+        'driver' => DriverName::Sqlite, 'host' => null, 'port' => null, 'database' => $path, 'username' => null, 'password' => null,
+    ]);
+});
+
+afterEach(fn () => Engines::resetSqlite());
+
+it('filters, sorts and paginates with bound parameters', function () {
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'orders']), [
+        'filters' => [['column' => 'status', 'op' => 'eq', 'value' => 'paid']],
+        'sort' => ['column' => 'id', 'direction' => 'desc'],
+    ])->assertOk();
+
+    expect($res->json('rows'))->toHaveCount(1)
+        ->and($res->json('columns.*.name'))->toBe(['id', 'user_id', 'status', 'created_at'])
+        ->and($res->json('has_more'))->toBeFalse()
+        ->and($res->json('sql'))->toContain("'paid'");
+});
+
+it('supports every operator', function (array $filter, int $expected) {
+    $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['filters' => [$filter]])
+        ->assertOk()->assertJsonCount($expected, 'rows');
+})->with([
+    [['column' => 'id', 'op' => 'eq', 'value' => '1'], 1],
+    [['column' => 'id', 'op' => 'neq', 'value' => '1'], 2],
+    [['column' => 'id', 'op' => 'lt', 'value' => '2'], 1],
+    [['column' => 'id', 'op' => 'lte', 'value' => '2'], 2],
+    [['column' => 'id', 'op' => 'gt', 'value' => '2'], 1],
+    [['column' => 'id', 'op' => 'gte', 'value' => '2'], 2],
+    [['column' => 'name', 'op' => 'contains', 'value' => 'an'], 1],
+    [['column' => 'email', 'op' => 'starts_with', 'value' => 'ad'], 1],
+    [['column' => 'email', 'op' => 'ends_with', 'value' => 'example.com'], 3],
+    [['column' => 'profile', 'op' => 'is_null'], 1],
+    [['column' => 'profile', 'op' => 'is_not_null'], 2],
+    [['column' => 'name', 'op' => 'contains', 'value' => '%'], 0],
+    [['column' => 'name', 'op' => 'contains', 'value' => '!'], 0],
+]);
+
+it('paginates with has_more', function () {
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['per_page' => 2, 'page' => 1])->assertOk();
+    expect($res->json('rows'))->toHaveCount(2)->and($res->json('has_more'))->toBeTrue();
+    $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['per_page' => 2, 'page' => 2])
+        ->assertJsonCount(1, 'rows')->assertJsonPath('has_more', false);
+});
+
+it('rejects unknown columns and tables', function () {
+    $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['filters' => [['column' => 'nope', 'op' => 'eq', 'value' => '1']]])
+        ->assertUnprocessable()->assertJsonValidationErrors('filters.0.column');
+    $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['sort' => ['column' => 'id; drop', 'direction' => 'asc']])
+        ->assertUnprocessable();
+    $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'nope']))->assertNotFound();
+});
+
+it('bounds long text cells to the result cap', function () {
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'audit_log']))->assertOk();
+
+    expect($res->json('rows.0.1'))->toBe(str_repeat('x', 4000).'…');
+});
+
+it('keeps the sample endpoint cell cap unchanged', function () {
+    $res = $this->actingAs($this->user)->getJson(route('api.tables.sample', [$this->connection, 'audit_log']))->assertOk();
+
+    expect($res->json('rows.0.1'))->toBe(str_repeat('x', 200).'…');
+});

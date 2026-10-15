@@ -207,11 +207,16 @@ class PostgresDriver implements Driver
         return '"'.str_replace('"', '""', $name).'"';
     }
 
-    public function sampleColumn(Connection $db, string $column, string $typeName): Expression|string
+    public function likeColumn(string $quotedColumn): string
+    {
+        return 'CAST('.$quotedColumn.' AS TEXT)';
+    }
+
+    public function sampleColumn(Connection $db, string $column, string $typeName, int $maxChars = CellValue::MAX_CHARS): Expression|string
     {
         $q = $this->quoteIdentifier($column);
         $sql = match (ColumnKind::classify($typeName)) {
-            ColumnKind::Text => "left({$q}::text, ".(CellValue::MAX_CHARS + 1).')',
+            ColumnKind::Text => "left({$q}::text, ".($maxChars + 1).')',
             ColumnKind::Binary => "CASE WHEN {$q} IS NULL THEN NULL ELSE '[binary ' || octet_length({$q}) || ' bytes]' END",
             default => $q,
         };

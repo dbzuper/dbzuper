@@ -2,6 +2,7 @@
 
 namespace App\Database\Contracts;
 
+use App\Database\CellValue;
 use App\Database\Query\StatementResult;
 use App\Database\Sql\Classification;
 use App\Enums\DriverName;
@@ -37,7 +38,10 @@ interface Driver
     public function ddl(Connection $db, string $table, string $kind): ?string;
 
     /** Select expression, aliased to the column name, that bounds a value's size in SQL for sampling. */
-    public function sampleColumn(Connection $db, string $column, string $typeName): Expression|string;
+    public function sampleColumn(Connection $db, string $column, string $typeName, int $maxChars = CellValue::MAX_CHARS): Expression|string;
+
+    /** SQL expression usable on the left of LIKE for any column type. */
+    public function likeColumn(string $quotedColumn): string;
 
     /** Quote one identifier as a single name (no splitting on dots). */
     public function quoteIdentifier(string $name): string;

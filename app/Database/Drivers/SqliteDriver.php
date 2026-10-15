@@ -70,11 +70,16 @@ class SqliteDriver implements Driver
         return '"'.str_replace('"', '""', $name).'"';
     }
 
-    public function sampleColumn(Connection $db, string $column, string $typeName): Expression|string
+    public function likeColumn(string $quotedColumn): string
+    {
+        return $quotedColumn;
+    }
+
+    public function sampleColumn(Connection $db, string $column, string $typeName, int $maxChars = CellValue::MAX_CHARS): Expression|string
     {
         $q = $this->quoteIdentifier($column);
         $sql = match (ColumnKind::classify($typeName)) {
-            ColumnKind::Text => "substr({$q}, 1, ".(CellValue::MAX_CHARS + 1).')',
+            ColumnKind::Text => "substr({$q}, 1, ".($maxChars + 1).')',
             ColumnKind::Binary => "CASE WHEN {$q} IS NULL THEN NULL ELSE '[binary ' || length({$q}) || ' bytes]' END",
             default => $q,
         };

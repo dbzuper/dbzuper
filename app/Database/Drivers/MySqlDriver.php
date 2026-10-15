@@ -125,11 +125,16 @@ class MySqlDriver implements Driver
         return '`'.str_replace('`', '``', $name).'`';
     }
 
-    public function sampleColumn(Connection $db, string $column, string $typeName): Expression|string
+    public function likeColumn(string $quotedColumn): string
+    {
+        return $quotedColumn;
+    }
+
+    public function sampleColumn(Connection $db, string $column, string $typeName, int $maxChars = CellValue::MAX_CHARS): Expression|string
     {
         $q = $this->quoteIdentifier($column);
         $sql = match (ColumnKind::classify($typeName)) {
-            ColumnKind::Text => "LEFT({$q}, ".(CellValue::MAX_CHARS + 1).')',
+            ColumnKind::Text => "LEFT({$q}, ".($maxChars + 1).')',
             ColumnKind::Binary => "CASE WHEN {$q} IS NULL THEN NULL ELSE CONCAT('[binary ', LENGTH({$q}), ' bytes]') END",
             default => $q,
         };
