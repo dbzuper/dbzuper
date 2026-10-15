@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\HistoryController;
 use App\Http\Controllers\Api\LayoutController;
 use App\Http\Controllers\Api\QueryController;
+use App\Http\Controllers\Api\RecordController;
 use App\Http\Controllers\Api\SchemaController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\TableRowsController;
@@ -41,6 +42,7 @@ Route::middleware('auth')->group(function () {
         Route::get('history', [HistoryController::class, 'index'])->name('history.index');
         Route::delete('history', [HistoryController::class, 'clear'])->name('history.clear');
         Route::get('history/{entry}', [HistoryController::class, 'show'])->whereNumber('entry')->name('history.show');
+        Route::get('records/{table}', [RecordController::class, 'show'])->where('table', '.+')->name('records.show');
     });
 });
 
