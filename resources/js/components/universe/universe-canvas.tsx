@@ -27,6 +27,7 @@ import type { UniverseModel } from '@/universe/use-universe-model';
 import { zoomLevelFor } from '@/universe/zoom';
 import { ClusterLabels } from './cluster-labels';
 import { Legend } from './legend';
+import { TableCards } from './table-cards';
 
 type Props = {
     model: UniverseModel;
@@ -214,6 +215,7 @@ export function UniverseCanvas({
                     graph={model.graph}
                 />
             )}
+            {sigma && <TableCards sigma={sigma} snapshot={snapshot} />}
             <Legend />
         </div>
     );
