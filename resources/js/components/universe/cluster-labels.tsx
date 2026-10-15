@@ -73,11 +73,15 @@ export function ClusterLabels({ sigma, clusters, graph }: Props) {
                     className="absolute top-0 left-0 rounded-md px-2 py-1 text-center transition-opacity duration-200 motion-reduce:transition-none"
                     style={{ opacity: zoomLevel === 'galaxy' ? 1 : 0 }}
                 >
-                    <div
-                        className="text-sm font-semibold tracking-tight"
-                        style={{ color: c.cluster.color }}
-                    >
-                        {c.cluster.label}
+                    <div className="flex items-center justify-center gap-1.5">
+                        <span
+                            data-testid={`cluster-swatch-${c.cluster.id}`}
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: c.cluster.color }}
+                        />
+                        <span className="text-sm font-semibold tracking-tight text-foreground">
+                            {c.cluster.label}
+                        </span>
                     </div>
                     <div className="font-mono text-[11px] text-muted-foreground">
                         {c.cluster.members.length} tables ·{' '}
