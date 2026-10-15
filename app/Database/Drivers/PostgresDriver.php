@@ -11,6 +11,7 @@ use App\Database\Exceptions\InvalidConnectionOption;
 use App\Database\Exceptions\OffsetQueryException;
 use App\Database\Query\StatementResult;
 use App\Database\Sql\Classification;
+use App\Database\Sql\SqlLexer;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
 use Illuminate\Contracts\Database\Query\Expression;
@@ -25,6 +26,8 @@ class PostgresDriver implements Driver
     use ExecutesStatements {
         execute as executePlain;
     }
+
+    private const FETCH_PAGE = 200;
 
     private const CURSOR_PREFIX = 'DECLARE dbsuperb_cursor NO SCROLL CURSOR FOR ';
 
@@ -79,6 +82,24 @@ class PostgresDriver implements Driver
         return $config;
     }
 
+    /** Doubles every "?" outside strings, quoted identifiers, comments and dollar quotes (PDO pgsql escape). */
+    private function escapeQuestionMarks(string $sql): string
+    {
+        if (! str_contains($sql, '?')) {
+            return $sql;
+        }
+        $out = '';
+        $last = 0;
+        foreach (SqlLexer::tokenize($sql, 'pgsql') as $token) {
+            if ($token->type === 'punct' && $token->value === '?') {
+                $out .= substr($sql, $last, $token->start - $last).'??';
+                $last = $token->end;
+            }
+        }
+
+        return $out.substr($sql, $last);
+    }
+
     public function explainPrefix(): string
     {
         return 'EXPLAIN ';
@@ -86,8 +107,11 @@ class PostgresDriver implements Driver
 
     public function execute(Connection $db, string $sql, Classification $classification, int $maxRows, int $maxBytes): StatementResult
     {
-        $first = strtoupper(strtok(ltrim($sql), " \t\n\r(") ?: '');
-        if ($classification->kind !== 'read' || ! in_array($first, ['SELECT', 'WITH', 'VALUES', 'TABLE'], true)) {
+        // Native prepares rewrite "?" placeholders; jsonb operators need them literal.
+        $sql = $this->escapeQuestionMarks($sql);
+
+        // The classifier's keyword is comment-free, unlike the raw text.
+        if ($classification->kind !== 'read' || ! in_array($classification->keyword, ['SELECT', 'WITH', 'VALUES', 'TABLE'], true)) {
             return $this->executePlain($db, $sql, $classification, $maxRows, $maxBytes);
         }
 
@@ -106,10 +130,27 @@ class PostgresDriver implements Driver
             } catch (PDOException $e) {
                 throw new OffsetQueryException($e, strlen(self::CURSOR_PREFIX));
             }
-            $fetch = $pdo->prepare('FETCH FORWARD '.($maxRows + 1).' FROM dbsuperb_cursor');
-            $fetch->execute();
-            $result = $this->collect($fetch, $sql, $classification, $maxRows, $maxBytes, $started);
+            // Fetch in small pages so libpq never holds more than a page of uncapped rows at once.
+            $columns = [];
+            $rows = [];
+            $bytes = 0;
+            $truncated = false;
+            while (true) {
+                $size = min(self::FETCH_PAGE, $maxRows + 1 - count($rows));
+                $fetch = $pdo->prepare('FETCH FORWARD '.max(1, $size).' FROM dbsuperb_cursor');
+                $fetch->execute();
+                if ($columns === []) {
+                    $columns = $this->columnsOf($fetch);
+                }
+                $before = count($rows);
+                $truncated = $this->appendRows($fetch, $rows, $bytes, $maxRows, $maxBytes);
+                $fetch->closeCursor();
+                if ($truncated || count($rows) === $before) {
+                    break;
+                }
+            }
             $pdo->prepare('CLOSE dbsuperb_cursor')->execute();
+            $result = new StatementResult($sql, $classification, $columns, $rows, $truncated, null, $this->elapsed($started), null, $bytes);
 
             if ($ownTransaction) {
                 $pdo->commit();

@@ -36,6 +36,18 @@ trait ExecutesStatements
             return new StatementResult($sql, $classification, [], [], false, $affected, $this->elapsed($started));
         }
 
+        $columns = $this->columnsOf($statement);
+        $rows = [];
+        $bytes = 0;
+        $truncated = $this->appendRows($statement, $rows, $bytes, $maxRows, $maxBytes);
+        $statement->closeCursor();
+
+        return new StatementResult($sql, $classification, $columns, $rows, $truncated, null, $this->elapsed($started), null, $bytes);
+    }
+
+    /** @return list<array{name: string, type: ?string, table: ?string}> */
+    protected function columnsOf(PDOStatement $statement): array
+    {
         $columns = [];
         for ($i = 0; $i < $statement->columnCount(); $i++) {
             $meta = $statement->getColumnMeta($i) ?: [];
@@ -43,25 +55,29 @@ trait ExecutesStatements
             $columns[] = ['name' => (string) ($meta['name'] ?? "column{$i}"), 'type' => isset($meta['native_type']) ? strtolower((string) $meta['native_type']) : null, 'table' => is_string($table) && $table !== '' ? $table : null];
         }
 
-        $rows = [];
-        $bytes = 0;
-        $truncated = false;
+        return $columns;
+    }
+
+    /**
+     * Reads rows into $rows until the statement is exhausted or a cap is hit.
+     *
+     * @return bool true when a cap stopped the read (more rows exist or the byte budget ran out)
+     */
+    protected function appendRows(PDOStatement $statement, array &$rows, int &$bytes, int $maxRows, int $maxBytes): bool
+    {
         while (($row = $statement->fetch(PDO::FETCH_NUM)) !== false) {
             if (count($rows) >= $maxRows) {
-                $truncated = true;
-                break;
+                return true;
             }
             $cells = array_map(fn ($v) => CellValue::present($v, CellValue::RESULT_CHARS), $row);
             $bytes += strlen((string) json_encode($cells, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR));
             if ($bytes > $maxBytes) {
-                $truncated = true;
-                break;
+                return true;
             }
             $rows[] = $cells;
         }
-        $statement->closeCursor();
 
-        return new StatementResult($sql, $classification, $columns, $rows, $truncated, null, $this->elapsed($started), null, $bytes);
+        return false;
     }
 
     /** @return mixed state for afterStatement */

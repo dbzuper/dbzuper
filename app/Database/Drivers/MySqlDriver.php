@@ -19,6 +19,12 @@ class MySqlDriver implements Driver
     use AppliesTimeoutBestEffort;
     use ExecutesStatements;
 
+    /**
+     * Current sql_mode without NO_BACKSLASH_ESCAPES, ANSI_QUOTES and the composite modes that imply ANSI_QUOTES
+     * (matched as whole comma-separated items, so ANSI does not hit ANSI_QUOTES).
+     */
+    public const STRIPPED_SQL_MODE = "TRIM(BOTH ',' FROM REGEXP_REPLACE(REGEXP_REPLACE(CONCAT(',', @@sql_mode, ','), ',(NO_BACKSLASH_ESCAPES|ANSI_QUOTES|ANSI|ORACLE|MSSQL|DB2|POSTGRESQL|MAXDB)(?=,)', ''), ',+', ','))";
+
     public function name(): DriverName
     {
         return DriverName::MySql;
@@ -41,7 +47,7 @@ class MySqlDriver implements Driver
 
         // Runs on every (re)connect, so these survive reconnects. Strings must lex the way SqlLexer reads them:
         // backslash escapes on, double quotes as string delimiters (not identifiers).
-        $init = "SESSION sql_mode = TRIM(BOTH ',' FROM REGEXP_REPLACE(REPLACE(REPLACE(@@sql_mode, 'NO_BACKSLASH_ESCAPES', ''), 'ANSI_QUOTES', ''), ',+', ','))";
+        $init = 'SESSION sql_mode = '.self::STRIPPED_SQL_MODE;
         if ($connection->read_only) {
             $init .= ', SESSION '.$this->readOnlyVariable().' = 1';
         }
