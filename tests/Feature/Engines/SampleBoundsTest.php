@@ -4,7 +4,6 @@ use App\Database\ConnectionFactory;
 use App\Models\SavedConnection;
 use App\Models\User;
 use Illuminate\Database\Connection;
-use Illuminate\Database\Schema\Blueprint;
 use Tests\Support\Engines;
 
 it('bounds samples in SQL and quotes odd identifiers on every engine', function (string $engine) {

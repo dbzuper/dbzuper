@@ -2,10 +2,13 @@
 
 namespace App\Database\Drivers;
 
+use App\Database\CellValue;
+use App\Database\ColumnKind;
 use App\Database\Contracts\Driver;
 use App\Database\Contracts\SchemaInspector;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Connection;
 use PDO;
 use Pdo\Mysql;
@@ -75,12 +78,12 @@ class MySqlDriver implements Driver
         return '`'.str_replace('`', '``', $name).'`';
     }
 
-    public function sampleColumn(Connection $db, string $column, string $typeName): \Illuminate\Contracts\Database\Query\Expression|string
+    public function sampleColumn(Connection $db, string $column, string $typeName): Expression|string
     {
         $q = $this->quoteIdentifier($column);
-        $sql = match (\App\Database\ColumnKind::classify($typeName)) {
-            \App\Database\ColumnKind::Text => "LEFT({$q}, ".(\App\Database\CellValue::MAX_CHARS + 1).')',
-            \App\Database\ColumnKind::Binary => "CASE WHEN {$q} IS NULL THEN NULL ELSE CONCAT('[binary ', LENGTH({$q}), ' bytes]') END",
+        $sql = match (ColumnKind::classify($typeName)) {
+            ColumnKind::Text => "LEFT({$q}, ".(CellValue::MAX_CHARS + 1).')',
+            ColumnKind::Binary => "CASE WHEN {$q} IS NULL THEN NULL ELSE CONCAT('[binary ', LENGTH({$q}), ' bytes]') END",
             default => $q,
         };
 

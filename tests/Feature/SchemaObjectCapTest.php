@@ -2,13 +2,14 @@
 
 use App\Database\ConnectionFactory;
 use App\Database\DriverRegistry;
+use App\Database\Schema\SchemaSnapshot;
 use App\Support\Demo\CommerceSchema;
 use Illuminate\Database\Connection;
 use Tests\Support\Engines;
 
 afterEach(fn () => Engines::resetSqlite());
 
-function inspectCommerceSqlite(): App\Database\Schema\SchemaSnapshot
+function inspectCommerceSqlite(): SchemaSnapshot
 {
     $saved = Engines::savedConnection('sqlite');
 

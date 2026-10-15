@@ -2,11 +2,14 @@
 
 namespace App\Database\Drivers;
 
+use App\Database\CellValue;
+use App\Database\ColumnKind;
 use App\Database\Contracts\Driver;
 use App\Database\Contracts\SchemaInspector;
 use App\Database\Exceptions\InvalidConnectionOption;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Connection;
 use PDO;
 
@@ -85,12 +88,12 @@ class PostgresDriver implements Driver
         return '"'.str_replace('"', '""', $name).'"';
     }
 
-    public function sampleColumn(Connection $db, string $column, string $typeName): \Illuminate\Contracts\Database\Query\Expression|string
+    public function sampleColumn(Connection $db, string $column, string $typeName): Expression|string
     {
         $q = $this->quoteIdentifier($column);
-        $sql = match (\App\Database\ColumnKind::classify($typeName)) {
-            \App\Database\ColumnKind::Text => "left({$q}::text, ".(\App\Database\CellValue::MAX_CHARS + 1).')',
-            \App\Database\ColumnKind::Binary => "CASE WHEN {$q} IS NULL THEN NULL ELSE '[binary ' || octet_length({$q}) || ' bytes]' END",
+        $sql = match (ColumnKind::classify($typeName)) {
+            ColumnKind::Text => "left({$q}::text, ".(CellValue::MAX_CHARS + 1).')',
+            ColumnKind::Binary => "CASE WHEN {$q} IS NULL THEN NULL ELSE '[binary ' || octet_length({$q}) || ' bytes]' END",
             default => $q,
         };
 

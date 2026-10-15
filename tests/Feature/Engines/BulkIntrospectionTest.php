@@ -4,6 +4,9 @@ use App\Database\ConnectionFactory;
 use App\Database\DriverRegistry;
 use App\Database\Schema\ColumnInfo;
 use App\Database\Schema\Relationship;
+use App\Database\Schema\SnapshotService;
+use App\Models\SavedConnection;
+use App\Models\User;
 use App\Support\Demo\CommerceSchema;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Events\QueryExecuted;
@@ -105,9 +108,9 @@ it('uses a constant number of queries regardless of table count', function (stri
 it('applies the introspection timeout when refreshing a snapshot', function () {
     config(['dbsuperb.introspection_timeout' => 9]);
     Engines::skipUnlessAvailable('mysql');
-    $user = App\Models\User::factory()->create();
+    $user = User::factory()->create();
     $p = Engines::params('mysql');
-    $connection = App\Models\SavedConnection::factory()->for($user)->create([
+    $connection = SavedConnection::factory()->for($user)->create([
         'host' => $p['host'], 'port' => $p['port'], 'database' => $p['database'], 'username' => $p['username'], 'password' => $p['password'],
     ]);
 
@@ -116,7 +119,7 @@ it('applies the introspection timeout when refreshing a snapshot', function () {
         $seen[] = $e->sql;
     });
 
-    app(App\Database\Schema\SnapshotService::class)->refresh($connection);
+    app(SnapshotService::class)->refresh($connection);
 
     expect(collect($seen)->contains(fn ($sql) => str_contains(strtolower($sql), 'max_execution_time = 9000')))->toBeTrue();
 });

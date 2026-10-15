@@ -4,6 +4,7 @@ namespace App\Database\Contracts;
 
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Connection;
 
 interface Driver
@@ -25,7 +26,7 @@ interface Driver
     public function ddl(Connection $db, string $table, string $kind): ?string;
 
     /** Select expression, aliased to the column name, that bounds a value's size in SQL for sampling. */
-    public function sampleColumn(Connection $db, string $column, string $typeName): \Illuminate\Contracts\Database\Query\Expression|string;
+    public function sampleColumn(Connection $db, string $column, string $typeName): Expression|string;
 
     /** Quote one identifier as a single name (no splitting on dots). */
     public function quoteIdentifier(string $name): string;
