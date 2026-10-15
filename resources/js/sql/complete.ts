@@ -1,6 +1,6 @@
 import type { Dialect, SchemaSnapshot, TableSchema } from '@/types/schema';
 import { quoteIdent } from '@/universe/ddl';
-import { KEYWORDS, RESERVED } from './keywords';
+import { KEYWORDS, NON_ALIAS, RESERVED } from './keywords';
 import { asciiUpper, identifierOf, tokenize } from './lexer';
 import { statementAt } from './splitter';
 
@@ -22,7 +22,9 @@ const TABLE_CONTEXT = new Set([
 ]);
 
 export function identifierFor(name: string, dialect: Dialect): string {
+    const foldsSafely = dialect !== 'pgsql' || name === name.toLowerCase();
     return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) &&
+        foldsSafely &&
         !RESERVED.has(asciiUpper(name))
         ? name
         : quoteIdent(name, dialect);
@@ -58,7 +60,7 @@ function scopeOf(
         const alias =
             aliasToken &&
             aliasToken.type === 'word' &&
-            !RESERVED.has(asciiUpper(aliasToken.value))
+            !NON_ALIAS.has(asciiUpper(aliasToken.value))
                 ? aliasToken.value
                 : null;
         scope.push({ table, alias });
@@ -93,7 +95,23 @@ export function completeSql(input: {
     const matches = (s: string) =>
         s.toLowerCase().startsWith(prefix.toLowerCase());
 
-    if (text[wordStart - 1] === '@') {
+    const inLiteral = tokenize(text, dialect).some((t) => {
+        if (t.type !== 'string' && t.type !== 'comment') return false;
+        if (offset <= t.start) return false;
+        const terminated =
+            t.type === 'string'
+                ? t.value.length > 1 && t.value.endsWith(t.value[0])
+                : t.value.startsWith('/*') && t.value.endsWith('*/');
+        return terminated ? offset < t.end : offset <= t.end;
+    });
+    if (inLiteral) return { items: [], replaceFrom: offset };
+
+    const atBoundary = wordStart < 2 || /[\s(,]/.test(text[wordStart - 2]);
+    if (
+        text[wordStart - 1] === '@' &&
+        atBoundary &&
+        (prefix === '' || (focusedTable !== null && matches(focusedTable)))
+    ) {
         return {
             replaceFrom: wordStart - 1,
             items: focusedTable
@@ -166,7 +184,7 @@ export function completeSql(input: {
     }));
 
     if (TABLE_CONTEXT.has(prevKw)) {
-        const items: Completion[] = [...tableItems];
+        const joins: Completion[] = [];
         if (prevKw === 'JOIN' && scope.length > 0) {
             const used = new Set(
                 scope.map((s) => (s.alias ?? s.table.name).toLowerCase()),
@@ -196,7 +214,7 @@ export function completeSql(input: {
                                 `${alias}.${identifierFor(c, dialect)} = ${leftRef}.${identifierFor(leftCols[k], dialect)}`,
                         )
                         .join(' AND ');
-                    items.unshift({
+                    joins.push({
                         label: `${other} ON ${on}`,
                         insertText: `${identifierFor(other, dialect)} ${alias} ON ${on}`,
                         kind: 'join',
@@ -208,7 +226,7 @@ export function completeSql(input: {
                 }
             }
         }
-        return { replaceFrom: wordStart, items };
+        return { replaceFrom: wordStart, items: [...joins, ...tableItems] };
     }
 
     const multi = scope.length > 1;

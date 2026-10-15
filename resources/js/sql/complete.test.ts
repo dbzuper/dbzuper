@@ -73,4 +73,38 @@ describe('completeSql', () => {
         expect(identifierFor('group', 'mysql')).toBe('`group`');
         expect(identifierFor('régions', 'sqlite')).toBe('"régions"');
     });
+
+    it('does not hijack a variable or a literal @', () => {
+        const v = at('select @var|', 'orders');
+        expect(v.items.some((i) => i.kind === 'focused')).toBe(false);
+        expect(v.replaceFrom).toBe('select @'.length);
+        expect(at("select 'bob@exa|'", 'orders').items).toEqual([]);
+        expect(
+            at('select @@ver|', 'orders').items.some(
+                (i) => i.kind === 'focused',
+            ),
+        ).toBe(false);
+    });
+
+    it('suppresses completion in strings and comments', () => {
+        expect(at("select * from orders where status = 'sel|'").items).toEqual(
+            [],
+        );
+        expect(at('-- from or|').items).toEqual([]);
+        expect(at('select /* from or| */ 1').items).toEqual([]);
+    });
+
+    it('does not treat join keywords as aliases', () => {
+        const r = at('select * from orders left join |');
+        expect(r.items.find((i) => i.kind === 'join')?.insertText).toBe(
+            'users u ON u.id = orders.user_id',
+        );
+    });
+
+    it('quotes case-sensitive pg names and wider reserved words', () => {
+        expect(identifierFor('Orders', 'pgsql')).toBe('"Orders"');
+        expect(identifierFor('Orders', 'mysql')).toBe('Orders');
+        expect(identifierFor('rank', 'mysql')).toBe('`rank`');
+        expect(identifierFor('window', 'pgsql')).toBe('"window"');
+    });
 });

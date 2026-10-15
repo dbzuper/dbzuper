@@ -1,79 +1,281 @@
 [
-  {"dialect":"sqlite","sql":"select * from users","kind":"read"},
-  {"dialect":"pgsql","sql":"with x as (select 1) select * from x","kind":"read"},
-  {"dialect":"pgsql","sql":"with d as (delete from orders returning *) select * from d","kind":"write"},
-  {"dialect":"pgsql","sql":"select * into new_table from users","kind":"write"},
-  {"dialect":"mysql","sql":"select * from users into outfile '/tmp/x'","kind":"write"},
-  {"dialect":"mysql","sql":"select * from users where id in (select user_id from orders) for update","kind":"write"},
-  {"dialect":"mysql","sql":"show tables","kind":"read"},
-  {"dialect":"mysql","sql":"describe users","kind":"read"},
-  {"dialect":"pgsql","sql":"explain select 1","kind":"read"},
-  {"dialect":"pgsql","sql":"explain analyze delete from users","kind":"destructive","target":"users"},
-  {"dialect":"pgsql","sql":"explain (analyze, buffers) update users set a = 1 where id = 1","kind":"write"},
-  {"dialect":"pgsql","sql":"values (1), (2)","kind":"read"},
-  {"dialect":"sqlite","sql":"pragma table_info(users)","kind":"read"},
-  {"dialect":"sqlite","sql":"pragma foreign_keys = off","kind":"session"},
-  {"dialect":"sqlite","sql":"insert into users (name) values ('a')","kind":"write"},
-  {"dialect":"mysql","sql":"replace into users values (1)","kind":"write"},
-  {"dialect":"sqlite","sql":"update users set name = 'x' where id = 1","kind":"write"},
-  {"dialect":"sqlite","sql":"update users set name = 'x'","kind":"destructive","target":"users"},
-  {"dialect":"sqlite","sql":"update users set name = (select name from u2 where u2.id = 1)","kind":"destructive","target":"users"},
-  {"dialect":"pgsql","sql":"update only \"Order Items\" set qty = 1","kind":"destructive","target":"Order Items"},
-  {"dialect":"mysql","sql":"delete from `group` where id = 2","kind":"write"},
-  {"dialect":"mysql","sql":"delete from shop.orders","kind":"destructive","target":"shop.orders"},
-  {"dialect":"pgsql","sql":"drop table if exists public.users cascade","kind":"destructive","target":"public.users"},
-  {"dialect":"mysql","sql":"drop database shop","kind":"destructive","target":"shop"},
-  {"dialect":"pgsql","sql":"truncate table only audit_log","kind":"destructive","target":"audit_log"},
-  {"dialect":"sqlite","sql":"truncate audit_log","kind":"destructive","target":"audit_log"},
-  {"dialect":"pgsql","sql":"create table t (id int)","kind":"ddl"},
-  {"dialect":"mysql","sql":"alter table users add column x int","kind":"ddl"},
-  {"dialect":"pgsql","sql":"grant select on users to bob","kind":"ddl"},
-  {"dialect":"pgsql","sql":"begin","kind":"transaction"},
-  {"dialect":"mysql","sql":"start transaction","kind":"transaction"},
-  {"dialect":"mysql","sql":"start transaction read write","kind":"session"},
-  {"dialect":"pgsql","sql":"begin isolation level serializable read write","kind":"session"},
-  {"dialect":"pgsql","sql":"commit","kind":"transaction"},
-  {"dialect":"pgsql","sql":"rollback to savepoint a","kind":"transaction"},
-  {"dialect":"mysql","sql":"set session transaction read write","kind":"session"},
-  {"dialect":"pgsql","sql":"set default_transaction_read_only = off","kind":"session"},
-  {"dialect":"mysql","sql":"use other_db","kind":"session"},
-  {"dialect":"pgsql","sql":"call do_things()","kind":"write"},
-  {"dialect":"pgsql","sql":"copy users to stdout","kind":"write"},
-  {"dialect":"mysql","sql":"frobnicate everything","kind":"write"},
-  {"dialect":"sqlite","sql":"/* hi */ select 1","kind":"read"},
-  {"dialect":"sqlite","sql":"","kind":"write"},
-  {"dialect":"pgsql","sql":"select * --\r into newt from users","kind":"write"},
-  {"dialect":"pgsql","sql":"explain --\ranalyze delete from users","kind":"destructive","target":"users"},
-  {"dialect":"pgsql","sql":"explain (analyse) delete from users","kind":"destructive","target":"users"},
-  {"dialect":"pgsql","sql":"explain (\"analyze\") delete from users","kind":"destructive","target":"users"},
-  {"dialect":"pgsql","sql":"explain (format json) select 1","kind":"read"},
-  {"dialect":"mysql","sql":"select * from users /*!50000 into outfile '/tmp/x' */","kind":"write"},
-  {"dialect":"mysql","sql":"explain /*! analyze */ delete from users","kind":"write"},
-  {"dialect":"mariadb","sql":"select * from users /*M!100000 into outfile '/tmp/x' */","kind":"write"},
-  {"dialect":"pgsql","sql":"select set_config('default_transaction_read_only','off',false)","kind":"session"},
-  {"dialect":"mysql","sql":"start replica","kind":"write"},
-  {"dialect":"mysql","sql":"start slave","kind":"write"},
-  {"dialect":"mysql","sql":"start group_replication","kind":"write"},
-  {"dialect":"pgsql","sql":"commit prepared 'x'","kind":"write"},
-  {"dialect":"pgsql","sql":"rollback prepared 'x'","kind":"write"},
-  {"dialect":"sqlite","sql":"pragma user_version(5)","kind":"session"},
-  {"dialect":"sqlite","sql":"pragma writable_schema(1)","kind":"session"},
-  {"dialect":"sqlite","sql":"pragma optimize","kind":"session"},
-  {"dialect":"sqlite","sql":"pragma wal_checkpoint(truncate)","kind":"session"},
-  {"dialect":"sqlite","sql":"pragma user_version","kind":"read"},
-  {"dialect":"pgsql","sql":"with x as (select 1) delete from users","kind":"destructive","target":"users"},
-  {"dialect":"mysql","sql":"with x as (select 1) update users set a = 1","kind":"destructive","target":"users"},
-  {"dialect":"pgsql","sql":"with x as (select 1) delete from users where id = 1","kind":"write"},
-  {"dialect":"mysql","sql":"table users into outfile '/tmp/x'","kind":"write"},
-  {"dialect":"mysql","sql":"select 1 ) into newt from users (","kind":"write"},
-  {"dialect":"sqlite","sql":"select 1; drop table t","kind":"write"},
-  {"dialect":"mysql","sql":"select 1 /*!99999 ' */ into outfile '/tmp/x' -- ' */","kind":"write"},
-  {"dialect":"mysql","sql":"select 1 /*M! ' */ into outfile '/tmp/x' -- ' */","kind":"write"},
-  {"dialect":"mariadb","sql":"select 1 /*M!999999 ' */ into outfile '/tmp/x' -- ' */","kind":"write"},
-  {"dialect":"pgsql","sql":"select U&\"set\\005fconfig\"('default_transaction_read_only','off',false)","kind":"write"},
-  {"dialect":"mysql","sql":"xa commit 'x'","kind":"write"},
-  {"dialect":"mysql","sql":"xa rollback 'x'","kind":"write"},
-  {"dialect":"mysql","sql":"xa commit 'x' one phase","kind":"write"},
-  {"dialect":"mysql","sql":"xa start 'x'","kind":"transaction"},
-  {"dialect":"mysql","sql":"xa end 'x'","kind":"transaction"}
+    { "dialect": "sqlite", "sql": "select * from users", "kind": "read" },
+    {
+        "dialect": "pgsql",
+        "sql": "with x as (select 1) select * from x",
+        "kind": "read"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "with d as (delete from orders returning *) select * from d",
+        "kind": "write"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "select * into new_table from users",
+        "kind": "write"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "select * from users into outfile '/tmp/x'",
+        "kind": "write"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "select * from users where id in (select user_id from orders) for update",
+        "kind": "write"
+    },
+    { "dialect": "mysql", "sql": "show tables", "kind": "read" },
+    { "dialect": "mysql", "sql": "describe users", "kind": "read" },
+    { "dialect": "pgsql", "sql": "explain select 1", "kind": "read" },
+    {
+        "dialect": "pgsql",
+        "sql": "explain analyze delete from users",
+        "kind": "destructive",
+        "target": "users"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "explain (analyze, buffers) update users set a = 1 where id = 1",
+        "kind": "write"
+    },
+    { "dialect": "pgsql", "sql": "values (1), (2)", "kind": "read" },
+    { "dialect": "sqlite", "sql": "pragma table_info(users)", "kind": "read" },
+    {
+        "dialect": "sqlite",
+        "sql": "pragma foreign_keys = off",
+        "kind": "session"
+    },
+    {
+        "dialect": "sqlite",
+        "sql": "insert into users (name) values ('a')",
+        "kind": "write"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "replace into users values (1)",
+        "kind": "write"
+    },
+    {
+        "dialect": "sqlite",
+        "sql": "update users set name = 'x' where id = 1",
+        "kind": "write"
+    },
+    {
+        "dialect": "sqlite",
+        "sql": "update users set name = 'x'",
+        "kind": "destructive",
+        "target": "users"
+    },
+    {
+        "dialect": "sqlite",
+        "sql": "update users set name = (select name from u2 where u2.id = 1)",
+        "kind": "destructive",
+        "target": "users"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "update only \"Order Items\" set qty = 1",
+        "kind": "destructive",
+        "target": "Order Items"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "delete from `group` where id = 2",
+        "kind": "write"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "delete from shop.orders",
+        "kind": "destructive",
+        "target": "shop.orders"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop table if exists public.users cascade",
+        "kind": "destructive",
+        "target": "public.users"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "drop database shop",
+        "kind": "destructive",
+        "target": "shop"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "truncate table only audit_log",
+        "kind": "destructive",
+        "target": "audit_log"
+    },
+    {
+        "dialect": "sqlite",
+        "sql": "truncate audit_log",
+        "kind": "destructive",
+        "target": "audit_log"
+    },
+    { "dialect": "pgsql", "sql": "create table t (id int)", "kind": "ddl" },
+    {
+        "dialect": "mysql",
+        "sql": "alter table users add column x int",
+        "kind": "ddl"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "grant select on users to bob",
+        "kind": "ddl"
+    },
+    { "dialect": "pgsql", "sql": "begin", "kind": "transaction" },
+    { "dialect": "mysql", "sql": "start transaction", "kind": "transaction" },
+    {
+        "dialect": "mysql",
+        "sql": "start transaction read write",
+        "kind": "session"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "begin isolation level serializable read write",
+        "kind": "session"
+    },
+    { "dialect": "pgsql", "sql": "commit", "kind": "transaction" },
+    {
+        "dialect": "pgsql",
+        "sql": "rollback to savepoint a",
+        "kind": "transaction"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "set session transaction read write",
+        "kind": "session"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "set default_transaction_read_only = off",
+        "kind": "session"
+    },
+    { "dialect": "mysql", "sql": "use other_db", "kind": "session" },
+    { "dialect": "pgsql", "sql": "call do_things()", "kind": "write" },
+    { "dialect": "pgsql", "sql": "copy users to stdout", "kind": "write" },
+    { "dialect": "mysql", "sql": "frobnicate everything", "kind": "write" },
+    { "dialect": "sqlite", "sql": "/* hi */ select 1", "kind": "read" },
+    { "dialect": "sqlite", "sql": "", "kind": "write" },
+    {
+        "dialect": "pgsql",
+        "sql": "select * --\r into newt from users",
+        "kind": "write"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "explain --\ranalyze delete from users",
+        "kind": "destructive",
+        "target": "users"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "explain (analyse) delete from users",
+        "kind": "destructive",
+        "target": "users"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "explain (\"analyze\") delete from users",
+        "kind": "destructive",
+        "target": "users"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "explain (format json) select 1",
+        "kind": "read"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "select * from users /*!50000 into outfile '/tmp/x' */",
+        "kind": "write"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "explain /*! analyze */ delete from users",
+        "kind": "write"
+    },
+    {
+        "dialect": "mariadb",
+        "sql": "select * from users /*M!100000 into outfile '/tmp/x' */",
+        "kind": "write"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "select set_config('default_transaction_read_only','off',false)",
+        "kind": "session"
+    },
+    { "dialect": "mysql", "sql": "start replica", "kind": "write" },
+    { "dialect": "mysql", "sql": "start slave", "kind": "write" },
+    { "dialect": "mysql", "sql": "start group_replication", "kind": "write" },
+    { "dialect": "pgsql", "sql": "commit prepared 'x'", "kind": "write" },
+    { "dialect": "pgsql", "sql": "rollback prepared 'x'", "kind": "write" },
+    { "dialect": "sqlite", "sql": "pragma user_version(5)", "kind": "session" },
+    {
+        "dialect": "sqlite",
+        "sql": "pragma writable_schema(1)",
+        "kind": "session"
+    },
+    { "dialect": "sqlite", "sql": "pragma optimize", "kind": "session" },
+    {
+        "dialect": "sqlite",
+        "sql": "pragma wal_checkpoint(truncate)",
+        "kind": "session"
+    },
+    { "dialect": "sqlite", "sql": "pragma user_version", "kind": "read" },
+    {
+        "dialect": "pgsql",
+        "sql": "with x as (select 1) delete from users",
+        "kind": "destructive",
+        "target": "users"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "with x as (select 1) update users set a = 1",
+        "kind": "destructive",
+        "target": "users"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "with x as (select 1) delete from users where id = 1",
+        "kind": "write"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "table users into outfile '/tmp/x'",
+        "kind": "write"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "select 1 ) into newt from users (",
+        "kind": "write"
+    },
+    { "dialect": "sqlite", "sql": "select 1; drop table t", "kind": "write" },
+    {
+        "dialect": "mysql",
+        "sql": "select 1 /*!99999 ' */ into outfile '/tmp/x' -- ' */",
+        "kind": "write"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "select 1 /*M! ' */ into outfile '/tmp/x' -- ' */",
+        "kind": "write"
+    },
+    {
+        "dialect": "mariadb",
+        "sql": "select 1 /*M!999999 ' */ into outfile '/tmp/x' -- ' */",
+        "kind": "write"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "select U&\"set\\005fconfig\"('default_transaction_read_only','off',false)",
+        "kind": "write"
+    },
+    { "dialect": "mysql", "sql": "xa commit 'x'", "kind": "write" },
+    { "dialect": "mysql", "sql": "xa rollback 'x'", "kind": "write" },
+    { "dialect": "mysql", "sql": "xa commit 'x' one phase", "kind": "write" },
+    { "dialect": "mysql", "sql": "xa start 'x'", "kind": "transaction" },
+    { "dialect": "mysql", "sql": "xa end 'x'", "kind": "transaction" }
 ]
