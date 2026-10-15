@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+    CARD_MAX_HEIGHT,
     MAX_NODES,
+    ROW_GAP,
     addRelated,
     emptyTrail,
     nodeId,
@@ -13,6 +15,10 @@ import {
 const t = (table: string, id: number) => ({ table, key: { id } });
 
 describe('trail', () => {
+    it('keeps rows further apart than a card is tall', () => {
+        expect(ROW_GAP).toBeGreaterThan(CARD_MAX_HEIGHT);
+    });
+
     it('opens a root that is selected', () => {
         const trail = openRoot('users', { id: 1 });
         expect(trail.nodes).toHaveLength(1);

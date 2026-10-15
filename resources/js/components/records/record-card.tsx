@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from 'react';
 import { cellKind } from '@/grid/cells';
 import { cn } from '@/lib/utils';
 import { recordFields, recordTitle, titleColumn } from '@/records/heuristics';
+import { CARD_MAX_HEIGHT } from '@/records/trail';
 import { useRecords, type RecordEntry } from '@/records/records-store';
 import type { RecordKeyValues, RelationshipSummary } from '@/records/types';
 import type { QueryCell } from '@/types/schema';
@@ -204,10 +205,11 @@ export function RecordCard({
         <div
             data-selected={selected ? 'true' : undefined}
             className={cn(
-                'relative flex max-h-[300px] w-[300px] flex-col rounded-lg border bg-card text-xs text-card-foreground shadow-sm',
+                'relative flex w-[300px] flex-col rounded-lg border bg-card text-xs text-card-foreground shadow-sm',
                 selected &&
                     'border-[var(--universe-accent)] ring-2 ring-[var(--universe-accent)]',
             )}
+            style={{ maxHeight: CARD_MAX_HEIGHT }}
         >
             <Handle
                 type="target"
@@ -264,7 +266,7 @@ export function RecordCard({
                     </button>
                     {/* Fields and ports scroll inside the capped card height; a scrolled-out port keeps its
                         (hidden) handle, so its edge still attaches at the port's real position. */}
-                    <div className="min-h-0 flex-1 overflow-y-auto">
+                    <div className="nowheel min-h-0 flex-1 overflow-y-auto">
                         {fields.length > 0 && (
                             <div
                                 role="group"

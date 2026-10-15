@@ -3,6 +3,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { RecordEntry } from '@/records/records-store';
 import type { RecordPayload, RelationshipSummary } from '@/records/types';
+import { CARD_MAX_HEIGHT } from '@/records/trail';
 import { RecordCard } from './record-card';
 
 const summary = (p: Partial<RelationshipSummary>): RelationshipSummary => ({
@@ -76,6 +77,17 @@ describe('RecordCard', () => {
             .map((t) => t.textContent);
         expect(names).toEqual(['id', 'status', 'note', 'a', 'b']);
         expect(screen.getByText('paid')).toBeInTheDocument();
+    });
+
+    it('scrolls inside a capped card without zooming the canvas', () => {
+        setup(ready());
+        const scroller = screen.getByRole('group', {
+            name: 'Fields',
+        }).parentElement!;
+        expect(scroller).toHaveClass('nowheel', 'overflow-y-auto');
+        expect(scroller.parentElement).toHaveStyle({
+            maxHeight: `${CARD_MAX_HEIGHT}px`,
+        });
     });
 
     it('renders NULL with data-null', () => {
