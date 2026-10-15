@@ -15,6 +15,20 @@ import type { ConfirmationPayload } from '@/types/schema';
 
 export type ConfirmRequest = { confirmation: ConfirmationPayload; sql: string };
 
+/** What a statement of each kind does; transaction statements never need confirming. */
+function effectOf(kind: string): string {
+    switch (kind) {
+        case 'session':
+            return 'changes session settings for this run';
+        case 'ddl':
+            return 'changes the schema on this connection';
+        case 'destructive':
+            return 'removes data or objects on this connection and cannot be undone';
+        default:
+            return 'changes data on this connection';
+    }
+}
+
 export function ConfirmDialog({
     request,
     onResolve,
@@ -71,7 +85,7 @@ function ConfirmBody({
                         : 'Confirm statement'}
                 </DialogTitle>
                 <DialogDescription>
-                    {c.keyword} ({c.kind}) changes data on this connection.
+                    {`${c.keyword} ${effectOf(c.kind)}.`}
                 </DialogDescription>
             </DialogHeader>
             <pre className="max-h-48 overflow-auto rounded-md border bg-muted p-2 font-mono text-xs whitespace-pre-wrap">

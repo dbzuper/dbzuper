@@ -68,6 +68,7 @@ export function SqlToolbar({
                         size="sm"
                         variant="destructive"
                         className="h-7 gap-1"
+                        title="Stops waiting — the server may still finish the statement"
                         onClick={onCancel}
                     >
                         <Square className="size-3.5" />

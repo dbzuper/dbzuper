@@ -20,6 +20,11 @@ describe('ConfirmDialog', () => {
                 onResolve={onResolve}
             />,
         );
+        expect(
+            screen.getByText(
+                'DROP removes data or objects on this connection and cannot be undone.',
+            ),
+        ).toBeInTheDocument();
         const run = screen.getByRole('button', { name: 'Run DROP' });
         expect(run).toBeDisabled();
         fireEvent.change(screen.getByLabelText('Type orders to confirm'), {
@@ -55,5 +60,28 @@ describe('ConfirmDialog', () => {
         );
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
         expect(onResolve).toHaveBeenCalledWith(null);
+    });
+
+    it.each([
+        ['session', 'SET', 'SET changes session settings for this run.'],
+        ['ddl', 'CREATE', 'CREATE changes the schema on this connection.'],
+        ['write', 'INSERT', 'INSERT changes data on this connection.'],
+    ])('describes %s statements', (kind, keyword, text) => {
+        render(
+            <ConfirmDialog
+                request={{
+                    confirmation: {
+                        statement_index: 0,
+                        mode: 'confirm',
+                        kind,
+                        keyword,
+                        target: null,
+                    },
+                    sql: `${keyword} x`,
+                }}
+                onResolve={vi.fn()}
+            />,
+        );
+        expect(screen.getByText(text)).toBeInTheDocument();
     });
 });
