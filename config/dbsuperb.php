@@ -8,7 +8,7 @@ return [
     ))),
 
     // Seconds to wait when opening a connection to a database server.
-    'connect_timeout' => (int) env('DBSUPERB_CONNECT_TIMEOUT', 5),
+    'connect_timeout' => (int) env('DBSUPERB_CONNECT_TIMEOUT') ?: 5,
 
     // SQLite tables are counted exactly up to this many rows, then shown as "N+".
     'sqlite_count_cap' => 100000,
@@ -17,11 +17,11 @@ return [
     'snapshot_keep' => 20,
 
     // Seconds any single schema-introspection statement may run.
-    'introspection_timeout' => (int) env('DBSUPERB_INTROSPECTION_TIMEOUT', 30),
+    'introspection_timeout' => (int) env('DBSUPERB_INTROSPECTION_TIMEOUT') ?: 30,
 
     // Seconds any single data query (table samples, later the SQL editor) may run.
-    'query_timeout' => (int) env('DBSUPERB_QUERY_TIMEOUT', 15),
+    'query_timeout' => (int) env('DBSUPERB_QUERY_TIMEOUT') ?: 15,
 
     // Maximum tables + views kept in one snapshot; larger schemas are truncated alphabetically.
-    'schema_max_objects' => (int) env('DBSUPERB_SCHEMA_MAX_OBJECTS', 5000),
+    'schema_max_objects' => (int) env('DBSUPERB_SCHEMA_MAX_OBJECTS') ?: 5000,
 ];
