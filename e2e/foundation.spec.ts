@@ -27,9 +27,14 @@ test('setup → add SQLite connection → test → explore schema list', async (
     await page.getByRole('button', { name: 'Add connection' }).click();
 
     await page.getByRole('link', { name: /Demo shop/ }).click();
-    await expect(page.getByText('order_items')).toBeVisible();
-    await expect(page.getByText(/inferred/)).toBeVisible();
+    await page.getByRole('button', { name: 'List view' }).click();
+    await expect(
+        page.getByRole('button', { name: 'order_items' }),
+    ).toBeVisible();
+    await expect(page.getByText(/inferred/i).first()).toBeVisible();
     await page.getByPlaceholder('Filter tables').fill('régions');
-    await expect(page.getByText('régions')).toBeVisible();
-    await expect(page.getByText('order_items')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'régions' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'order_items' })).toHaveCount(
+        0,
+    );
 });

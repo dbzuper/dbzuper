@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import type { SchemaSnapshot } from '@/types/schema';
 import { TableList } from './table-list';
 
@@ -58,5 +58,19 @@ describe('TableList', () => {
         render(<TableList snapshot={snapshot} filter="order" />);
         expect(screen.queryByText('users')).not.toBeInTheDocument();
         expect(screen.getByText('order_totals')).toBeInTheDocument();
+    });
+
+    it('reports row selection', () => {
+        const onSelect = vi.fn();
+        render(
+            <TableList
+                snapshot={snapshot}
+                filter=""
+                onSelect={onSelect}
+                selected="users"
+            />,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'users' }));
+        expect(onSelect).toHaveBeenCalledWith('users');
     });
 });

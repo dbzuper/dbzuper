@@ -18,18 +18,18 @@ type State = {
 };
 
 type Actions = {
-    select(table: string | null, tab?: InspectorTab): void;
-    hover(table: string | null): void;
-    setFocus(table: string | null, depth?: 1 | 2): void;
-    toggleInferred(): void;
-    setView(view: State['view']): void;
-    setZoomLevel(level: ZoomLevel): void;
-    setInspectorTab(tab: InspectorTab): void;
-    startPath(from: string): void;
-    completePath(to: string, path: string[] | null): void;
-    clearPath(): void;
-    setPaletteOpen(open: boolean): void;
-    reset(): void;
+    select: (table: string | null, tab?: InspectorTab) => void;
+    hover: (table: string | null) => void;
+    setFocus: (table: string | null, depth?: 1 | 2) => void;
+    toggleInferred: () => void;
+    setView: (view: State['view']) => void;
+    setZoomLevel: (level: ZoomLevel) => void;
+    setInspectorTab: (tab: InspectorTab) => void;
+    startPath: (from: string) => void;
+    completePath: (to: string, path: string[] | null) => void;
+    clearPath: () => void;
+    setPaletteOpen: (open: boolean) => void;
+    reset: () => void;
 };
 
 export type WorkspaceState = State & Actions;

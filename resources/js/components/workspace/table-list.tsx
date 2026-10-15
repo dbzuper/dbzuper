@@ -4,9 +4,13 @@ import type { SchemaSnapshot } from '@/types/schema';
 export function TableList({
     snapshot,
     filter,
+    onSelect,
+    selected = null,
 }: {
     snapshot: SchemaSnapshot;
     filter: string;
+    onSelect?: (name: string) => void;
+    selected?: string | null;
 }) {
     const degree = new Map<string, number>();
     for (const r of snapshot.relationships) {
@@ -36,9 +40,19 @@ export function TableList({
             </thead>
             <tbody className="divide-y divide-border">
                 {tables.map((t) => (
-                    <tr key={t.name}>
+                    <tr
+                        key={t.name}
+                        aria-selected={selected === t.name}
+                        className={selected === t.name ? 'bg-muted' : undefined}
+                    >
                         <td className="px-3 py-2 font-mono">
-                            {t.name}
+                            <button
+                                type="button"
+                                className="text-left hover:underline"
+                                onClick={() => onSelect?.(t.name)}
+                            >
+                                {t.name}
+                            </button>
                             {t.kind === 'view' && (
                                 <span className="ml-2 rounded border border-dashed px-1 text-xs text-muted-foreground">
                                     view
