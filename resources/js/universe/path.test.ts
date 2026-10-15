@@ -116,4 +116,13 @@ describe('buildJoinSql', () => {
             'JOIN "b" AS t1 ON t1."p1" = t0."k1" AND t1."p2" = t0."k2"',
         );
     });
+
+    it('returns null when a hop has no usable relationship', () => {
+        expect(
+            buildJoinSql(snap, ['orders', 'island'], 'mysql', true),
+        ).toBeNull();
+        expect(
+            buildJoinSql(snap, ['orders', 'users'], 'mysql', false),
+        ).toBeNull();
+    });
 });

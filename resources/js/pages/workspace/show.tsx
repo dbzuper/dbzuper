@@ -248,6 +248,7 @@ export default function WorkspaceShow({
                     {!snapshot && loading && (
                         <div className={centered}>Loading schema…</div>
                     )}
+                    {snapshot && <PathDialog snapshot={snapshot} />}
                 </main>
 
                 {selectedTable && (
@@ -263,7 +264,6 @@ export default function WorkspaceShow({
                     </aside>
                 )}
             </div>
-            {snapshot && <PathDialog snapshot={snapshot} />}
         </div>
     );
 }

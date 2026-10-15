@@ -84,7 +84,7 @@ export function buildJoinSql(
     path: string[],
     dialect: Dialect,
     includeInferred: boolean,
-): string {
+): string | null {
     const q = (n: string) => quoteIdent(n, dialect);
     const lines = ['SELECT *', `FROM ${q(path[0])} AS t0`];
     for (let i = 1; i < path.length; i++) {
@@ -94,7 +94,7 @@ export function buildJoinSql(
             path[i],
             includeInferred,
         );
-        if (!rel) continue;
+        if (!rel) return null;
         const curIsFrom = rel.from_table === path[i];
         const curCols = curIsFrom ? rel.from_columns : rel.to_columns;
         const prevCols = curIsFrom ? rel.to_columns : rel.from_columns;
