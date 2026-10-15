@@ -100,3 +100,44 @@ it('orders by the primary key when no sort is given', function () {
     expect($res->json('sql'))->toContain('order by "id" asc')
         ->and(array_column($res->json('rows'), 0))->toBe([1, 2, 3]);
 });
+
+function fixtureRows(string $sql): array
+{
+    $pdo = new PDO('sqlite:'.Engines::sqlitePath());
+
+    return array_map('array_values', $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC));
+}
+
+it('returns runnable display sql for quotes and placeholders in identifiers and values', function () {
+    $pdo = new PDO('sqlite:'.Engines::sqlitePath());
+    $pdo->exec('CREATE TABLE "weird" ("id" integer primary key, "a?b" text, "c""d" text)');
+    $pdo->exec("INSERT INTO \"weird\" VALUES (1, 'x', 'p'), (2, 'y\"z', 'q'), (3, 'w".chr(92)."', 'r')");
+
+    foreach ([
+        ['column' => 'a?b', 'op' => 'eq', 'value' => 'x'],
+        ['column' => 'a?b', 'op' => 'eq', 'value' => 'y"z'],
+        ['column' => 'a?b', 'op' => 'contains', 'value' => '"'],
+        ['column' => 'a?b', 'op' => 'ends_with', 'value' => chr(92)],
+        ['column' => 'c"d', 'op' => 'neq', 'value' => "it's ?"],
+    ] as $filter) {
+        $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'weird']), ['filters' => [$filter]])->assertOk();
+
+        expect($res->json('rows'))->not->toBeEmpty()
+            ->and(fixtureRows($res->json('sql')))->toBe($res->json('rows'));
+    }
+});
+
+it('rejects NUL bytes in filter values', function () {
+    $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['filters' => [['column' => 'name', 'op' => 'eq', 'value' => "a\0b"]]])
+        ->assertUnprocessable()->assertJsonValidationErrors('filters.0.value');
+});
+
+it('appends the primary key as a sort tiebreaker', function () {
+    $sql = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['sort' => ['column' => 'name', 'direction' => 'desc']])
+        ->assertOk()->json('sql');
+    expect($sql)->toContain('order by "name" desc, "id" asc');
+
+    $sql = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['sort' => ['column' => 'id', 'direction' => 'desc']])
+        ->assertOk()->json('sql');
+    expect($sql)->toContain('order by "id" desc')->and($sql)->not->toContain('"id" desc, "id"');
+});

@@ -34,3 +34,40 @@ it('filters rows with LIKE on every engine', function (string $engine) {
         $factory->release($db);
     }
 })->with(['mysql', 'mariadb', 'pgsql']);
+
+it('returns display sql that yields the same rows as the API on every engine', function (string $engine) {
+    Engines::skipUnlessAvailable($engine);
+    $saved = Engines::savedConnection($engine);
+    $saved->user()->associate(User::factory()->create())->save();
+    $factory = app(ConnectionFactory::class);
+    $db = $factory->make($saved);
+
+    try {
+        CommerceSchema::drop($db);
+        CommerceSchema::create($db);
+        $tricky = "O'Re".chr(92).'illy 100%';
+        $db->table('users')->insert([
+            ['id' => 100, 'name' => $tricky, 'email' => 'tricky@example.com'],
+            ['id' => 101, 'name' => 'Plain 100x', 'email' => 'plain@example.com'],
+        ]);
+        $factory->release($db);
+        $user = $saved->user;
+
+        foreach ([
+            ['column' => 'name', 'op' => 'eq', 'value' => $tricky],
+            ['column' => 'name', 'op' => 'contains', 'value' => '100%'],
+            ['column' => 'name', 'op' => 'ends_with', 'value' => chr(92).'illy 100%'],
+            ['column' => 'name', 'op' => 'neq', 'value' => "'"],
+        ] as $filter) {
+            $res = $this->actingAs($user)->postJson(route('api.tables.rows', [$saved, 'users']), ['filters' => [$filter]])->assertOk();
+            $ran = $factory->using($saved, fn ($db) => $db->select($res->json('sql')), 30);
+
+            expect($res->json('rows'))->not->toBeEmpty()
+                ->and(array_map(fn ($r) => array_values((array) $r)[0], $ran))->toEqual(array_column($res->json('rows'), 0));
+        }
+    } finally {
+        $db = $factory->make($saved);
+        CommerceSchema::drop($db);
+        $factory->release($db);
+    }
+})->with(['mysql', 'mariadb', 'pgsql']);

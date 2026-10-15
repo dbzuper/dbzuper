@@ -89,6 +89,7 @@ export function DataTab({
             })
             .catch((e) => {
                 if (controller.signal.aborted) return;
+                setData(null);
                 setError(dbErrorFrom(e, 'Could not load rows.').message);
                 setLoading(false);
             });
@@ -147,7 +148,8 @@ export function DataTab({
         useWorkspace.getState().setDockOpen(true);
     };
 
-    const from = data ? (page - 1) * PER_PAGE + 1 : 0;
+    // The range describes the rows on screen, not the page being requested.
+    const from = data ? (data.page - 1) * data.per_page + 1 : 0;
     const to = data ? from + data.rows.length - 1 : 0;
 
     return (
@@ -189,7 +191,7 @@ export function DataTab({
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={page <= 1}
+                    disabled={loading || page <= 1}
                     onClick={() => setPage((p) => p - 1)}
                 >
                     Previous page
@@ -198,7 +200,7 @@ export function DataTab({
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={!data?.has_more}
+                    disabled={loading || !data?.has_more}
                     onClick={() => setPage((p) => p + 1)}
                 >
                     Next page
@@ -208,7 +210,7 @@ export function DataTab({
                     variant="outline"
                     size="sm"
                     className="ml-auto"
-                    disabled={!data}
+                    disabled={loading || !data}
                     onClick={openInSql}
                 >
                     Open in SQL

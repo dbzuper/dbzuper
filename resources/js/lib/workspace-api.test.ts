@@ -57,6 +57,18 @@ describe('dbErrorFrom', () => {
         });
     });
 
+    it('maps a Laravel validation error to its first message', () => {
+        const e = new ApiError(422, {
+            message: 'The given data was invalid.',
+            errors: { 'filters.0.value': ['Bad value.', 'Other.'] },
+        });
+        expect(dbErrorFrom(e, 'x').message).toBe('Bad value.');
+        expect(
+            dbErrorFrom(new ApiError(422, { message: 'Only message.' }), 'x')
+                .message,
+        ).toBe('Only message.');
+    });
+
     it('falls back for unexpected shapes', () => {
         expect(
             dbErrorFrom(new ApiError(500, 'boom'), 'Could not load.').message,

@@ -22,14 +22,19 @@ final class TableRowsQuery
     public static function run(Connection $db, Driver $driver, array $table, array $filters, ?array $sort, int $page, int $perPage): array
     {
         $q = fn (string $name) => $driver->quoteIdentifier($name);
-        $order = $sort
-            ? [[$sort['column'], $sort['direction'] === 'desc' ? 'desc' : 'asc']]
-            : array_map(fn ($c) => [$c, 'asc'], self::primaryKey($table));
+        $sortColumns = $sort ? [$sort['column']] : [];
+        $order = $sort ? [[$sort['column'], $sort['direction'] === 'desc' ? 'desc' : 'asc']] : [];
+        // The primary key is the (tie-breaking) last sort key so OFFSET paging is deterministic.
+        foreach (self::primaryKey($table) as $column) {
+            if (! in_array($column, $sortColumns, true)) {
+                $order[] = [$column, 'asc'];
+            }
+        }
 
-        $build = function (array $select, int $limit) use ($db, $driver, $table, $filters, $order, $page, $perPage, $q): Builder {
+        $build = function (array $select, int $limit, bool $literal) use ($db, $driver, $table, $filters, $order, $page, $perPage, $q): Builder {
             $query = $db->table($db->raw($q($table['name'])))->select($select);
             foreach ($filters as $f) {
-                self::apply($query, $driver, $q($f['column']), $f['op'], $f['value'] ?? null);
+                self::apply($query, $db, $driver, $q($f['column']), $f['op'], $f['value'] ?? null, $literal);
             }
             foreach ($order as [$column, $direction]) {
                 $query->orderByRaw($q($column).' '.$direction);
@@ -41,9 +46,10 @@ final class TableRowsQuery
         $query = $build(array_map(
             fn ($c) => $driver->sampleColumn($db, $c['name'], strtolower((string) ($c['type_name'] ?? '')), CellValue::RESULT_CHARS),
             $table['columns'],
-        ), $perPage + 1);
-        // The user-facing query: raw quoted columns, literal values, exactly the page asked for.
-        $sql = $build(array_map(fn ($c) => $db->raw($q($c['name'])), $table['columns']), $perPage)->toRawSql();
+        ), $perPage + 1, false);
+        // The user-facing query: raw quoted columns, values inlined with the connection's own quoting
+        // (never Builder::toRawSql, whose scanner misreads quoted identifiers), exactly the page asked for.
+        $sql = $build(array_map(fn ($c) => $db->raw($q($c['name'])), $table['columns']), $perPage, true)->toSql();
         $rows = array_map(
             fn ($row) => array_map(fn ($v) => CellValue::present($v, CellValue::RESULT_CHARS), array_values((array) $row)),
             $query->get()->all(),
@@ -70,15 +76,22 @@ final class TableRowsQuery
         return [];
     }
 
-    private static function apply(Builder $query, Driver $driver, string $column, string $op, ?string $value): void
+    private static function apply(Builder $query, Connection $db, Driver $driver, string $column, string $op, ?string $value, bool $literal): void
     {
+        // Inlines the value at the placeholder position only: a "?" inside a quoted column name is never touched.
+        $where = function (string $before, string $after, string $bound) use ($query, $db, $literal): void {
+            $literal
+                ? $query->whereRaw($before.$db->escape($bound).$after)
+                : $query->whereRaw($before.'?'.$after, [$bound]);
+        };
+
         if ($op === 'is_null' || $op === 'is_not_null') {
             $query->whereRaw($column.($op === 'is_null' ? ' IS NULL' : ' IS NOT NULL'));
 
             return;
         }
         if (isset(self::COMPARE[$op])) {
-            $query->whereRaw($column.' '.self::COMPARE[$op].' ?', [$value ?? '']);
+            $where($column.' '.self::COMPARE[$op].' ', '', $value ?? '');
 
             return;
         }
@@ -88,6 +101,6 @@ final class TableRowsQuery
             'starts_with' => "{$escaped}%",
             'ends_with' => "%{$escaped}",
         };
-        $query->whereRaw($driver->likeColumn($column)." LIKE ? ESCAPE '!'", [$pattern]);
+        $where($driver->likeColumn($column).' LIKE ', " ESCAPE '!'", $pattern);
     }
 }

@@ -89,6 +89,23 @@ export const workspaceApi = {
         apiFetch<DdlResponse>(table(id, name, 'ddl')),
 };
 
+/** First message of a Laravel validation response ({message, errors}), else its message. */
+function validationMessage(e: unknown): string | null {
+    if (!(e instanceof ApiError) || !e.body || typeof e.body !== 'object')
+        return null;
+    const { errors, message } = e.body as {
+        errors?: Record<string, unknown>;
+        message?: unknown;
+    };
+    if (errors && typeof errors === 'object') {
+        for (const messages of Object.values(errors)) {
+            const first = Array.isArray(messages) ? messages[0] : messages;
+            if (typeof first === 'string' && first) return first;
+        }
+    }
+    return typeof message === 'string' && message ? message : null;
+}
+
 export function dbErrorFrom(e: unknown, fallback: string): DbErrorPayload {
     const body =
         e instanceof ApiError
@@ -103,5 +120,11 @@ export function dbErrorFrom(e: unknown, fallback: string): DbErrorPayload {
             reason: error.reason ?? null,
         };
     }
-    return { kind: 'unknown', message: fallback, sqlstate: null, reason: null };
+    const message = validationMessage(e);
+    return {
+        kind: message ? 'validation' : 'unknown',
+        message: message ?? fallback,
+        sqlstate: null,
+        reason: null,
+    };
 }
