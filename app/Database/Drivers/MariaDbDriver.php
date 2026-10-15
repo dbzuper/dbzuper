@@ -15,7 +15,7 @@ class MariaDbDriver extends MySqlDriver
 
     public function applyStatementTimeout(Connection $db, int $seconds): void
     {
-        $db->statement('SET SESSION max_statement_time = '.max(1, $seconds));
+        $this->setTimeoutBestEffort($db, 'SET SESSION max_statement_time = '.max(1, $seconds));
     }
 
     public function inspector(): SchemaInspector

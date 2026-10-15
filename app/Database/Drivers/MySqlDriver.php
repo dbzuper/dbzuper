@@ -6,6 +6,7 @@ use App\Database\CellValue;
 use App\Database\ColumnKind;
 use App\Database\Contracts\Driver;
 use App\Database\Contracts\SchemaInspector;
+use App\Database\Drivers\Concerns\AppliesTimeoutBestEffort;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
 use Illuminate\Contracts\Database\Query\Expression;
@@ -15,6 +16,8 @@ use Pdo\Mysql;
 
 class MySqlDriver implements Driver
 {
+    use AppliesTimeoutBestEffort;
+
     public function name(): DriverName
     {
         return DriverName::MySql;
@@ -62,7 +65,7 @@ class MySqlDriver implements Driver
 
     public function applyStatementTimeout(Connection $db, int $seconds): void
     {
-        $db->statement('SET SESSION max_execution_time = '.max(1, $seconds) * 1000);
+        $this->setTimeoutBestEffort($db, 'SET SESSION max_execution_time = '.max(1, $seconds) * 1000);
     }
 
     public function ddl(Connection $db, string $table, string $kind): ?string

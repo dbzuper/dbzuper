@@ -6,6 +6,7 @@ use App\Database\CellValue;
 use App\Database\ColumnKind;
 use App\Database\Contracts\Driver;
 use App\Database\Contracts\SchemaInspector;
+use App\Database\Drivers\Concerns\AppliesTimeoutBestEffort;
 use App\Database\Exceptions\InvalidConnectionOption;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
@@ -15,6 +16,8 @@ use PDO;
 
 class PostgresDriver implements Driver
 {
+    use AppliesTimeoutBestEffort;
+
     public function name(): DriverName
     {
         return DriverName::Postgres;
@@ -75,7 +78,7 @@ class PostgresDriver implements Driver
 
     public function applyStatementTimeout(Connection $db, int $seconds): void
     {
-        $db->statement('SET statement_timeout = '.max(1, $seconds) * 1000);
+        $this->setTimeoutBestEffort($db, 'SET statement_timeout = '.max(1, $seconds) * 1000);
     }
 
     public function ddl(Connection $db, string $table, string $kind): ?string
