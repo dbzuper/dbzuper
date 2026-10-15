@@ -6,6 +6,9 @@ final class CellValue
 {
     public const MAX_CHARS = 200;
 
+    /** Largest integer a JavaScript number holds exactly (2^53 - 1). */
+    public const MAX_SAFE_INTEGER = 9007199254740991;
+
     /** A JSON-safe, size-bounded presentation of one database value. */
     public static function present(mixed $value): string|int|float|bool|null
     {
@@ -14,6 +17,9 @@ final class CellValue
         }
         if (is_float($value) && ! is_finite($value)) {
             return is_nan($value) ? 'NaN' : ($value > 0 ? 'Infinity' : '-Infinity');
+        }
+        if (is_int($value) && ($value > self::MAX_SAFE_INTEGER || $value < -self::MAX_SAFE_INTEGER)) {
+            return (string) $value;
         }
         if ($value === null || is_bool($value) || is_int($value) || is_float($value)) {
             return $value;

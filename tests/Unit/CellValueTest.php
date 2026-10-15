@@ -15,6 +15,12 @@ it('presents values safely for JSON', function (mixed $in, mixed $out) {
     'nan' => [NAN, 'NaN'],
     'inf' => [INF, 'Infinity'],
     '-inf' => [-INF, '-Infinity'],
+    'max safe int' => [9007199254740991, 9007199254740991],
+    'min safe int' => [-9007199254740991, -9007199254740991],
+    'unsafe int' => [9007199254740992, '9007199254740992'],
+    'unsafe negative int' => [-9007199254740992, '-9007199254740992'],
+    'php int max' => [PHP_INT_MAX, '9223372036854775807'],
+    'php int min' => [PHP_INT_MIN, (string) PHP_INT_MIN],
     'binary' => ["\xff\xfe\x00\x01", '[binary 4 bytes]'],
 ]);
 
