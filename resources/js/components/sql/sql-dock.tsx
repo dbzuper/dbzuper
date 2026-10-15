@@ -28,6 +28,7 @@ import { SqlTabsBar } from './sql-tabs-bar';
 import { DEFAULT_ROW_LIMIT, SqlToolbar } from './sql-toolbar';
 
 const MARKER_OWNER = 'dbsuperb';
+const NO_RESULTS: StatementResultPayload[] = [];
 
 type TabResults = {
     results: StatementResultPayload[];
@@ -66,6 +67,7 @@ export default function SqlDock({
     const pendingConfirm = useRef<((a: ConfirmAnswer) => void) | null>(null);
     const [maxRows, setMaxRows] = useState(DEFAULT_ROW_LIMIT);
     const [running, setRunning] = useState(false);
+    const runningRef = useRef(false);
     const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
         null,
     );
@@ -95,6 +97,13 @@ export default function SqlDock({
         controller.current?.abort();
         resolveConfirm(null);
     }, [resolveConfirm]);
+
+    // Closing the dock aborts an in-flight run and cancels a pending confirmation.
+    const cancelRef = useRef(cancel);
+    useEffect(() => {
+        cancelRef.current = cancel;
+    });
+    useEffect(() => () => cancelRef.current(), []);
 
     const dialect = snapshot.driver as Dialect;
 
@@ -147,7 +156,8 @@ export default function SqlDock({
             const model = editor?.getModel();
             const tabId =
                 useSqlTabs.getState().byConnection[connection.id]?.activeId;
-            if (!editor || !monaco || !model || !tabId || running) return;
+            if (!editor || !monaco || !model || !tabId || runningRef.current)
+                return;
             clearMarkers();
             const show = (value: TabResults) =>
                 setResultsByTab((prev) => ({ ...prev, [tabId]: value }));
@@ -166,6 +176,7 @@ export default function SqlDock({
 
             const abort = new AbortController();
             controller.current = abort;
+            runningRef.current = true;
             setRunning(true);
             let outcome: RunOutcome;
             try {
@@ -174,6 +185,7 @@ export default function SqlDock({
                 outcome = outcomeFromError(e);
             } finally {
                 if (controller.current === abort) controller.current = null;
+                runningRef.current = false;
                 setRunning(false);
             }
             if ('cancelled' in outcome) return;
@@ -213,7 +225,7 @@ export default function SqlDock({
             if (markers.length > 0)
                 monaco.editor.setModelMarkers(model, MARKER_OWNER, markers);
         },
-        [clearMarkers, connection.id, running],
+        [clearMarkers, connection.id],
     );
 
     const confirm = useCallback(
@@ -360,7 +372,7 @@ export default function SqlDock({
             </div>
             <div className="min-h-0 flex-[55]">
                 <ResultPanel
-                    results={tabResults?.results ?? []}
+                    results={tabResults?.results ?? NO_RESULTS}
                     error={tabResults?.error ?? null}
                     running={running}
                 />

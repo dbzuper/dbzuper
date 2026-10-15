@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { DbErrorPayload, StatementResultPayload } from '@/types/schema';
 
@@ -26,46 +26,62 @@ function ErrorView({
     );
 }
 
-function RowsTable({ result }: { result: StatementResultPayload }) {
+/** Interim fallback until the virtualized grid lands, so only the first rows are rendered. */
+export const FALLBACK_MAX_ROWS = 500;
+
+const RowsTable = memo(function RowsTable({
+    result,
+}: {
+    result: StatementResultPayload;
+}) {
+    const rows = result.rows.slice(0, FALLBACK_MAX_ROWS);
     return (
-        <table className="w-max min-w-full border-collapse text-xs">
-            <thead className="sticky top-0 bg-muted">
-                <tr>
-                    {result.columns.map((c, i) => (
-                        <th
-                            key={i}
-                            className="border-b px-2 py-1 text-left font-medium"
-                        >
-                            {c.name}
-                        </th>
-                    ))}
-                </tr>
-            </thead>
-            <tbody>
-                {result.rows.map((row, r) => (
-                    <tr key={r} className="odd:bg-muted/30">
-                        {row.map((cell, c) => (
-                            <td
-                                key={c}
-                                className="max-w-80 truncate border-b px-2 py-0.5 font-mono"
+        <>
+            <table className="w-max min-w-full border-collapse text-xs">
+                <thead className="sticky top-0 bg-muted">
+                    <tr>
+                        {result.columns.map((c, i) => (
+                            <th
+                                key={i}
+                                className="border-b px-2 py-1 text-left font-medium"
                             >
-                                {cell === null ? (
-                                    <span className="text-muted-foreground italic">
-                                        NULL
-                                    </span>
-                                ) : (
-                                    String(cell)
-                                )}
-                            </td>
+                                {c.name}
+                            </th>
                         ))}
                     </tr>
-                ))}
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    {rows.map((row, r) => (
+                        <tr key={r} className="odd:bg-muted/30">
+                            {row.map((cell, c) => (
+                                <td
+                                    key={c}
+                                    className="max-w-80 truncate border-b px-2 py-0.5 font-mono"
+                                >
+                                    {cell === null ? (
+                                        <span className="text-muted-foreground italic">
+                                            NULL
+                                        </span>
+                                    ) : (
+                                        String(cell)
+                                    )}
+                                </td>
+                            ))}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+            {result.rows.length > rows.length && (
+                <p className="p-2 text-xs text-muted-foreground">
+                    Showing first {rows.length} of{' '}
+                    {result.rows.length.toLocaleString('en-US')} rows
+                </p>
+            )}
+        </>
     );
-}
+});
 
-export function ResultPanel({
+export const ResultPanel = memo(function ResultPanel({
     results,
     error,
     running,
@@ -135,4 +151,4 @@ export function ResultPanel({
             )}
         </div>
     );
-}
+});
