@@ -18,10 +18,16 @@ export const workspaceApi = {
             method: 'POST',
         }),
     layout: (id: number) => apiFetch<LayoutResponse>(`/api/c/${id}/layout`),
-    saveLayout: (id: number, positions: LayoutPositionEntry[]) =>
+    /** `keepalive` lets the save outlive the page (pagehide, navigation) when the body is small enough. */
+    saveLayout: (
+        id: number,
+        positions: LayoutPositionEntry[],
+        opts: { keepalive?: boolean } = {},
+    ) =>
         apiFetch<{ saved: boolean }>(`/api/c/${id}/layout`, {
             method: 'PUT',
             body: { positions },
+            keepalive: opts.keepalive,
         }),
     sample: (id: number, name: string) =>
         apiFetch<SampleResponse>(table(id, name, 'sample')),

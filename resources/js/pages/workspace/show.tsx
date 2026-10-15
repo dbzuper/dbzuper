@@ -101,15 +101,45 @@ export default function WorkspaceShow({
     }, [load]);
 
     const persist = useCallback(
-        (entries: LayoutPositionEntry[]) => {
+        (entries: LayoutPositionEntry[], keepalive = false) => {
             workspaceApi
-                .saveLayout(connection.id, entries)
+                .saveLayout(
+                    connection.id,
+                    entries,
+                    keepalive ? { keepalive } : {},
+                )
                 .catch(() => toast.error('Could not save the layout.'));
         },
         [connection.id],
     );
 
-    const persistDebounced = useDebounced(persist, 800);
+    // Drag saves are debounced; keepalive lets a save flushed on pagehide outlive the page.
+    const dragSave = useDebounced<LayoutPositionEntry[]>(
+        (entries) => persist(entries, true),
+        800,
+    );
+
+    useEffect(() => {
+        const onHide = () => dragSave.flush();
+        const onVisibility = () => {
+            if (document.visibilityState === 'hidden') dragSave.flush();
+        };
+        window.addEventListener('pagehide', onHide);
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            window.removeEventListener('pagehide', onHide);
+            document.removeEventListener('visibilitychange', onVisibility);
+        };
+    }, [dragSave]);
+
+    // A fresh layout (initial or re-layout) supersedes any drag save still waiting to be sent.
+    const persistLaidOut = useCallback(
+        (entries: LayoutPositionEntry[]) => {
+            dragSave.cancel();
+            persist(entries);
+        },
+        [dragSave, persist],
+    );
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -147,7 +177,7 @@ export default function WorkspaceShow({
     const { model, status, relayout } = useUniverseModel(
         universeAvailable ? snapshot : null,
         saved,
-        persist,
+        persistLaidOut,
     );
     const selectedTable = useMemo(
         () => snapshot?.tables.find((t) => t.name === selected) ?? null,
@@ -263,7 +293,7 @@ export default function WorkspaceShow({
                                                 snapshot={snapshot}
                                                 onRelayout={relayout}
                                                 onPositionsChanged={
-                                                    persistDebounced
+                                                    dragSave.call
                                                 }
                                                 onError={onRenderError}
                                             />

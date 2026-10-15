@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, apiFetch } from './http';
+import { ApiError, apiFetch, KEEPALIVE_MAX_BYTES } from './http';
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -45,5 +45,35 @@ describe('apiFetch', () => {
             body: { error: { kind: 'auth' } },
         });
         await expect(apiFetch('/api/x')).rejects.toBeInstanceOf(ApiError);
+    });
+
+    it('sends small bodies with keepalive when asked', async () => {
+        const fetchMock = vi
+            .spyOn(globalThis, 'fetch')
+            .mockImplementation(() =>
+                Promise.resolve(new Response(null, { status: 204 })),
+            );
+        await apiFetch('/api/x', { method: 'PUT', body: { a: 1 } });
+        await apiFetch('/api/x', {
+            method: 'PUT',
+            body: { a: 1 },
+            keepalive: true,
+        });
+        expect(fetchMock.mock.calls[0][1]?.keepalive).toBeUndefined();
+        expect(fetchMock.mock.calls[1][1]?.keepalive).toBe(true);
+    });
+
+    it('drops keepalive for bodies over the browser limit', async () => {
+        const fetchMock = vi
+            .spyOn(globalThis, 'fetch')
+            .mockImplementation(() =>
+                Promise.resolve(new Response(null, { status: 204 })),
+            );
+        await apiFetch('/api/x', {
+            method: 'PUT',
+            body: { a: 'x'.repeat(KEEPALIVE_MAX_BYTES) },
+            keepalive: true,
+        });
+        expect(fetchMock.mock.calls[0][1]?.keepalive).toBeUndefined();
     });
 });
