@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SavedConnection extends Model
 {
@@ -42,6 +43,11 @@ class SavedConnection extends Model
     public function snapshots(): HasMany
     {
         return $this->hasMany(StoredSnapshot::class, 'connection_id');
+    }
+
+    public function layout(): HasOne
+    {
+        return $this->hasOne(LayoutPosition::class, 'connection_id');
     }
 
     public function toClientArray(): array

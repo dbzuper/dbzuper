@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\LayoutController;
 use App\Http\Controllers\Api\SchemaController;
 use App\Http\Controllers\ConnectionController;
 use App\Http\Controllers\ConnectionTestController;
@@ -22,6 +23,8 @@ Route::middleware('auth')->group(function () {
     Route::prefix('api/c/{connection}')->name('api.')->middleware('throttle:dbsuperb-api')->group(function () {
         Route::get('schema', [SchemaController::class, 'show'])->name('schema.show');
         Route::post('schema/refresh', [SchemaController::class, 'refresh'])->name('schema.refresh');
+        Route::get('layout', [LayoutController::class, 'show'])->name('layout.show');
+        Route::put('layout', [LayoutController::class, 'update'])->name('layout.update');
     });
 });
 

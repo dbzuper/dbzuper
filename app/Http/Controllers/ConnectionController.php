@@ -49,6 +49,7 @@ class ConnectionController extends Controller
         // A snapshot describes one server/database/schema; once the connection points elsewhere it is stale.
         if ($this->schemaSource($connection) !== $before) {
             $connection->snapshots()->delete();
+            $connection->layout()->delete();
         }
 
         return redirect()->route('connections.index');
