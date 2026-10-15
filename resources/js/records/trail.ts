@@ -2,7 +2,9 @@ import type { RecordKeyValues } from './types';
 
 export const MAX_NODES = 100;
 export const COLUMN_GAP = 360;
-export const ROW_GAP = 150;
+// A card is at most CARD_MAX_HEIGHT tall (its fields and ports scroll inside), so rows never overlap.
+export const CARD_MAX_HEIGHT = 300;
+export const ROW_GAP = 330;
 
 export type TrailNode = { id: string; table: string; key: RecordKeyValues };
 export type TrailEdge = {

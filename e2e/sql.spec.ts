@@ -19,6 +19,88 @@ test.afterAll(async () => {
     await page.close();
 });
 
+const PALETTE_PLACEHOLDER = 'Search tables, columns and actions…';
+
+async function openWorkspace(name: string) {
+    await addSqliteConnection(page, name, DEMO);
+    await page.getByRole('link', { name: new RegExp(name) }).click();
+    await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
+        timeout: 30_000,
+    });
+}
+
+async function openRecordFromPalette(query: string, option: string | RegExp) {
+    await page.keyboard.press('Control+k');
+    await page.getByPlaceholder(PALETTE_PLACEHOLDER).fill(query);
+    await page.getByRole('option', { name: option }).click();
+}
+
+test('records: entry points (result row, Data tab row) and tables without a primary key', async () => {
+    await openWorkspace('Records entry demo');
+
+    // A result row opens its record.
+    await page.keyboard.press('Control+j');
+    const dock = page.getByRole('region', { name: 'SQL editor' });
+    await expect(dock.locator('.monaco-editor')).toBeVisible();
+    await dock.locator('.monaco-editor').click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('select * from orders');
+    await page.keyboard.press('Control+Enter');
+    await expect(
+        dock.getByRole('gridcell', { name: 'paid', exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+    await dock.getByRole('button', { name: 'Open record' }).first().click();
+    const explorer = page.getByRole('region', { name: 'Record explorer' });
+    await expect(explorer.locator('.react-flow__node-record')).toHaveCount(1);
+    await expect(
+        explorer.getByRole('button', { name: 'orders 1', exact: true }),
+    ).toBeVisible();
+    await expect(
+        explorer
+            .getByRole('navigation', { name: 'Record path' })
+            .getByRole('button', { name: 'orders · 1', exact: true }),
+    ).toBeVisible();
+
+    // A Data tab row opens its record: users row 3 is Grace Hopper.
+    await openRecordFromPalette('users', /^users/);
+    const inspector = page.getByRole('complementary', { name: 'Inspector' });
+    await inspector.getByRole('tab', { name: 'Data' }).click();
+    await expect(
+        inspector.getByRole('gridcell', { name: 'Grace Hopper' }),
+    ).toBeVisible();
+    await inspector
+        .getByRole('row')
+        .filter({ hasText: 'Grace Hopper' })
+        .getByRole('button', { name: 'Open record' })
+        .click();
+    await expect(explorer.getByText('Grace Hopper').first()).toBeVisible();
+
+    // A table without a primary key: no palette record option and no Data tab row action.
+    // (This test runs before the destructive DELETE below, so audit_log still has rows.)
+    await page.keyboard.press('Control+k');
+    const search = page.getByPlaceholder(PALETTE_PLACEHOLDER);
+    await search.fill('audit_log');
+    // Positive signal first: the table itself is offered, so the search has settled.
+    await expect(
+        page.getByRole('option', { name: /^audit_log/ }),
+    ).toBeVisible();
+    await search.fill('audit_log 1');
+    await expect(page.getByText('No matches.')).toBeVisible();
+    await expect(page.getByRole('option', { name: /Open record/ })).toHaveCount(
+        0,
+    );
+    await page.keyboard.press('Escape');
+    await openRecordFromPalette('audit_log', /^audit_log/);
+    await inspector.getByRole('tab', { name: 'Data' }).click();
+    // Header row plus at least one data row has rendered before asserting the absence.
+    await expect
+        .poll(() => inspector.getByRole('row').count())
+        .toBeGreaterThan(1);
+    await expect(
+        inspector.getByRole('button', { name: 'Open record' }),
+    ).toHaveCount(0);
+});
+
 test('sql: write, run, confirm, inspect results and history', async () => {
     await addSqliteConnection(page, 'SQL flow demo', DEMO);
     await page.getByRole('link', { name: /SQL flow demo/ }).click();
@@ -211,22 +293,6 @@ test('records: Back/Forward restore the trail without remounting or refetching',
     expect(seen.filter((p) => /\/records\/users/.test(p))).toEqual([]);
 });
 
-const PALETTE_PLACEHOLDER = 'Search tables, columns and actions…';
-
-async function openWorkspace(name: string) {
-    await addSqliteConnection(page, name, DEMO);
-    await page.getByRole('link', { name: new RegExp(name) }).click();
-    await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
-        timeout: 30_000,
-    });
-}
-
-async function openRecordFromPalette(query: string, option: string | RegExp) {
-    await page.keyboard.press('Control+k');
-    await page.getByPlaceholder(PALETTE_PLACEHOLDER).fill(query);
-    await page.getByRole('option', { name: option }).click();
-}
-
 test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the expansion budget', async () => {
     await openWorkspace('Records flow demo');
     // orders.user_id -> users is an inferred relationship in the demo; its port needs the toggle.
@@ -289,33 +355,18 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
         .click();
     await expect(cards).toHaveCount(4);
 
-    // 4. Hop 3: item 1 -> its product.
+    // 4. Hop 3: item 1 -> its product (opening a parent selects it).
     await explorer.getByRole('button', { name: 'Fit View' }).click();
     await explorer
         .getByRole('button', { name: /^Open products \(product_id\)/ })
         .first()
-        // Dispatched directly: item 2's taller card overlaps item 1's lower ports at the 150px row gap,
-        // so a pointer click on this port lands on the neighbouring card.
-        .dispatchEvent('click');
-    await expect(cards).toHaveCount(5);
-    await expect(
-        explorer.getByText('Mechanical Keyboard').first(),
-    ).toBeVisible();
-
-    // 5. Back removes the product card, Forward restores it.
-    await page.goBack();
-    await expect(cards).toHaveCount(4);
-    await page.goForward();
-    await expect(cards).toHaveCount(5);
-    await expect(
-        explorer.getByText('Mechanical Keyboard').first(),
-    ).toBeVisible();
-
-    // Selecting the product card makes users -> ... -> products the breadcrumb path.
-    await cards
-        .filter({ hasText: 'Mechanical Keyboard' })
-        .getByRole('button', { name: /Mechanical Keyboard/ })
         .click();
+    await expect(cards).toHaveCount(5);
+    await expect(
+        explorer.getByText('Mechanical Keyboard').first(),
+    ).toBeVisible();
+
+    // 5. The breadcrumb lists the path; Back removes the product card, Forward restores it.
     const crumbs = explorer
         .getByRole('navigation', { name: 'Record path' })
         .locator('[data-crumb]');
@@ -324,6 +375,12 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
         (t) => t.split(' · ')[0],
     );
     expect(tables).toEqual(['users', 'orders', 'order_items', 'products']);
+
+    await page.goBack();
+    await expect(cards).toHaveCount(4);
+    await page.goForward();
+    await expect(cards).toHaveCount(5);
+    await expect(crumbs).toHaveCount(4);
 
     // 6. Copy path as SQL opens a "Record path" tab holding the JOIN chain.
     await explorer.getByRole('button', { name: 'Copy path as SQL' }).click();
@@ -342,57 +399,4 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
     await expect(
         dock.getByRole('gridcell', { name: 'Mechanical Keyboard' }),
     ).toBeVisible({ timeout: 15_000 });
-});
-
-test('records: entry points (result row, Data tab row) and tables without a primary key', async () => {
-    await openWorkspace('Records entry demo');
-
-    // A result row opens its record.
-    await page.keyboard.press('Control+j');
-    const dock = page.getByRole('region', { name: 'SQL editor' });
-    await expect(dock.locator('.monaco-editor')).toBeVisible();
-    await dock.locator('.monaco-editor').click();
-    await page.keyboard.press('Control+a');
-    await page.keyboard.type('select * from orders');
-    await page.keyboard.press('Control+Enter');
-    await expect(
-        dock.getByRole('gridcell', { name: 'paid', exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
-    await dock.getByRole('button', { name: 'Open record' }).first().click();
-    const explorer = page.getByRole('region', { name: 'Record explorer' });
-    await expect(
-        explorer.locator('.react-flow__node-record').filter({
-            hasText: 'orders',
-        }),
-    ).toHaveCount(1);
-    await expect(
-        explorer.getByRole('navigation', { name: 'Record path' }),
-    ).toContainText('orders');
-
-    // A Data tab row opens its record: users row 3 is Grace Hopper.
-    await openRecordFromPalette('users', /^users/);
-    const inspector = page.getByRole('complementary', { name: 'Inspector' });
-    await inspector.getByRole('tab', { name: 'Data' }).click();
-    await expect(
-        inspector.getByRole('gridcell', { name: 'Grace Hopper' }),
-    ).toBeVisible();
-    await inspector
-        .getByRole('row')
-        .filter({ hasText: 'Grace Hopper' })
-        .getByRole('button', { name: 'Open record' })
-        .click();
-    await expect(explorer.getByText('Grace Hopper').first()).toBeVisible();
-
-    // A table without a primary key: no palette record option and no Data tab row action.
-    await page.keyboard.press('Control+k');
-    await page.getByPlaceholder(PALETTE_PLACEHOLDER).fill('audit_log 1');
-    await expect(page.getByRole('option', { name: /Open record/ })).toHaveCount(
-        0,
-    );
-    await page.keyboard.press('Escape');
-    await openRecordFromPalette('audit_log', /^audit_log/);
-    await inspector.getByRole('tab', { name: 'Data' }).click();
-    await expect(
-        inspector.getByRole('button', { name: 'Open record' }),
-    ).toHaveCount(0);
 });

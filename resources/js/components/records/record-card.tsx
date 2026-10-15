@@ -204,7 +204,7 @@ export function RecordCard({
         <div
             data-selected={selected ? 'true' : undefined}
             className={cn(
-                'relative w-[300px] rounded-lg border bg-card text-xs text-card-foreground shadow-sm',
+                'relative flex max-h-[300px] w-[300px] flex-col rounded-lg border bg-card text-xs text-card-foreground shadow-sm',
                 selected &&
                     'border-[var(--universe-accent)] ring-2 ring-[var(--universe-accent)]',
             )}
@@ -262,73 +262,80 @@ export function RecordCard({
                             {title}
                         </span>
                     </button>
-                    {fields.length > 0 && (
-                        <div
-                            role="group"
-                            aria-label="Fields"
-                            className="px-3 pb-2"
-                        >
-                            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-                                {fields.map((f) => (
-                                    <div key={f.name} className="contents">
-                                        <dt className="truncate text-muted-foreground">
-                                            {f.name}
-                                        </dt>
-                                        <dd className="m-0 min-w-0 truncate font-mono">
-                                            <FieldValue
-                                                value={f.value}
-                                                type={types.get(f.name) ?? ''}
-                                            />
-                                        </dd>
-                                    </div>
-                                ))}
-                            </dl>
-                        </div>
-                    )}
-                    {entry?.status === 'error' && (
-                        <div className="flex items-center gap-2 border-t px-3 py-2">
-                            <span className="text-destructive">
-                                {entry.error ?? 'Could not load the record.'}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={onReload}
-                                className="nodrag nopan ml-auto rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+                    {/* Fields and ports scroll inside the capped card height; a scrolled-out port keeps its
+                        (hidden) handle, so its edge still attaches at the port's real position. */}
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                        {fields.length > 0 && (
+                            <div
+                                role="group"
+                                aria-label="Fields"
+                                className="px-3 pb-2"
                             >
-                                Retry
-                            </button>
-                        </div>
-                    )}
-                    {(!entry || entry.status === 'loading') && (
-                        <div className="border-t px-3 py-2">
-                            <div className="h-3 w-2/3 animate-pulse rounded bg-muted motion-reduce:animate-none" />
-                            <span className="sr-only">
-                                Loading relationships
-                            </span>
-                        </div>
-                    )}
-                    {outgoing.length > 0 && (
-                        <PortGroup title="Belongs to">
-                            {outgoing.map((s) => (
-                                <Port
-                                    key={`${s.id}:${s.direction}`}
-                                    summary={s}
-                                    onExpand={onExpand}
-                                />
-                            ))}
-                        </PortGroup>
-                    )}
-                    {incoming.length > 0 && (
-                        <PortGroup title="Has many">
-                            {incoming.map((s) => (
-                                <Port
-                                    key={`${s.id}:${s.direction}`}
-                                    summary={s}
-                                    onExpand={onExpand}
-                                />
-                            ))}
-                        </PortGroup>
-                    )}
+                                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+                                    {fields.map((f) => (
+                                        <div key={f.name} className="contents">
+                                            <dt className="truncate text-muted-foreground">
+                                                {f.name}
+                                            </dt>
+                                            <dd className="m-0 min-w-0 truncate font-mono">
+                                                <FieldValue
+                                                    value={f.value}
+                                                    type={
+                                                        types.get(f.name) ?? ''
+                                                    }
+                                                />
+                                            </dd>
+                                        </div>
+                                    ))}
+                                </dl>
+                            </div>
+                        )}
+                        {entry?.status === 'error' && (
+                            <div className="flex items-center gap-2 border-t px-3 py-2">
+                                <span className="text-destructive">
+                                    {entry.error ??
+                                        'Could not load the record.'}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={onReload}
+                                    className="nodrag nopan ml-auto rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+                                >
+                                    Retry
+                                </button>
+                            </div>
+                        )}
+                        {(!entry || entry.status === 'loading') && (
+                            <div className="border-t px-3 py-2">
+                                <div className="h-3 w-2/3 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+                                <span className="sr-only">
+                                    Loading relationships
+                                </span>
+                            </div>
+                        )}
+                        {outgoing.length > 0 && (
+                            <PortGroup title="Belongs to">
+                                {outgoing.map((s) => (
+                                    <Port
+                                        key={`${s.id}:${s.direction}`}
+                                        summary={s}
+                                        onExpand={onExpand}
+                                    />
+                                ))}
+                            </PortGroup>
+                        )}
+                        {incoming.length > 0 && (
+                            <PortGroup title="Has many">
+                                {incoming.map((s) => (
+                                    <Port
+                                        key={`${s.id}:${s.direction}`}
+                                        summary={s}
+                                        onExpand={onExpand}
+                                    />
+                                ))}
+                            </PortGroup>
+                        )}
+                    </div>
                 </>
             )}
         </div>

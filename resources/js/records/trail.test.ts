@@ -105,8 +105,8 @@ describe('trail', () => {
         expect(pos.get(r0)).toEqual({ x: 0, y: 0 });
         expect([...pos.values()].slice(1)).toEqual([
             { x: 360, y: 0 },
-            { x: 360, y: 150 },
-            { x: 360, y: 300 },
+            { x: 360, y: 330 },
+            { x: 360, y: 660 },
         ]);
         const p = addRelated(a.trail, r0, 'r0', 'out', [t('teams', 1)]);
         expect(placements(p.trail).get(p.added[0])).toEqual({ x: -360, y: 0 });
@@ -118,7 +118,7 @@ describe('trail', () => {
         expect(
             new Set([...pos2.values()].map((v) => `${v.x}:${v.y}`)).size,
         ).toBe(pos2.size);
-        expect(pos2.get(b.added[0])).toEqual({ x: 360, y: 450 });
+        expect(pos2.get(b.added[0])).toEqual({ x: 360, y: 990 });
         expect(placements(structuredClone(b.trail))).toEqual(pos2);
     });
 

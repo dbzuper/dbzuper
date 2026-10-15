@@ -175,6 +175,15 @@ describe('expand and more', () => {
             },
         ]);
         expect(Object.keys(s().clusters)).toEqual([]);
+        // Opening a parent selects it; has-many expansions keep the selection.
+        expect(s().trail.selected).toBe(nodeId('users', { id: 9 }));
+    });
+
+    it('keeps the selection when a has-many port is expanded', async () => {
+        api.related.mockResolvedValue(related('items', rows(1, 2), null));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(3));
+        expect(s().trail.selected).toBe(root);
     });
 
     it('does not duplicate nodes when the same relationship is expanded twice', async () => {

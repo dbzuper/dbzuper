@@ -353,8 +353,17 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 } else {
                     delete clusters[key];
                 }
+                // Opening a parent (belongs-to) moves the selection to it, in this same trail update.
+                const parent =
+                    summary.direction === 'out' && page.rows[0]
+                        ? nodeId(page.table, page.rows[0].key)
+                        : null;
                 set({
-                    trail: result.trail,
+                    trail:
+                        parent &&
+                        result.trail.nodes.some((n) => n.id === parent)
+                            ? selectNode(result.trail, parent)
+                            : result.trail,
                     records,
                     clusters,
                     notice:
