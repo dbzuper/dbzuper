@@ -2,11 +2,26 @@ import Graph from 'graphology';
 import louvain from 'graphology-communities-louvain';
 import type { SchemaGraph } from './graph';
 
-export const CLUSTER_PALETTE = ['#6f9fc8', '#7fb08a', '#c49a62', '#a985b3', '#5fb0a8', '#c48686', '#8e93cc', '#a3a65f'] as const;
+export const CLUSTER_PALETTE = [
+    '#6f9fc8',
+    '#7fb08a',
+    '#c49a62',
+    '#a985b3',
+    '#5fb0a8',
+    '#c48686',
+    '#8e93cc',
+    '#a3a65f',
+] as const;
 export const ISOLATED_COLOR = '#8a8f98';
 export const ISOLATED_CLUSTER = 'isolated';
 
-export type ClusterInfo = { id: string; label: string; color: string; members: string[]; outer: boolean };
+export type ClusterInfo = {
+    id: string;
+    label: string;
+    color: string;
+    members: string[];
+    outer: boolean;
+};
 
 export function mulberry32(seed: number): () => number {
     let a = seed >>> 0;
@@ -42,12 +57,16 @@ export function clusterLabel(members: string[], graph: SchemaGraph): string {
             if (p) counts.set(p, (counts.get(p) ?? 0) + 1);
         }
         let best: [string, number] | null = null;
-        for (const entry of [...counts.entries()].sort(([a], [b]) => byName(a, b))) {
+        for (const entry of [...counts.entries()].sort(([a], [b]) =>
+            byName(a, b),
+        )) {
             if (!best || entry[1] > best[1]) best = entry;
         }
         if (best && best[1] / members.length >= 0.6) return `${best[0]}_*`;
     }
-    return [...members].sort((a, b) => degree(graph, b) - degree(graph, a) || byName(a, b))[0];
+    return [...members].sort(
+        (a, b) => degree(graph, b) - degree(graph, a) || byName(a, b),
+    )[0];
 }
 
 export function assignClusters(graph: SchemaGraph): ClusterInfo[] {
@@ -60,11 +79,19 @@ export function assignClusters(graph: SchemaGraph): ClusterInfo[] {
         const g = new Graph({ type: 'undirected' });
         for (const n of connected) g.addNode(n);
         graph.forEachEdge((_edge, attrs, source, target) => {
-            if (source !== target) g.mergeEdge(source, target, { weight: attrs.weight });
+            if (source !== target)
+                g.mergeEdge(source, target, { weight: attrs.weight });
         });
-        const communities = louvain(g, { rng: mulberry32(42), getEdgeWeight: 'weight' });
+        const communities = louvain(g, {
+            rng: mulberry32(42),
+            getEdgeWeight: 'weight',
+        });
         const grouped = new Map<number, string[]>();
-        for (const n of connected) grouped.set(communities[n], [...(grouped.get(communities[n]) ?? []), n]);
+        for (const n of connected)
+            grouped.set(communities[n], [
+                ...(grouped.get(communities[n]) ?? []),
+                n,
+            ]);
         communityGroups.push(...grouped.values());
     }
     communityGroups.sort((a, b) => b.length - a.length || byName(a[0], b[0]));
@@ -77,25 +104,39 @@ export function assignClusters(graph: SchemaGraph): ClusterInfo[] {
         else loners.push(n);
     }
     const prefixGroups: string[][] = [];
-    for (const [, members] of [...byPrefix.entries()].sort(([a], [b]) => byName(a, b))) {
+    for (const [, members] of [...byPrefix.entries()].sort(([a], [b]) =>
+        byName(a, b),
+    )) {
         if (members.length >= 2) prefixGroups.push(members);
         else loners.push(...members);
     }
     prefixGroups.sort((a, b) => b.length - a.length || byName(a[0], b[0]));
 
-    const clusters: ClusterInfo[] = [...communityGroups, ...prefixGroups].map((members, i) => ({
-        id: `c${i}`,
-        label: clusterLabel(members, graph),
-        color: CLUSTER_PALETTE[i % CLUSTER_PALETTE.length],
-        members,
-        outer: false,
-    }));
+    const clusters: ClusterInfo[] = [...communityGroups, ...prefixGroups].map(
+        (members, i) => ({
+            id: `c${i}`,
+            label: clusterLabel(members, graph),
+            color: CLUSTER_PALETTE[i % CLUSTER_PALETTE.length],
+            members,
+            outer: false,
+        }),
+    );
     if (loners.length > 0) {
-        clusters.push({ id: ISOLATED_CLUSTER, label: 'Unrelated tables', color: ISOLATED_COLOR, members: loners.sort(byName), outer: true });
+        clusters.push({
+            id: ISOLATED_CLUSTER,
+            label: 'Unrelated tables',
+            color: ISOLATED_COLOR,
+            members: loners.sort(byName),
+            outer: true,
+        });
     }
 
     for (const cluster of clusters) {
-        for (const member of cluster.members) graph.mergeNodeAttributes(member, { cluster: cluster.id, color: cluster.color });
+        for (const member of cluster.members)
+            graph.mergeNodeAttributes(member, {
+                cluster: cluster.id,
+                color: cluster.color,
+            });
     }
 
     return clusters;

@@ -1,7 +1,14 @@
-import type { RelationshipSchema, SchemaSnapshot, TableSchema } from '@/types/schema';
+import type {
+    RelationshipSchema,
+    SchemaSnapshot,
+    TableSchema,
+} from '@/types/schema';
 
 type TableSeed = Partial<TableSchema> & { name: string };
-type RelSeed = Partial<RelationshipSchema> & { from_table: string; to_table: string };
+type RelSeed = Partial<RelationshipSchema> & {
+    from_table: string;
+    to_table: string;
+};
 
 export function makeTable(seed: TableSeed): TableSchema {
     return {
@@ -10,7 +17,15 @@ export function makeTable(seed: TableSeed): TableSchema {
         size_bytes: null,
         primary_key: ['id'],
         columns: [
-            { name: 'id', type: 'integer', type_name: 'integer', nullable: false, default: null, auto_increment: true, comment: null },
+            {
+                name: 'id',
+                type: 'integer',
+                type_name: 'integer',
+                nullable: false,
+                default: null,
+                auto_increment: true,
+                comment: null,
+            },
         ],
         indexes: [],
         ...seed,
@@ -22,7 +37,9 @@ export function makeRelationship(seed: RelSeed): RelationshipSchema {
     const toColumns = seed.to_columns ?? ['id'];
     const inferred = seed.inferred ?? false;
     return {
-        id: seed.id ?? `${inferred ? 'inferred' : 'fk'}:${seed.from_table}(${fromColumns.join(',')})->${seed.to_table}(${toColumns.join(',')})`,
+        id:
+            seed.id ??
+            `${inferred ? 'inferred' : 'fk'}:${seed.from_table}(${fromColumns.join(',')})->${seed.to_table}(${toColumns.join(',')})`,
         from_columns: fromColumns,
         to_columns: toColumns,
         inferred,
@@ -32,7 +49,11 @@ export function makeRelationship(seed: RelSeed): RelationshipSchema {
     };
 }
 
-export function makeSnapshot(tables: TableSeed[], relationships: RelSeed[] = [], driver = 'sqlite'): SchemaSnapshot {
+export function makeSnapshot(
+    tables: TableSeed[],
+    relationships: RelSeed[] = [],
+    driver = 'sqlite',
+): SchemaSnapshot {
     return {
         driver,
         database: 'test',

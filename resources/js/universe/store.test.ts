@@ -21,7 +21,11 @@ describe('workspace store', () => {
         expect(s().pathTo).toBe('products');
         expect(s().path).toEqual(['orders', 'order_items', 'products']);
         s().clearPath();
-        expect([s().pathFrom, s().pathTo, s().path]).toEqual([null, null, null]);
+        expect([s().pathFrom, s().pathTo, s().path]).toEqual([
+            null,
+            null,
+            null,
+        ]);
     });
 
     it('records an empty path when none exists', () => {

@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 
 export type ZoomLevel = 'galaxy' | 'system' | 'closeup';
-export type InspectorTab = 'columns' | 'relationships' | 'indexes' | 'data' | 'ddl';
+export type InspectorTab =
+    | 'columns'
+    | 'relationships'
+    | 'indexes'
+    | 'data'
+    | 'ddl';
 
 type State = {
     selected: string | null;
@@ -50,11 +55,13 @@ const initial: State = {
 
 export const useWorkspace = create<WorkspaceState>()((set, get) => ({
     ...initial,
-    select: (table, tab) => set(tab ? { selected: table, inspectorTab: tab } : { selected: table }),
+    select: (table, tab) =>
+        set(tab ? { selected: table, inspectorTab: tab } : { selected: table }),
     hover: (table) => {
         if (get().hovered !== table) set({ hovered: table });
     },
-    setFocus: (table, depth = 1) => set({ focus: table ? { table, depth } : null }),
+    setFocus: (table, depth = 1) =>
+        set({ focus: table ? { table, depth } : null }),
     toggleInferred: () => set({ showInferred: !get().showInferred }),
     setView: (view) => set({ view }),
     setZoomLevel: (zoomLevel) => {

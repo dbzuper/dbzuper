@@ -37,7 +37,10 @@ export function edgeKey(a: string, b: string): string {
 }
 
 export function buildSchemaGraph(snapshot: SchemaSnapshot): SchemaGraph {
-    const graph: SchemaGraph = new Graph<TableNodeAttributes, RelationEdgeAttributes>({ type: 'undirected', multi: false, allowSelfLoops: true });
+    const graph: SchemaGraph = new Graph<
+        TableNodeAttributes,
+        RelationEdgeAttributes
+    >({ type: 'undirected', multi: false, allowSelfLoops: true });
 
     for (const table of snapshot.tables) {
         graph.addNode(table.name, {
@@ -55,12 +58,19 @@ export function buildSchemaGraph(snapshot: SchemaSnapshot): SchemaGraph {
     }
 
     for (const rel of snapshot.relationships) {
-        if (!graph.hasNode(rel.from_table) || !graph.hasNode(rel.to_table)) continue;
+        if (!graph.hasNode(rel.from_table) || !graph.hasNode(rel.to_table))
+            continue;
         const key = edgeKey(rel.from_table, rel.to_table);
         if (graph.hasEdge(key)) {
             graph.updateEdgeAttributes(key, (a) => {
                 const weight = a.weight + 1;
-                return { ...a, relationships: [...a.relationships, rel.id], inferred: a.inferred && rel.inferred, weight, size: edgeSizeFor(weight) };
+                return {
+                    ...a,
+                    relationships: [...a.relationships, rel.id],
+                    inferred: a.inferred && rel.inferred,
+                    weight,
+                    size: edgeSizeFor(weight),
+                };
             });
         } else {
             graph.addUndirectedEdgeWithKey(key, rel.from_table, rel.to_table, {
