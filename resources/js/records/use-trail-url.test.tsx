@@ -270,16 +270,36 @@ describe('useTrailUrl', () => {
         );
     });
 
-    it('does not push when the encoded trail is over 16 KB, and keeps the in-memory trail', () => {
+    it('does not push when the encoded trail is over 7,000 characters, and keeps the in-memory trail', () => {
         const push = pushSpy();
         renderHook(() => useTrailUrl(snapshot));
-        const huge = 'x'.repeat(20 * 1024);
-        act(() => useRecords.getState().open('users', { id: huge as never }));
+        const long = 'x'.repeat(5400);
+        const encoded = encodeTrail(
+            openRoot('users', { id: long as never }),
+            pks,
+        );
+        expect(encoded.length).toBeGreaterThan(7000);
+        expect(encoded.length).toBeLessThan(8000);
+        act(() => useRecords.getState().open('users', { id: long as never }));
         expect(push).not.toHaveBeenCalled();
         expect(useRecords.getState().trail.nodes).toHaveLength(1);
         expect(useRecords.getState().notice).toBe(
             'Trail is too long to keep in the URL',
         );
+    });
+
+    it('pushes a trail that encodes to 7,000 characters or fewer', () => {
+        const push = pushSpy();
+        renderHook(() => useTrailUrl(snapshot));
+        const long = 'x'.repeat(5000);
+        const encoded = encodeTrail(
+            openRoot('users', { id: long as never }),
+            pks,
+        );
+        expect(encoded.length).toBeLessThanOrEqual(7000);
+        act(() => useRecords.getState().open('users', { id: long as never }));
+        expect(push).toHaveBeenCalledTimes(1);
+        expect(param()).toBe(encoded);
     });
 
     it('ignores a hostile r on popstate and removes it', async () => {
@@ -335,7 +355,17 @@ describe('useTrailUrl', () => {
 
     it('rewrites instead of pushing when a failed root empties the trail', async () => {
         const { ApiError } = await import('@/lib/http');
-        api.show.mockRejectedValue(new ApiError(422, { message: 'no pk' }));
+        api.show.mockRejectedValue(
+            new ApiError(422, {
+                error: {
+                    kind: 'unknown',
+                    reason: 'no_primary_key',
+                    sqlstate: null,
+                    message:
+                        'users has no primary key; open it in the Data tab instead.',
+                },
+            }),
+        );
         const r = encodeTrail(openRoot('users', { id: 9 }), pks);
         window.history.replaceState({ page: 'a' }, '', '/?a=1');
         window.history.pushState({ page: 'b' }, '', `/?r=${r}`);

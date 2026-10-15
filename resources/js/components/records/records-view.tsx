@@ -13,12 +13,14 @@ import {
     type NodeTypes,
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { COLUMN_GAP, pathTo, placements, ROW_GAP } from '@/records/trail';
 import { useRecords } from '@/records/records-store';
 import type { ConnectionSummary } from '@/types/connection';
 import type { SchemaSnapshot } from '@/types/schema';
+import { useWorkspace } from '@/universe/store';
 import { ClusterNode, clusterNodeId } from './cluster-node';
-import { RecordNode } from './record-card';
+import { RecordNode, RecordsSnapshotContext } from './record-card';
 import { RecordsBreadcrumb } from './records-breadcrumb';
 
 const nodeTypes: NodeTypes = { record: RecordNode, cluster: ClusterNode };
@@ -50,6 +52,7 @@ function Explorer({
     const trail = useRecords((s) => s.trail);
     const clusters = useRecords((s) => s.clusters);
     const notice = useRecords((s) => s.notice);
+    const noticeTable = useRecords((s) => s.noticeTable);
     const epoch = useRecords((s) => s.epoch);
     const { fitView } = useReactFlow();
 
@@ -252,7 +255,14 @@ function Explorer({
                                 },
                             }))
                         }
-                        onNodeClick={(_, node) => {
+                        onNodeClick={(event, node) => {
+                            // A button inside the card (a port, Remove, Retry) does its own thing; selecting
+                            // as well would add a second history entry for the same click.
+                            if (
+                                event.target instanceof Element &&
+                                event.target.closest('button')
+                            )
+                                return;
                             if (node.type === 'record')
                                 useRecords
                                     .getState()
@@ -281,12 +291,29 @@ function Explorer({
                         className="absolute inset-x-0 top-0 z-10 m-3 flex items-center gap-3 rounded-md border bg-background px-3 py-2 text-xs shadow-sm"
                     >
                         <span>{notice}</span>
+                        {noticeTable !== null && (
+                            <button
+                                type="button"
+                                aria-label={`Open ${noticeTable} in Data tab`}
+                                onClick={() => {
+                                    const ws = useWorkspace.getState();
+                                    ws.clearDataFilter();
+                                    ws.select(noticeTable, 'data');
+                                }}
+                                className="ml-auto rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+                            >
+                                Open in Data tab
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={() =>
                                 useRecords.getState().dismissNotice()
                             }
-                            className="ml-auto rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+                            className={cn(
+                                'rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none',
+                                noticeTable === null && 'ml-auto',
+                            )}
                         >
                             Dismiss
                         </button>
@@ -306,7 +333,9 @@ export default function RecordsView({
 }) {
     return (
         <ReactFlowProvider key={connection.id}>
-            <Explorer connection={connection} snapshot={snapshot} />
+            <RecordsSnapshotContext.Provider value={snapshot}>
+                <Explorer connection={connection} snapshot={snapshot} />
+            </RecordsSnapshotContext.Provider>
         </ReactFlowProvider>
     );
 }

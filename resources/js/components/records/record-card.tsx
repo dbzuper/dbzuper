@@ -7,15 +7,24 @@ import {
     type NodeProps,
 } from '@xyflow/react';
 import { ArrowRight } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { cellKind } from '@/grid/cells';
 import { cn } from '@/lib/utils';
 import { recordFields, recordTitle, titleColumn } from '@/records/heuristics';
+import { explorableTable } from '@/records/open-record';
 import { CARD_MAX_HEIGHT } from '@/records/trail';
 import { useRecords, type RecordEntry } from '@/records/records-store';
 import type { RecordKeyValues, RelationshipSummary } from '@/records/types';
-import type { QueryCell } from '@/types/schema';
+import type { QueryCell, SchemaSnapshot } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
+import { relationFilters } from './cluster-node';
+
+type DataFilters = { column: string; value: string }[];
+
+/** The schema the explorer runs against; cards use it to tell which related tables can be explored. */
+export const RecordsSnapshotContext = createContext<SchemaSnapshot | null>(
+    null,
+);
 
 export type RecordNodeData = {
     id: string;
@@ -64,23 +73,35 @@ function FieldValue({ value, type }: { value: QueryCell; type: string }) {
 function Port({
     summary,
     onExpand,
+    dataTab,
+    onOpenInData,
 }: {
     summary: RelationshipSummary;
     onExpand: (s: RelationshipSummary) => void;
+    /** Set when the target table cannot be explored: the port opens these rows in the Data tab instead. */
+    dataTab: { filters: DataFilters | null } | null;
+    onOpenInData: (table: string, filters: DataFilters) => void;
 }) {
     const cols = summary.columns.join(', ');
     const out = summary.direction === 'out';
-    const disabled = out
+    const empty = out
         ? !summary.available
         : summary.count !== null && summary.count.value === 0;
-    const label = out
-        ? `Open ${summary.table} (${cols})`
-        : `Show ${summary.table} (${cols}) — ${recordCountText(summary.count)}`;
-    const title = !disabled
-        ? undefined
+    const disabled = empty || (dataTab !== null && dataTab.filters === null);
+    const label = dataTab
+        ? `Open ${summary.table} (${cols}) in Data tab`
         : out
-          ? 'No related record (NULL)'
-          : 'No related records';
+          ? `Open ${summary.table} (${cols})`
+          : `Show ${summary.table} (${cols}) — ${recordCountText(summary.count)}`;
+    const title = !disabled
+        ? dataTab
+            ? `${summary.table} cannot be explored as records`
+            : undefined
+        : !empty
+          ? 'The related values are unknown'
+          : out
+            ? 'No related record (NULL)'
+            : 'No related records';
     return (
         <button
             type="button"
@@ -89,7 +110,11 @@ function Port({
             disabled={disabled}
             data-inferred={summary.inferred ? 'true' : undefined}
             data-direction={summary.direction}
-            onClick={() => onExpand(summary)}
+            onClick={() => {
+                if (!dataTab) onExpand(summary);
+                else if (dataTab.filters)
+                    onOpenInData(summary.table, dataTab.filters);
+            }}
             className={cn(
                 'nodrag nopan relative flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors motion-reduce:transition-none',
                 'focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none',
@@ -151,7 +176,13 @@ export type RecordCardProps = {
     onSelect: () => void;
     onRemove: () => void;
     onReload: () => void;
+    /** Whether a related table can be explored as records; other ports open the Data tab. */
+    isExplorable?: (table: string) => boolean;
+    onOpenInData?: (table: string, filters: DataFilters) => void;
 };
+
+const always = () => true;
+const nothing = () => undefined;
 
 const formatKey = (key: RecordKeyValues) =>
     Object.entries(key)
@@ -169,6 +200,8 @@ export function RecordCard({
     onSelect,
     onRemove,
     onReload,
+    isExplorable = always,
+    onOpenInData = nothing,
 }: RecordCardProps) {
     const source = entry?.payload ?? entry?.preview;
     const primaryKey = entry?.payload
@@ -199,6 +232,11 @@ export function RecordCard({
     useEffect(() => {
         if (nodeId) updateInternals(nodeId);
     }, [nodeId, portKey, updateInternals]);
+
+    const dataTab = (s: RelationshipSummary) =>
+        isExplorable(s.table)
+            ? null
+            : { filters: relationFilters(s, entry?.payload) };
 
     const missing = entry?.status === 'missing';
     return (
@@ -266,7 +304,7 @@ export function RecordCard({
                     </button>
                     {/* Fields and ports scroll inside the capped card height; a scrolled-out port keeps its
                         (hidden) handle, so its edge still attaches at the port's real position. */}
-                    <div className="nowheel min-h-0 flex-1 overflow-y-auto">
+                    <div className="nowheel nodrag min-h-0 flex-1 overflow-y-auto">
                         {fields.length > 0 && (
                             <div
                                 role="group"
@@ -322,6 +360,8 @@ export function RecordCard({
                                         key={`${s.id}:${s.direction}`}
                                         summary={s}
                                         onExpand={onExpand}
+                                        dataTab={dataTab(s)}
+                                        onOpenInData={onOpenInData}
                                     />
                                 ))}
                             </PortGroup>
@@ -333,6 +373,8 @@ export function RecordCard({
                                         key={`${s.id}:${s.direction}`}
                                         summary={s}
                                         onExpand={onExpand}
+                                        dataTab={dataTab(s)}
+                                        onOpenInData={onOpenInData}
                                     />
                                 ))}
                             </PortGroup>
@@ -349,6 +391,7 @@ export function RecordNode({ data }: NodeProps<RecordNodeType>) {
     const entry = useRecords((s) => s.records[data.id]);
     const selected = useRecords((s) => s.trail.selected === data.id);
     const showInferred = useWorkspace((s) => s.showInferred);
+    const snapshot = useContext(RecordsSnapshotContext);
     // Joined so the selector's result compares equal until the set of edge handles really changes.
     const handles = useRecords((s) => {
         const ids = new Set<string>();
@@ -373,6 +416,14 @@ export function RecordNode({ data }: NodeProps<RecordNodeType>) {
             onSelect={() => useRecords.getState().select(data.id)}
             onRemove={() => useRecords.getState().remove(data.id)}
             onReload={() => useRecords.getState().reload(data.id)}
+            isExplorable={(table) =>
+                snapshot === null || explorableTable(snapshot, table) !== null
+            }
+            onOpenInData={(table, filters) => {
+                const ws = useWorkspace.getState();
+                ws.openDataFilter(table, filters);
+                ws.select(table, 'data');
+            }}
         />
     );
 }

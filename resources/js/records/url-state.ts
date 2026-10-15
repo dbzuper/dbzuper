@@ -9,6 +9,8 @@ import {
 import type { RecordKeyValues } from './types';
 
 const MAX_PARAM_BYTES = 16 * 1024;
+/** Longest `r` the app writes: request lines over ~8 KB are refused by Apache (8,190) and nginx (8 KB). */
+export const MAX_PUSHED_PARAM = 7000;
 
 function toBase64Url(text: string): string {
     let bin = '';

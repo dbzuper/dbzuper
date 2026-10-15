@@ -4,11 +4,10 @@ import { useWorkspace } from '@/universe/store';
 import { useRecords } from './records-store';
 import { emptyTrail } from './trail';
 import { setPopstateHandler } from './popstate-guard';
-import { decodeTrail, encodeTrail } from './url-state';
+import { decodeTrail, encodeTrail, MAX_PUSHED_PARAM } from './url-state';
 
 const PARAM = 'r';
 const TAG = 'dbsTrail';
-const MAX_ENCODED = 16 * 1024;
 
 export const TRAIL_TOO_LONG_NOTICE = 'Trail is too long to keep in the URL';
 
@@ -71,7 +70,10 @@ export function useTrailUrl(snapshot: SchemaSnapshot | null) {
             // Hostile, oversized, stale or empty: ignore and remove.
             writeParam(null, 'replace');
             if (decoded && decoded.dropped > 0)
-                useRecords.setState({ notice: droppedNotice(decoded.dropped) });
+                useRecords.setState({
+                    notice: droppedNotice(decoded.dropped),
+                    noticeTable: null,
+                });
             return;
         }
         applying.current = true;
@@ -82,7 +84,10 @@ export function useTrailUrl(snapshot: SchemaSnapshot | null) {
         }
         useWorkspace.getState().setView('records');
         if (decoded.dropped > 0)
-            useRecords.setState({ notice: droppedNotice(decoded.dropped) });
+            useRecords.setState({
+                notice: droppedNotice(decoded.dropped),
+                noticeTable: null,
+            });
         const normalized = encodeTrail(decoded.trail, primaryKeys(snap));
         // On mount this also tags the original entry as ours (Inertia's state is merged, not replaced).
         if (source === 'mount' || normalized !== raw)
@@ -106,9 +111,12 @@ export function useTrailUrl(snapshot: SchemaSnapshot | null) {
                     ? null
                     : encodeTrail(state.trail, primaryKeys(snap));
             if (encoded === currentParam()) return;
-            if (encoded !== null && encoded.length > MAX_ENCODED) {
+            if (encoded !== null && encoded.length > MAX_PUSHED_PARAM) {
                 if (state.notice !== TRAIL_TOO_LONG_NOTICE)
-                    useRecords.setState({ notice: TRAIL_TOO_LONG_NOTICE });
+                    useRecords.setState({
+                        notice: TRAIL_TOO_LONG_NOTICE,
+                        noticeTable: null,
+                    });
                 return;
             }
             writeParam(

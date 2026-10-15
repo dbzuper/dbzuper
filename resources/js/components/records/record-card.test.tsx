@@ -48,6 +48,7 @@ function setup(
     const onSelect = vi.fn();
     const onRemove = vi.fn();
     const onReload = vi.fn();
+    const onOpenInData = vi.fn();
     render(
         <ReactFlowProvider>
             <RecordCard
@@ -60,11 +61,12 @@ function setup(
                 onSelect={onSelect}
                 onRemove={onRemove}
                 onReload={onReload}
+                onOpenInData={onOpenInData}
                 {...props}
             />
         </ReactFlowProvider>,
     );
-    return { onExpand, onSelect, onRemove, onReload };
+    return { onExpand, onSelect, onRemove, onReload, onOpenInData };
 }
 
 describe('RecordCard', () => {
@@ -84,7 +86,8 @@ describe('RecordCard', () => {
         const scroller = screen.getByRole('group', {
             name: 'Fields',
         }).parentElement!;
-        expect(scroller).toHaveClass('nowheel', 'overflow-y-auto');
+        // nodrag: pressing the (always visible on Windows) scrollbar must scroll, not drag the card.
+        expect(scroller).toHaveClass('nowheel', 'nodrag', 'overflow-y-auto');
         expect(scroller.parentElement).toHaveStyle({
             maxHeight: `${CARD_MAX_HEIGHT}px`,
         });
@@ -120,6 +123,47 @@ describe('RecordCard', () => {
         expect(port).toHaveTextContent('users');
         fireEvent.click(port);
         expect(onExpand).toHaveBeenCalledWith(s);
+    });
+
+    it('opens a parent that cannot be explored in the Data tab, filtered on its key', () => {
+        const s = summary({
+            table: 'blobs',
+            columns: ['a'],
+            other_columns: ['id'],
+        });
+        const { onExpand, onOpenInData } = setup(ready([s]), {
+            isExplorable: (t) => t !== 'blobs',
+        });
+        fireEvent.click(
+            screen.getByRole('button', { name: 'Open blobs (a) in Data tab' }),
+        );
+        expect(onOpenInData).toHaveBeenCalledWith('blobs', [
+            { column: 'id', value: '1' },
+        ]);
+        expect(onExpand).not.toHaveBeenCalled();
+    });
+
+    it('opens children that cannot be explored in the Data tab, filtered on this record', () => {
+        const s = summary({
+            direction: 'in',
+            table: 'audit_log',
+            columns: ['order_id', 'shop'],
+            other_columns: ['id', 'b'],
+            count: { value: 3, capped: false },
+        });
+        const { onExpand, onOpenInData } = setup(ready([s]), {
+            isExplorable: () => false,
+        });
+        fireEvent.click(
+            screen.getByRole('button', {
+                name: 'Open audit_log (order_id, shop) in Data tab',
+            }),
+        );
+        expect(onOpenInData).toHaveBeenCalledWith('audit_log', [
+            { column: 'order_id', value: '7' },
+            { column: 'shop', value: '2' },
+        ]);
+        expect(onExpand).not.toHaveBeenCalled();
     });
 
     it('disables an outgoing port whose key is NULL', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SchemaSnapshot, TableSchema } from '@/types/schema';
 import { addRelated, nodeId, openRoot } from './trail';
-import { decodeTrail, encodeTrail } from './url-state';
+import { decodeTrail, encodeTrail, MAX_PUSHED_PARAM } from './url-state';
 
 const table = (name: string, primary_key: string[]): TableSchema => ({
     name,
@@ -97,6 +97,15 @@ describe('url state', () => {
             ),
         ).toBeNull();
         expect(decodeTrail('A'.repeat(16 * 1024 + 1), snapshot)).toBeNull();
+    });
+
+    it('pushes at most 7,000 characters but still decodes longer links', () => {
+        expect(MAX_PUSHED_PARAM).toBe(7000);
+        const trail = openRoot('users', { id: 'k'.repeat(9000) });
+        const encoded = encodeTrail(trail, pks);
+        expect(encoded.length).toBeGreaterThan(MAX_PUSHED_PARAM);
+        expect(encoded.length).toBeLessThanOrEqual(16 * 1024);
+        expect(decodeTrail(encoded, snapshot)?.trail.nodes).toHaveLength(1);
     });
 
     it('drops unknown tables and wrong arity, with their edges', () => {

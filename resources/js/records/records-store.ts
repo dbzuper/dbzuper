@@ -57,6 +57,8 @@ type State = {
     records: Record<string, RecordEntry>;
     clusters: Record<string, ClusterState>;
     notice: string | null;
+    /** A table the notice offers to open in the Data tab (it cannot be explored as records). */
+    noticeTable: string | null;
     /** Bumped whenever the trail is replaced (open, setTrail, reset), so views can refit and drop drag state. */
     epoch: number;
     /** Bumped when the store itself empties the trail (a failed root), so the URL is rewritten, not pushed. */
@@ -91,6 +93,7 @@ const initial = (): State => ({
     records: {},
     clusters: {},
     notice: null,
+    noticeTable: null,
     epoch: 0,
     systemEpoch: 0,
 });
@@ -133,6 +136,24 @@ function abortRemoved(keep: (id: string) => boolean) {
 
 const isAbort = (e: unknown) =>
     e instanceof DOMException && e.name === 'AbortError';
+
+/** The server refused the table: no primary key, a binary key, or a view. */
+const isNotExplorable = (e: unknown) =>
+    e instanceof ApiError &&
+    e.status === 422 &&
+    dbErrorFrom(e, '').reason === 'no_primary_key';
+
+/** Laravel rejected the request itself (a malformed key from a link), not the database. */
+function isInvalidRequest(e: unknown): boolean {
+    if (!(e instanceof ApiError) || e.status !== 422) return false;
+    const errors = (e.body as { errors?: Record<string, unknown> } | null)
+        ?.errors;
+    return (
+        typeof errors === 'object' &&
+        errors !== null &&
+        ('key' in errors || 'table' in errors)
+    );
+}
 
 function runQueued(task: () => Promise<void>) {
     const q = queue;
@@ -214,16 +235,18 @@ export const useRecords = create<RecordsState>()((set, get) => {
                         },
                     });
                 } else if (
-                    e instanceof ApiError &&
-                    e.status === 422 &&
+                    (isNotExplorable(e) || isInvalidRequest(e)) &&
                     id === get().trail.nodes[0]?.id
                 ) {
+                    // Only a root that can never load empties the trail; database errors
+                    // (also 422) keep it, with Retry on the card.
                     set({
                         trail: emptyTrail(),
                         records: {},
                         systemEpoch: get().systemEpoch + 1,
                         notice: dbErrorFrom(e, 'Could not open the record.')
                             .message,
+                        noticeTable: isNotExplorable(e) ? node.table : null,
                     });
                 } else {
                     set({
@@ -366,8 +389,9 @@ export const useRecords = create<RecordsState>()((set, get) => {
                             : result.trail,
                     records,
                     clusters,
-                    notice:
-                        result.refused > 0 ? TRAIL_FULL_NOTICE : state.notice,
+                    ...(result.refused > 0
+                        ? { notice: TRAIL_FULL_NOTICE, noticeTable: null }
+                        : {}),
                 });
                 result.added.forEach((id) => loadRecord(id));
             })
@@ -391,6 +415,7 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 set({
                     notice: dbErrorFrom(e, 'Could not load related records.')
                         .message,
+                    noticeTable: isNotExplorable(e) ? summary.table : null,
                 });
             });
     };
@@ -416,6 +441,7 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 records: {},
                 clusters: {},
                 notice: null,
+                noticeTable: null,
                 epoch: get().epoch + 1,
             });
             loadRecord(trail.selected!, true);
@@ -434,6 +460,8 @@ export const useRecords = create<RecordsState>()((set, get) => {
         },
         select: (id) => {
             const { trail } = get();
+            // Unchanged selection: same trail object, so no URL history entry.
+            if (trail.selected === id) return;
             if (trail.nodes.some((n) => n.id === id))
                 set({ trail: selectNode(trail, id) });
         },
@@ -536,6 +564,7 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 records,
                 clusters,
                 notice: null,
+                noticeTable: null,
                 epoch: state.epoch + 1,
             });
             trail.nodes.forEach((n, i) => {
@@ -544,7 +573,7 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 loadRecord(n.id, i === 0);
             });
         },
-        dismissNotice: () => set({ notice: null }),
+        dismissNotice: () => set({ notice: null, noticeTable: null }),
         reset: () => {
             bump();
             set({

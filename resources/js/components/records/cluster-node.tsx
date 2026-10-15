@@ -1,5 +1,6 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { useRecords, type ClusterState } from '@/records/records-store';
+import type { RelationshipSummary } from '@/records/types';
 import type { QueryCell } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
 
@@ -8,21 +9,31 @@ export type ClusterNodeType = Node<ClusterNodeData, 'cluster'>;
 
 export const clusterNodeId = (key: string) => `cluster:${key}`;
 
+type LoadedRecord = { columns: { name: string }[]; values: QueryCell[] };
+
 /** Data-tab filter for the rows of a cluster: the child columns equal the parent row's referenced values. */
-export function clusterFilters(
+export const clusterFilters = (
     cluster: ClusterState,
-    parent: { columns: { name: string }[]; values: QueryCell[] } | undefined,
+    parent: LoadedRecord | undefined,
+) => relationFilters(cluster.summary, parent);
+
+/**
+ * Data-tab filter for the rows a relationship port of a loaded record leads to, in either direction:
+ * the target's relationship columns equal this record's values. Null while a value is unknown or NULL.
+ */
+export function relationFilters(
+    summary: RelationshipSummary,
+    record: LoadedRecord | undefined,
 ): { column: string; value: string }[] | null {
-    if (!parent) return null;
-    const { summary } = cluster;
+    if (!record) return null;
     const filterColumns =
         summary.direction === 'in' ? summary.columns : summary.other_columns;
-    const parentColumns =
+    const recordColumns =
         summary.direction === 'in' ? summary.other_columns : summary.columns;
     const filters: { column: string; value: string }[] = [];
     for (let i = 0; i < filterColumns.length; i++) {
-        const at = parent.columns.findIndex((c) => c.name === parentColumns[i]);
-        const value = at < 0 ? null : parent.values[at];
+        const at = record.columns.findIndex((c) => c.name === recordColumns[i]);
+        const value = at < 0 ? null : record.values[at];
         if (value === null || value === undefined) return null;
         filters.push({ column: filterColumns[i], value: String(value) });
     }

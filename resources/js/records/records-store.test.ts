@@ -114,6 +114,55 @@ describe('open', () => {
             ),
         );
         expect(s().trail.nodes).toEqual([]);
+        expect(s().noticeTable).toBe('logs');
+    });
+
+    it.each(['connection', 'timeout'])(
+        'keeps the trail and offers Retry when the root fails with a %s error',
+        async (kind) => {
+            api.show.mockRejectedValue(
+                new ApiError(422, {
+                    error: {
+                        kind,
+                        reason: null,
+                        sqlstate: null,
+                        message: 'The database did not answer.',
+                    },
+                }),
+            );
+            const systemEpoch = s().systemEpoch;
+            s().open('orders', { id: 1 });
+            await vi.waitFor(() =>
+                expect(s().records[root]?.status).toBe('error'),
+            );
+            expect(s().records[root].error).toBe(
+                'The database did not answer.',
+            );
+            expect(s().trail.nodes.map((n) => n.id)).toEqual([root]);
+            expect(s().systemEpoch).toBe(systemEpoch);
+            expect(s().notice).toBeNull();
+
+            api.show.mockResolvedValue(payload('orders', 1));
+            s().reload(root);
+            await vi.waitFor(() =>
+                expect(s().records[root].status).toBe('ready'),
+            );
+        },
+    );
+
+    it('empties the trail when the root key fails validation', async () => {
+        api.show.mockRejectedValue(
+            new ApiError(422, {
+                message: 'The key is invalid.',
+                errors: { key: ['The key is invalid.'] },
+            }),
+        );
+        const systemEpoch = s().systemEpoch;
+        s().open('orders', { id: 1 });
+        await vi.waitFor(() => expect(s().trail.nodes).toEqual([]));
+        expect(s().notice).toBe('The key is invalid.');
+        expect(s().noticeTable).toBeNull();
+        expect(s().systemEpoch).toBe(systemEpoch + 1);
     });
 
     it('does nothing without a connection', () => {
@@ -283,6 +332,24 @@ describe('expand and more', () => {
         expect(s().trail.nodes).toHaveLength(100);
     });
 
+    it('offers the Data tab when the related table has no usable primary key', async () => {
+        api.related.mockRejectedValue(
+            new ApiError(422, {
+                error: {
+                    kind: 'unknown',
+                    reason: 'no_primary_key',
+                    sqlstate: null,
+                    message:
+                        'items has a binary primary key; open it in the Data tab instead.',
+                },
+            }),
+        );
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().notice).not.toBeNull());
+        expect(s().noticeTable).toBe('items');
+        expect(s().trail.nodes).toHaveLength(1);
+    });
+
     it('reports a failed page as a notice and unlocks the cluster', async () => {
         api.related.mockRejectedValue(new ApiError(500, {}));
         s().expand(root, inSummary);
@@ -333,6 +400,9 @@ describe('trail management', () => {
         s().open('orders', { id: 1 });
         s().select('nope');
         expect(s().trail.selected).toBe(root);
+        const trail = s().trail;
+        s().select(root);
+        expect(s().trail).toBe(trail);
         s().dismissNotice();
         expect(s().notice).toBeNull();
     });
