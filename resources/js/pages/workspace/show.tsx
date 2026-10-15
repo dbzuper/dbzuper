@@ -15,6 +15,7 @@ import { UniverseBoundary } from '@/components/universe/universe-boundary';
 import { CommandPalette } from '@/components/workspace/command-palette';
 import { FocusChip } from '@/components/workspace/focus-chip';
 import { PathDialog } from '@/components/workspace/path-dialog';
+import { PathPickChip } from '@/components/workspace/path-pick-chip';
 import { LeftRail } from '@/components/workspace/left-rail';
 import { TableList } from '@/components/workspace/table-list';
 import { WorkspaceHeader } from '@/components/workspace/workspace-header';
@@ -301,6 +302,7 @@ export default function WorkspaceShow({
                         />
                     )}
                     <FocusChip />
+                    <PathPickChip />
                 </main>
 
                 {selectedTable && (

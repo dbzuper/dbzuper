@@ -2,7 +2,7 @@ import { Command } from 'cmdk';
 import { useMemo, useState } from 'react';
 import type { SchemaSnapshot } from '@/types/schema';
 import { universe } from '@/universe/controller';
-import { findPath } from '@/universe/path';
+import { pickPathTarget } from '@/universe/path-pick';
 import { searchSchema } from '@/universe/search';
 import { useWorkspace } from '@/universe/store';
 
@@ -31,14 +31,8 @@ export function CommandPalette({
     };
 
     const pickTable = (table: string) => {
-        const st = useWorkspace.getState();
-        if (st.pathFrom && st.pathFrom !== table) {
-            st.completePath(
-                table,
-                findPath(snapshot, st.pathFrom, table, st.showInferred),
-            );
-        } else {
-            st.select(table);
+        if (!pickPathTarget(snapshot, table)) {
+            useWorkspace.getState().select(table);
             universe.flyTo(table);
         }
         close();

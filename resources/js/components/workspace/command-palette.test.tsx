@@ -53,6 +53,15 @@ describe('CommandPalette', () => {
         ]);
     });
 
+    it('cancels a pending path when its start table is picked again', () => {
+        useWorkspace.getState().startPath('users');
+        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        fireEvent.click(screen.getByRole('option', { name: /users/ }));
+        expect(useWorkspace.getState().pathFrom).toBeNull();
+        expect(useWorkspace.getState().path).toBeNull();
+        expect(useWorkspace.getState().selected).toBeNull();
+    });
+
     it('runs actions', () => {
         const onRefresh = vi.fn();
         render(<CommandPalette snapshot={snap} onRefresh={onRefresh} />);

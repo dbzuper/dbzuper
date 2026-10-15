@@ -9,7 +9,7 @@ import type {
     TableNodeAttributes,
 } from '@/universe/graph';
 import { motionMs } from '@/universe/motion';
-import { findPath } from '@/universe/path';
+import { pickPathTarget } from '@/universe/path-pick';
 import { toLayoutEntries } from '@/universe/plan';
 import {
     buildDisplayState,
@@ -145,15 +145,8 @@ export function UniverseCanvas({
         });
         instance.on('clickNode', ({ node }) => {
             if (justDragged) return;
-            const st = useWorkspace.getState();
-            if (st.pathFrom && st.pathFrom !== node) {
-                st.completePath(
-                    node,
-                    findPath(snapshot, st.pathFrom, node, st.showInferred),
-                );
-                return;
-            }
-            st.select(node);
+            if (pickPathTarget(snapshot, node)) return;
+            useWorkspace.getState().select(node);
         });
         instance.on('clickStage', () => useWorkspace.getState().select(null));
         instance.on('doubleClickNode', (event) => {
