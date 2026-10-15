@@ -27,9 +27,11 @@ final class QueryGuard
             if (in_array($c->kind, self::FREE, true)) {
                 continue;
             }
-            if ($c->kind === 'destructive' && $c->target !== null) {
-                if ($item['typed'] !== $c->target) {
-                    throw new ConfirmationRequired($i, 'typed', $c);
+            if ($c->kind === 'destructive') {
+                // Without a table to name, the statement's keyword (DROP, TRUNCATE, ...) is what must be typed.
+                $expected = $c->target ?? $c->keyword;
+                if ($item['typed'] !== $expected) {
+                    throw new ConfirmationRequired($i, 'typed', new Classification($c->kind, $c->keyword, $expected));
                 }
 
                 continue;

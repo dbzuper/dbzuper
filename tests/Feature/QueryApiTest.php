@@ -1,6 +1,7 @@
 <?php
 
 use App\Database\Query\HistoryRecorder;
+use App\Database\Sql\StatementClassifier;
 use App\Enums\DriverName;
 use App\Models\QueryHistoryEntry;
 use App\Models\SavedConnection;
@@ -61,6 +62,10 @@ it('rejects anything but reads and transactions on read-only connections, before
     'pragma set' => ['pragma foreign_keys = off'],
     'with delete' => ['with d as (delete from users returning *) select * from d'],
     'begin read write' => ['begin read write'],
+    'set transaction read write' => ['set transaction read write'],
+    'start transaction read write' => ['start transaction read write'],
+    'select into' => ['select * into new_t from users'],
+    'explain analyze delete' => ['explain analyze delete from users'],
 ]);
 
 it('allows transactions on read-only connections', function () {
@@ -128,4 +133,38 @@ it('returns a syntax error with a position', function () {
     $res = ($this->run)([['sql' => 'select * form users']])->assertOk();
 
     expect($res->json('results.0.error.kind'))->toBe('syntax');
+});
+
+it('refuses to explain statements that would execute', function (string $sql) {
+    $this->actingAs($this->user)->postJson(route('api.query.explain', $this->connection), ['sql' => $sql])
+        ->assertUnprocessable()->assertJsonValidationErrors('sql');
+
+    expect(DB::connectUsing('check', ['driver' => 'sqlite', 'database' => $this->connection->database, 'prefix' => ''], force: true)->table('audit_log')->count())->toBe(1);
+    DB::purge('check');
+})->with([
+    'analyze' => ['analyze delete from audit_log'],
+    'parenthesised analyze' => ['(analyze) delete from audit_log'],
+    'analyse' => ['analyse delete from audit_log'],
+]);
+
+it('requires typing the keyword when a destructive statement has no target', function () {
+    $sql = 'delete from (select 1)';
+    expect(StatementClassifier::classify($sql, 'sqlite'))->kind->toBe('destructive')->target->toBeNull();
+
+    ($this->run)([['sql' => $sql, 'confirmed' => true]])
+        ->assertStatus(409)->assertJsonPath('confirmation.mode', 'typed')->assertJsonPath('confirmation.target', 'DELETE');
+
+    // Accepted once typed: the statement then reaches the database (and fails there on its own syntax).
+    ($this->run)([['sql' => $sql, 'typed' => 'DELETE']])->assertOk();
+});
+
+it('reports a failed connection as one failed result', function () {
+    $this->connection->update(['database' => dirname(Engines::sqlitePath()).DIRECTORY_SEPARATOR.'missing-'.uniqid().'.sqlite']);
+
+    $res = ($this->run)([['sql' => 'select 1'], ['sql' => 'select 2']])->assertOk();
+
+    expect($res->json('results'))->toHaveCount(1)
+        ->and($res->json('results.0.sql'))->toBe('select 1')
+        ->and($res->json('results.0.error.kind'))->not->toBeNull();
+    expect(QueryHistoryEntry::where('connection_id', $this->connection->id)->count())->toBe(1);
 });

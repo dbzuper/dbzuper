@@ -67,3 +67,43 @@ it('runs a transaction block on a read-only connection', function (string $engin
     expect($res->json('results'))->toHaveCount(3)
         ->and(collect($res->json('results'))->pluck('error')->filter()->all())->toBe([]);
 })->with(['mysql', 'mariadb', 'pgsql']);
+
+it('refuses to explain analyze a delete on PostgreSQL', function () {
+    Engines::skipUnlessAvailable('pgsql');
+    $pdo = Engines::pdo('pgsql');
+    $pdo->exec('drop table if exists m3_explain_probe');
+    $pdo->exec('create table m3_explain_probe (id int)');
+    $pdo->exec('insert into m3_explain_probe values (1)');
+
+    try {
+        $user = User::factory()->create();
+        $connection = engineConnection('pgsql', $user, ['read_only' => false]);
+
+        foreach (['analyze delete from m3_explain_probe', '(analyze) delete from m3_explain_probe'] as $sql) {
+            $this->actingAs($user)->postJson(route('api.query.explain', $connection), ['sql' => $sql])
+                ->assertUnprocessable()->assertJsonValidationErrors('sql');
+        }
+
+        expect((int) $pdo->query('select count(*) from m3_explain_probe')->fetchColumn())->toBe(1);
+    } finally {
+        $pdo->exec('drop table if exists m3_explain_probe');
+    }
+});
+
+it('rejects a comment-hidden second statement on MySQL', function (string $engine) {
+    Engines::skipUnlessAvailable($engine);
+    $pdo = Engines::pdo($engine);
+    $pdo->exec('drop table if exists m3_multi_probe');
+    $pdo->exec('create table m3_multi_probe (id int)');
+
+    try {
+        $user = User::factory()->create();
+        $connection = engineConnection($engine, $user, ['read_only' => false]);
+
+        $this->actingAs($user)->postJson(route('api.query.run', $connection), ['statements' => [['sql' => 'select 1 --x;drop table m3_multi_probe', 'confirmed' => true, 'typed' => 'm3_multi_probe']]]);
+
+        expect((int) $pdo->query("select count(*) from information_schema.tables where table_schema = database() and table_name = 'm3_multi_probe'")->fetchColumn())->toBe(1);
+    } finally {
+        $pdo->exec('drop table if exists m3_multi_probe');
+    }
+})->with(['mysql', 'mariadb']);

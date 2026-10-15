@@ -33,7 +33,7 @@ final class QueryRunner
         $results = [];
 
         try {
-            $this->factory->using($connection, function (Connection $db) use ($driver, $items, $maxRows, $connection, $record, &$results) {
+            $this->factory->using($connection, function (Connection $db) use ($driver, $items, $maxRows, $connection, &$results) {
                 $budget = self::MAX_BYTES;
                 foreach ($items as $item) {
                     $started = hrtime(true);
@@ -49,24 +49,37 @@ final class QueryRunner
                     }
                     $budget -= $result->bytes;
                     $results[] = $result;
-                    if ($record) {
-                        $this->history->record($connection, $result);
-                    }
                     if ($result->error) {
                         break;
                     }
                 }
             }, (int) config('dbsuperb.query_timeout'));
         } catch (Throwable $e) {
-            // The connection could not be opened (or broke outside a statement).
-            $item = $items[count($results)] ?? $items[0];
-            $failed = StatementResult::failed($item['sql'], $item['classification'], $this->errors->map($e), 0);
-            $results[] = $failed;
-            if ($record) {
-                $this->history->record($connection, $failed);
+            if ($results === []) {
+                // The connection could not be opened: report it against the first statement.
+                $results[] = StatementResult::failed($items[0]['sql'], $items[0]['classification'], $this->errors->map($e), 0);
+            } else {
+                // Statements already ran; keep their results and only log the late failure (e.g. on cleanup).
+                report($e);
             }
         }
 
+        if ($record) {
+            $this->recordAll($connection, $results);
+        }
+
         return $results;
+    }
+
+    /** @param list<StatementResult> $results */
+    private function recordAll(SavedConnection $connection, array $results): void
+    {
+        foreach ($results as $result) {
+            try {
+                $this->history->record($connection, $result);
+            } catch (Throwable $e) {
+                report($e); // history is best effort and must never hide the results
+            }
+        }
     }
 }

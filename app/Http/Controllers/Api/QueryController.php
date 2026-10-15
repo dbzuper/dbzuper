@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Database\DriverRegistry;
 use App\Database\Query\QueryGuard;
 use App\Database\Query\QueryRunner;
-use App\Database\Sql\Classification;
 use App\Database\Sql\SqlSplitter;
 use App\Database\Sql\StatementClassifier;
 use App\Http\Controllers\Controller;
@@ -50,9 +49,15 @@ class QueryController extends Controller
             throw ValidationException::withMessages(['sql' => 'Enter the statement to explain without EXPLAIN.']);
         }
 
-        // A plain EXPLAIN (no ANALYZE) never executes the statement, so it is safe on any connection.
+        // A plain EXPLAIN never executes the statement, but EXPLAIN ANALYZE does. The whole plan is classified, so a
+        // smuggled ANALYZE option (also in parentheses) is seen as the statement it would run and refused here.
         $plan = $drivers->for($connection->driver)->explainPrefix().$sql;
-        $results = $runner->run($connection, [['sql' => $plan, 'classification' => new Classification('read', 'EXPLAIN')]], 1000, record: false);
+        $classification = StatementClassifier::classify($plan, $dialect);
+        if ($classification->kind !== 'read' || preg_match('/^\s*\(?\s*analy[sz]e/i', $sql)) {
+            throw ValidationException::withMessages(['sql' => 'Explain cannot run statements that execute; remove ANALYZE.']);
+        }
+
+        $results = $runner->run($connection, [['sql' => $plan, 'classification' => $classification]], 1000, record: false);
 
         return response()->json(['results' => array_map(fn ($r) => $r->toArray(), $results)]);
     }
