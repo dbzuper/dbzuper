@@ -70,6 +70,114 @@ final class RecordReader
         ];
     }
 
+    /**
+     * The parent (dir=out) or children (dir=in) of a record across one relationship, keyset-paged by the target's primary key.
+     * Relationship columns, keys and cursors use raw (unbounded) values; only the displayed values are bounded.
+     *
+     * @param  list<string|int|float>|null  $after  decoded cursor: the previous page's last canonical key values
+     * @return array{rows:list<array{key:array,values:list<mixed>}>,next_after:?list<string|int|float>}|null null when the source record is missing
+     */
+    public function related(Connection $db, Driver $driver, array $source, RecordKey $key, array $rel, string $dir, array $target, int $limit, ?array $after): ?array
+    {
+        $sourceColumns = $dir === 'out' ? $rel['from_columns'] : $rel['to_columns'];
+        $targetColumns = $dir === 'out' ? $rel['to_columns'] : $rel['from_columns'];
+        $prefix = $this->aliasPrefix($source['columns']);
+        $select = [];
+        foreach ($sourceColumns as $i => $name) {
+            $select[] = $db->raw($driver->quoteIdentifier($name).' AS '.$driver->quoteIdentifier($prefix.$i));
+        }
+
+        try {
+            $row = $this->where($db->table($db->raw($driver->quoteIdentifier($source['name']))), $driver, $key->columns(), $key->values())
+                ->select($select)
+                ->first();
+        } catch (QueryException $e) {
+            if ($this->isDataException($e)) {
+                return null;
+            }
+            throw $e;
+        }
+        if ($row === null) {
+            return null;
+        }
+        $assoc = (array) $row;
+        $values = [];
+        foreach ($sourceColumns as $i => $name) {
+            $v = $assoc[$prefix.$i] ?? null;
+            $values[] = is_resource($v) ? stream_get_contents($v) : $v;
+        }
+        $empty = ['rows' => [], 'next_after' => null];
+        if (in_array(null, $values, true)) {
+            return $empty;
+        }
+
+        $pk = $target['primary_key'];
+        $tprefix = $this->aliasPrefix($target['columns']);
+        $select = array_map(fn ($c) => $driver->sampleColumn($db, $c['name'], strtolower((string) ($c['type_name'] ?? '')), CellValue::MAX_CHARS), $target['columns']);
+        foreach ($pk as $i => $name) {
+            $select[] = $db->raw($driver->quoteIdentifier($name).' AS '.$driver->quoteIdentifier($tprefix.$i));
+        }
+        $query = $this->where($db->table($db->raw($driver->quoteIdentifier($target['name']))), $driver, $targetColumns, $values)->select($select);
+        if ($after !== null) {
+            $query->where(function (Builder $outer) use ($driver, $pk, $after) {
+                foreach ($pk as $i => $column) {
+                    $outer->orWhere(function (Builder $branch) use ($driver, $pk, $after, $i, $column) {
+                        for ($j = 0; $j < $i; $j++) {
+                            $branch->whereRaw($driver->quoteIdentifier($pk[$j]).' = ?', [$after[$j]]);
+                        }
+                        $branch->whereRaw($driver->quoteIdentifier($column).' > ?', [$after[$i]]);
+                    });
+                }
+            });
+        }
+        foreach ($pk as $column) {
+            $query->orderByRaw($driver->quoteIdentifier($column).' ASC');
+        }
+        $query->limit($dir === 'out' ? 1 : $limit + 1);
+
+        try {
+            $found = $query->get()->all();
+        } catch (QueryException $e) {
+            // An out-of-range source value or cursor value cannot match any value in the column: nothing to return.
+            if ($this->isDataException($e)) {
+                return $empty;
+            }
+            throw $e;
+        }
+
+        $hasMore = $dir === 'in' && count($found) > $limit;
+        $rows = [];
+        $last = null;
+        foreach (array_slice($found, 0, $dir === 'out' ? 1 : $limit) as $r) {
+            $assoc = (array) $r;
+            $canonical = [];
+            foreach ($pk as $i => $name) {
+                $value = CellValue::present($assoc[$tprefix.$i] ?? null, PHP_INT_MAX);
+                $canonical[$name] = is_bool($value) ? ($value ? 'true' : 'false') : $value;
+            }
+            $display = [];
+            foreach ($target['columns'] as $c) {
+                $display[] = CellValue::present($assoc[$c['name']] ?? null, CellValue::MAX_CHARS);
+            }
+            $rows[] = ['key' => $canonical, 'values' => $display];
+            $last = array_values($canonical);
+        }
+
+        return ['rows' => $rows, 'next_after' => $hasMore ? $last : null];
+    }
+
+    /** A per-request alias prefix that no real column of the table starts with. */
+    private function aliasPrefix(array $columns): string
+    {
+        $names = array_column($columns, 'name');
+        do {
+            $prefix = '__r'.bin2hex(random_bytes(4)).'_';
+            $clash = array_filter($names, fn ($n) => str_starts_with((string) $n, $prefix)) !== [];
+        } while ($clash);
+
+        return $prefix;
+    }
+
     /** @return list<string> */
     private function relationshipColumns(array $snapshot, string $table): array
     {

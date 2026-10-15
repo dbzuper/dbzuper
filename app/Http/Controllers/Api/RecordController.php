@@ -12,10 +12,12 @@ use App\Database\Records\RecordReader;
 use App\Database\Schema\SnapshotService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\RecordRequest;
+use App\Http\Requests\RelatedRecordsRequest;
 use App\Models\SavedConnection;
 use Illuminate\Database\Connection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class RecordController extends Controller
@@ -47,6 +49,65 @@ class RecordController extends Controller
         return $record === null
             ? response()->json(['error' => ['kind' => 'not_found', 'message' => 'Record not found.', 'sqlstate' => null, 'reason' => 'record_missing']], 404)
             : response()->json($record);
+    }
+
+    public function related(RelatedRecordsRequest $request, SavedConnection $connection, string $table): JsonResponse
+    {
+        Gate::authorize('view', $connection);
+        [$snapshot, $source] = $this->table($connection, $table);
+        if ($response = $this->notExplorable($source)) {
+            return $response;
+        }
+        $key = RecordKey::fromJson($request->validated('key'), $source);
+        $dir = $request->validated('dir');
+        $rel = collect($snapshot['relationships'] ?? [])->firstWhere('id', $request->validated('rel'));
+        $sourceSide = $dir === 'out' ? 'from_table' : 'to_table';
+        if ($rel === null || $rel[$sourceSide] !== $source['name']) {
+            throw ValidationException::withMessages(['rel' => 'Unknown relationship for this table and direction.']);
+        }
+        $targetName = $dir === 'out' ? $rel['to_table'] : $rel['from_table'];
+        $target = collect($snapshot['tables'])->firstWhere('name', $targetName);
+        abort_if($target === null, 404);
+        if ($response = $this->notExplorable($target)) {
+            return $response;
+        }
+        $after = $this->decodeCursor($request->validated('cursor'), $target);
+        $limit = (int) $request->validated('limit', 25);
+        $driver = $this->drivers->for($connection->driver);
+
+        try {
+            $result = $this->factory->using($connection, fn (Connection $db) => $this->reader->related($db, $driver, $source, $key, $rel, $dir, $target, $limit, $after), (int) config('dbsuperb.query_timeout'));
+        } catch (Throwable $e) {
+            throw new DatabaseOperationFailed($this->errors->map($e));
+        }
+        if ($result === null) {
+            return response()->json(['error' => ['kind' => 'not_found', 'message' => 'Record not found.', 'sqlstate' => null, 'reason' => 'record_missing']], 404);
+        }
+
+        return response()->json([
+            'table' => $target['name'],
+            'columns' => array_map(fn ($c) => ['name' => $c['name'], 'type' => $c['type']], $target['columns']),
+            'primary_key' => $target['primary_key'],
+            'rows' => $result['rows'],
+            'next_cursor' => $result['next_after'] === null ? null : rtrim(strtr(base64_encode(json_encode($result['next_after'])), '+/', '-_'), '='),
+        ]);
+    }
+
+    /** @return list<string|int|float>|null */
+    private function decodeCursor(?string $cursor, array $target): ?array
+    {
+        if ($cursor === null || $cursor === '') {
+            return null;
+        }
+        $json = base64_decode(strtr($cursor, '-_', '+/'), true);
+        $values = $json === false ? null : json_decode($json, true, 3, JSON_BIGINT_AS_STRING);
+        $valid = is_array($values) && array_is_list($values) && count($values) === count($target['primary_key'])
+            && array_reduce($values, fn ($ok, $v) => $ok && (is_string($v) || is_int($v) || is_float($v)), true);
+        if (! $valid) {
+            throw ValidationException::withMessages(['cursor' => 'Invalid cursor.']);
+        }
+
+        return $values;
     }
 
     /** @return array{0: array, 1: array} */
