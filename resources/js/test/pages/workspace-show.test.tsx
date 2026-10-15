@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+    act,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useWorkspace } from '@/universe/store';
@@ -120,5 +126,29 @@ describe('workspace page', () => {
         );
         fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
         await waitFor(() => expect(api.schema).toHaveBeenCalledTimes(2));
+    });
+    it('keeps the selection when inferred relationships are toggled', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByText('orders');
+        act(() => useWorkspace.getState().select('users'));
+        fireEvent.click(screen.getByRole('button', { name: 'Hide inferred' }));
+        expect(useWorkspace.getState().selected).toBe('users');
+    });
+
+    it('shows the focus chip and clears focus then selection on Escape', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByText('orders');
+        act(() => {
+            useWorkspace.getState().select('users');
+            useWorkspace.getState().setFocus('users');
+        });
+        expect(
+            screen.getByRole('button', { name: 'Exit focus' }),
+        ).toBeInTheDocument();
+        fireEvent.keyDown(window, { key: 'Escape' });
+        expect(useWorkspace.getState().focus).toBeNull();
+        expect(useWorkspace.getState().selected).toBe('users');
+        fireEvent.keyDown(window, { key: 'Escape' });
+        expect(useWorkspace.getState().selected).toBeNull();
     });
 });

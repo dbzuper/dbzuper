@@ -11,6 +11,7 @@ type Props = {
     fk: { declared: Set<string>; inferred: Set<string> };
     selected: boolean;
     onSelect: (table: string) => void;
+    onFocus?: (table: string) => void;
 };
 
 export const TableCard = memo(function TableCard({
@@ -18,6 +19,7 @@ export const TableCard = memo(function TableCard({
     fk,
     selected,
     onSelect,
+    onFocus,
 }: Props) {
     const shown = table.columns.slice(0, CARD_COLUMNS);
     const rest = table.columns.length - shown.length;
@@ -29,6 +31,7 @@ export const TableCard = memo(function TableCard({
             tabIndex={0}
             aria-label={`Table ${table.name}`}
             onClick={() => onSelect(table.name)}
+            onDoubleClick={() => onFocus?.(table.name)}
             onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();

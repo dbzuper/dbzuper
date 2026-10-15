@@ -12,6 +12,7 @@ import { InspectorPanel } from '@/components/inspector/inspector-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UniverseBoundary } from '@/components/universe/universe-boundary';
+import { FocusChip } from '@/components/workspace/focus-chip';
 import { PathDialog } from '@/components/workspace/path-dialog';
 import { LeftRail } from '@/components/workspace/left-rail';
 import { TableList } from '@/components/workspace/table-list';
@@ -23,7 +24,9 @@ import type {
     LayoutPositionEntry,
     SchemaResponse,
 } from '@/types/schema';
+import { handleEscape } from '@/universe/keyboard';
 import { useWorkspace } from '@/universe/store';
+import { useDebounced } from '@/universe/use-debounced';
 import { useUniverseModel } from '@/universe/use-universe-model';
 import { hasWebGL } from '@/universe/webgl';
 
@@ -98,6 +101,21 @@ export default function WorkspaceShow({
         },
         [connection.id],
     );
+
+    const persistDebounced = useDebounced(persist, 800);
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (
+                e.key === 'Escape' &&
+                !useWorkspace.getState().paletteOpen &&
+                handleEscape(useWorkspace.getState())
+            )
+                e.preventDefault();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
 
     const snapshot = data?.snapshot ?? null;
     const { model, status, relayout } = useUniverseModel(
@@ -218,7 +236,9 @@ export default function WorkspaceShow({
                                                 model={model}
                                                 snapshot={snapshot}
                                                 onRelayout={relayout}
-                                                onPositionsChanged={persist}
+                                                onPositionsChanged={
+                                                    persistDebounced
+                                                }
                                                 onError={onRenderError}
                                             />
                                         </Suspense>
@@ -249,6 +269,7 @@ export default function WorkspaceShow({
                         <div className={centered}>Loading schema…</div>
                     )}
                     {snapshot && <PathDialog snapshot={snapshot} />}
+                    <FocusChip />
                 </main>
 
                 {selectedTable && (

@@ -9,10 +9,13 @@ import type {
     TableNodeAttributes,
 } from '@/universe/graph';
 import { motionMs } from '@/universe/motion';
+import { findPath } from '@/universe/path';
+import { toLayoutEntries } from '@/universe/plan';
 import {
     buildDisplayState,
     displayInputsChanged,
     edgeDisplay,
+    neighborhood,
     nodeDisplay,
     type DisplayState,
 } from '@/universe/reducers';
@@ -125,9 +128,26 @@ export function UniverseCanvas({
             useWorkspace.getState().hover(node),
         );
         instance.on('leaveNode', () => useWorkspace.getState().hover(null));
-        instance.on('clickNode', ({ node }) =>
-            useWorkspace.getState().select(node),
-        );
+        let justDragged = false;
+        instance.on('nodeDragEnd', () => {
+            justDragged = true;
+            positionsRef.current(toLayoutEntries(graph));
+            setTimeout(() => {
+                justDragged = false;
+            }, 0);
+        });
+        instance.on('clickNode', ({ node }) => {
+            if (justDragged) return;
+            const st = useWorkspace.getState();
+            if (st.pathFrom && st.pathFrom !== node) {
+                st.completePath(
+                    node,
+                    findPath(snapshot, st.pathFrom, node, st.showInferred),
+                );
+                return;
+            }
+            st.select(node);
+        });
         instance.on('clickStage', () => useWorkspace.getState().select(null));
         instance.on('doubleClickNode', (event) => {
             event.preventSigmaDefault();
@@ -167,6 +187,23 @@ export function UniverseCanvas({
             );
         };
 
+        const unsubscribeCamera = useWorkspace.subscribe((st, prev) => {
+            if (st.focus !== prev.focus) {
+                if (st.focus)
+                    fitNodes([
+                        ...neighborhood(
+                            graph,
+                            st.focus.table,
+                            st.focus.depth,
+                            st.showInferred,
+                        ),
+                    ]);
+                else void camera.reset({ duration: motionMs(400) });
+            }
+            if (st.path !== prev.path && st.path && st.path.length > 1)
+                fitNodes(st.path);
+        });
+
         registerUniverse({
             flyTo: (table) => {
                 const d = instance.getNodeDisplayData(table);
@@ -188,6 +225,7 @@ export function UniverseCanvas({
             registerUniverse(null);
             themeObserver.disconnect();
             unsubscribe();
+            unsubscribeCamera();
             camera.removeListener('updated', onCamera);
             instance.kill();
             setSigma(null);

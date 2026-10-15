@@ -29,6 +29,10 @@ export function TableCards({
         (t: string) => useWorkspace.getState().select(t),
         [],
     );
+    const onFocus = useCallback(
+        (t: string) => useWorkspace.getState().setFocus(t, 1),
+        [],
+    );
     const [keys, setKeys] = useState<string[]>([]);
     const refs = useRef(new Map<string, HTMLDivElement>());
     const tables = useMemo(
@@ -110,6 +114,7 @@ export function TableCards({
                             fk={fk.get(key) ?? EMPTY_FK}
                             selected={selected === key}
                             onSelect={onSelect}
+                            onFocus={onFocus}
                         />
                     </div>
                 );
