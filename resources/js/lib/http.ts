@@ -19,7 +19,12 @@ export const KEEPALIVE_MAX_BYTES = 60 * 1024;
 
 export async function apiFetch<T = unknown>(
     url: string,
-    init: { method?: string; body?: unknown; keepalive?: boolean } = {},
+    init: {
+        method?: string;
+        body?: unknown;
+        keepalive?: boolean;
+        signal?: AbortSignal;
+    } = {},
 ): Promise<T> {
     const headers: Record<string, string> = {
         Accept: 'application/json',
@@ -40,6 +45,7 @@ export async function apiFetch<T = unknown>(
         method: init.method ?? 'GET',
         headers,
         credentials: 'same-origin',
+        signal: init.signal,
         body,
         ...(keepalive ? { keepalive: true } : {}),
     });

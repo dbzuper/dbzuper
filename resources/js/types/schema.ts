@@ -66,6 +66,37 @@ export interface DbErrorPayload {
     reason: string | null;
 }
 
+export interface QueryColumn {
+    name: string;
+    type: string | null;
+    table: string | null;
+}
+
+export type QueryCell = string | number | boolean | null;
+
+export interface StatementResultPayload {
+    sql: string;
+    kind: string;
+    columns: QueryColumn[];
+    rows: QueryCell[][];
+    truncated: boolean;
+    affected: number | null;
+    duration_ms: number;
+    error:
+        | (DbErrorPayload & {
+              position?: { line: number; column: number | null };
+          })
+        | null;
+}
+
+export interface ConfirmationPayload {
+    statement_index: number;
+    mode: 'confirm' | 'typed';
+    kind: string;
+    keyword: string;
+    target: string | null;
+}
+
 export type Dialect = 'mysql' | 'mariadb' | 'pgsql' | 'sqlite';
 
 export interface LayoutPositionEntry {
