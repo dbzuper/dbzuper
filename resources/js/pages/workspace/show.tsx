@@ -12,6 +12,7 @@ import { InspectorPanel } from '@/components/inspector/inspector-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UniverseBoundary } from '@/components/universe/universe-boundary';
+import { CommandPalette } from '@/components/workspace/command-palette';
 import { FocusChip } from '@/components/workspace/focus-chip';
 import { PathDialog } from '@/components/workspace/path-dialog';
 import { LeftRail } from '@/components/workspace/left-rail';
@@ -116,6 +117,24 @@ export default function WorkspaceShow({
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, []);
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                const st = useWorkspace.getState();
+                st.setPaletteOpen(!st.paletteOpen);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
+
+    const pathFrom = useWorkspace((s) => s.pathFrom);
+    const setPaletteOpen = useWorkspace((s) => s.setPaletteOpen);
+    useEffect(() => {
+        if (pathFrom) setPaletteOpen(true);
+    }, [pathFrom, setPaletteOpen]);
 
     const snapshot = data?.snapshot ?? null;
     const { model, status, relayout } = useUniverseModel(
@@ -269,6 +288,12 @@ export default function WorkspaceShow({
                         <div className={centered}>Loading schema…</div>
                     )}
                     {snapshot && <PathDialog snapshot={snapshot} />}
+                    {snapshot && (
+                        <CommandPalette
+                            snapshot={snapshot}
+                            onRefresh={() => void load(true)}
+                        />
+                    )}
                     <FocusChip />
                 </main>
 
