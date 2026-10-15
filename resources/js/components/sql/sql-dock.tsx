@@ -22,19 +22,29 @@ export default function SqlDock({
     const tabs = useSqlTabs((s) => s.byConnection[connection.id]);
     const ensure = useSqlTabs((s) => s.ensure);
     const setSql = useSqlTabs((s) => s.setSql);
-    const dragging = useRef<number | null>(null);
+    const drag = useRef<{ y: number; height: number } | null>(null);
+    // The completion provider is registered once; it reads the latest schema through this ref.
+    const context = useRef({ snapshot });
+    useEffect(() => {
+        context.current = { snapshot };
+    });
 
     useEffect(() => ensure(connection.id), [connection.id, ensure]);
     const active = tabs?.tabs.find((t) => t.id === tabs.activeId);
 
     const onResizeStart = (e: React.PointerEvent) => {
-        dragging.current = e.clientY;
+        drag.current = {
+            y: e.clientY,
+            height: useWorkspace.getState().dockHeight,
+        };
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
     };
     const onResizeMove = (e: React.PointerEvent) => {
-        if (dragging.current === null) return;
-        setHeight(height + (dragging.current - e.clientY));
-        dragging.current = e.clientY;
+        if (!drag.current) return;
+        setHeight(drag.current.height + (drag.current.y - e.clientY));
+    };
+    const onResizeEnd = () => {
+        drag.current = null;
     };
 
     return (
@@ -50,7 +60,9 @@ export default function SqlDock({
                 className="h-1.5 cursor-row-resize bg-border/60 hover:bg-[var(--universe-accent)]"
                 onPointerDown={onResizeStart}
                 onPointerMove={onResizeMove}
-                onPointerUp={() => (dragging.current = null)}
+                onPointerUp={onResizeEnd}
+                onPointerCancel={onResizeEnd}
+                onLostPointerCapture={onResizeEnd}
             />
             <div className="flex items-center gap-2 border-b px-2">
                 <SqlTabsBar connectionId={connection.id} />
@@ -67,7 +79,7 @@ export default function SqlDock({
             <div className="min-h-0 flex-1">
                 {active && (
                     <SqlEditor
-                        key={active.id}
+                        path={active.id}
                         value={active.sql}
                         dialect={snapshot.driver}
                         onChange={(sql) =>
@@ -75,8 +87,9 @@ export default function SqlDock({
                         }
                         onMount={(_editor, monaco) =>
                             registerSqlCompletion(monaco, () => ({
-                                snapshot,
-                                dialect: snapshot.driver as Dialect,
+                                snapshot: context.current.snapshot,
+                                dialect: context.current.snapshot
+                                    .driver as Dialect,
                                 focusedTable: useWorkspace.getState().selected,
                             }))
                         }

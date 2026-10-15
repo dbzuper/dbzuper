@@ -172,8 +172,16 @@ export default function WorkspaceShow({
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
-                e.preventDefault();
+                e.preventDefault(); // browsers use Ctrl+J for downloads
                 const st = useWorkspace.getState();
+                if (
+                    e.repeat ||
+                    st.paletteOpen ||
+                    document.querySelector(
+                        '[role="dialog"]:not([aria-modal="false"])',
+                    )
+                )
+                    return;
                 st.setDockOpen(!st.dockOpen);
             }
         };

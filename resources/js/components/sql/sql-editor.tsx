@@ -1,9 +1,11 @@
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { useEffect, useState } from 'react';
-import { languageFor, setupMonaco } from '@/sql/monaco-setup';
+import { defineThemes, languageFor, setupMonaco } from '@/sql/monaco-setup';
 
 type Props = {
+    /** One Monaco model per path keeps undo history and cursor across tab switches. */
+    path: string;
     value: string;
     dialect: string;
     onChange: (sql: string) => void;
@@ -13,7 +15,7 @@ type Props = {
     ) => void;
 };
 
-export function SqlEditor({ value, dialect, onChange, onMount }: Props) {
+export function SqlEditor({ path, value, dialect, onChange, onMount }: Props) {
     const [ready, setReady] = useState(false);
     const [dark, setDark] = useState(() =>
         document.documentElement.classList.contains('dark'),
@@ -21,6 +23,9 @@ export function SqlEditor({ value, dialect, onChange, onMount }: Props) {
 
     useEffect(() => {
         void setupMonaco().then(() => setReady(true));
+    }, []);
+
+    useEffect(() => {
         const observer = new MutationObserver(() =>
             setDark(document.documentElement.classList.contains('dark')),
         );
@@ -31,6 +36,14 @@ export function SqlEditor({ value, dialect, onChange, onMount }: Props) {
         return () => observer.disconnect();
     }, []);
 
+    useEffect(() => {
+        if (!ready) return;
+        void setupMonaco().then((monaco) => {
+            defineThemes(monaco);
+            monaco.editor.setTheme(dark ? 'dbsuperb-dark' : 'dbsuperb-light');
+        });
+    }, [ready, dark]);
+
     if (!ready)
         return (
             <div className="p-3 text-xs text-muted-foreground">
@@ -40,6 +53,7 @@ export function SqlEditor({ value, dialect, onChange, onMount }: Props) {
 
     return (
         <Editor
+            path={path}
             value={value}
             language={languageFor(dialect)}
             theme={dark ? 'dbsuperb-dark' : 'dbsuperb-light'}
