@@ -37,6 +37,7 @@ export function HistoryList({
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [confirming, setConfirming] = useState(false);
+    const [clearing, setClearing] = useState(false);
     const [reload, setReload] = useState(0);
     const controller = useRef<AbortController | null>(null);
 
@@ -86,6 +87,7 @@ export function HistoryList({
         const ctl = new AbortController();
         controller.current = ctl;
         setLoading(true);
+        setError(null);
         historyApi
             .list(connectionId, params(next), ctl.signal)
             .then((page) => {
@@ -102,13 +104,16 @@ export function HistoryList({
     };
 
     const clear = async () => {
-        if (connectionId === null) return;
+        if (connectionId === null || clearing) return;
+        setClearing(true);
         try {
             await historyApi.clear(connectionId);
             setConfirming(false);
             setReload((n) => n + 1);
         } catch {
             toast.error('Could not clear the history.');
+        } finally {
+            setClearing(false);
         }
     };
 
@@ -153,6 +158,7 @@ export function HistoryList({
                             <Button
                                 variant="destructive"
                                 size="sm"
+                                disabled={clearing}
                                 onClick={() => void clear()}
                             >
                                 Confirm clear
@@ -197,7 +203,7 @@ export function HistoryList({
                                 <CheckCircle2
                                     role="img"
                                     aria-label="Succeeded"
-                                    className="mt-0.5 size-4 shrink-0 text-emerald-600"
+                                    className="mt-0.5 size-4 shrink-0 text-success"
                                 />
                             ) : (
                                 <XCircle

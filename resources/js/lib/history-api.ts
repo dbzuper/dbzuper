@@ -47,6 +47,8 @@ export const historyApi = {
                 : `/api/c/${connectionId}/history${query({ ...params, connection_id: undefined })}`,
             { signal },
         ),
+    show: (connectionId: number, entryId: number) =>
+        apiFetch<HistoryEntry>(`/api/c/${connectionId}/history/${entryId}`),
     clear: (connectionId: number) =>
         apiFetch<{ cleared: number }>(`/api/c/${connectionId}/history`, {
             method: 'DELETE',

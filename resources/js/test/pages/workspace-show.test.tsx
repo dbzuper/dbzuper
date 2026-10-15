@@ -43,7 +43,11 @@ vi.mock('@/lib/workspace-api', async (orig) => ({
     workspaceApi: api,
 }));
 
-const historyApi = vi.hoisted(() => ({ list: vi.fn(), clear: vi.fn() }));
+const historyApi = vi.hoisted(() => ({
+    list: vi.fn(),
+    clear: vi.fn(),
+    show: vi.fn(),
+}));
 vi.mock('@/lib/history-api', () => ({ historyApi }));
 
 import WorkspaceShow from '@/pages/workspace/show';
@@ -261,15 +265,62 @@ describe('workspace page', () => {
         expect(useWorkspace.getState().historyOpen).toBe(false);
     });
 
-    it('opens ?sql= in a new tab once and strips the param', async () => {
-        window.history.replaceState(null, '', '/c/1?sql=select%201&keep=1');
+    it('opens ?history= in a new tab once without running it, keeping other params', async () => {
+        historyApi.show.mockResolvedValue({
+            id: 9,
+            sql: 'select 1',
+            kind: 'read',
+            status: 'ok',
+            duration_ms: 1,
+            row_count: 1,
+            affected: null,
+            error: null,
+            created_at: new Date().toISOString(),
+        });
+        window.history.replaceState(null, '', '/c/1?history=9&keep=1#x');
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
         render(<WorkspaceShow connection={connection} />);
         await screen.findByText('orders');
+        await waitFor(() =>
+            expect(useWorkspace.getState().dockOpen).toBe(true),
+        );
+        expect(historyApi.show).toHaveBeenCalledWith(1, 9);
         const state = useSqlTabs.getState().byConnection[1];
         const tab = state.tabs.find((t) => t.id === state.activeId);
         expect(tab?.sql).toBe('select 1');
-        expect(useWorkspace.getState().dockOpen).toBe(true);
+        expect(tab?.title).toBe('History');
         expect(window.location.search).toBe('?keep=1');
+        expect(window.location.hash).toBe('#x');
+        expect(fetchSpy).not.toHaveBeenCalled();
+        fetchSpy.mockRestore();
+        window.history.replaceState(null, '', '/');
+    });
+
+    it('ignores ?sql= and non-numeric ?history=', async () => {
+        window.history.replaceState(
+            null,
+            '',
+            '/c/1?sql=select%201&history=abc',
+        );
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByText('orders');
+        expect(historyApi.show).not.toHaveBeenCalled();
+        expect(useWorkspace.getState().dockOpen).toBe(false);
+        expect(useSqlTabs.getState().byConnection[1]).toBeUndefined();
+        window.history.replaceState(null, '', '/');
+    });
+
+    it('tells the user when the history entry is gone', async () => {
+        historyApi.show.mockRejectedValue(new Error('404'));
+        window.history.replaceState(null, '', '/c/1?history=9');
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByText('orders');
+        expect(
+            await screen.findByText(
+                'That history entry is no longer available.',
+            ),
+        ).toBeInTheDocument();
+        expect(useWorkspace.getState().dockOpen).toBe(false);
         window.history.replaceState(null, '', '/');
     });
 });

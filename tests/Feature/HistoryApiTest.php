@@ -56,3 +56,19 @@ it('passes the user connections to the history page', function () {
     $this->withoutVite()->actingAs($this->user)->get(route('history.index'))
         ->assertInertia(fn ($page) => $page->component('history/index')->has('connections', 2));
 });
+
+it('shows one entry of the connection', function () {
+    $entry = QueryHistoryEntry::where('connection_id', $this->b->id)->first();
+    $this->actingAs($this->user)->getJson(route('api.history.show', [$this->b, $entry->id]))
+        ->assertOk()->assertJsonPath('sql', 'select b_only')->assertJsonPath('id', $entry->id);
+});
+
+it('404s an entry that belongs to another connection', function () {
+    $entry = QueryHistoryEntry::where('connection_id', $this->b->id)->first();
+    $this->actingAs($this->user)->getJson(route('api.history.show', [$this->a, $entry->id]))->assertNotFound();
+});
+
+it('forbids showing an entry of another user\'s connection', function () {
+    $entry = QueryHistoryEntry::where('connection_id', $this->b->id)->first();
+    $this->actingAs(User::factory()->create())->getJson(route('api.history.show', [$this->b, $entry->id]))->assertForbidden();
+});

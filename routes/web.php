@@ -40,6 +40,7 @@ Route::middleware('auth')->group(function () {
         Route::post('query/explain', [QueryController::class, 'explain'])->name('query.explain');
         Route::get('history', [HistoryController::class, 'index'])->name('history.index');
         Route::delete('history', [HistoryController::class, 'clear'])->name('history.clear');
+        Route::get('history/{entry}', [HistoryController::class, 'show'])->whereNumber('entry')->name('history.show');
     });
 });
 

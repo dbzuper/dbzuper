@@ -21,6 +21,15 @@ class HistoryController extends Controller
         return $this->page($request, QueryHistoryEntry::query()->where('connection_id', $connection->id), false);
     }
 
+    public function show(SavedConnection $connection, int $entry): JsonResponse
+    {
+        Gate::authorize('view', $connection);
+
+        $found = QueryHistoryEntry::query()->where('connection_id', $connection->id)->findOrFail($entry);
+
+        return response()->json($found->toApiArray());
+    }
+
     public function clear(SavedConnection $connection): JsonResponse
     {
         Gate::authorize('view', $connection);

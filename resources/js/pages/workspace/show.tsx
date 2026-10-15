@@ -20,6 +20,7 @@ import { PathPickChip } from '@/components/workspace/path-pick-chip';
 import { LeftRail } from '@/components/workspace/left-rail';
 import { TableList } from '@/components/workspace/table-list';
 import { WorkspaceHeader } from '@/components/workspace/workspace-header';
+import { historyApi } from '@/lib/history-api';
 import { dbErrorFrom, workspaceApi } from '@/lib/workspace-api';
 import { useSqlTabs } from '@/sql/tabs-store';
 import type { ConnectionSummary } from '@/types/connection';
@@ -45,8 +46,6 @@ const UniverseCanvas = lazy(() =>
 );
 
 const SqlDock = lazy(() => import('@/components/sql/sql-dock'));
-
-const MAX_SQL_PARAM = 100_000;
 
 const centered =
     'flex h-full items-center justify-center text-sm text-muted-foreground';
@@ -74,22 +73,30 @@ export default function WorkspaceShow({
         if (!universeAvailable) useWorkspace.getState().setView('list');
     }, [connection.id, universeAvailable]);
 
-    // `?sql=` (from the global history page) opens a new tab once; it is never auto-run.
+    // `?history=<id>` (from the global history page) opens that entry in a new tab once; it is never auto-run.
+    const [historyNotice, setHistoryNotice] = useState<string | null>(null);
     useEffect(() => {
         const url = new URL(window.location.href);
-        const sql = url.searchParams.get('sql');
-        if (sql === null) return;
-        url.searchParams.delete('sql');
+        const raw = url.searchParams.get('history');
+        if (raw === null) return;
+        url.searchParams.delete('history');
         window.history.replaceState(
             window.history.state,
             '',
             url.pathname + url.search + url.hash,
         );
-        if (sql === '') return;
-        useSqlTabs
-            .getState()
-            .openTab(connection.id, sql.slice(0, MAX_SQL_PARAM), 'History');
-        useWorkspace.getState().setDockOpen(true);
+        if (!/^[1-9]\d{0,14}$/.test(raw)) return;
+        historyApi
+            .show(connection.id, Number(raw))
+            .then((entry) => {
+                useSqlTabs
+                    .getState()
+                    .openTab(connection.id, entry.sql, 'History');
+                useWorkspace.getState().setDockOpen(true);
+            })
+            .catch(() =>
+                setHistoryNotice('That history entry is no longer available.'),
+            );
         // Read once on mount.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -260,6 +267,14 @@ export default function WorkspaceShow({
                     ).toLocaleString('en')}{' '}
                     tables and views (alphabetical). Raise
                     DBSUPERB_SCHEMA_MAX_OBJECTS to include more.
+                </div>
+            )}
+            {historyNotice && (
+                <div
+                    role="status"
+                    className="border-b px-4 py-1.5 text-xs text-muted-foreground"
+                >
+                    {historyNotice}
                 </div>
             )}
             {!universeAvailable && (

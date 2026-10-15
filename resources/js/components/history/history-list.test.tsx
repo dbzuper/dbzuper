@@ -161,4 +161,34 @@ describe('HistoryList', () => {
         const del = fetchMock.mock.calls.find((c) => c[1]?.method === 'DELETE');
         expect(String(del?.[0])).toBe('/api/c/7/history');
     });
+
+    it('clears a load-more error when retrying', async () => {
+        fetchMock.mockImplementationOnce(() =>
+            json({ entries: [entry({ id: 9 })], next_before_id: 9 }),
+        );
+        render(<HistoryList connectionId={7} onOpen={vi.fn()} />);
+        await flush();
+        fetchMock.mockImplementationOnce(() => Promise.reject(new Error('x')));
+        fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+        await flush();
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+        fetchMock.mockImplementationOnce(() =>
+            json({ entries: [], next_before_id: null }),
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+        expect(screen.queryByRole('alert')).toBeNull();
+        await flush();
+    });
+
+    it('disables Confirm clear while the DELETE is in flight', async () => {
+        render(<HistoryList connectionId={7} onOpen={vi.fn()} />);
+        await flush();
+        fireEvent.click(screen.getByRole('button', { name: 'Clear history' }));
+        fetchMock.mockImplementationOnce(() => new Promise(() => {}));
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm clear' }));
+        await flush();
+        expect(
+            screen.getByRole('button', { name: 'Confirm clear' }),
+        ).toBeDisabled();
+    });
 });
