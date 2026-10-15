@@ -12,9 +12,12 @@ const itemClass =
 export function CommandPalette({
     snapshot,
     onRefresh,
+    universeAvailable = true,
 }: {
     snapshot: SchemaSnapshot;
     onRefresh: () => void;
+    /** False without WebGL or after a render failure: the list view is then the only view. */
+    universeAvailable?: boolean;
 }) {
     const open = useWorkspace((s) => s.paletteOpen);
     const setOpen = useWorkspace((s) => s.setPaletteOpen);
@@ -54,13 +57,21 @@ export function CommandPalette({
         },
         { label: 'Fit everything on screen', run: universe.fitAll },
         { label: 'Re-layout the universe', run: universe.relayout },
-        {
-            label:
-                st.view === 'list'
-                    ? 'Switch to universe view'
-                    : 'Switch to list view',
-            run: () => st.setView(st.view === 'list' ? 'universe' : 'list'),
-        },
+        ...(st.view === 'list'
+            ? universeAvailable
+                ? [
+                      {
+                          label: 'Switch to universe view',
+                          run: () => st.setView('universe'),
+                      },
+                  ]
+                : []
+            : [
+                  {
+                      label: 'Switch to list view',
+                      run: () => st.setView('list'),
+                  },
+              ]),
         ...(st.selected
             ? [
                   {

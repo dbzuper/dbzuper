@@ -299,6 +299,7 @@ export default function WorkspaceShow({
                         <CommandPalette
                             snapshot={snapshot}
                             onRefresh={() => void load(true)}
+                            universeAvailable={universeAvailable}
                         />
                     )}
                     <FocusChip />

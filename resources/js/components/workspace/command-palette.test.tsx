@@ -62,6 +62,32 @@ describe('CommandPalette', () => {
         expect(useWorkspace.getState().selected).toBeNull();
     });
 
+    it('hides the universe view switch when the universe is unavailable', () => {
+        useWorkspace.getState().setView('list');
+        render(
+            <CommandPalette
+                snapshot={snap}
+                onRefresh={() => {}}
+                universeAvailable={false}
+            />,
+        );
+        expect(
+            screen.queryByRole('option', { name: 'Switch to universe view' }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.getByRole('option', { name: 'Refresh schema' }),
+        ).toBeInTheDocument();
+    });
+
+    it('offers the universe view switch when the universe is available', () => {
+        useWorkspace.getState().setView('list');
+        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        fireEvent.click(
+            screen.getByRole('option', { name: 'Switch to universe view' }),
+        );
+        expect(useWorkspace.getState().view).toBe('universe');
+    });
+
     it('runs actions', () => {
         const onRefresh = vi.fn();
         render(<CommandPalette snapshot={snap} onRefresh={onRefresh} />);
