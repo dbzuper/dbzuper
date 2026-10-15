@@ -82,7 +82,7 @@ describe('useTrailUrl', () => {
         expect(url.searchParams.get('r')).toBe(
             encodeTrail(useRecords.getState().trail, pks),
         );
-        expect(window.history.state).toEqual({ page: 'inertia' });
+        expect(window.history.state).toMatchObject({ page: 'inertia' });
     });
 
     it('pushes one entry per expansion and none for a repeated identical trail', async () => {
@@ -242,7 +242,7 @@ describe('useTrailUrl', () => {
         expect(param()).toBeNull();
         expect(window.location.search).toBe('?keep=1');
         expect(window.location.hash).toBe('#h');
-        expect(window.history.state).toEqual({ page: 'x' });
+        expect(window.history.state).toMatchObject({ page: 'x' });
         expect(push).not.toHaveBeenCalled();
     });
 
@@ -291,5 +291,65 @@ describe('useTrailUrl', () => {
         });
         expect(param()).toBeNull();
         expect(useRecords.getState().trail.nodes).toHaveLength(1);
+    });
+
+    it('stops Inertia from seeing a popstate of this page, but not one for another path', async () => {
+        const inertia = vi.fn();
+        renderHook(() => useTrailUrl(snapshot));
+        await act(async () => useRecords.getState().open('users', { id: 1 }));
+        window.addEventListener('popstate', inertia);
+        try {
+            expect(window.history.state).toMatchObject({
+                page: 'inertia',
+                dbsTrail: '/',
+            });
+            await act(async () => {
+                window.dispatchEvent(
+                    new PopStateEvent('popstate', {
+                        state: { page: 'inertia', dbsTrail: '/' },
+                    }),
+                );
+            });
+            expect(inertia).not.toHaveBeenCalled();
+            // The untagged original entry of the same page is ours too.
+            await act(async () => {
+                window.dispatchEvent(
+                    new PopStateEvent('popstate', {
+                        state: { page: 'inertia' },
+                    }),
+                );
+            });
+            expect(inertia).not.toHaveBeenCalled();
+
+            window.history.replaceState({ page: 'x' }, '', '/other');
+            await act(async () => {
+                window.dispatchEvent(
+                    new PopStateEvent('popstate', { state: { page: 'x' } }),
+                );
+            });
+            expect(inertia).toHaveBeenCalledTimes(1);
+        } finally {
+            window.removeEventListener('popstate', inertia);
+        }
+    });
+
+    it('rewrites instead of pushing when a failed root empties the trail', async () => {
+        const { ApiError } = await import('@/lib/http');
+        api.show.mockRejectedValue(new ApiError(422, { message: 'no pk' }));
+        const r = encodeTrail(openRoot('users', { id: 9 }), pks);
+        window.history.replaceState({ page: 'a' }, '', '/?a=1');
+        window.history.pushState({ page: 'b' }, '', `/?r=${r}`);
+        const length = window.history.length;
+        const push = pushSpy();
+        await act(async () => {
+            renderHook(() => useTrailUrl(snapshot));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+        expect(useRecords.getState().trail.nodes).toHaveLength(0);
+        expect(param()).toBeNull();
+        expect(push).not.toHaveBeenCalled();
+        expect(window.history.length).toBe(length);
     });
 });

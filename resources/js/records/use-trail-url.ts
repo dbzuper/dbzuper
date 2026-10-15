@@ -3,9 +3,11 @@ import type { SchemaSnapshot } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
 import { useRecords } from './records-store';
 import { emptyTrail } from './trail';
+import { setPopstateHandler } from './popstate-guard';
 import { decodeTrail, encodeTrail } from './url-state';
 
 const PARAM = 'r';
+const TAG = 'dbsTrail';
 const MAX_ENCODED = 16 * 1024;
 
 export const TRAIL_TOO_LONG_NOTICE = 'Trail is too long to keep in the URL';
@@ -24,9 +26,13 @@ function writeParam(value: string | null, mode: 'push' | 'replace') {
     if (value === null) url.searchParams.delete(PARAM);
     else url.searchParams.set(PARAM, value);
     const next = url.pathname + url.search + url.hash;
-    if (mode === 'push')
-        window.history.pushState(window.history.state, '', next);
-    else window.history.replaceState(window.history.state, '', next);
+    // Tag the entry as ours; Inertia's own state stays in the merge.
+    const state = {
+        ...(window.history.state as object | null),
+        [TAG]: url.pathname,
+    };
+    if (mode === 'push') window.history.pushState(state, '', next);
+    else window.history.replaceState(state, '', next);
 }
 
 /**
@@ -39,6 +45,9 @@ export function useTrailUrl(snapshot: SchemaSnapshot | null) {
     // True while a URL-driven setTrail/reset runs, so the store subscription does not write back.
     const applying = useRef(false);
     const restored = useRef(false);
+    // The pathname this hook serves; kept current across renders (Inertia navigations re-render).
+    const pathRef = useRef(window.location.pathname);
+    pathRef.current = window.location.pathname;
 
     const apply = (source: 'mount' | 'popstate') => {
         const snap = snapshotRef.current;
@@ -75,7 +84,9 @@ export function useTrailUrl(snapshot: SchemaSnapshot | null) {
         if (decoded.dropped > 0)
             useRecords.setState({ notice: droppedNotice(decoded.dropped) });
         const normalized = encodeTrail(decoded.trail, primaryKeys(snap));
-        if (normalized !== raw) writeParam(normalized, 'replace');
+        // On mount this also tags the original entry as ours (Inertia's state is merged, not replaced).
+        if (source === 'mount' || normalized !== raw)
+            writeParam(normalized, 'replace');
     };
     const applyRef = useRef(apply);
     applyRef.current = apply;
@@ -100,13 +111,24 @@ export function useTrailUrl(snapshot: SchemaSnapshot | null) {
                     useRecords.setState({ notice: TRAIL_TOO_LONG_NOTICE });
                 return;
             }
-            writeParam(encoded, 'push');
+            writeParam(
+                encoded,
+                state.systemEpoch !== prev.systemEpoch ? 'replace' : 'push',
+            );
         });
-        const onPopState = () => applyRef.current('popstate');
-        window.addEventListener('popstate', onPopState);
+        // Entries of this workspace (same pathname, or tagged by us) are applied here; the
+        // popstate guard keeps Inertia from re-mounting the page for them.
+        setPopstateHandler((event) => {
+            const tag = (event.state as Record<string, unknown> | null)?.[TAG];
+            const path = window.location.pathname;
+            if (path !== pathRef.current || (tag !== undefined && tag !== path))
+                return false;
+            applyRef.current('popstate');
+            return true;
+        });
         return () => {
             unsubscribe();
-            window.removeEventListener('popstate', onPopState);
+            setPopstateHandler(null);
         };
     }, []);
 }

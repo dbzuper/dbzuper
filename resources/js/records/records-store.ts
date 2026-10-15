@@ -59,6 +59,8 @@ type State = {
     notice: string | null;
     /** Bumped whenever the trail is replaced (open, setTrail, reset), so views can refit and drop drag state. */
     epoch: number;
+    /** Bumped when the store itself empties the trail (a failed root), so the URL is rewritten, not pushed. */
+    systemEpoch: number;
 };
 
 type Actions = {
@@ -90,6 +92,7 @@ const initial = (): State => ({
     clusters: {},
     notice: null,
     epoch: 0,
+    systemEpoch: 0,
 });
 
 // Every async action captures the current "generation" and drops its result when the trail
@@ -218,6 +221,7 @@ export const useRecords = create<RecordsState>()((set, get) => {
                     set({
                         trail: emptyTrail(),
                         records: {},
+                        systemEpoch: get().systemEpoch + 1,
                         notice: dbErrorFrom(e, 'Could not open the record.')
                             .message,
                     });
@@ -387,7 +391,12 @@ export const useRecords = create<RecordsState>()((set, get) => {
         setConnection: (id) => {
             if (get().connectionId === id) return;
             bump();
-            set({ ...initial(), connectionId: id, epoch: get().epoch + 1 });
+            set({
+                ...initial(),
+                connectionId: id,
+                epoch: get().epoch + 1,
+                systemEpoch: get().systemEpoch,
+            });
         },
         open: (table, key) => {
             if (get().connectionId === null) return;
@@ -426,6 +435,7 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 bump();
                 set({
                     ...initial(),
+                    systemEpoch: get().systemEpoch,
                     connectionId: get().connectionId,
                     epoch: get().epoch + 1,
                 });
@@ -528,7 +538,11 @@ export const useRecords = create<RecordsState>()((set, get) => {
         dismissNotice: () => set({ notice: null }),
         reset: () => {
             bump();
-            set({ ...initial(), epoch: get().epoch + 1 });
+            set({
+                ...initial(),
+                epoch: get().epoch + 1,
+                systemEpoch: get().systemEpoch,
+            });
         },
     };
 });

@@ -11,6 +11,9 @@ import { useWorkspace } from '@/universe/store';
 const NO_SQL_TITLE =
     'This path cannot be written as SQL: a relationship on it is no longer in the schema.';
 
+const NO_SELECTION_TITLE = 'Select a record to copy its path';
+const DIALECTS: Dialect[] = ['mysql', 'mariadb', 'pgsql', 'sqlite'];
+
 const button =
     'rounded border px-2 py-0.5 text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent';
 
@@ -37,22 +40,24 @@ export function RecordsBreadcrumb({
 }) {
     const trail = useRecords((s) => s.trail);
     const records = useRecords((s) => s.records);
+    const target = trail.selected ?? trail.nodes[0]?.id ?? null;
     const path = useMemo(
-        () => (trail.selected ? pathTo(trail, trail.selected) : null),
-        [trail],
+        () => (target ? pathTo(trail, target) : null),
+        [trail, target],
     );
+    const dialect = DIALECTS.find((d) => d === snapshot.driver) ?? null;
     const sql = useMemo(
         () =>
-            trail.selected
-                ? buildTrailSql(
-                      trail,
-                      trail.selected,
-                      snapshot,
-                      snapshot.driver as Dialect,
-                  )
+            trail.selected && dialect
+                ? buildTrailSql(trail, trail.selected, snapshot, dialect)
                 : null,
-        [trail, snapshot],
+        [trail, snapshot, dialect],
     );
+    const whyNot = !trail.selected
+        ? NO_SELECTION_TITLE
+        : !dialect
+          ? `SQL for the ${snapshot.driver} engine is not supported.`
+          : NO_SQL_TITLE;
     if (trail.nodes.length === 0) return null;
 
     const copy = () => {
@@ -105,7 +110,7 @@ export function RecordsBreadcrumb({
             <button
                 type="button"
                 aria-label="Copy path as SQL"
-                title={sql === null ? NO_SQL_TITLE : 'Open this path as SQL'}
+                title={sql === null ? whyNot : 'Open this path as SQL'}
                 disabled={sql === null}
                 onClick={copy}
                 className={button}

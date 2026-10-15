@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Request } from '@playwright/test';
 import path from 'node:path';
 import { addSqliteConnection, ensureSignedIn } from './support/auth';
 
@@ -144,4 +144,69 @@ test('data tab: server sort by column header', async () => {
     await header.click();
     await header.click();
     await expect.poll(firstStatus).not.toBe(before);
+});
+
+const b64url = (text: string) =>
+    Buffer.from(text, 'utf8')
+        .toString('base64')
+        .replaceAll('+', '-')
+        .replaceAll('/', '_')
+        .replace(/=+$/, '');
+
+test('records: Back/Forward restore the trail without remounting or refetching', async () => {
+    await addSqliteConnection(page, 'Records history demo', DEMO);
+    await page.getByRole('link', { name: /Records history demo/ }).click();
+    await expect(page.getByRole('button', { name: 'SQL' })).toBeVisible();
+    const workspace = new URL(page.url()).pathname;
+
+    // users #1 as the root, built the way the app encodes it.
+    const r = b64url(
+        JSON.stringify({ v: 1, n: [['users', [1]]], e: [], s: 0 }),
+    );
+    await page.goto(`${workspace}?r=${r}`);
+    const explorer = page.getByRole('region', { name: 'Record explorer' });
+    await expect(explorer.getByText('users').first()).toBeVisible();
+
+    // Expand the group port (belongs-to).
+    await explorer.getByRole('button', { name: /^Open group/ }).click();
+    await expect
+        .poll(() => explorer.locator('.react-flow__node-record').count())
+        .toBeGreaterThan(1);
+    const withGroup = await explorer
+        .locator('.react-flow__node-record')
+        .count();
+    const expandedUrl = page.url();
+
+    await page.keyboard.press('Control+j');
+    const dock = page.getByRole('region', { name: 'SQL editor' });
+    await expect(dock.locator('.monaco-editor')).toBeVisible();
+
+    const seen: string[] = [];
+    const onRequest = (req: Request) => {
+        if (req.method() === 'GET') seen.push(new URL(req.url()).pathname);
+    };
+    page.on('request', onRequest);
+
+    await page.goBack();
+    await expect(explorer.locator('.react-flow__node-record')).toHaveCount(1);
+    await expect(dock).toBeVisible();
+    expect(page.url()).toContain(`r=${r}`);
+
+    // Back refetches nothing: every node on screen was already loaded.
+    expect(seen.filter((p) => /\/records\//.test(p))).toEqual([]);
+    expect(seen.filter((p) => /\/schema|\/layout/.test(p))).toEqual([]);
+    seen.length = 0;
+
+    await page.goForward();
+    await expect(explorer.locator('.react-flow__node-record')).toHaveCount(
+        withGroup,
+    );
+    await expect(dock).toBeVisible();
+    expect(page.url()).toBe(expandedUrl);
+
+    page.off('request', onRequest);
+    expect(seen.filter((p) => /\/schema|\/layout/.test(p))).toEqual([]);
+    // Forward re-adds the group card, which Back had dropped from the cache: one record fetch for
+    // it, never the users record that stayed loaded.
+    expect(seen.filter((p) => /\/records\/users/.test(p))).toEqual([]);
 });

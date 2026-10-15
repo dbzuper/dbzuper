@@ -204,4 +204,36 @@ describe('RecordsBreadcrumb', () => {
         expect(useRecords.getState().trail.nodes).toHaveLength(0);
         expect(useRecords.getState().connectionId).toBe(1);
     });
+
+    it('shows the root and explains the disabled copy when nothing is selected', () => {
+        seed();
+        useRecords.setState({
+            trail: { ...useRecords.getState().trail, selected: null },
+        });
+        render(
+            <RecordsBreadcrumb connection={connection} snapshot={snapshot} />,
+        );
+        expect(
+            screen.getByRole('button', { name: 'users · Ada' }),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: 'Copy path as SQL' }),
+        ).toHaveAttribute('title', 'Select a record to copy its path');
+    });
+
+    it('disables copy for an unknown engine', () => {
+        seed();
+        render(
+            <RecordsBreadcrumb
+                connection={connection}
+                snapshot={{ ...snapshot, driver: 'oracle' }}
+            />,
+        );
+        const button = screen.getByRole('button', { name: 'Copy path as SQL' });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute(
+            'title',
+            expect.stringContaining('oracle'),
+        );
+    });
 });
