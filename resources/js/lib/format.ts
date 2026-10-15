@@ -13,6 +13,19 @@ export function formatRowCount(rc: RowCountSchema): string {
     return full.format(rc.count);
 }
 
+export function formatBytes(n: number | null): string {
+    if (n === null || n < 0) return '—';
+    if (n < 1024) return `${n} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let v = n / 1024;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) {
+        v /= 1024;
+        i++;
+    }
+    return `${Number.isInteger(v) ? v : v.toFixed(1)} ${units[i]}`;
+}
+
 const relative = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
 
 /** "5 minutes ago" for the last week, then an absolute UTC timestamp. */

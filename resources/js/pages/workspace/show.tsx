@@ -8,6 +8,7 @@ import {
     useState,
 } from 'react';
 import { toast } from 'sonner';
+import { InspectorPanel } from '@/components/inspector/inspector-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UniverseBoundary } from '@/components/universe/universe-boundary';
@@ -253,9 +254,11 @@ export default function WorkspaceShow({
                         aria-label="Inspector"
                         className="flex w-[420px] shrink-0 flex-col border-l"
                     >
-                        <div className="border-b px-4 py-3 font-mono text-sm font-semibold">
-                            {selectedTable.name}
-                        </div>
+                        <InspectorPanel
+                            connectionId={connection.id}
+                            snapshot={snapshot!}
+                            table={selectedTable}
+                        />
                     </aside>
                 )}
             </div>

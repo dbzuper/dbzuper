@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatRowCount, formatSnapshotAge } from './format';
+import { formatBytes, formatRowCount, formatSnapshotAge } from './format';
 
 describe('formatRowCount', () => {
     it.each([
@@ -29,5 +29,16 @@ describe('formatSnapshotAge', () => {
 
     it('returns the input when it is not a date', () => {
         expect(formatSnapshotAge('nonsense', now)).toBe('nonsense');
+    });
+});
+
+describe('formatBytes', () => {
+    it.each([
+        [null, '—'],
+        [0, '0 B'],
+        [1536, '1.5 KB'],
+        [5 * 1024 * 1024, '5 MB'],
+    ] as const)('formats %s as %s', (input, expected) => {
+        expect(formatBytes(input)).toBe(expected);
     });
 });
