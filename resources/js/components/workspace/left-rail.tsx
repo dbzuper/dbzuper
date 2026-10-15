@@ -8,12 +8,6 @@ import {
 import { cn } from '@/lib/utils';
 import { useWorkspace } from '@/universe/store';
 
-const disabled = [
-    { label: 'Records', icon: Database },
-    { label: 'SQL', icon: TerminalSquare },
-    { label: 'History', icon: History },
-];
-
 export function LeftRail({
     universeAvailable,
 }: {
@@ -21,6 +15,8 @@ export function LeftRail({
 }) {
     const view = useWorkspace((s) => s.view);
     const setView = useWorkspace((s) => s.setView);
+    const dockOpen = useWorkspace((s) => s.dockOpen);
+    const setDockOpen = useWorkspace((s) => s.setDockOpen);
 
     const item = (
         label: string,
@@ -73,9 +69,11 @@ export function LeftRail({
                     setView('list'),
                 )}
                 <div className="my-1 h-px w-6 bg-border" />
-                {disabled.map((d) =>
-                    item(d.label, d.icon, false, undefined, true),
+                {item('Records', Database, false, undefined, true)}
+                {item('SQL', TerminalSquare, dockOpen, () =>
+                    setDockOpen(!dockOpen),
                 )}
+                {item('History', History, false, undefined, true)}
             </nav>
         </TooltipProvider>
     );

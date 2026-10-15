@@ -42,6 +42,8 @@ const UniverseCanvas = lazy(() =>
     })),
 );
 
+const SqlDock = lazy(() => import('@/components/sql/sql-dock'));
+
 const centered =
     'flex h-full items-center justify-center text-sm text-muted-foreground';
 
@@ -167,6 +169,19 @@ export default function WorkspaceShow({
         return () => window.removeEventListener('keydown', onKey);
     }, []);
 
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+                e.preventDefault();
+                const st = useWorkspace.getState();
+                st.setDockOpen(!st.dockOpen);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
+
+    const dockOpen = useWorkspace((s) => s.dockOpen);
     const pathFrom = useWorkspace((s) => s.pathFrom);
     const setPaletteOpen = useWorkspace((s) => s.setPaletteOpen);
     useEffect(() => {
@@ -324,7 +339,20 @@ export default function WorkspaceShow({
                     {!snapshot && loading && (
                         <div className={centered}>Loading schema…</div>
                     )}
-                    {snapshot && <PathDialog snapshot={snapshot} />}
+                    {snapshot && dockOpen && (
+                        <Suspense fallback={null}>
+                            <SqlDock
+                                connection={connection}
+                                snapshot={snapshot}
+                            />
+                        </Suspense>
+                    )}
+                    {snapshot && (
+                        <PathDialog
+                            snapshot={snapshot}
+                            connectionId={connection.id}
+                        />
+                    )}
                     {snapshot && (
                         <CommandPalette
                             snapshot={snapshot}

@@ -15,7 +15,7 @@ describe('PathDialog', () => {
     it('shows the chain and the generated SQL', () => {
         useWorkspace.getState().startPath('a');
         useWorkspace.getState().completePath('b', ['a', 'b']);
-        render(<PathDialog snapshot={snap} />);
+        render(<PathDialog snapshot={snap} connectionId={1} />);
         expect(screen.getByRole('dialog')).toHaveTextContent('a → b');
         expect(screen.getByTestId('join-sql')).toHaveTextContent(
             'JOIN "b" AS t1',
@@ -25,7 +25,7 @@ describe('PathDialog', () => {
     it('explains when no path exists', () => {
         useWorkspace.getState().startPath('a');
         useWorkspace.getState().completePath('c', null);
-        render(<PathDialog snapshot={snap} />);
+        render(<PathDialog snapshot={snap} connectionId={1} />);
         expect(
             screen.getByText('No relationship path connects a and c.'),
         ).toBeInTheDocument();
@@ -35,7 +35,7 @@ describe('PathDialog', () => {
         useWorkspace.getState().startPath('a');
         useWorkspace.getState().completePath('c', ['a', 'b', 'c']);
         useWorkspace.setState({ showInferred: false });
-        render(<PathDialog snapshot={snap} />);
+        render(<PathDialog snapshot={snap} connectionId={1} />);
         expect(
             screen.getByText(/inferred relationships, which are hidden/),
         ).toBeInTheDocument();
@@ -45,7 +45,7 @@ describe('PathDialog', () => {
     it('handles a same-table path', () => {
         useWorkspace.getState().startPath('a');
         useWorkspace.getState().completePath('a', ['a']);
-        render(<PathDialog snapshot={snap} />);
+        render(<PathDialog snapshot={snap} connectionId={1} />);
         expect(
             screen.getByText('Pick a different table to find a path.'),
         ).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe('PathDialog', () => {
     it('closes via the close button', () => {
         useWorkspace.getState().startPath('a');
         useWorkspace.getState().completePath('b', ['a', 'b']);
-        render(<PathDialog snapshot={snap} />);
+        render(<PathDialog snapshot={snap} connectionId={1} />);
         fireEvent.click(
             screen.getByRole('button', { name: 'Close path finder' }),
         );

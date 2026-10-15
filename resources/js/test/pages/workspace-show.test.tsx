@@ -7,6 +7,7 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
+import { useSqlTabs } from '@/sql/tabs-store';
 import { useWorkspace } from '@/universe/store';
 
 vi.mock('@inertiajs/react', () => ({
@@ -23,6 +24,9 @@ vi.mock('@inertiajs/react', () => ({
             {children}
         </a>
     ),
+}));
+vi.mock('@/components/sql/sql-dock', () => ({
+    default: () => <section aria-label="SQL editor" />,
 }));
 vi.mock('@/universe/webgl', () => ({ hasWebGL: () => false }));
 
@@ -60,6 +64,7 @@ const connection = {
 beforeEach(() => {
     vi.clearAllMocks();
     useWorkspace.getState().reset();
+    useSqlTabs.setState({ byConnection: {} });
     api.layout.mockResolvedValue({ positions: [] });
     api.schema.mockResolvedValue({
         snapshot: makeSnapshot(
@@ -180,5 +185,44 @@ describe('workspace page', () => {
             key: 'Escape',
         });
         expect(useWorkspace.getState().selected).toBe('users');
+    });
+
+    it('toggles the SQL dock with Ctrl+J and the rail button', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByText('orders');
+        expect(screen.queryByRole('region', { name: 'SQL editor' })).toBeNull();
+        fireEvent.keyDown(window, { key: 'j', ctrlKey: true });
+        expect(
+            await screen.findByRole('region', { name: 'SQL editor' }),
+        ).toBeInTheDocument();
+        fireEvent.keyDown(window, { key: 'j', metaKey: true });
+        expect(screen.queryByRole('region', { name: 'SQL editor' })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'SQL' }));
+        expect(
+            await screen.findByRole('region', { name: 'SQL editor' }),
+        ).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'SQL' }));
+        expect(screen.queryByRole('region', { name: 'SQL editor' })).toBeNull();
+    });
+
+    it('opens a found path in a new SQL tab', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByText('orders');
+        act(() => useWorkspace.getState().startPath('orders'));
+        act(() => {
+            useWorkspace.getState().setPaletteOpen(false);
+            useWorkspace.getState().completePath('users', ['orders', 'users']);
+        });
+        fireEvent.click(
+            await screen.findByRole('button', { name: /Open in SQL/ }),
+        );
+        expect(useWorkspace.getState().dockOpen).toBe(true);
+        const state = useSqlTabs.getState().byConnection[1];
+        const tab = state.tabs.find((t) => t.id === state.activeId);
+        expect(tab?.title).toBe('Path');
+        expect(tab?.sql).toContain('JOIN');
+        expect(
+            await screen.findByRole('region', { name: 'SQL editor' }),
+        ).toBeInTheDocument();
     });
 });

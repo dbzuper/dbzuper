@@ -20,6 +20,8 @@ type State = {
     pathTo: string | null;
     path: string[] | null;
     paletteOpen: boolean;
+    dockOpen: boolean;
+    dockHeight: number;
 };
 
 type Actions = {
@@ -34,6 +36,8 @@ type Actions = {
     completePath: (to: string, path: string[] | null) => void;
     clearPath: () => void;
     setPaletteOpen: (open: boolean) => void;
+    setDockOpen: (open: boolean) => void;
+    setDockHeight: (px: number) => void;
     reset: () => void;
 };
 
@@ -51,6 +55,8 @@ const initial: State = {
     pathTo: null,
     path: null,
     paletteOpen: false,
+    dockOpen: false,
+    dockHeight: 320,
 };
 
 export const useWorkspace = create<WorkspaceState>()((set, get) => ({
@@ -72,5 +78,8 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
     completePath: (to, path) => set({ pathTo: to, path: path ?? [] }),
     clearPath: () => set({ pathFrom: null, pathTo: null, path: null }),
     setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+    setDockOpen: (dockOpen) => set({ dockOpen }),
+    setDockHeight: (px) =>
+        set({ dockHeight: Math.max(160, Math.min(px, 900)) }),
     reset: () => set({ ...initial }),
 }));

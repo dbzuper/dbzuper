@@ -6,6 +6,17 @@ import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import laravel from 'laravel-vite-plugin';
 import { defineConfig, lazyPlugins } from 'vite-plus';
 
+// @monaco-editor/loader ships a default CDN URL it never uses once
+// loader.config({ monaco }) is set. Blank it so no CDN reference reaches the bundle.
+const noMonacoCdn = {
+    name: 'dbsuperb:no-monaco-cdn',
+    enforce: 'pre' as const,
+    transform(code: string, id: string) {
+        if (!id.includes('@monaco-editor/loader')) return null;
+        return code.replace(/https:\/\/cdn\.jsdelivr\.net[^'"`]*/g, '');
+    },
+};
+
 export default defineConfig({
     plugins: lazyPlugins(() => [
         laravel({
@@ -18,6 +29,7 @@ export default defineConfig({
             presets: [reactCompilerPreset()],
         }),
         tailwindcss(),
+        noMonacoCdn,
         wayfinder({
             formVariants: true,
         }),

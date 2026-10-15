@@ -1,12 +1,19 @@
-import { Check, Copy, X } from 'lucide-react';
+import { Check, Copy, TerminalSquare, X } from 'lucide-react';
 import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { useClipboard } from '@/hooks/use-clipboard';
+import { useSqlTabs } from '@/sql/tabs-store';
 import type { Dialect, SchemaSnapshot } from '@/types/schema';
 import { buildJoinSql } from '@/universe/path';
 import { useWorkspace } from '@/universe/store';
 
-export function PathDialog({ snapshot }: { snapshot: SchemaSnapshot }) {
+export function PathDialog({
+    snapshot,
+    connectionId,
+}: {
+    snapshot: SchemaSnapshot;
+    connectionId: number;
+}) {
     const pathFrom = useWorkspace((s) => s.pathFrom);
     const pathTo = useWorkspace((s) => s.pathTo);
     const path = useWorkspace((s) => s.path);
@@ -74,15 +81,21 @@ export function PathDialog({ snapshot }: { snapshot: SchemaSnapshot }) {
                         {sql}
                     </pre>
                     <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                            Opening this in the SQL editor arrives with the SQL
-                            workspace.
-                        </span>
                         <Button
                             size="sm"
+                            variant="outline"
                             className="ml-auto"
-                            onClick={() => void copy(sql)}
+                            onClick={() => {
+                                useSqlTabs
+                                    .getState()
+                                    .openTab(connectionId, sql, 'Path');
+                                useWorkspace.getState().setDockOpen(true);
+                            }}
                         >
+                            <TerminalSquare className="size-3.5" />
+                            Open in SQL
+                        </Button>
+                        <Button size="sm" onClick={() => void copy(sql)}>
                             <span
                                 aria-live="polite"
                                 className="inline-flex items-center gap-1.5"
