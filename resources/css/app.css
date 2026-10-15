@@ -139,3 +139,33 @@
         @apply bg-background text-foreground;
     }
 }
+
+:root {
+    --universe-bg: #f7f5f0;
+    --universe-grid: rgba(15, 23, 42, 0.07);
+    --universe-accent: #0d9488;
+    --universe-node-dim: #d6d3cc;
+    --universe-edge: rgba(71, 85, 105, 0.35);
+    --universe-edge-inferred: rgba(71, 85, 105, 0.16);
+    --universe-edge-dim: rgba(71, 85, 105, 0.07);
+    --universe-label: #1f2937;
+}
+
+.dark {
+    --universe-bg: #0b0e14;
+    --universe-grid: rgba(148, 163, 184, 0.08);
+    --universe-accent: #2dd4bf;
+    --universe-node-dim: #1f2633;
+    --universe-edge: rgba(148, 163, 184, 0.32);
+    --universe-edge-inferred: rgba(148, 163, 184, 0.14);
+    --universe-edge-dim: rgba(148, 163, 184, 0.05);
+    --universe-label: #e2e8f0;
+}
+
+.universe-grid-dots {
+    background-image: radial-gradient(
+        var(--universe-grid) 1px,
+        transparent 1px
+    );
+    background-size: var(--grid-size, 24px) var(--grid-size, 24px);
+}
