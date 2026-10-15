@@ -8,6 +8,7 @@ import type {
     SchemaGraph,
     TableNodeAttributes,
 } from '@/universe/graph';
+import { changedSize, type Size } from '@/universe/container-size';
 import { motionMs } from '@/universe/motion';
 import { pickPathTarget } from '@/universe/path-pick';
 import { toLayoutEntries } from '@/universe/plan';
@@ -183,6 +184,41 @@ export function UniverseCanvas({
             attributeFilter: ['class'],
         });
 
+        // Sigma only listens to window resize, so a layout change (the inspector opening or closing)
+        // leaves its stage at the old size. Follow the container instead, at most once per frame. The
+        // camera is untouched: its centre is in graph space, so the view keeps the same graph point
+        // at the stage centre and nothing jumps. resize() also tells the overlays to re-measure.
+        let lastSize: Size | null = instance.getDimensions();
+        let pendingSize: Size | null = null;
+        let resizeFrame = 0;
+        const resizeObserver =
+            typeof ResizeObserver === 'undefined'
+                ? null
+                : new ResizeObserver((entries) => {
+                      const rect = entries[entries.length - 1]?.contentRect;
+                      if (!rect) return;
+                      pendingSize = changedSize(
+                          lastSize,
+                          rect.width,
+                          rect.height,
+                      );
+                      if (!pendingSize || resizeFrame) return;
+                      resizeFrame = requestAnimationFrame(() => {
+                          resizeFrame = 0;
+                          const size = pendingSize;
+                          pendingSize = null;
+                          if (
+                              !size ||
+                              !changedSize(lastSize, size.width, size.height)
+                          )
+                              return;
+                          lastSize = size;
+                          instance.resize();
+                          instance.scheduleRender();
+                      });
+                  });
+        resizeObserver?.observe(container);
+
         const fitNodes = (tables: string[]) => {
             const pts = tables
                 .map((t) => instance.getNodeDisplayData(t))
@@ -242,6 +278,8 @@ export function UniverseCanvas({
             cameraRef.current = { graph, state: camera.getState() };
             registerUniverse(null);
             themeObserver.disconnect();
+            resizeObserver?.disconnect();
+            cancelAnimationFrame(resizeFrame);
             unsubscribe();
             unsubscribeCamera();
             camera.removeListener('updated', onCamera);

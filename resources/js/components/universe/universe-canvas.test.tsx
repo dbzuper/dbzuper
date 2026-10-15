@@ -10,6 +10,13 @@ const sigmaCalls = vi.hoisted(() => ({
     constructed: 0,
     refresh: 0,
     scheduleRender: 0,
+    resize: 0,
+}));
+
+type RoCallback = (entries: { contentRect: DOMRect }[]) => void;
+const observers = vi.hoisted(() => ({
+    callbacks: [] as unknown[],
+    disconnected: 0,
 }));
 
 vi.mock('sigma/rendering', () => ({
@@ -53,6 +60,10 @@ vi.mock('sigma', () => {
         }
         scheduleRender() {
             sigmaCalls.scheduleRender++;
+            return this;
+        }
+        resize() {
+            sigmaCalls.resize++;
             return this;
         }
         kill() {}
@@ -141,5 +152,74 @@ describe('UniverseCanvas', () => {
         expect(sigmaCalls.constructed).toBe(before + 1);
 
         root.classList.remove('dark', 'some-unrelated-class');
+    });
+});
+
+describe('UniverseCanvas resize', () => {
+    class FakeResizeObserver {
+        constructor(cb: RoCallback) {
+            observers.callbacks.push(cb);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {
+            observers.disconnected++;
+        }
+    }
+
+    it('resizes Sigma once per frame when the container size changes, skips unchanged sizes, and disconnects', async () => {
+        vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+        const frames: FrameRequestCallback[] = [];
+        const raf = vi
+            .spyOn(window, 'requestAnimationFrame')
+            .mockImplementation((cb) => frames.push(cb));
+        observers.callbacks.length = 0;
+        observers.disconnected = 0;
+        const snapshot = syntheticSnapshot(20);
+        const graph = buildSchemaGraph(snapshot);
+        const model = { graph, clusters: assignClusters(graph) };
+        const { unmount } = render(
+            <UniverseCanvas
+                model={model}
+                snapshot={snapshot}
+                onRelayout={() => undefined}
+                onPositionsChanged={() => undefined}
+                onError={() => undefined}
+            />,
+        );
+        const flush = () => frames.splice(0).forEach((cb) => cb(0));
+        flush();
+        const notify = (width: number, height: number) =>
+            act(() => {
+                (observers.callbacks[0] as RoCallback)([
+                    { contentRect: { width, height } as DOMRect },
+                ]);
+            });
+        const base = sigmaCalls.resize;
+        const baseRender = sigmaCalls.scheduleRender;
+
+        // The initial notification repeats Sigma's own size, so there is nothing to do.
+        notify(800, 600);
+        flush();
+        expect(sigmaCalls.resize).toBe(base);
+
+        // Several notifications within one frame collapse into one resize.
+        notify(480, 600);
+        notify(480.2, 600);
+        notify(480, 600.3);
+        expect(sigmaCalls.resize).toBe(base);
+        flush();
+        expect(sigmaCalls.resize).toBe(base + 1);
+        expect(sigmaCalls.scheduleRender).toBe(baseRender + 1);
+
+        // Same size again: nothing to do.
+        notify(480, 600);
+        flush();
+        expect(sigmaCalls.resize).toBe(base + 1);
+
+        unmount();
+        expect(observers.disconnected).toBe(1);
+        raf.mockRestore();
+        vi.unstubAllGlobals();
     });
 });
