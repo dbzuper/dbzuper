@@ -9,7 +9,8 @@ export const ADMIN = {
 /** Signs in, creating the admin on a fresh install. */
 export async function ensureSignedIn(page: Page): Promise<void> {
     await page.goto('/');
-    if (page.url().endsWith('/setup')) {
+    const pathname = new URL(page.url()).pathname;
+    if (pathname === '/setup') {
         await page.getByLabel('Name', { exact: true }).fill(ADMIN.name);
         await page.getByLabel('Email').fill(ADMIN.email);
         await page.getByLabel('Password', { exact: true }).fill(ADMIN.password);
@@ -17,7 +18,7 @@ export async function ensureSignedIn(page: Page): Promise<void> {
         await page
             .getByRole('button', { name: 'Create administrator' })
             .click();
-    } else if (page.url().endsWith('/login')) {
+    } else if (pathname === '/login') {
         await page.getByLabel('Email').fill(ADMIN.email);
         await page.getByLabel('Password', { exact: true }).fill(ADMIN.password);
         await page.getByRole('button', { name: 'Log in' }).click();

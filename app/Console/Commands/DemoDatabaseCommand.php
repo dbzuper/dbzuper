@@ -15,8 +15,9 @@ class DemoDatabaseCommand extends Command
 
     public function handle(): int
     {
-        $extra = (int) $this->option('tables');
-        if ($extra < 0 || $extra > 20000) {
+        $raw = $this->option('tables');
+        $extra = (int) $raw;
+        if (($raw !== null && ! ctype_digit((string) $raw)) || $extra < 0 || $extra > 20000) {
             $this->error('--tables must be between 0 and 20000.');
 
             return self::FAILURE;

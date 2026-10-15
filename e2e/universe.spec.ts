@@ -73,12 +73,19 @@ test('universe: 2,000-table schema becomes interactive within budget', async ({
         'Large demo',
         path.resolve('storage/app/demo/large.sqlite'),
     );
-    await page.getByRole('link', { name: /Large demo/ }).click();
     // First visit: builds the snapshot and computes + saves the layout.
+    const saved = page.waitForResponse(
+        (r) =>
+            r.url().includes('/layout') &&
+            r.request().method() === 'PUT' &&
+            r.ok(),
+        { timeout: 180_000 },
+    );
+    await page.getByRole('link', { name: /Large demo/ }).click();
     await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
         timeout: 180_000,
     });
-    await page.waitForTimeout(1500); // let the layout save complete
+    await saved; // the reload must find the saved layout, not re-run the worker
 
     const t0 = Date.now();
     await page.reload();

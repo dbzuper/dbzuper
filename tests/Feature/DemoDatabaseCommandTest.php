@@ -52,3 +52,11 @@ it('adds synthetic tables with foreign keys', function () {
 it('rejects an out-of-range table count', function () {
     $this->artisan('dbsuperb:demo-database', ['path' => storage_path('framework/testing/sqlite/x.sqlite'), '--tables' => 20001])->assertFailed();
 });
+
+it('rejects a non-numeric table count', function () {
+    $path = storage_path('framework/testing/sqlite/abc-'.bin2hex(random_bytes(3)).'.sqlite');
+
+    $this->artisan('dbsuperb:demo-database', ['path' => $path, '--tables' => 'abc'])->assertFailed();
+
+    expect(file_exists($path))->toBeFalse();
+});
