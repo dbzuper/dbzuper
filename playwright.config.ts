@@ -10,14 +10,25 @@ const demoDir = path.resolve('storage/app/demo');
  * PHP_INI_SCAN_DIR; the leading empty entry keeps PHP's default scan directory. The extension is only
  * loaded by us when php.ini has not loaded it already (loading it twice prints a warning).
  */
+function opcacheLoaded(): boolean {
+    try {
+        return (
+            execFileSync(
+                'php',
+                ['-r', "echo extension_loaded('Zend OPcache') ? '1' : '0';"],
+                { stdio: ['ignore', 'pipe', 'ignore'] },
+            )
+                .toString()
+                .trim() === '1'
+        );
+    } catch {
+        // A missing or broken php is reported by Playwright's webServer startup instead.
+        return false;
+    }
+}
+
 function phpIniScanDir(): string {
-    const loaded =
-        execFileSync('php', [
-            '-r',
-            "echo extension_loaded('Zend OPcache') ? '1' : '0';",
-        ])
-            .toString()
-            .trim() === '1';
+    const loaded = opcacheLoaded();
     const dirs = [path.resolve('e2e/php')];
     if (!loaded) dirs.push(path.resolve('e2e/php/load-opcache'));
     return ['', ...dirs].join(path.delimiter);
@@ -39,6 +50,11 @@ export default defineConfig({
             DBSUPERB_SQLITE_PATHS: demoDir,
             APP_ENV: 'local',
             PHP_INI_SCAN_DIR: phpIniScanDir(),
+            // `php -S` can fork workers (so the schema and layout requests run in parallel) except
+            // on Windows, where forking is not supported.
+            ...(process.platform !== 'win32'
+                ? { PHP_CLI_SERVER_WORKERS: '4' }
+                : {}),
         },
     },
 });
