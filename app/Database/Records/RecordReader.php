@@ -6,6 +6,7 @@ use App\Database\CellValue;
 use App\Database\Contracts\Driver;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\QueryException;
 
 final class RecordReader
 {
@@ -13,22 +14,34 @@ final class RecordReader
 
     public const MAX_COUNTED = 12;
 
-    private const RAW_PREFIX = '__r';
-
     /** @return array{table:string,key:array,columns:list<array{name:string,type:string}>,values:list<mixed>,relationships:list<array>}|null */
     public function read(Connection $db, Driver $driver, array $snapshot, array $table, RecordKey $key): ?array
     {
         // Raw copies of the key and relationship columns: the display values are truncated or replaced
         // (long text, binary), which would corrupt availability checks, counts and the canonical key.
         $rawNames = array_values(array_unique(array_merge($key->columns(), $this->relationshipColumns($snapshot, $table['name']))));
+        // Raw copies carry a per-request alias prefix that no real column uses, so they cannot collide with one.
+        $names = array_column($table['columns'], 'name');
+        do {
+            $prefix = '__r'.bin2hex(random_bytes(4)).'_';
+            $clash = array_filter($names, fn ($n) => str_starts_with((string) $n, $prefix)) !== [];
+        } while ($clash);
         $select = array_map(fn ($c) => $driver->sampleColumn($db, $c['name'], strtolower((string) ($c['type_name'] ?? '')), CellValue::RESULT_CHARS), $table['columns']);
         foreach ($rawNames as $i => $name) {
-            $select[] = $db->raw($driver->quoteIdentifier($name).' AS '.$driver->quoteIdentifier(self::RAW_PREFIX.$i));
+            $select[] = $db->raw($driver->quoteIdentifier($name).' AS '.$driver->quoteIdentifier($prefix.$i));
         }
 
-        $row = $this->where($db->table($db->raw($driver->quoteIdentifier($table['name']))), $driver, $key->columns(), $key->values())
-            ->select($select)
-            ->first();
+        try {
+            $row = $this->where($db->table($db->raw($driver->quoteIdentifier($table['name']))), $driver, $key->columns(), $key->values())
+                ->select($select)
+                ->first();
+        } catch (QueryException $e) {
+            // SQLSTATE class 22 (data exception): the key value cannot be a value of the column, so no such record.
+            if ($this->isDataException($e)) {
+                return null;
+            }
+            throw $e;
+        }
         if ($row === null) {
             return null;
         }
@@ -39,11 +52,13 @@ final class RecordReader
         }
         $raw = [];
         foreach ($rawNames as $i => $name) {
-            $raw[$name] = $assoc[self::RAW_PREFIX.$i] ?? null;
+            $raw[$name] = $assoc[$prefix.$i] ?? null;
         }
         $canonical = [];
         foreach ($key->columns() as $name) {
-            $canonical[$name] = CellValue::present($raw[$name], PHP_INT_MAX);
+            $value = CellValue::present($raw[$name], PHP_INT_MAX);
+            // Booleans cannot be sent back as a key value, so they travel as text.
+            $canonical[$name] = is_bool($value) ? ($value ? 'true' : 'false') : $value;
         }
 
         return [
@@ -118,8 +133,21 @@ final class RecordReader
     {
         $inner = $this->where($db->table($db->raw($driver->quoteIdentifier($childTable)))->selectRaw('1'), $driver, $childColumns, $values)
             ->limit(self::COUNT_CAP + 1);
-        $n = (int) $db->query()->fromSub($inner, 'capped')->count();
+        try {
+            $n = (int) $db->query()->fromSub($inner, 'capped')->count();
+        } catch (QueryException $e) {
+            // An out-of-range value cannot equal any value in the child column, so nothing references it.
+            if ($this->isDataException($e)) {
+                return ['value' => 0, 'capped' => false];
+            }
+            throw $e;
+        }
 
         return $n > self::COUNT_CAP ? ['value' => self::COUNT_CAP, 'capped' => true] : ['value' => $n, 'capped' => false];
+    }
+
+    private function isDataException(QueryException $e): bool
+    {
+        return str_starts_with((string) ($e->errorInfo[0] ?? ''), '22');
     }
 }

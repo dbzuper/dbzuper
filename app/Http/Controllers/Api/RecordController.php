@@ -41,9 +41,7 @@ class RecordController extends Controller
         try {
             $record = $this->factory->using($connection, fn (Connection $db) => $this->reader->read($db, $driver, $snapshot, $info, $key), (int) config('dbsuperb.query_timeout'));
         } catch (Throwable $e) {
-            $error = $this->errors->map($e);
-            // SQLSTATE class 22 (data exception): the key value cannot be a value of the column, so no such record.
-            $record = str_starts_with((string) $error->sqlstate, '22') ? null : throw new DatabaseOperationFailed($error);
+            throw new DatabaseOperationFailed($this->errors->map($e));
         }
 
         return $record === null
@@ -79,9 +77,11 @@ class RecordController extends Controller
             return null;
         }
 
+        $what = ($info['primary_key'] ?? []) !== [] && ($info['kind'] ?? 'table') === 'table' ? 'a binary primary key' : 'no primary key';
+
         return response()->json(['error' => [
             'kind' => 'unknown', 'sqlstate' => null, 'reason' => 'no_primary_key',
-            'message' => "{$info['name']} has no primary key; open it in the Data tab instead.",
+            'message' => "{$info['name']} has {$what}; open it in the Data tab instead.",
         ]], 422);
     }
 }

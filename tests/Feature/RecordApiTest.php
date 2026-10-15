@@ -119,7 +119,8 @@ it('refuses tables whose primary key is binary', function () {
     $w->statement('CREATE TABLE blobs (id BLOB PRIMARY KEY, label TEXT)');
     DB::purge('w');
 
-    ($this->show)('blobs', ['id' => 'x'])->assertUnprocessable()->assertJsonPath('error.reason', 'no_primary_key');
+    ($this->show)('blobs', ['id' => 'x'])->assertUnprocessable()->assertJsonPath('error.reason', 'no_primary_key')
+        ->assertJsonPath('error.message', 'blobs has a binary primary key; open it in the Data tab instead.');
 });
 
 it('counts children and round-trips string keys that are long or contain special characters', function (string $code) {
@@ -144,4 +145,13 @@ it('counts children and round-trips string keys that are long or contain special
 
 it('echoes the canonical key of the row, not the request values', function () {
     ($this->show)('orders', '{"id":"1"}')->assertOk()->assertJsonPath('key', ['id' => 1]);
+});
+
+it('reads a table that has a column named like the internal raw alias', function () {
+    $w = DB::connectUsing('w', ['driver' => 'sqlite', 'database' => $this->connection->database, 'prefix' => ''], force: true);
+    $w->statement('CREATE TABLE odd (id INTEGER PRIMARY KEY, "__r0" TEXT, "__r1" TEXT)');
+    $w->table('odd')->insert(['id' => 7, '__r0' => 'zero', '__r1' => 'one']);
+    DB::purge('w');
+
+    ($this->show)('odd', ['id' => 7])->assertOk()->assertJsonPath('key', ['id' => 7])->assertJsonPath('values', [7, 'zero', 'one']);
 });

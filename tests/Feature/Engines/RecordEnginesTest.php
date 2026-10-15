@@ -80,3 +80,41 @@ it('treats invalid or loosely matching keys on every engine', function (string $
         $factory->release($db);
     }
 })->with(['mysql', 'mariadb', 'pgsql']);
+
+it('keeps the record when a relationship count is out of range, and round-trips boolean keys, on pgsql', function () {
+    Engines::skipUnlessAvailable('pgsql');
+    $saved = Engines::savedConnection('pgsql');
+    $saved->user()->associate(User::factory()->create())->save();
+    $factory = app(ConnectionFactory::class);
+    $db = $factory->make($saved);
+
+    try {
+        CommerceSchema::drop($db);
+        CommerceSchema::create($db);
+        $db->statement('DROP TABLE IF EXISTS rec_child');
+        $db->statement('DROP TABLE IF EXISTS rec_parent');
+        $db->statement('DROP TABLE IF EXISTS rec_flags');
+        $db->statement('CREATE TABLE rec_parent (id BIGINT PRIMARY KEY)');
+        $db->statement('CREATE TABLE rec_child (id INT PRIMARY KEY, parent_id INT REFERENCES rec_parent(id))');
+        $db->statement('CREATE TABLE rec_flags (active BOOLEAN, n INT, PRIMARY KEY (active, n))');
+        $db->statement('INSERT INTO rec_parent VALUES (3000000000)');
+        $db->statement('INSERT INTO rec_flags VALUES (true, 1)');
+        $factory->release($db);
+        $show = fn (string $table, array $key) => $this->actingAs($saved->user)->getJson(route('api.records.show', [$saved, $table, 'key' => json_encode($key)]));
+
+        $res = $show('rec_parent', ['id' => 3000000000])->assertOk();
+        $child = collect($res->json('relationships'))->firstWhere('table', 'rec_child');
+        expect($child['count'])->toBe(['value' => 0, 'capped' => false]);
+
+        $flag = $show('rec_flags', ['active' => 'true', 'n' => 1])->assertOk();
+        expect($flag->json('key'))->toBe(['active' => 'true', 'n' => 1]);
+        $show('rec_flags', $flag->json('key'))->assertOk();
+    } finally {
+        $db = $factory->make($saved);
+        $db->statement('DROP TABLE IF EXISTS rec_child');
+        $db->statement('DROP TABLE IF EXISTS rec_parent');
+        $db->statement('DROP TABLE IF EXISTS rec_flags');
+        CommerceSchema::drop($db);
+        $factory->release($db);
+    }
+});
