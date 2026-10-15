@@ -23,6 +23,7 @@ import { WorkspaceHeader } from '@/components/workspace/workspace-header';
 import { historyApi } from '@/lib/history-api';
 import { dbErrorFrom, workspaceApi } from '@/lib/workspace-api';
 import { useRecords } from '@/records/records-store';
+import { useTrailUrl } from '@/records/use-trail-url';
 import { useSqlTabs } from '@/sql/tabs-store';
 import type { ConnectionSummary } from '@/types/connection';
 import type {
@@ -238,6 +239,9 @@ export default function WorkspaceShow({
     }, [pathFrom, setPaletteOpen]);
 
     const snapshot = data?.snapshot ?? null;
+    // `?r=` keeps the exploration trail in the URL (restore, push per change, back/forward). It must
+    // come after the effect that binds the records store to the connection.
+    useTrailUrl(snapshot);
     const { model, status, relayout } = useUniverseModel(
         universeAvailable ? snapshot : null,
         saved,

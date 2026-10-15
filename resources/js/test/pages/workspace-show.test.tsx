@@ -54,6 +54,13 @@ const historyApi = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/history-api', () => ({ historyApi }));
 
+vi.mock('@/records/records-api', () => ({
+    recordsApi: {
+        show: vi.fn(() => new Promise(() => undefined)),
+        related: vi.fn(),
+    },
+}));
+
 import WorkspaceShow from '@/pages/workspace/show';
 
 const connection = {
@@ -104,6 +111,21 @@ beforeEach(() => {
 });
 
 describe('workspace page', () => {
+    it('restores the record trail from ?r= and opens the records view', async () => {
+        const { encodeTrail } = await import('@/records/url-state');
+        const { openRoot } = await import('@/records/trail');
+        const r = encodeTrail(openRoot('users', { id: 3 }), () => ['id']);
+        window.history.replaceState(null, '', `/?r=${r}`);
+        render(<WorkspaceShow connection={connection} />);
+        await waitFor(() =>
+            expect(useRecords.getState().trail.nodes[0]?.key).toEqual({
+                id: 3,
+            }),
+        );
+        expect(useWorkspace.getState().view).toBe('records');
+        window.history.replaceState(null, '', '/');
+    });
+
     it('opens the records view from the rail and binds the records store to the connection', async () => {
         render(<WorkspaceShow connection={connection} />);
         await screen.findByText('orders');

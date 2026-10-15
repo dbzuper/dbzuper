@@ -17,7 +17,11 @@ vi.stubGlobal(
     },
 );
 
-const snapshot = { relationships: [] } as unknown as SchemaSnapshot;
+const snapshot = {
+    driver: 'sqlite',
+    tables: [],
+    relationships: [],
+} as unknown as SchemaSnapshot;
 const connection = { id: 1 } as ConnectionSummary;
 
 beforeEach(() => {

@@ -19,6 +19,7 @@ import type { ConnectionSummary } from '@/types/connection';
 import type { SchemaSnapshot } from '@/types/schema';
 import { ClusterNode, clusterNodeId } from './cluster-node';
 import { RecordNode } from './record-card';
+import { RecordsBreadcrumb } from './records-breadcrumb';
 
 const nodeTypes: NodeTypes = { record: RecordNode, cluster: ClusterNode };
 
@@ -39,7 +40,13 @@ const prefersReducedMotion = () =>
 const EMPTY_TEXT =
     'Open a record from the Data tab, a result row, a foreign-key cell, or the command palette (users 42).';
 
-function Explorer({ snapshot }: { snapshot: SchemaSnapshot }) {
+function Explorer({
+    connection,
+    snapshot,
+}: {
+    connection: ConnectionSummary;
+    snapshot: SchemaSnapshot;
+}) {
     const trail = useRecords((s) => s.trail);
     const clusters = useRecords((s) => s.clusters);
     const notice = useRecords((s) => s.notice);
@@ -219,65 +226,73 @@ function Explorer({ snapshot }: { snapshot: SchemaSnapshot }) {
     }, [nodes, fitView]);
 
     return (
-        <section aria-label="Record explorer" className="absolute inset-0">
-            {trail.nodes.length === 0 ? (
-                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                    {EMPTY_TEXT}
-                </div>
-            ) : (
-                <ReactFlow
-                    className="records-flow"
-                    nodes={nodes}
-                    edges={edges}
-                    nodeTypes={nodeTypes}
-                    onNodesChange={onNodesChange}
-                    onNodeDragStop={(_, node) =>
-                        setDragged((d) => ({
-                            epoch,
-                            at: {
-                                ...(d.epoch === epoch ? d.at : {}),
-                                [node.id]: node.position,
-                            },
-                        }))
-                    }
-                    onNodeClick={(_, node) => {
-                        if (node.type === 'record')
-                            useRecords
-                                .getState()
-                                .select((node.data as { id: string }).id);
-                    }}
-                    nodesConnectable={false}
-                    // Every interactive part of a card is a real button (the header selects), so the
-                    // card wrapper itself stays out of the tab order and React Flow's own
-                    // keyboard selection, which would bypass the store, is off.
-                    nodesFocusable={false}
-                    edgesFocusable={false}
-                    deleteKeyCode={null}
-                    selectionKeyCode={null}
-                    multiSelectionKeyCode={null}
-                    elementsSelectable
-                    minZoom={0.1}
-                    proOptions={{ hideAttribution: true }}
-                >
-                    <Background variant={BackgroundVariant.Dots} />
-                    <Controls showInteractive={false} />
-                </ReactFlow>
-            )}
-            {notice && (
-                <div
-                    role="status"
-                    className="absolute inset-x-0 top-0 z-10 m-3 flex items-center gap-3 rounded-md border bg-background px-3 py-2 text-xs shadow-sm"
-                >
-                    <span>{notice}</span>
-                    <button
-                        type="button"
-                        onClick={() => useRecords.getState().dismissNotice()}
-                        className="ml-auto rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+        <section
+            aria-label="Record explorer"
+            className="absolute inset-0 flex flex-col"
+        >
+            <RecordsBreadcrumb connection={connection} snapshot={snapshot} />
+            <div className="relative min-h-0 flex-1">
+                {trail.nodes.length === 0 ? (
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                        {EMPTY_TEXT}
+                    </div>
+                ) : (
+                    <ReactFlow
+                        className="records-flow"
+                        nodes={nodes}
+                        edges={edges}
+                        nodeTypes={nodeTypes}
+                        onNodesChange={onNodesChange}
+                        onNodeDragStop={(_, node) =>
+                            setDragged((d) => ({
+                                epoch,
+                                at: {
+                                    ...(d.epoch === epoch ? d.at : {}),
+                                    [node.id]: node.position,
+                                },
+                            }))
+                        }
+                        onNodeClick={(_, node) => {
+                            if (node.type === 'record')
+                                useRecords
+                                    .getState()
+                                    .select((node.data as { id: string }).id);
+                        }}
+                        nodesConnectable={false}
+                        // Every interactive part of a card is a real button (the header selects), so the
+                        // card wrapper itself stays out of the tab order and React Flow's own
+                        // keyboard selection, which would bypass the store, is off.
+                        nodesFocusable={false}
+                        edgesFocusable={false}
+                        deleteKeyCode={null}
+                        selectionKeyCode={null}
+                        multiSelectionKeyCode={null}
+                        elementsSelectable
+                        minZoom={0.1}
+                        proOptions={{ hideAttribution: true }}
                     >
-                        Dismiss
-                    </button>
-                </div>
-            )}
+                        <Background variant={BackgroundVariant.Dots} />
+                        <Controls showInteractive={false} />
+                    </ReactFlow>
+                )}
+                {notice && (
+                    <div
+                        role="status"
+                        className="absolute inset-x-0 top-0 z-10 m-3 flex items-center gap-3 rounded-md border bg-background px-3 py-2 text-xs shadow-sm"
+                    >
+                        <span>{notice}</span>
+                        <button
+                            type="button"
+                            onClick={() =>
+                                useRecords.getState().dismissNotice()
+                            }
+                            className="ml-auto rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                )}
+            </div>
         </section>
     );
 }
@@ -291,7 +306,7 @@ export default function RecordsView({
 }) {
     return (
         <ReactFlowProvider key={connection.id}>
-            <Explorer snapshot={snapshot} />
+            <Explorer connection={connection} snapshot={snapshot} />
         </ReactFlowProvider>
     );
 }
