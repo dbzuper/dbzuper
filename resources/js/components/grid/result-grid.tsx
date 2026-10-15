@@ -1,7 +1,13 @@
 import 'react-data-grid/lib/styles.css';
 import { DataGrid, type Column, type SortColumn } from 'react-data-grid';
+import { ExternalLink } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { cellKind, fkTarget, isLong } from '@/grid/cells';
+import {
+    foreignRecordTarget,
+    rowRecordTarget,
+    type RecordTarget,
+} from '@/records/open-record';
 import { sortRows } from '@/grid/sort';
 import { cn } from '@/lib/utils';
 import type { QueryCell, QueryColumn, SchemaSnapshot } from '@/types/schema';
@@ -14,6 +20,11 @@ type Props = {
     rows: QueryCell[][];
     snapshot?: SchemaSnapshot | null;
     onOpenForeign?: (table: string, column: string, value: string) => void;
+    /**
+     * Opens a record. FK cells use it when the relationship targets the parent's whole key (else
+     * onOpenForeign), and a leading "Open record" button appears when the rows map to one explorable table.
+     */
+    onOpenRecord?: (target: RecordTarget) => void;
     /** Server-side sorting (data tab); when omitted the grid sorts the fetched rows client-side. */
     sort?: { columns: SortColumn[]; onChange: (columns: SortColumn[]) => void };
 };
@@ -91,6 +102,7 @@ export function ResultGrid({
     rows,
     snapshot = null,
     onOpenForeign,
+    onOpenRecord,
     sort,
 }: Props) {
     const [layout, setLayout] = useState(() => ({
@@ -117,11 +129,58 @@ export function ResultGrid({
         return sorted.map((cells, i) => ({ __i: i, cells }));
     }, [rows, localSort, sort]);
 
-    const gridColumns: Column<Row>[] = useMemo(
+    // Whether the rows stand for records is a property of the result, decided once from its first row.
+    const rowActions = useMemo(
         () =>
-            order
+            !!(
+                snapshot &&
+                onOpenRecord &&
+                rows.length > 0 &&
+                rowRecordTarget(snapshot, columns, rows[0])
+            ),
+        [snapshot, onOpenRecord, columns, rows],
+    );
+
+    const gridColumns: Column<Row>[] = useMemo(() => {
+        const openColumn: Column<Row>[] =
+            rowActions && snapshot && onOpenRecord
+                ? [
+                      {
+                          key: '__open',
+                          name: '',
+                          width: 36,
+                          minWidth: 36,
+                          maxWidth: 36,
+                          frozen: true,
+                          resizable: false,
+                          sortable: false,
+                          draggable: false,
+                          renderCell: ({ row }) => (
+                              <button
+                                  type="button"
+                                  aria-label="Open record"
+                                  title="Open record"
+                                  onClick={() => {
+                                      const target = rowRecordTarget(
+                                          snapshot,
+                                          columns,
+                                          row.cells,
+                                      );
+                                      if (target) onOpenRecord(target);
+                                  }}
+                                  className="text-muted-foreground hover:text-[var(--universe-accent)]"
+                              >
+                                  <ExternalLink className="size-3.5" />
+                              </button>
+                          ),
+                      },
+                  ]
+                : [];
+        return [
+            ...openColumn,
+            ...order
                 .filter((key) => columns[Number(key)])
-                .map((key) => {
+                .map((key): Column<Row> => {
                     const index = Number(key);
                     const column = columns[index];
                     const target = snapshot ? fkTarget(column, snapshot) : null;
@@ -135,15 +194,29 @@ export function ResultGrid({
                         renderCell: ({ row }) => {
                             const value = row.cells[index];
                             const foreign =
-                                target && value !== null && onOpenForeign
+                                target &&
+                                value !== null &&
+                                (onOpenForeign || onOpenRecord)
                                     ? {
                                           label: `Open ${target.table} where ${target.column} = ${String(value)}`,
-                                          onClick: () =>
-                                              onOpenForeign(
-                                                  target.table,
-                                                  target.column,
-                                                  String(value),
-                                              ),
+                                          onClick: () => {
+                                              const record =
+                                                  snapshot && onOpenRecord
+                                                      ? foreignRecordTarget(
+                                                            snapshot,
+                                                            column,
+                                                            value,
+                                                        )
+                                                      : null;
+                                              if (record)
+                                                  onOpenRecord?.(record);
+                                              else
+                                                  onOpenForeign?.(
+                                                      target.table,
+                                                      target.column,
+                                                      String(value),
+                                                  );
+                                          },
                                       }
                                     : null;
                             return (
@@ -157,8 +230,8 @@ export function ResultGrid({
                         },
                     };
                 }),
-        [order, columns, snapshot, onOpenForeign],
-    );
+        ];
+    }, [order, columns, snapshot, onOpenForeign, onOpenRecord, rowActions]);
 
     return (
         <>
@@ -181,6 +254,7 @@ export function ResultGrid({
                     })
                 }
                 onCellCopy={({ row, column }, event) => {
+                    if (column.key === '__open') return;
                     const value = row.cells[Number(column.key)];
                     event.clipboardData.setData(
                         'text/plain',

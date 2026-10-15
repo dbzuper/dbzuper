@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toCSV, toJSON, toTSV, writeClipboard } from '@/grid/copy';
 import { cn } from '@/lib/utils';
+import { openRecord } from '@/records/open-record';
 import type {
     DbErrorPayload,
     SchemaSnapshot,
@@ -183,6 +184,7 @@ export const ResultPanel = memo(function ResultPanel({
                         rows={current.rows}
                         snapshot={snapshot}
                         onOpenForeign={openForeign}
+                        onOpenRecord={openRecord}
                     />
                 ) : (
                     <p className="p-3 text-sm">

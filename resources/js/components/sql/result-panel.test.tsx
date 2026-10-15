@@ -1,7 +1,9 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { useRecords } from '@/records/records-store';
 import type { StatementResultPayload } from '@/types/schema';
+import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { ResultPanel } from './result-panel';
 
 const result = (rows: number): StatementResultPayload => ({
@@ -166,5 +168,28 @@ describe('ResultPanel', () => {
             />,
         );
         expect(screen.queryByText(/Transactions only span/)).toBeNull();
+    });
+
+    it('opens the record of a result row of an explorable table', () => {
+        const open = vi.fn();
+        useRecords.setState({ open });
+        render(
+            <ResultPanel
+                results={[
+                    {
+                        ...result(2),
+                        columns: [{ name: 'id', type: 'int', table: 'orders' }],
+                        rows: [[7], [8]],
+                    },
+                ]}
+                error={null}
+                running={false}
+                snapshot={makeSnapshot([{ name: 'orders' }])}
+            />,
+        );
+        fireEvent.click(
+            screen.getAllByRole('button', { name: 'Open record' })[1],
+        );
+        expect(open).toHaveBeenCalledWith('orders', { id: 8 });
     });
 });

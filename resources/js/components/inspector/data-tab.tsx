@@ -9,6 +9,7 @@ import {
     type RowsRequest,
     type RowsResponse,
 } from '@/lib/workspace-api';
+import { openRecord } from '@/records/open-record';
 import { useSqlTabs } from '@/sql/tabs-store';
 import type { QueryColumn, SchemaSnapshot } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
@@ -134,6 +135,12 @@ export function DataTab({
         [sortColumns, columns],
     );
 
+    // Rows of this tab all come from `table`, whatever the driver reports for the column origin.
+    const recordColumns = useMemo(
+        () => columns.map((c) => ({ ...c, table })),
+        [columns, table],
+    );
+
     const filterColumns = useMemo(
         () =>
             snapshot?.tables
@@ -167,10 +174,11 @@ export function DataTab({
             <div className="min-h-0 flex-1">
                 {data && data.columns.length > 0 ? (
                     <ResultGrid
-                        columns={columns}
+                        columns={recordColumns}
                         rows={data.rows}
                         snapshot={snapshot}
                         onOpenForeign={openForeign}
+                        onOpenRecord={openRecord}
                         sort={gridSort}
                     />
                 ) : (

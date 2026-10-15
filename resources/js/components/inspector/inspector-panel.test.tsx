@@ -9,6 +9,7 @@ import {
     vi,
 } from 'vitest';
 import { ApiError } from '@/lib/http';
+import { useRecords } from '@/records/records-store';
 import { useSqlTabs } from '@/sql/tabs-store';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useWorkspace } from '@/universe/store';
@@ -448,5 +449,30 @@ describe('InspectorPanel', () => {
             table: 'orders',
             depth: 1,
         });
+    });
+
+    it('opens the record of a Data tab row, and offers nothing for a table without a primary key', async () => {
+        const open = vi.fn();
+        useRecords.setState({ open });
+        const { unmount } = renderData();
+        fireEvent.click(
+            await screen.findByRole('button', { name: 'Open record' }),
+        );
+        expect(open).toHaveBeenCalledWith('orders', { id: 1 });
+        expect(useWorkspace.getState().view).toBe('records');
+        unmount();
+
+        const keyless = { ...orders, primary_key: [] };
+        render(
+            <InspectorPanel
+                connectionId={1}
+                snapshot={{ ...snapshot, tables: [keyless] }}
+                table={keyless}
+            />,
+        );
+        await screen.findByText('NULL');
+        expect(
+            screen.queryByRole('button', { name: 'Open record' }),
+        ).toBeNull();
     });
 });

@@ -173,4 +173,98 @@ describe('ResultGrid', () => {
             JSON.stringify({ a: 1, b: [1, 2] }, null, 2),
         );
     });
+
+    it('opens the parent record for an FK cell that targets the whole PK, else falls back to the filter', () => {
+        const onOpenRecord = vi.fn();
+        const onOpenForeign = vi.fn();
+        const { unmount } = render(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid
+                    {...one(1)}
+                    snapshot={snapshot}
+                    onOpenForeign={onOpenForeign}
+                    onOpenRecord={onOpenRecord}
+                />
+            </div>,
+        );
+        fireEvent.click(
+            screen.getByRole('button', { name: 'Open users where id = 2' }),
+        );
+        expect(onOpenRecord).toHaveBeenCalledWith({
+            table: 'users',
+            key: { id: 2 },
+        });
+        expect(onOpenForeign).not.toHaveBeenCalled();
+        unmount();
+
+        const unique = makeSnapshot(
+            [{ name: 'orders' }, { name: 'users' }],
+            [
+                {
+                    from_table: 'orders',
+                    to_table: 'users',
+                    from_columns: ['user_id'],
+                    to_columns: ['email'],
+                },
+            ],
+        );
+        render(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid
+                    {...one(1)}
+                    snapshot={unique}
+                    onOpenForeign={onOpenForeign}
+                    onOpenRecord={onOpenRecord}
+                />
+            </div>,
+        );
+        fireEvent.click(
+            screen.getByRole('button', { name: 'Open users where email = 2' }),
+        );
+        expect(onOpenRecord).toHaveBeenCalledOnce();
+        expect(onOpenForeign).toHaveBeenCalledWith('users', 'email', '2');
+    });
+
+    it('adds a leading Open record button per row when the result maps to an explorable table', () => {
+        const onOpenRecord = vi.fn();
+        render(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid
+                    {...one(0)}
+                    snapshot={snapshot}
+                    onOpenRecord={onOpenRecord}
+                />
+            </div>,
+        );
+        const buttons = screen.getAllByRole('button', { name: 'Open record' });
+        expect(buttons).toHaveLength(3);
+        fireEvent.click(buttons[1]);
+        expect(onOpenRecord).toHaveBeenCalledWith({
+            table: 'orders',
+            key: { id: 2 },
+        });
+    });
+
+    it('offers no row action without a primary key column, a snapshot or a handler', () => {
+        const { rerender } = render(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid
+                    {...one(1)}
+                    snapshot={snapshot}
+                    onOpenRecord={() => {}}
+                />
+            </div>,
+        );
+        expect(
+            screen.queryByRole('button', { name: 'Open record' }),
+        ).toBeNull();
+        rerender(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid {...one(0)} snapshot={snapshot} />
+            </div>,
+        );
+        expect(
+            screen.queryByRole('button', { name: 'Open record' }),
+        ).toBeNull();
+    });
 });

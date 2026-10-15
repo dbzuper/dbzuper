@@ -2,6 +2,11 @@ import { Command } from 'cmdk';
 import { useMemo, useState } from 'react';
 import type { SchemaSnapshot } from '@/types/schema';
 import { universe } from '@/universe/controller';
+import {
+    keyDisplay,
+    openRecord,
+    parsePaletteRecord,
+} from '@/records/open-record';
 import { pickPathTarget } from '@/universe/path-pick';
 import { searchSchema } from '@/universe/search';
 import { useWorkspace } from '@/universe/store';
@@ -25,6 +30,11 @@ export function CommandPalette({
     const [query, setQuery] = useState('');
     const results = useMemo(
         () => searchSchema(snapshot, query),
+        [snapshot, query],
+    );
+
+    const record = useMemo(
+        () => parsePaletteRecord(snapshot, query),
         [snapshot, query],
     );
 
@@ -116,6 +126,23 @@ export function CommandPalette({
                 <Command.Empty className="px-2 py-3 text-sm text-muted-foreground">
                     No matches.
                 </Command.Empty>
+                {!pathFrom && record && (
+                    <Command.Group
+                        heading="Records"
+                        className="text-[10px] tracking-wide text-muted-foreground uppercase"
+                    >
+                        <Command.Item
+                            value={`r:${record.table}:${keyDisplay(record.key)}`}
+                            onSelect={action(() => openRecord(record))}
+                            className={itemClass}
+                        >
+                            <span className="font-mono text-foreground normal-case">
+                                Open record {record.table} ·{' '}
+                                {keyDisplay(record.key)}
+                            </span>
+                        </Command.Item>
+                    </Command.Group>
+                )}
                 {results.tables.length > 0 && (
                     <Command.Group
                         heading="Tables"

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
+import { useRecords } from '@/records/records-store';
 import { universe } from '@/universe/controller';
 import { useWorkspace } from '@/universe/store';
 import { CommandPalette } from './command-palette';
@@ -93,5 +94,31 @@ describe('CommandPalette', () => {
         render(<CommandPalette snapshot={snap} onRefresh={onRefresh} />);
         fireEvent.click(screen.getByRole('option', { name: 'Refresh schema' }));
         expect(onRefresh).toHaveBeenCalled();
+    });
+
+    it('offers a Records item first for `table key` and opens the record view', () => {
+        const open = vi.fn();
+        useRecords.setState({ open });
+        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        fireEvent.change(
+            screen.getByPlaceholderText('Search tables, columns and actions…'),
+            { target: { value: 'users 2' } },
+        );
+        const options = screen.getAllByRole('option');
+        expect(options[0]).toHaveTextContent('Open record users · 2');
+        fireEvent.click(options[0]);
+        expect(open).toHaveBeenCalledWith('users', { id: 2 });
+        expect(useWorkspace.getState().view).toBe('records');
+        expect(useWorkspace.getState().paletteOpen).toBe(false);
+    });
+
+    it('shows no Records item for a table that cannot be explored', () => {
+        const keyless = makeSnapshot([{ name: 'logs', primary_key: [] }]);
+        render(<CommandPalette snapshot={keyless} onRefresh={() => {}} />);
+        fireEvent.change(
+            screen.getByPlaceholderText('Search tables, columns and actions…'),
+            { target: { value: 'logs 2' } },
+        );
+        expect(screen.queryByText(/Open record/)).toBeNull();
     });
 });
