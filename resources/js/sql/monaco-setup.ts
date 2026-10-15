@@ -3,13 +3,20 @@ import { loader } from '@monaco-editor/react';
 let ready: Promise<typeof import('monaco-editor')> | null = null;
 
 /** Resolves any CSS colour (oklch included) to a hex string Monaco accepts. */
-function toHex(value: string, fallback: string): string {
+export function toHex(value: string, fallback: string): string {
     try {
         const ctx = document.createElement('canvas').getContext('2d');
         if (!ctx || !value) return fallback;
-        ctx.clearRect(0, 0, 1, 1);
+        // A rejected colour leaves fillStyle unchanged; trying from two different starting colours tells a
+        // rejection apart from a colour that really is black (or white).
         ctx.fillStyle = '#000';
         ctx.fillStyle = value;
+        if (ctx.fillStyle === '#000000') {
+            ctx.fillStyle = '#fff';
+            ctx.fillStyle = value;
+            if (ctx.fillStyle === '#ffffff') return fallback;
+        }
+        ctx.clearRect(0, 0, 1, 1);
         ctx.fillRect(0, 0, 1, 1);
         const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
         return `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
@@ -92,6 +99,17 @@ export function setupMonaco(): Promise<typeof import('monaco-editor')> {
         return api;
     })();
     return ready;
+}
+
+/** Disposes the editor models of tabs that were closed (a model's path is its tab id). */
+export function disposeClosedModels(
+    monaco: typeof import('monaco-editor'),
+    previousIds: string[],
+    currentIds: string[],
+): void {
+    for (const id of previousIds)
+        if (!currentIds.includes(id))
+            monaco.editor.getModel(monaco.Uri.parse(id))?.dispose();
 }
 
 export const languageFor = (dialect: string) =>

@@ -3,6 +3,7 @@ import type * as Monaco from 'monaco-editor';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { registerSqlCompletion } from '@/sql/monaco-completion';
+import { disposeClosedModels } from '@/sql/monaco-setup';
 import { queryApi } from '@/sql/query-api';
 import {
     outcomeFromError,
@@ -64,6 +65,18 @@ export default function SqlDock({
 
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
+    // A closed tab's model would otherwise live (with its undo history) until the page unloads. Runs after the
+    // editor has switched to the next tab's model; tabs of another connection are left alone.
+    const knownTabs = useRef<{ connectionId: number; ids: string[] } | null>(
+        null,
+    );
+    useEffect(() => {
+        const ids = tabs?.tabs.map((t) => t.id) ?? [];
+        const previous = knownTabs.current;
+        knownTabs.current = { connectionId: connection.id, ids };
+        if (monacoRef.current && previous?.connectionId === connection.id)
+            disposeClosedModels(monacoRef.current, previous.ids, ids);
+    }, [connection.id, tabs]);
     const controller = useRef<AbortController | null>(null);
     const pendingConfirm = useRef<((a: ConfirmAnswer) => void) | null>(null);
     const [maxRows, setMaxRows] = useState(DEFAULT_ROW_LIMIT);
