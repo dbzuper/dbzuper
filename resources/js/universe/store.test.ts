@@ -53,3 +53,27 @@ describe('workspace store', () => {
         expect(calls).toBe(1);
     });
 });
+
+describe('data filter', () => {
+    beforeEach(() => s().reset());
+
+    it('openDataFilter selects the table, opens the data tab and stores the filter', () => {
+        s().openDataFilter('users', 'id', '2');
+        expect(s().selected).toBe('users');
+        expect(s().inspectorTab).toBe('data');
+        expect(s().dataFilter).toEqual({
+            table: 'users',
+            column: 'id',
+            value: '2',
+        });
+    });
+
+    it('clearDataFilter and reset drop the filter', () => {
+        s().openDataFilter('users', 'id', '2');
+        s().clearDataFilter();
+        expect(s().dataFilter).toBeNull();
+        s().openDataFilter('users', 'id', '2');
+        s().reset();
+        expect(s().dataFilter).toBeNull();
+    });
+});

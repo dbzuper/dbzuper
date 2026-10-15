@@ -169,3 +169,35 @@
     );
     background-size: var(--grid-size, 24px) var(--grid-size, 24px);
 }
+
+/* react-data-grid: map its variables to the app theme tokens (follows light/dark). */
+.rdg-dbsuperb {
+    --rdg-background-color: var(--background);
+    --rdg-color: var(--foreground);
+    --rdg-border-color: var(--border);
+    --rdg-summary-border-color: var(--border);
+    --rdg-header-background-color: var(--muted);
+    --rdg-header-draggable-background-color: var(--accent);
+    --rdg-row-hover-background-color: color-mix(
+        in oklab,
+        var(--muted) 60%,
+        transparent
+    );
+    --rdg-row-selected-background-color: color-mix(
+        in oklab,
+        var(--universe-accent) 18%,
+        var(--background)
+    );
+    --rdg-row-selected-hover-background-color: color-mix(
+        in oklab,
+        var(--universe-accent) 26%,
+        var(--background)
+    );
+    --rdg-selection-color: var(--universe-accent);
+    --rdg-font-size: 12px;
+    color-scheme: light;
+}
+
+.dark .rdg-dbsuperb {
+    color-scheme: dark;
+}

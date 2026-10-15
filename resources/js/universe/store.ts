@@ -8,6 +8,8 @@ export type InspectorTab =
     | 'data'
     | 'ddl';
 
+export type DataFilter = { table: string; column: string; value: string };
+
 type State = {
     selected: string | null;
     hovered: string | null;
@@ -22,6 +24,7 @@ type State = {
     paletteOpen: boolean;
     dockOpen: boolean;
     dockHeight: number;
+    dataFilter: DataFilter | null;
 };
 
 type Actions = {
@@ -38,6 +41,8 @@ type Actions = {
     setPaletteOpen: (open: boolean) => void;
     setDockOpen: (open: boolean) => void;
     setDockHeight: (px: number) => void;
+    openDataFilter: (table: string, column: string, value: string) => void;
+    clearDataFilter: () => void;
     reset: () => void;
 };
 
@@ -57,6 +62,7 @@ const initial: State = {
     paletteOpen: false,
     dockOpen: false,
     dockHeight: 320,
+    dataFilter: null,
 };
 
 export const useWorkspace = create<WorkspaceState>()((set, get) => ({
@@ -81,5 +87,12 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
     setDockOpen: (dockOpen) => set({ dockOpen }),
     setDockHeight: (px) =>
         set({ dockHeight: Math.max(160, Math.min(px, 900)) }),
+    openDataFilter: (table, column, value) =>
+        set({
+            selected: table,
+            inspectorTab: 'data',
+            dataFilter: { table, column, value },
+        }),
+    clearDataFilter: () => set({ dataFilter: null }),
     reset: () => set({ ...initial }),
 }));

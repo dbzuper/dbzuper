@@ -375,6 +375,7 @@ export default function SqlDock({
                     results={tabResults?.results ?? NO_RESULTS}
                     error={tabResults?.error ?? null}
                     running={running}
+                    snapshot={snapshot}
                 />
             </div>
             <ConfirmDialog

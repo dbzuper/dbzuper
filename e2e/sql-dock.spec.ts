@@ -46,7 +46,7 @@ test('sql dock: runs the statement at the cursor and shows an error with positio
         timeout: 15_000,
     });
     await expect(
-        dock.getByRole('cell', { name: '1', exact: true }),
+        dock.getByRole('gridcell', { name: '1', exact: true }),
     ).toBeVisible();
 
     await page.keyboard.press('Control+a');

@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { StatementResultPayload } from '@/types/schema';
-import { FALLBACK_MAX_ROWS, ResultPanel } from './result-panel';
+import { ResultPanel } from './result-panel';
 
 const result = (rows: number): StatementResultPayload => ({
     sql: 'select n from t',
@@ -44,17 +44,32 @@ describe('ResultPanel', () => {
         expect(reads).toBe(afterMount);
     });
 
-    it('caps the interim table and says so', () => {
+    it('renders results in the grid without capping rows and keeps the server truncation note', () => {
         render(
             <ResultPanel
-                results={[result(FALLBACK_MAX_ROWS + 20)]}
+                results={[{ ...result(2000), truncated: true }]}
                 error={null}
                 running={false}
             />,
         );
-        expect(screen.getAllByRole('row')).toHaveLength(FALLBACK_MAX_ROWS + 1);
         expect(
-            screen.getByText(`Showing first ${FALLBACK_MAX_ROWS} of 520 rows`),
+            screen.getByRole('columnheader', { name: 'n' }),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/Showing first 500/)).toBeNull();
+        expect(
+            screen.getByText('Showing first 2,000 rows (limit reached)'),
+        ).toBeInTheDocument();
+    });
+
+    it('offers Copy as and Download CSV for row results', () => {
+        render(
+            <ResultPanel results={[result(2)]} error={null} running={false} />,
+        );
+        expect(
+            screen.getByRole('button', { name: 'Copy as' }),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: 'Download CSV' }),
         ).toBeInTheDocument();
     });
 });
