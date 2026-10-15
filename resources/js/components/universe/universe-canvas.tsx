@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import Sigma from 'sigma';
-import type { NodeDisplayData } from 'sigma/types';
+import type { CameraState, NodeDisplayData } from 'sigma/types';
 import type { LayoutPositionEntry, SchemaSnapshot } from '@/types/schema';
 import { registerUniverse } from '@/universe/controller';
 import type {
     RelationEdgeAttributes,
+    SchemaGraph,
     TableNodeAttributes,
 } from '@/universe/graph';
 import { motionMs } from '@/universe/motion';
 import {
     buildDisplayState,
+    displayInputsChanged,
     edgeDisplay,
     nodeDisplay,
     type DisplayState,
@@ -51,6 +53,12 @@ export function UniverseCanvas({
     relayoutRef.current = onRelayout;
     const positionsRef = useRef(onPositionsChanged);
     positionsRef.current = onPositionsChanged;
+    const errorRef = useRef(onError);
+    errorRef.current = onError;
+    // Camera state saved on teardown so a theme rebuild of the same graph keeps the viewport.
+    const cameraRef = useRef<{ graph: SchemaGraph; state: CameraState } | null>(
+        null,
+    );
 
     useEffect(() => {
         const container = containerRef.current;
@@ -85,26 +93,29 @@ export function UniverseCanvas({
                 },
             );
         } catch (error) {
-            onError(error);
+            errorRef.current(error);
             return;
         }
 
-        const refreshDisplay = () => {
-            display = buildDisplayState(graph, useWorkspace.getState(), colors);
+        const unsubscribe = useWorkspace.subscribe((next, prev) => {
+            if (!displayInputsChanged(prev, next)) return;
+            display = buildDisplayState(graph, next, colors);
             instance.refresh({ skipIndexation: true });
-        };
-        const unsubscribe = useWorkspace.subscribe(refreshDisplay);
+        });
 
         const camera = instance.getCamera();
+        if (cameraRef.current?.graph === graph)
+            camera.setState(cameraRef.current.state);
+        let gridSize = '';
         const onCamera = () => {
             const ratio = camera.getState().ratio;
             useWorkspace
                 .getState()
                 .setZoomLevel(zoomLevelFor(ratio, graph.order));
-            container.parentElement?.style.setProperty(
-                '--grid-size',
-                `${Math.min(64, Math.max(8, 24 / ratio))}px`,
-            );
+            const size = `${Math.round(Math.min(64, Math.max(8, 24 / ratio)))}px`;
+            if (size === gridSize) return;
+            gridSize = size;
+            container.parentElement?.style.setProperty('--grid-size', size);
         };
         camera.on('updated', onCamera);
         onCamera();
@@ -172,6 +183,7 @@ export function UniverseCanvas({
         setSigma(instance);
 
         return () => {
+            cameraRef.current = { graph, state: camera.getState() };
             registerUniverse(null);
             themeObserver.disconnect();
             unsubscribe();
@@ -180,8 +192,6 @@ export function UniverseCanvas({
             setSigma(null);
             setReady(false);
         };
-        // onError is stable for the lifetime of the page.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [model.graph, themeNonce]);
 
     return (

@@ -10,10 +10,17 @@ export function Legend() {
             </span>
             <span className="flex items-center gap-1.5">
                 <span
-                    className="h-px w-5 rounded"
-                    style={{ background: 'var(--universe-edge-inferred)' }}
+                    className="w-5 border-t-2 border-dashed"
+                    style={{ borderColor: 'var(--universe-edge)' }}
                 />{' '}
                 inferred
+            </span>
+            <span className="flex items-center gap-1.5">
+                <span
+                    className="h-0.5 w-5 rounded"
+                    style={{ background: 'var(--universe-accent)' }}
+                />{' '}
+                selected / path
             </span>
             <span className="flex items-center gap-1.5">
                 <span className="size-2.5 rounded-full border border-muted-foreground/60 bg-muted-foreground/30" />{' '}

@@ -3,6 +3,7 @@ import { makeSnapshot } from './__fixtures__/snapshot';
 import { buildSchemaGraph, edgeKey } from './graph';
 import {
     buildDisplayState,
+    displayInputsChanged,
     edgeDisplay,
     neighborhood,
     nodeDisplay,
@@ -197,5 +198,34 @@ describe('withAlpha', () => {
     it('converts hex to rgba', () => {
         expect(withAlpha('#ff8000', 0.25)).toBe('rgba(255,128,0,0.25)');
         expect(withAlpha('rgb(1,2,3)', 0.5)).toBe('rgb(1,2,3)');
+    });
+});
+
+describe('displayInputsChanged', () => {
+    const prev = {
+        ...base,
+        paletteOpen: false,
+        inspectorTab: 'columns' as const,
+    };
+
+    it('ignores state that does not affect the graph', () => {
+        const palette = { ...prev, paletteOpen: true };
+        const tab = { ...prev, inspectorTab: 'ddl' as const };
+        expect(displayInputsChanged(prev, { ...prev })).toBe(false);
+        expect(displayInputsChanged(prev, palette)).toBe(false);
+        expect(displayInputsChanged(prev, tab)).toBe(false);
+    });
+
+    it.each([
+        ['hovered', 'users'],
+        ['selected', 'users'],
+        ['path', ['users', 'orders']],
+        ['focus', { table: 'users', depth: 1 }],
+        ['showInferred', false],
+        ['zoomLevel', 'galaxy'],
+    ] as const)('detects a %s change', (field, value) => {
+        expect(displayInputsChanged(prev, { ...prev, [field]: value })).toBe(
+            true,
+        );
     });
 });

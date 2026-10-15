@@ -59,10 +59,24 @@ export function neighborhood(
     return seen;
 }
 
-type DisplayInputs = Pick<
-    WorkspaceState,
-    'hovered' | 'selected' | 'path' | 'focus' | 'showInferred' | 'zoomLevel'
->;
+const DISPLAY_INPUT_KEYS = [
+    'hovered',
+    'selected',
+    'path',
+    'focus',
+    'showInferred',
+    'zoomLevel',
+] as const;
+
+type DisplayInputs = Pick<WorkspaceState, (typeof DISPLAY_INPUT_KEYS)[number]>;
+
+/** True when a store change touches state the graph renders (reference equality per field). */
+export function displayInputsChanged(
+    prev: DisplayInputs,
+    next: DisplayInputs,
+): boolean {
+    return DISPLAY_INPUT_KEYS.some((key) => prev[key] !== next[key]);
+}
 
 export function buildDisplayState(
     graph: SchemaGraph,
