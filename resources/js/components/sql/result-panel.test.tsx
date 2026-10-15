@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
-import { Profiler, useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { useState } from 'react';
+import { describe, expect, it } from 'vitest';
 import type { StatementResultPayload } from '@/types/schema';
 import { FALLBACK_MAX_ROWS, ResultPanel } from './result-panel';
 
@@ -17,27 +17,31 @@ const result = (rows: number): StatementResultPayload => ({
 
 describe('ResultPanel', () => {
     it('does not re-render when the parent re-renders with the same props', () => {
-        const results = [result(5)];
-        const onRender = vi.fn();
+        // ResultPanel reads `columns` on every render, so the read count shows whether it re-rendered.
+        let reads = 0;
+        const base = result(5);
+        const counted = {
+            ...base,
+            get columns() {
+                reads++;
+                return base.columns;
+            },
+        } as StatementResultPayload;
+        const results = [counted];
         let bump: () => void = () => {};
         function Parent() {
             const [, setN] = useState(0);
             bump = () => setN((n) => n + 1);
             return (
-                <Profiler id="panel" onRender={onRender}>
-                    <ResultPanel
-                        results={results}
-                        error={null}
-                        running={false}
-                    />
-                </Profiler>
+                <ResultPanel results={results} error={null} running={false} />
             );
         }
         render(<Parent />);
-        expect(onRender).toHaveBeenCalledTimes(1);
-        bump();
-        bump();
-        expect(onRender).toHaveBeenCalledTimes(1);
+        const afterMount = reads;
+        expect(afterMount).toBeGreaterThan(0);
+        act(() => bump());
+        act(() => bump());
+        expect(reads).toBe(afterMount);
     });
 
     it('caps the interim table and says so', () => {

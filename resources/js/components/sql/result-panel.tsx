@@ -73,7 +73,7 @@ const RowsTable = memo(function RowsTable({
             </table>
             {result.rows.length > rows.length && (
                 <p className="p-2 text-xs text-muted-foreground">
-                    Showing first {rows.length} of{' '}
+                    Showing first {rows.length.toLocaleString('en-US')} of{' '}
                     {result.rows.length.toLocaleString('en-US')} rows
                 </p>
             )}
