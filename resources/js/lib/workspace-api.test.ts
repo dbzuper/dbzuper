@@ -81,4 +81,20 @@ describe('dbErrorFrom', () => {
         ).toBe('Fallback');
         expect(dbErrorFrom(new Error('x'), 'Fallback').kind).toBe('unknown');
     });
+
+    it.each([419, 403, 500])(
+        'keeps the caller fallback for a %i with a Laravel message',
+        (status) => {
+            const e = new ApiError(status, {
+                message: 'CSRF token mismatch.',
+                errors: { x: ['Nope.'] },
+            });
+            expect(dbErrorFrom(e, 'Could not run.')).toEqual({
+                kind: 'unknown',
+                message: 'Could not run.',
+                sqlstate: null,
+                reason: null,
+            });
+        },
+    );
 });

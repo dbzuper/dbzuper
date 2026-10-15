@@ -89,9 +89,14 @@ export const workspaceApi = {
         apiFetch<DdlResponse>(table(id, name, 'ddl')),
 };
 
-/** First message of a Laravel validation response ({message, errors}), else its message. */
+/** First message of a Laravel validation response (422 {message, errors}), else its message. */
 function validationMessage(e: unknown): string | null {
-    if (!(e instanceof ApiError) || !e.body || typeof e.body !== 'object')
+    if (
+        !(e instanceof ApiError) ||
+        e.status !== 422 ||
+        !e.body ||
+        typeof e.body !== 'object'
+    )
         return null;
     const { errors, message } = e.body as {
         errors?: Record<string, unknown>;
