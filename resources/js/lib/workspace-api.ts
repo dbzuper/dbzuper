@@ -4,9 +4,57 @@ import type {
     DdlResponse,
     LayoutPositionEntry,
     LayoutResponse,
+    QueryCell,
+    QueryColumn,
     SampleResponse,
     SchemaResponse,
 } from '@/types/schema';
+
+export type FilterOp =
+    | 'eq'
+    | 'neq'
+    | 'lt'
+    | 'lte'
+    | 'gt'
+    | 'gte'
+    | 'contains'
+    | 'starts_with'
+    | 'ends_with'
+    | 'is_null'
+    | 'is_not_null';
+export type RowFilter = { column: string; op: FilterOp; value?: string };
+export type RowsRequest = {
+    filters: RowFilter[];
+    sort: { column: string; direction: 'asc' | 'desc' } | null;
+    page: number;
+    per_page: number;
+};
+export type RowsResponse = {
+    columns: QueryColumn[];
+    rows: QueryCell[][];
+    has_more: boolean;
+    page: number;
+    per_page: number;
+    sql: string;
+};
+
+export const FILTER_OPS: {
+    value: FilterOp;
+    label: string;
+    needsValue: boolean;
+}[] = [
+    { value: 'eq', label: 'equals', needsValue: true },
+    { value: 'neq', label: 'not equals', needsValue: true },
+    { value: 'lt', label: '<', needsValue: true },
+    { value: 'lte', label: '≤', needsValue: true },
+    { value: 'gt', label: '>', needsValue: true },
+    { value: 'gte', label: '≥', needsValue: true },
+    { value: 'contains', label: 'contains', needsValue: true },
+    { value: 'starts_with', label: 'starts with', needsValue: true },
+    { value: 'ends_with', label: 'ends with', needsValue: true },
+    { value: 'is_null', label: 'is null', needsValue: false },
+    { value: 'is_not_null', label: 'is not null', needsValue: false },
+];
 
 const table = (id: number, name: string, what: string) =>
     `/api/c/${id}/tables/${encodeURIComponent(name)}/${what}`;
@@ -31,6 +79,12 @@ export const workspaceApi = {
         }),
     sample: (id: number, name: string) =>
         apiFetch<SampleResponse>(table(id, name, 'sample')),
+    rows: (id: number, name: string, body: RowsRequest, signal?: AbortSignal) =>
+        apiFetch<RowsResponse>(table(id, name, 'rows'), {
+            method: 'POST',
+            body,
+            signal,
+        }),
     ddl: (id: number, name: string) =>
         apiFetch<DdlResponse>(table(id, name, 'ddl')),
 };

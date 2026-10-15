@@ -78,3 +78,25 @@ it('keeps the sample endpoint cell cap unchanged', function () {
 
     expect($res->json('rows.0.1'))->toBe(str_repeat('x', 200).'…');
 });
+
+it('returns a user-facing sql with raw columns, literal values and the page limit', function () {
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'orders']), [
+        'filters' => [['column' => 'status', 'op' => 'eq', 'value' => "pa'id"]],
+        'sort' => ['column' => 'id', 'direction' => 'desc'],
+        'per_page' => 10, 'page' => 3,
+    ])->assertOk();
+
+    $sql = $res->json('sql');
+    expect($sql)->toContain("\"status\" = 'pa''id'")
+        ->and($sql)->toContain('order by "id" desc')
+        ->and($sql)->toContain('limit 10 offset 20')
+        ->and($sql)->not->toContain('substr')
+        ->and($sql)->not->toContain('?');
+});
+
+it('orders by the primary key when no sort is given', function () {
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']))->assertOk();
+
+    expect($res->json('sql'))->toContain('order by "id" asc')
+        ->and(array_column($res->json('rows'), 0))->toBe([1, 2, 3]);
+});

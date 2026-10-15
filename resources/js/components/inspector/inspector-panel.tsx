@@ -95,8 +95,13 @@ export function InspectorPanel({ connectionId, snapshot, table }: Props) {
                 <TabsContent value="indexes">
                     <IndexesTab table={table} />
                 </TabsContent>
-                <TabsContent value="data">
-                    <DataTab connectionId={connectionId} table={table.name} />
+                <TabsContent value="data" className="overflow-hidden">
+                    <DataTab
+                        key={`${connectionId}:${table.name}`}
+                        connectionId={connectionId}
+                        table={table.name}
+                        snapshot={snapshot}
+                    />
                 </TabsContent>
                 <TabsContent value="ddl">
                     <DdlTab
