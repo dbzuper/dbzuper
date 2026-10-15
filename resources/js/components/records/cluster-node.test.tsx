@@ -45,6 +45,7 @@ function mount(remaining: number | null) {
                 summary,
                 remaining,
                 cursor: 'c',
+                edgeCount: 25,
                 loading: false,
             },
         },

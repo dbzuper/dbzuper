@@ -542,4 +542,28 @@ describe('trail replacement and removal', () => {
         expect(s().clusters[key].remaining).toBe(20);
         expect(s().clusters[key].loading).toBe(false);
     });
+
+    it('drops a stale cursor after setTrail so no rows are skipped', async () => {
+        await openAndLoad();
+        api.related.mockResolvedValue(related('items', rows(1, 25), 'c1'));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(26));
+        const key = clusterKey(root, inSummary.id, 'in');
+        const t = structuredClone(s().trail);
+        t.nodes = t.nodes.slice(0, 11);
+        t.edges = t.edges.slice(0, 10);
+        s().setTrail(t);
+        expect(s().clusters[key].cursor).toBeNull();
+        api.related
+            .mockClear()
+            .mockResolvedValueOnce(related('items', rows(1, 25), 'c2'));
+        s().more(key);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(26));
+        expect(api.related.mock.calls[0][3].cursor).toBeNull();
+        expect(new Set(s().trail.nodes.map((n) => n.id)).size).toBe(26);
+        expect(s().clusters[key].cursor).toBe('c2');
+        // An unchanged trail keeps its cursor.
+        s().setTrail(structuredClone(s().trail));
+        expect(s().clusters[key].cursor).toBe('c2');
+    });
 });

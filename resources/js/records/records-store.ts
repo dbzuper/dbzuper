@@ -43,6 +43,8 @@ export type ClusterState = {
     summary: RelationshipSummary;
     remaining: number | null;
     cursor: string | null;
+    /** Edges from the source via this relationship that the cursor accounts for. */
+    edgeCount: number;
     loading: boolean;
 };
 
@@ -332,6 +334,16 @@ export const useRecords = create<RecordsState>()((set, get) => {
                                 ? Math.max(0, summary.count.value - edgeCount)
                                 : null,
                         cursor: result.refused > 0 ? cursor : page.next_cursor,
+                        // A kept (earlier) cursor accounts for the edges that existed before this page.
+                        edgeCount:
+                            result.refused > 0
+                                ? state.trail.edges.filter(
+                                      (e) =>
+                                          e.from === fromId &&
+                                          e.rel === summary.id &&
+                                          e.dir === summary.direction,
+                                  ).length
+                                : edgeCount,
                         loading: false,
                     };
                 } else {
@@ -489,6 +501,9 @@ export const useRecords = create<RecordsState>()((set, get) => {
                             {
                                 ...c,
                                 loading: false,
+                                // The cursor only fits a trail with as many edges as when it was taken.
+                                cursor: count === c.edgeCount ? c.cursor : null,
+                                edgeCount: count,
                                 remaining:
                                     total && !total.capped
                                         ? Math.max(0, total.value - count)
