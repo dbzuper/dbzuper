@@ -41,7 +41,10 @@ export function CellView({
     const textValue = String(value);
     const expandable = kind === 'json' || isLong(value);
     const preview = expandable
-        ? textValue.slice(0, PREVIEW_CHARS).replace(/\s*\n\s*/g, ' ')
+        ? Array.from(textValue)
+              .slice(0, PREVIEW_CHARS)
+              .join('')
+              .replace(/\s*\n\s*/g, ' ')
         : textValue;
     const body = foreign ? (
         <button

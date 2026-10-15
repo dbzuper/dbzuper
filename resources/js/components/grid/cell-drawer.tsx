@@ -40,7 +40,7 @@ export function CellDrawer({
     const truncated =
         state !== null &&
         typeof state.value === 'string' &&
-        state.value.length === TRUNCATION_LIMIT + 1 &&
+        Array.from(state.value).length === TRUNCATION_LIMIT + 1 &&
         state.value.endsWith('…');
 
     const copy = async () => {

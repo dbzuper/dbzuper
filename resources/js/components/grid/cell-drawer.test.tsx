@@ -17,6 +17,25 @@ describe('CellDrawer', () => {
         ).toBeInTheDocument();
     });
 
+    it('counts code points, so an emoji value cut by the server still shows the note', () => {
+        render(
+            <CellDrawer
+                state={{ column, value: '🚀'.repeat(TRUNCATION_LIMIT) + '…' }}
+                onClose={() => {}}
+            />,
+        );
+        expect(
+            screen.getByText('Value truncated at 4,000 characters'),
+        ).toBeInTheDocument();
+    });
+
+    it('shows no note for a short emoji value', () => {
+        render(
+            <CellDrawer state={{ column, value: '🚀…' }} onClose={() => {}} />,
+        );
+        expect(screen.queryByText(/truncated/)).toBeNull();
+    });
+
     it('shows no note for ordinary values', () => {
         render(
             <CellDrawer state={{ column, value: 'hi…' }} onClose={() => {}} />,

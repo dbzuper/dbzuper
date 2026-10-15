@@ -60,7 +60,7 @@ function ResultActions({ result }: { result: StatementResultPayload }) {
     };
     const download = () => {
         const url = URL.createObjectURL(
-            new Blob([toCSV(result.columns, result.rows)], {
+            new Blob(['﻿' + toCSV(result.columns, result.rows)], {
                 type: 'text/csv;charset=utf-8',
             }),
         );
@@ -68,7 +68,7 @@ function ResultActions({ result }: { result: StatementResultPayload }) {
         link.href = url;
         link.download = 'result.csv';
         link.click();
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
     };
     return (
         <div className="ml-auto flex shrink-0 items-center gap-1">

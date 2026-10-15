@@ -32,6 +32,19 @@ describe('copy formats', () => {
     });
 });
 
+describe('toJSON keys', () => {
+    it('never collides with an existing suffixed column name', () => {
+        const cols = ['id', 'id', 'id_2'].map((name) => ({
+            name,
+            type: null,
+            table: null,
+        }));
+        const [row] = JSON.parse(toJSON(cols, [[1, 2, 3]]));
+        expect(Object.keys(row)).toEqual(['id', 'id_3', 'id_2']);
+        expect(row).toEqual({ id: 1, id_3: 2, id_2: 3 });
+    });
+});
+
 describe('writeClipboard', () => {
     afterEach(() => vi.unstubAllGlobals());
 

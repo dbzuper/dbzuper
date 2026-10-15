@@ -23,4 +23,16 @@ describe('sortRows', () => {
             sortRows([['b10'], ['b2'], ['a']], 0, 'ASC').map((r) => r[0]),
         ).toEqual(['a', 'b2', 'b10']);
     });
+
+    it('orders neighbouring integers beyond the safe range exactly', () => {
+        const rows = [['9007199254740993'], ['9007199254740992']];
+        expect(sortRows(rows, 0, 'ASC').map((r) => r[0])).toEqual([
+            '9007199254740992',
+            '9007199254740993',
+        ]);
+        expect(sortRows(rows, 0, 'DESC').map((r) => r[0])).toEqual([
+            '9007199254740993',
+            '9007199254740992',
+        ]);
+    });
 });

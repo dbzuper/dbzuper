@@ -1,6 +1,6 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { StatementResultPayload } from '@/types/schema';
 import { ResultPanel } from './result-panel';
 
@@ -59,6 +59,45 @@ describe('ResultPanel', () => {
         expect(
             screen.getByText('Showing first 2,000 rows (limit reached)'),
         ).toBeInTheDocument();
+    });
+
+    it('downloads CSV with a UTF-8 BOM and revokes the URL afterwards', async () => {
+        let blob: Blob | undefined;
+        const create = vi.fn((b: Blob) => ((blob = b), 'blob:x'));
+        const revoke = vi.fn();
+        vi.stubGlobal(
+            'URL',
+            Object.assign(URL, {
+                createObjectURL: create,
+                revokeObjectURL: revoke,
+            }),
+        );
+        vi.useFakeTimers();
+        try {
+            render(
+                <ResultPanel
+                    results={[result(2)]}
+                    error={null}
+                    running={false}
+                />,
+            );
+            fireEvent.click(
+                screen.getByRole('button', { name: 'Download CSV' }),
+            );
+            expect(revoke).not.toHaveBeenCalled();
+            vi.runAllTimers();
+            expect(revoke).toHaveBeenCalledWith('blob:x');
+        } finally {
+            vi.useRealTimers();
+            vi.unstubAllGlobals();
+        }
+        const bytes = await new Promise<Uint8Array>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () =>
+                resolve(new Uint8Array(reader.result as ArrayBuffer));
+            reader.readAsArrayBuffer(blob!);
+        });
+        expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
     });
 
     it('offers Copy as and Download CSV for row results', () => {

@@ -61,6 +61,16 @@ describe('CellView', () => {
         ).toBeInTheDocument();
     });
 
+    it('does not split a surrogate pair at the preview boundary', () => {
+        const value = 'a'.repeat(119) + '🚀' + 'b'.repeat(20);
+        const { container } = render(
+            <CellView value={value} type="text" onOpen={() => {}} />,
+        );
+        const shown =
+            container.querySelector('[data-kind="text"]')!.textContent!;
+        expect(shown).toBe('a'.repeat(119) + '🚀');
+    });
+
     it('marks binary and number kinds', () => {
         const { container } = render(
             <>

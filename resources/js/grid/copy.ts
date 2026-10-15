@@ -28,10 +28,18 @@ export function toCSV(columns: QueryColumn[], rows: QueryCell[][]): string {
 
 export function toJSON(columns: QueryColumn[], rows: QueryCell[][]): string {
     const seen = new Map<string, number>();
-    const keys = columns.map((c) => {
-        const n = (seen.get(c.name) ?? 0) + 1;
+    const used = new Set(columns.map((c) => c.name));
+    const keys = columns.map((c, i) => {
+        if (columns.findIndex((o) => o.name === c.name) === i) return c.name;
+        let n = seen.get(c.name) ?? 1;
+        let key: string;
+        do {
+            n++;
+            key = `${c.name}_${n}`;
+        } while (used.has(key));
         seen.set(c.name, n);
-        return n === 1 ? c.name : `${c.name}_${n}`;
+        used.add(key);
+        return key;
     });
     return JSON.stringify(
         rows.map((r) =>
