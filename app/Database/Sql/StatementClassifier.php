@@ -26,6 +26,30 @@ final class StatementClassifier
         $all = SqlLexer::tokenize($sql, $dialect);
         $tokens = array_values(array_filter($all, fn (Token $t) => $t->type !== 'comment' && $t->type !== 'semicolon'));
 
+        $leading = isset($tokens[0]) && $tokens[0]->type === 'word' ? $tokens[0]->upper() : '';
+
+        // MySQL/MariaDB executable comments (/*! */, /*M! */) may run their contents depending on server
+        // version, and the server's own scan ends them at the first "*/": fail closed.
+        if ($dialect === 'mysql' || $dialect === 'mariadb') {
+            foreach ($all as $token) {
+                if ($token->type === 'comment' && preg_match('/^\/\*M?!/', $token->value)) {
+                    return new Classification('write', $leading);
+                }
+            }
+        }
+
+        // PostgreSQL U&'...' / U&"..." can spell any identifier or string via escapes: fail closed.
+        if ($dialect === 'pgsql') {
+            foreach ($tokens as $k => $token) {
+                if ($token->type === 'word' && strtoupper($token->value) === 'U'
+                    && isset($tokens[$k + 1], $tokens[$k + 2])
+                    && self::isPunct($tokens[$k + 1], '&') && $tokens[$k + 1]->start === $token->end
+                    && in_array($tokens[$k + 2]->type, ['string', 'quoted'], true) && $tokens[$k + 2]->start === $tokens[$k + 1]->end) {
+                    return new Classification('write', $leading);
+                }
+            }
+        }
+
         // Anything significant after a semicolon means multi-statement input: never trust the first keyword.
         $seenSemicolon = false;
         foreach ($all as $token) {
@@ -256,6 +280,9 @@ final class StatementClassifier
     {
         $second = isset($t[1]) && $t[1]->type === 'word' ? $t[1]->upper() : '';
         if ($first === 'START' && $second !== 'TRANSACTION') {
+            return new Classification('write', $first);
+        }
+        if ($first === 'XA' && ($second === 'COMMIT' || $second === 'ROLLBACK')) {
             return new Classification('write', $first);
         }
         if (($first === 'COMMIT' || $first === 'ROLLBACK') && $second === 'PREPARED') {

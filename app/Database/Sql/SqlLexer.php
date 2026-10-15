@@ -12,7 +12,6 @@ final class SqlLexer
         $len = strlen($sql);
         $tokens = [];
         $i = 0;
-        $exec = false; // inside a MySQL/MariaDB executable comment (/*! ... */), lexed as code
 
         while ($i < $len) {
             $c = $sql[$i];
@@ -20,23 +19,6 @@ final class SqlLexer
 
             if ($c === ' ' || $c === "\t" || $c === "\n" || $c === "\r" || $c === "\f" || $c === "\v") {
                 $i++;
-
-                continue;
-            }
-
-            // End of an executable comment; the "/*!" opener and "*/" closer are emitted as comments.
-            if ($exec && $c === '*' && $n === '/') {
-                $tokens[] = new Token('comment', '*/', $i, $i + 2);
-                $exec = false;
-                $i += 2;
-
-                continue;
-            }
-
-            if ($mysql && ! $exec && $c === '/' && $n === '*' && preg_match('/\G\/\*M?!\d*/', $sql, $m, 0, $i)) {
-                $tokens[] = new Token('comment', $m[0], $i, $i + strlen($m[0]));
-                $exec = true;
-                $i += strlen($m[0]);
 
                 continue;
             }

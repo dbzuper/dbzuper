@@ -48,7 +48,7 @@
   {"dialect":"pgsql","sql":"explain (\"analyze\") delete from users","kind":"destructive","target":"users"},
   {"dialect":"pgsql","sql":"explain (format json) select 1","kind":"read"},
   {"dialect":"mysql","sql":"select * from users /*!50000 into outfile '/tmp/x' */","kind":"write"},
-  {"dialect":"mysql","sql":"explain /*! analyze */ delete from users","kind":"destructive","target":"users"},
+  {"dialect":"mysql","sql":"explain /*! analyze */ delete from users","kind":"write"},
   {"dialect":"mariadb","sql":"select * from users /*M!100000 into outfile '/tmp/x' */","kind":"write"},
   {"dialect":"pgsql","sql":"select set_config('default_transaction_read_only','off',false)","kind":"session"},
   {"dialect":"mysql","sql":"start replica","kind":"write"},
@@ -66,5 +66,14 @@
   {"dialect":"pgsql","sql":"with x as (select 1) delete from users where id = 1","kind":"write"},
   {"dialect":"mysql","sql":"table users into outfile '/tmp/x'","kind":"write"},
   {"dialect":"mysql","sql":"select 1 ) into newt from users (","kind":"write"},
-  {"dialect":"sqlite","sql":"select 1; drop table t","kind":"write"}
+  {"dialect":"sqlite","sql":"select 1; drop table t","kind":"write"},
+  {"dialect":"mysql","sql":"select 1 /*!99999 ' */ into outfile '/tmp/x' -- ' */","kind":"write"},
+  {"dialect":"mysql","sql":"select 1 /*M! ' */ into outfile '/tmp/x' -- ' */","kind":"write"},
+  {"dialect":"mariadb","sql":"select 1 /*M!999999 ' */ into outfile '/tmp/x' -- ' */","kind":"write"},
+  {"dialect":"pgsql","sql":"select U&\"set\\005fconfig\"('default_transaction_read_only','off',false)","kind":"write"},
+  {"dialect":"mysql","sql":"xa commit 'x'","kind":"write"},
+  {"dialect":"mysql","sql":"xa rollback 'x'","kind":"write"},
+  {"dialect":"mysql","sql":"xa commit 'x' one phase","kind":"write"},
+  {"dialect":"mysql","sql":"xa start 'x'","kind":"transaction"},
+  {"dialect":"mysql","sql":"xa end 'x'","kind":"transaction"}
 ]
