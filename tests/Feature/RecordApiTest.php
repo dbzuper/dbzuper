@@ -1,5 +1,6 @@
 <?php
 
+use App\Database\Records\RecordReader;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
 use App\Models\User;
@@ -154,4 +155,42 @@ it('reads a table that has a column named like the internal raw alias', function
     DB::purge('w');
 
     ($this->show)('odd', ['id' => 7])->assertOk()->assertJsonPath('key', ['id' => 7])->assertJsonPath('values', [7, 'zero', 'one']);
+});
+
+it('returns a null count instead of failing when a child count errors', function () {
+    $w = DB::connectUsing('w', ['driver' => 'sqlite', 'database' => $this->connection->database, 'prefix' => ''], force: true);
+    $w->statement('CREATE TABLE boxes (id INTEGER PRIMARY KEY)');
+    $w->statement('CREATE TABLE box_items (id INTEGER PRIMARY KEY, box_id INTEGER REFERENCES boxes(id))');
+    $w->table('boxes')->insert(['id' => 1]);
+    DB::purge('w');
+    ($this->show)('boxes', ['id' => 1])->assertOk(); // stores the snapshot that still lists box_items
+
+    $w = DB::connectUsing('w', ['driver' => 'sqlite', 'database' => $this->connection->database, 'prefix' => ''], force: true);
+    $w->statement('DROP TABLE box_items'); // the count now fails with "no such table" (SQLSTATE HY000, not class 22)
+    DB::purge('w');
+
+    $items = collect(($this->show)('boxes', ['id' => 1])->assertOk()->json('relationships'))->firstWhere('table', 'box_items');
+    expect($items)->toMatchArray(['direction' => 'in', 'available' => true, 'count' => null]);
+});
+
+it('skips child counts once the count time budget is spent', function () {
+    $this->app->instance(RecordReader::class, new RecordReader(countBudgetSeconds: 0));
+
+    $incoming = collect(($this->show)('users', ['id' => 2])->assertOk()->json('relationships'))->where('direction', 'in');
+    expect($incoming)->not->toBeEmpty()
+        ->and($incoming->pluck('count')->unique()->all())->toBe([null]);
+});
+
+it('throttles record reads with their own limiter, not the general API limiter', function (string $name) {
+    $router = app('router');
+    $middleware = $router->gatherRouteMiddleware($router->getRoutes()->getByName($name));
+
+    expect($middleware)->toContain('throttle:dbsuperb-records')
+        ->not->toContain('throttle:dbsuperb-api');
+})->with(['api.records.show', 'api.records.related']);
+
+it('allows more than the general API rate of record reads per minute', function () {
+    foreach (range(1, 121) as $i) {
+        ($this->show)('orders', ['id' => 1])->assertOk();
+    }
 });

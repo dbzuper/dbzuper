@@ -14,6 +14,11 @@ final class RecordReader
 
     public const MAX_COUNTED = 12;
 
+    /** Wall-clock seconds one record read may spend on child counts; once spent, the remaining counts are skipped. */
+    public const COUNT_BUDGET_SECONDS = 2.0;
+
+    public function __construct(private readonly float $countBudgetSeconds = self::COUNT_BUDGET_SECONDS) {}
+
     /** @return array{table:string,key:array,columns:list<array{name:string,type:string}>,values:list<mixed>,relationships:list<array>}|null */
     public function read(Connection $db, Driver $driver, array $snapshot, array $table, RecordKey $key): ?array
     {
@@ -208,6 +213,7 @@ final class RecordReader
     {
         $out = [];
         $counted = 0;
+        $deadline = hrtime(true) + (int) ($this->countBudgetSeconds * 1e9);
         foreach ($snapshot['relationships'] ?? [] as $rel) {
             if ($rel['from_table'] === $table) {
                 $values = array_map(fn ($c) => $raw[$c] ?? null, $rel['from_columns']);
@@ -216,7 +222,7 @@ final class RecordReader
             if ($rel['to_table'] === $table) {
                 $values = array_map(fn ($c) => $raw[$c] ?? null, $rel['to_columns']);
                 $count = null;
-                if ($counted < self::MAX_COUNTED && ! in_array(null, $values, true)) {
+                if ($counted < self::MAX_COUNTED && hrtime(true) < $deadline && ! in_array(null, $values, true)) {
                     $count = $this->count($db, $driver, $rel['from_table'], $rel['from_columns'], $values);
                     $counted++;
                 }
@@ -236,8 +242,8 @@ final class RecordReader
         ];
     }
 
-    /** @return array{value:int,capped:bool} */
-    private function count(Connection $db, Driver $driver, string $childTable, array $childColumns, array $values): array
+    /** @return array{value:int,capped:bool}|null null when the count could not be taken (the card shows it as unknown) */
+    private function count(Connection $db, Driver $driver, string $childTable, array $childColumns, array $values): ?array
     {
         $inner = $this->where($db->table($db->raw($driver->quoteIdentifier($childTable)))->selectRaw('1'), $driver, $childColumns, $values)
             ->limit(self::COUNT_CAP + 1);
@@ -248,7 +254,9 @@ final class RecordReader
             if ($this->isDataException($e)) {
                 return ['value' => 0, 'capped' => false];
             }
-            throw $e;
+
+            // Any other failure (permissions, a stale snapshot, a timeout) only loses the count, never the record.
+            return null;
         }
 
         return $n > self::COUNT_CAP ? ['value' => self::COUNT_CAP, 'capped' => true] : ['value' => $n, 'capped' => false];

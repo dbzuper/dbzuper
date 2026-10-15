@@ -42,8 +42,11 @@ Route::middleware('auth')->group(function () {
         Route::get('history', [HistoryController::class, 'index'])->name('history.index');
         Route::delete('history', [HistoryController::class, 'clear'])->name('history.clear');
         Route::get('history/{entry}', [HistoryController::class, 'show'])->whereNumber('entry')->name('history.show');
-        Route::get('records/{table}/related', [RecordController::class, 'related'])->where('table', '.+')->name('records.related');
-        Route::get('records/{table}', [RecordController::class, 'show'])->where('table', '.+')->name('records.show');
+        // Record reads use their own, higher limit instead of the group's dbsuperb-api limit.
+        Route::withoutMiddleware('throttle:dbsuperb-api')->middleware('throttle:dbsuperb-records')->group(function () {
+            Route::get('records/{table}/related', [RecordController::class, 'related'])->where('table', '.+')->name('records.related');
+            Route::get('records/{table}', [RecordController::class, 'show'])->where('table', '.+')->name('records.show');
+        });
     });
 });
 

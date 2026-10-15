@@ -83,6 +83,13 @@ it('validates rel, dir, limit and cursor', function () {
     ($this->related)('orders', ['id' => 1], $rel, 'out', ['limit' => 101])->assertUnprocessable()->assertJsonValidationErrors('limit');
     ($this->related)('users', ['id' => 2], $rel, 'in', ['cursor' => 'garbage'])->assertUnprocessable()->assertJsonValidationErrors('cursor');
     ($this->related)('users', ['id' => 2], $rel, 'in', ['cursor' => str_repeat('a', 12001)])->assertUnprocessable()->assertJsonValidationErrors('cursor');
+    ($this->related)('orders', ['id' => 1], str_repeat('r', 2049), 'out')->assertUnprocessable()->assertJsonValidationErrors('rel');
+});
+
+it('accepts relationship ids up to 2,048 characters', function () {
+    // A long id passes validation and is then rejected only because no relationship has it.
+    ($this->related)('orders', ['id' => 1], str_repeat('r', 2048), 'out')->assertUnprocessable()
+        ->assertJsonValidationErrors(['rel' => 'Unknown relationship for this table and direction.']);
 });
 
 it('rejects cursors with the wrong arity or value types', function (array $payload) {

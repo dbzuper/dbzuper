@@ -30,6 +30,8 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
 
         RateLimiter::for('dbsuperb-api', fn (Request $request) => Limit::perMinute(120)->by($request->user()?->id ?: $request->ip()));
+        // Exploring records fires a request per card and per port, far more often than the rest of the API.
+        RateLimiter::for('dbsuperb-records', fn (Request $request) => Limit::perMinute(1000)->by($request->user()?->id ?: $request->ip()));
     }
 
     /**
