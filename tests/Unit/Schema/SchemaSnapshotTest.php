@@ -45,3 +45,9 @@ it('finds tables and columns by name', function () {
     expect($snapshot->table('users')?->column('id')?->typeName)->toBe('bigint')
         ->and($snapshot->table('nope'))->toBeNull();
 });
+
+it('serializes truncation metadata with sensible defaults', function () {
+    $snapshot = snapshotWith(new RowCount(1, 'exact'));
+
+    expect($snapshot->toArray())->toMatchArray(['truncated' => false, 'total_objects' => 1]);
+});

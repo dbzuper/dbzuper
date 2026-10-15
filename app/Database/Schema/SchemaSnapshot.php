@@ -17,6 +17,8 @@ final readonly class SchemaSnapshot
         public CarbonImmutable $generatedAt,
         public array $tables,
         public array $relationships,
+        public bool $truncated = false,
+        public ?int $totalObjects = null,
     ) {}
 
     public function table(string $name): ?TableInfo
@@ -49,6 +51,8 @@ final readonly class SchemaSnapshot
             'hash' => $this->structureHash(),
             'tables' => array_map(fn (TableInfo $t) => $t->toArray(), $this->tables),
             'relationships' => array_map(fn (Relationship $r) => $r->toArray(), $this->relationships),
+            'truncated' => $this->truncated,
+            'total_objects' => $this->totalObjects ?? count($this->tables),
         ];
     }
 }

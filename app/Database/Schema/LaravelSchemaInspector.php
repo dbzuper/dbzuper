@@ -27,6 +27,17 @@ abstract class LaravelSchemaInspector implements SchemaInspector
 
         $rawTables = array_values(array_filter($builder->getTables($schema), fn (array $t) => $this->includeTable($t['name'])));
         $rawViews = $builder->getViews($schema);
+
+        $totalObjects = count($rawTables) + count($rawViews);
+        $max = max(1, (int) config('dbsuperb.schema_max_objects'));
+        $truncated = $totalObjects > $max;
+        if ($truncated) {
+            $keep = collect([...array_column($rawTables, 'name'), ...array_column($rawViews, 'name')])
+                ->sort(SORT_STRING)->take($max)->flip();
+            $rawTables = array_values(array_filter($rawTables, fn (array $t) => isset($keep[$t['name']])));
+            $rawViews = array_values(array_filter($rawViews, fn (array $v) => isset($keep[$v['name']])));
+        }
+
         $counts = $this->rowCounts($db, $schema, array_column($rawTables, 'name'));
 
         $described = $this->describe($db, $schema, array_column($rawTables, 'name'), array_column($rawViews, 'name'));
@@ -68,6 +79,10 @@ abstract class LaravelSchemaInspector implements SchemaInspector
         }
 
         usort($tables, fn (TableInfo $a, TableInfo $b) => strcmp($a->name, $b->name));
+
+        $present = array_flip(array_map(fn (TableInfo $t) => $t->name, $tables));
+        $declared = array_values(array_filter($declared, fn (Relationship $r) => isset($present[$r->toTable])));
+
         $relationships = [...$declared, ...$this->inferrer->infer($tables, $declared)];
         usort($relationships, fn (Relationship $a, Relationship $b) => strcmp($a->id, $b->id));
 
@@ -78,6 +93,8 @@ abstract class LaravelSchemaInspector implements SchemaInspector
             CarbonImmutable::now(),
             $tables,
             $relationships,
+            $truncated,
+            $totalObjects,
         );
     }
 
