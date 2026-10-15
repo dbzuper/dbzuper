@@ -241,6 +241,34 @@ describe('InspectorPanel', () => {
         expect(useWorkspace.getState().dataFilter).toBeNull();
     });
 
+    it('seeds one eq chip per pair of a multi-column filter', async () => {
+        useWorkspace.getState().openDataFilter('orders', [
+            { column: 'user_id', value: '9' },
+            { column: 'shop_id', value: '2' },
+        ]);
+        render(
+            <InspectorPanel
+                connectionId={1}
+                snapshot={snapshot}
+                table={orders}
+            />,
+        );
+        expect(
+            await screen.findByRole('button', {
+                name: 'Remove filter shop_id equals 2',
+            }),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', {
+                name: 'Remove filter user_id equals 9',
+            }),
+        ).toBeInTheDocument();
+        expect(api.rows.mock.calls[0][2].filters).toEqual([
+            { column: 'user_id', op: 'eq', value: '9' },
+            { column: 'shop_id', op: 'eq', value: '2' },
+        ]);
+    });
+
     it('opens the generated SQL in the dock', async () => {
         const openTab = vi.spyOn(useSqlTabs.getState(), 'openTab');
         renderData();

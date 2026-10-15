@@ -76,6 +76,11 @@ describe('ClusterNode', () => {
         expect(screen.getByText('More order_items')).toBeInTheDocument();
     });
 
+    it('never shows +0 more', () => {
+        mount(0);
+        expect(screen.getByText('More order_items')).toBeInTheDocument();
+    });
+
     it('Add next 25 asks the store for the next page', () => {
         mount(5);
         const more = vi.fn();

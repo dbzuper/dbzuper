@@ -51,6 +51,7 @@ function setup(
         <ReactFlowProvider>
             <RecordCard
                 table="orders"
+                recordKey={{ id: 7 }}
                 entry={entry}
                 selected={false}
                 showInferred
@@ -69,7 +70,7 @@ describe('RecordCard', () => {
     it('renders the heuristic title and up to five fields with their column names', () => {
         setup(ready());
         expect(screen.getByText('Order seven')).toBeInTheDocument();
-        const fields = screen.getByRole('list', { name: 'Fields' });
+        const fields = screen.getByRole('group', { name: 'Fields' });
         const names = within(fields)
             .getAllByRole('term')
             .map((t) => t.textContent);
@@ -192,6 +193,50 @@ describe('RecordCard', () => {
         ).not.toBeInTheDocument();
     });
 
+    it('keeps a handle for every edge even when its port is hidden or not drawn yet', () => {
+        const handle = (id: string) =>
+            document.querySelector(
+                `.react-flow__handle[data-handleid="${id}"]`,
+            );
+        const { unmount } = render(
+            <ReactFlowProvider>
+                <RecordCard
+                    table="orders"
+                    recordKey={{ id: 7 }}
+                    entry={ready([summary({ id: 'inf', inferred: true })])}
+                    selected={false}
+                    showInferred={false}
+                    edgeHandles={['inf:out', 'later:in']}
+                    onExpand={vi.fn()}
+                    onSelect={vi.fn()}
+                    onRemove={vi.fn()}
+                    onReload={vi.fn()}
+                />
+            </ReactFlowProvider>,
+        );
+        expect(handle('inf:out')).not.toBeNull();
+        expect(handle('later:in')).not.toBeNull();
+        unmount();
+    });
+
+    it('does not duplicate the handle of a drawn port', () => {
+        setup(ready([summary({ id: 'fk' })]), { edgeHandles: ['fk:out'] });
+        expect(
+            document.querySelectorAll(
+                '.react-flow__handle[data-handleid="fk:out"]',
+            ),
+        ).toHaveLength(1);
+    });
+
+    it('keeps edge handles on a missing card', () => {
+        setup({ status: 'missing' }, { edgeHandles: ['fk:in'] });
+        expect(
+            document.querySelector(
+                '.react-flow__handle[data-handleid="fk:in"]',
+            ),
+        ).not.toBeNull();
+    });
+
     it('selects the card from its header', () => {
         const { onSelect } = setup(ready());
         fireEvent.click(screen.getByRole('button', { name: /Order seven/ }));
@@ -200,7 +245,7 @@ describe('RecordCard', () => {
 
     it('shows a missing record with a remove button', () => {
         const { onRemove } = setup({ status: 'missing' });
-        expect(screen.getByText('Record not found')).toBeInTheDocument();
+        expect(screen.getByText('orders · id=7 not found')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
         expect(onRemove).toHaveBeenCalled();
     });

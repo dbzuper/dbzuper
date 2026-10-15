@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { COLUMN_GAP, pathTo, placements, ROW_GAP } from '@/records/trail';
 import { useRecords } from '@/records/records-store';
 import type { ConnectionSummary } from '@/types/connection';
+import type { SchemaSnapshot } from '@/types/schema';
 import { ClusterNode, clusterNodeId } from './cluster-node';
 import { RecordNode } from './record-card';
 
@@ -38,9 +39,8 @@ const prefersReducedMotion = () =>
 const EMPTY_TEXT =
     'Open a record from the Data tab, a result row, a foreign-key cell, or the command palette (users 42).';
 
-function Explorer() {
+function Explorer({ snapshot }: { snapshot: SchemaSnapshot }) {
     const trail = useRecords((s) => s.trail);
-    const records = useRecords((s) => s.records);
     const clusters = useRecords((s) => s.clusters);
     const notice = useRecords((s) => s.notice);
     const epoch = useRecords((s) => s.epoch);
@@ -64,7 +64,7 @@ function Explorer() {
             id: flowId(n.id),
             type: 'record',
             position: pos(n.id),
-            data: { id: n.id, table: n.table },
+            data: { id: n.id, table: n.table, key: n.key },
             selected: n.id === trail.selected,
         }));
         // A cluster sits below everything already in its column, beside the card it grew from.
@@ -107,10 +107,30 @@ function Explorer() {
         });
     }, [desired]);
 
+    // Only drags and measuring are applied: selection lives in the store and cards are never
+    // removed from the canvas (that is what the card's Remove button is for).
     const onNodesChange = useCallback(
         (changes: NodeChange[]) =>
-            setNodes((prev) => applyNodeChanges(changes, prev)),
+            setNodes((prev) =>
+                applyNodeChanges(
+                    changes.filter(
+                        (c) => c.type === 'position' || c.type === 'dimensions',
+                    ),
+                    prev,
+                ),
+            ),
         [],
+    );
+
+    // Dashing follows the schema (is the relationship inferred?), not what happens to be loaded.
+    const inferredIds = useMemo(
+        () =>
+            new Set(
+                snapshot.relationships
+                    .filter((r) => r.inferred)
+                    .map((r) => r.id),
+            ),
+        [snapshot],
     );
 
     const edges = useMemo(() => {
@@ -126,11 +146,7 @@ function Explorer() {
         });
         const out: Edge[] = trail.edges.map((e) => {
             const id = `${e.from}>${e.to}|${e.rel}|${e.dir}`;
-            const inferred =
-                records[e.from]?.payload?.relationships.some(
-                    (r) =>
-                        r.id === e.rel && r.direction === e.dir && r.inferred,
-                ) ?? false;
+            const inferred = inferredIds.has(e.rel);
             return {
                 id: flowId(id),
                 type: 'smoothstep',
@@ -160,7 +176,7 @@ function Explorer() {
             });
         }
         return out;
-    }, [trail, records, clusters]);
+    }, [trail, clusters, inferredIds]);
 
     // Fit the whole trail after an open; after an expansion pan to take in the new cards.
     const pending = useRef<{ ids: string[]; all: boolean } | null>(null);
@@ -224,7 +240,21 @@ function Explorer() {
                             },
                         }))
                     }
+                    onNodeClick={(_, node) => {
+                        if (node.type === 'record')
+                            useRecords
+                                .getState()
+                                .select((node.data as { id: string }).id);
+                    }}
                     nodesConnectable={false}
+                    // Every interactive part of a card is a real button (the header selects), so the
+                    // card wrapper itself stays out of the tab order and React Flow's own
+                    // keyboard selection, which would bypass the store, is off.
+                    nodesFocusable={false}
+                    edgesFocusable={false}
+                    deleteKeyCode={null}
+                    selectionKeyCode={null}
+                    multiSelectionKeyCode={null}
                     elementsSelectable
                     minZoom={0.1}
                     proOptions={{ hideAttribution: true }}
@@ -242,7 +272,7 @@ function Explorer() {
                     <button
                         type="button"
                         onClick={() => useRecords.getState().dismissNotice()}
-                        className="ml-auto rounded border px-2 py-0.5 hover:bg-muted"
+                        className="ml-auto rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
                     >
                         Dismiss
                     </button>
@@ -254,12 +284,14 @@ function Explorer() {
 
 export default function RecordsView({
     connection,
+    snapshot,
 }: {
     connection: ConnectionSummary;
+    snapshot: SchemaSnapshot;
 }) {
     return (
         <ReactFlowProvider key={connection.id}>
-            <Explorer />
+            <Explorer snapshot={snapshot} />
         </ReactFlowProvider>
     );
 }

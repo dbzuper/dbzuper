@@ -35,7 +35,7 @@ export function ClusterNode({ data }: NodeProps<ClusterNodeType>) {
     if (!cluster) return null;
     const filters = clusterFilters(cluster, parent);
     const label =
-        cluster.remaining === null
+        cluster.remaining === null || cluster.remaining <= 0
             ? `More ${cluster.table}`
             : `+${cluster.remaining.toLocaleString('en')} more ${cluster.table}`;
     const side =
@@ -56,7 +56,7 @@ export function ClusterNode({ data }: NodeProps<ClusterNodeType>) {
                     aria-label={`Add next 25 ${cluster.table}`}
                     disabled={cluster.loading}
                     onClick={() => useRecords.getState().more(data.key)}
-                    className="nodrag nopan rounded border px-2 py-1 hover:bg-muted disabled:opacity-50"
+                    className="nodrag nopan rounded border px-2 py-1 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none disabled:opacity-50"
                 >
                     Add next 25
                 </button>
@@ -74,7 +74,7 @@ export function ClusterNode({ data }: NodeProps<ClusterNodeType>) {
                         ws.openDataFilter(cluster.table, filters);
                         ws.select(cluster.table, 'data');
                     }}
-                    className="nodrag nopan rounded border px-2 py-1 hover:bg-muted disabled:opacity-50"
+                    className="nodrag nopan rounded border px-2 py-1 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none disabled:opacity-50"
                 >
                     Open in Data tab
                 </button>

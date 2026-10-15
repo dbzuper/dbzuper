@@ -73,10 +73,14 @@ export default function WorkspaceShow({
 
     useEffect(() => {
         useWorkspace.getState().reset();
-        useRecords.getState().reset();
-        useRecords.getState().setConnection(connection.id);
         if (!universeAvailable) useWorkspace.getState().setView('list');
     }, [connection.id, universeAvailable]);
+
+    // Keyed on the connection only: a universe render failure must not wipe the record trail.
+    useEffect(() => {
+        useRecords.getState().reset();
+        useRecords.getState().setConnection(connection.id);
+    }, [connection.id]);
 
     // `?history=<id>` (from the global history page) opens that entry in a new tab once; it is never auto-run.
     const [historyNotice, setHistoryNotice] = useState<string | null>(null);
@@ -395,7 +399,10 @@ export default function WorkspaceShow({
                                 <div className={centered}>Loading records…</div>
                             }
                         >
-                            <RecordsView connection={connection} />
+                            <RecordsView
+                                connection={connection}
+                                snapshot={snapshot}
+                            />
                         </Suspense>
                     )}
 

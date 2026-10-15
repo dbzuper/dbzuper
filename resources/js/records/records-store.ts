@@ -91,19 +91,38 @@ const initial = (): State => ({
 });
 
 // Every async action captures the current "generation" and drops its result when the trail
-// has been replaced in the meantime. The record queue lives with the generation too.
+// has been replaced in the meantime. The record queue lives with the generation too. In-flight
+// requests are tracked per node id and per cluster key so duplicates are ignored and the
+// requests of removed nodes can be aborted without touching the others.
 type Queue = { active: number; pending: (() => void)[] };
-let inflight = new Set<string>();
 let generation = 0;
-let controller = new AbortController();
+let recordRequests = new Map<string, AbortController>();
+let pageRequests = new Map<string, AbortController>();
 let queue: Queue = { active: 0, pending: [] };
 
 function bump() {
     generation += 1;
-    controller.abort();
-    controller = new AbortController();
+    for (const c of recordRequests.values()) c.abort();
+    for (const c of pageRequests.values()) c.abort();
+    recordRequests = new Map();
+    pageRequests = new Map();
     queue = { active: 0, pending: [] };
-    inflight = new Set();
+}
+
+/** Aborts the requests of nodes (and of clusters grown from nodes) that `keep` rejects. */
+function abortRemoved(keep: (id: string) => boolean) {
+    for (const [id, c] of recordRequests)
+        if (!keep(id)) {
+            c.abort();
+            recordRequests.delete(id);
+        }
+    for (const [key, c] of pageRequests)
+        if (
+            !keep(key.slice(0, key.lastIndexOf('|', key.lastIndexOf('|') - 1)))
+        ) {
+            c.abort();
+            pageRequests.delete(key);
+        }
 }
 
 const isAbort = (e: unknown) =>
@@ -119,23 +138,33 @@ function runQueued(task: () => Promise<void>) {
         }
     };
     q.pending.push(() => {
-        void task().finally(() => {
-            q.active -= 1;
-            pump();
-        });
+        void task()
+            .catch(() => undefined)
+            .finally(() => {
+                q.active -= 1;
+                pump();
+            });
     });
     pump();
 }
 
 export const useRecords = create<RecordsState>()((set, get) => {
-    const current = () => ({ gen: generation, signal: controller.signal });
     const fresh = (gen: number) => gen === generation;
+    const inTrail = (id: string) => get().trail.nodes.some((n) => n.id === id);
 
     const loadRecord = (id: string, direct = false) => {
         const { connectionId, trail } = get();
         const node = trail.nodes.find((n) => n.id === id);
         if (connectionId === null || !node) return;
-        const { gen, signal } = current();
+        // One request per node at a time.
+        if (recordRequests.has(id)) return;
+        const gen = generation;
+        const ctl = new AbortController();
+        const signal = ctl.signal;
+        recordRequests.set(id, ctl);
+        const finish = () => {
+            if (recordRequests.get(id) === ctl) recordRequests.delete(id);
+        };
         const prior = get().records[id];
         set({
             records: {
@@ -144,7 +173,10 @@ export const useRecords = create<RecordsState>()((set, get) => {
             },
         });
         const task = async () => {
-            if (!fresh(gen)) return;
+            if (!fresh(gen) || !inTrail(id)) {
+                finish();
+                return;
+            }
             try {
                 const payload = await recordsApi.show(
                     connectionId,
@@ -152,7 +184,8 @@ export const useRecords = create<RecordsState>()((set, get) => {
                     node.key,
                     signal,
                 );
-                if (!fresh(gen)) return;
+                finish();
+                if (!fresh(gen) || !inTrail(id)) return;
                 set({
                     records: {
                         ...get().records,
@@ -164,7 +197,8 @@ export const useRecords = create<RecordsState>()((set, get) => {
                     },
                 });
             } catch (e) {
-                if (!fresh(gen) || isAbort(e)) return;
+                finish();
+                if (!fresh(gen) || !inTrail(id) || isAbort(e)) return;
                 const preview = get().records[id]?.preview;
                 if (e instanceof ApiError && e.status === 404) {
                     set({
@@ -214,11 +248,16 @@ export const useRecords = create<RecordsState>()((set, get) => {
         const from = trail.nodes.find((n) => n.id === fromId);
         if (connectionId === null || !from) return;
         const key = clusterKey(fromId, summary.id, summary.direction);
-        const { gen, signal } = current();
+        const gen = generation;
         const existing = get().clusters[key];
         // A page is in flight for this port: ignore repeated clicks.
-        if (inflight.has(key)) return;
-        inflight.add(key);
+        if (pageRequests.has(key)) return;
+        const ctl = new AbortController();
+        const signal = ctl.signal;
+        pageRequests.set(key, ctl);
+        const finish = () => {
+            if (pageRequests.get(key) === ctl) pageRequests.delete(key);
+        };
         if (existing)
             set({
                 clusters: {
@@ -240,8 +279,9 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 signal,
             )
             .then((page) => {
-                if (!fresh(gen)) return;
-                inflight.delete(key);
+                finish();
+                // The trail was replaced, or the source card was removed meanwhile.
+                if (!fresh(gen) || !inTrail(fromId)) return;
                 const state = get();
                 const targets = page.rows.map((r) => ({
                     table: page.table,
@@ -272,7 +312,8 @@ export const useRecords = create<RecordsState>()((set, get) => {
                         delete records[id];
 
                 const clusters = { ...state.clusters };
-                if (page.next_cursor !== null) {
+                // Rows refused by the node cap stay reachable: keep the cursor that fetches them again.
+                if (page.next_cursor !== null || result.refused > 0) {
                     const edgeCount = result.trail.edges.filter(
                         (e) =>
                             e.from === fromId &&
@@ -287,7 +328,7 @@ export const useRecords = create<RecordsState>()((set, get) => {
                             summary.count && !summary.count.capped
                                 ? Math.max(0, summary.count.value - edgeCount)
                                 : null,
-                        cursor: page.next_cursor,
+                        cursor: result.refused > 0 ? cursor : page.next_cursor,
                         loading: false,
                     };
                 } else {
@@ -303,9 +344,8 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 result.added.forEach((id) => loadRecord(id));
             })
             .catch((e) => {
-                if (!fresh(gen)) return;
-                inflight.delete(key);
-                if (isAbort(e)) return;
+                finish();
+                if (!fresh(gen) || !inTrail(fromId) || isAbort(e)) return;
                 const cluster = get().clusters[key];
                 if (cluster)
                     set({
@@ -384,6 +424,7 @@ export const useRecords = create<RecordsState>()((set, get) => {
             }
             const nodes = trail.nodes.filter((n) => reach.has(n.id));
             const keep = (k: string) => reach.has(k);
+            abortRemoved(keep);
             set({
                 trail: {
                     nodes,
@@ -403,15 +444,37 @@ export const useRecords = create<RecordsState>()((set, get) => {
         },
         reload: (id) => loadRecord(id),
         setTrail: (trail) => {
-            bump();
+            // Same generation: requests for nodes that stay keep running; only removed nodes are aborted.
+            const ids = new Set(trail.nodes.map((n) => n.id));
+            const state = get();
+            abortRemoved((id) => ids.has(id));
+            const records = Object.fromEntries(
+                Object.entries(state.records).filter(([id]) => ids.has(id)),
+            );
+            const clusters = Object.fromEntries(
+                Object.entries(state.clusters).filter(
+                    ([, c]) =>
+                        ids.has(c.from) &&
+                        trail.edges.some(
+                            (e) =>
+                                e.from === c.from &&
+                                e.rel === c.summary.id &&
+                                e.dir === c.summary.direction,
+                        ),
+                ),
+            );
             set({
                 trail,
-                records: {},
-                clusters: {},
+                records,
+                clusters,
                 notice: null,
-                epoch: get().epoch + 1,
+                epoch: state.epoch + 1,
             });
-            trail.nodes.forEach((n, i) => loadRecord(n.id, i === 0));
+            trail.nodes.forEach((n, i) => {
+                const status = records[n.id]?.status;
+                if (status === 'ready' || status === 'missing') return;
+                loadRecord(n.id, i === 0);
+            });
         },
         dismissNotice: () => set({ notice: null }),
         reset: () => {

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useRecords } from '@/records/records-store';
 import { nodeId, openRoot } from '@/records/trail';
 import type { ConnectionSummary } from '@/types/connection';
+import type { SchemaSnapshot } from '@/types/schema';
 import RecordsView from './records-view';
 
 const api = vi.hoisted(() => ({ show: vi.fn(), related: vi.fn() }));
@@ -16,6 +17,7 @@ vi.stubGlobal(
     },
 );
 
+const snapshot = { relationships: [] } as unknown as SchemaSnapshot;
 const connection = { id: 1 } as ConnectionSummary;
 
 beforeEach(() => {
@@ -26,7 +28,7 @@ beforeEach(() => {
 
 describe('RecordsView', () => {
     it('shows the empty state with the ways to open a record', () => {
-        render(<RecordsView connection={connection} />);
+        render(<RecordsView connection={connection} snapshot={snapshot} />);
         expect(
             screen.getByRole('region', { name: 'Record explorer' }),
         ).toHaveTextContent('Open a record from the Data tab');
@@ -43,7 +45,7 @@ describe('RecordsView', () => {
             values: [1, 'Ada'],
             relationships: [],
         });
-        render(<RecordsView connection={connection} />);
+        render(<RecordsView connection={connection} snapshot={snapshot} />);
         act(() => useRecords.getState().open('users', { id: 1 }));
         expect(await screen.findByText('Ada')).toBeInTheDocument();
         expect(screen.getByText('users')).toBeInTheDocument();

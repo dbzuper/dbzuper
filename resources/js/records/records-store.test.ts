@@ -212,6 +212,22 @@ describe('expand and more', () => {
         expect(s().clusters).toEqual({});
     });
 
+    it('ignores a response for the same card after the trail was reopened on it', async () => {
+        let resolve!: (p: RelatedPayload) => void;
+        api.related.mockReturnValue(
+            new Promise<RelatedPayload>((r) => {
+                resolve = r;
+            }),
+        );
+        s().expand(root, inSummary);
+        s().open('orders', { id: 1 });
+        resolve(related('items', rows(1, 3), 'c'));
+        await flush();
+        await flush();
+        expect(s().trail.nodes).toHaveLength(1);
+        expect(s().clusters).toEqual({});
+    });
+
     it('fetches new nodes lazily with at most four requests at once', async () => {
         let active = 0;
         let peak = 0;
@@ -310,5 +326,165 @@ describe('trail management', () => {
         expect(s().trail.selected).toBe(root);
         s().dismissNotice();
         expect(s().notice).toBeNull();
+    });
+});
+
+describe('trail replacement and removal', () => {
+    const item = (n: number) => nodeId('items', { id: n });
+    const openAndLoad = async () => {
+        s().open('orders', { id: 1 });
+        await vi.waitFor(() => expect(s().records[root].status).toBe('ready'));
+        api.show.mockClear();
+    };
+
+    it('setTrail keeps loaded nodes and fetches only the new one', async () => {
+        await openAndLoad();
+        const trail = openRoot('orders', { id: 1 });
+        s().setTrail({
+            nodes: [
+                ...trail.nodes,
+                { id: item(5), table: 'items', key: { id: 5 } },
+            ],
+            edges: [{ from: root, to: item(5), rel: 'fk', dir: 'in' }],
+            selected: root,
+        });
+        expect(s().records[root].status).toBe('ready');
+        await vi.waitFor(() =>
+            expect(s().records[item(5)].status).toBe('ready'),
+        );
+        expect(api.show).toHaveBeenCalledTimes(1);
+        expect(api.show.mock.calls[0][1]).toBe('items');
+    });
+
+    it('setTrail keeps clusters whose edge survives and drops the rest', async () => {
+        await openAndLoad();
+        api.related.mockResolvedValue(related('items', rows(1, 2), 'c'));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(3));
+        const key = clusterKey(root, inSummary.id, 'in');
+        const keep = structuredClone(s().trail);
+        s().setTrail(keep);
+        expect(s().clusters[key]).toBeDefined();
+        s().setTrail(openRoot('orders', { id: 1 }));
+        expect(s().clusters).toEqual({});
+    });
+
+    it('does not start a second request for a node already loading', async () => {
+        await openAndLoad();
+        api.show.mockReturnValue(new Promise(() => undefined));
+        s().reload(root);
+        s().reload(root);
+        s().reload(root);
+        expect(api.show).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the cursor and the cluster when the node cap refuses rows', async () => {
+        await openAndLoad();
+        api.related
+            .mockResolvedValueOnce(related('items', rows(1, 99), null))
+            .mockResolvedValueOnce(related('items', rows(100, 5), 'next'));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(100));
+        const other = { ...inSummary, id: 'other' };
+        s().expand(root, other);
+        await vi.waitFor(() => expect(s().notice).toBe(TRAIL_FULL_NOTICE));
+        const cluster = s().clusters[clusterKey(root, 'other', 'in')];
+        expect(cluster).toBeDefined();
+        expect(cluster.cursor).toBeNull();
+    });
+
+    it('a failing record does not stall the queue', async () => {
+        await openAndLoad();
+        let n = 0;
+        api.show.mockImplementation(
+            (_c: number, table: string, key: { id: number }) =>
+                ++n === 1
+                    ? Promise.reject(new ApiError(500, {}))
+                    : Promise.resolve(payload(table, key.id)),
+        );
+        api.related.mockResolvedValue(related('items', rows(1, 9), null));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(api.show).toHaveBeenCalledTimes(9));
+        await vi.waitFor(() =>
+            expect(
+                Object.values(s().records).filter((r) => r.status === 'ready'),
+            ).toHaveLength(9),
+        );
+        expect(s().records[item(1)].status).toBe('error');
+    });
+
+    it('queued record fetches of a replaced trail never start', async () => {
+        await openAndLoad();
+        const gates: (() => void)[] = [];
+        api.show.mockImplementation(
+            (_c: number, table: string, key: { id: number }) =>
+                new Promise((resolve) =>
+                    gates.push(() => resolve(payload(table, key.id))),
+                ),
+        );
+        api.related.mockResolvedValue(related('items', rows(1, 10), null));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(api.show).toHaveBeenCalledTimes(4));
+        api.show.mockImplementation(
+            (_c: number, table: string, key: { id: number }) =>
+                Promise.resolve(payload(table, key.id)),
+        );
+        s().open('users', { id: 5 });
+        gates.forEach((g) => g());
+        await flush();
+        await flush();
+        // 4 in flight + the new root; the 6 queued ones were dropped.
+        expect(api.show).toHaveBeenCalledTimes(5);
+        expect(s().trail.nodes).toHaveLength(1);
+    });
+
+    it('more after the trail was replaced is ignored', async () => {
+        await openAndLoad();
+        api.related.mockResolvedValue(related('items', rows(1, 25), 'c1'));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(26));
+        const key = clusterKey(root, inSummary.id, 'in');
+        s().open('users', { id: 5 });
+        api.related.mockClear();
+        s().more(key);
+        expect(api.related).not.toHaveBeenCalled();
+    });
+
+    it('removing a card during its in-flight expand creates no cluster or nodes', async () => {
+        await openAndLoad();
+        api.related.mockResolvedValueOnce(related('items', rows(1, 2), null));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(3));
+        let resolve!: (p: RelatedPayload) => void;
+        api.related.mockReturnValue(
+            new Promise<RelatedPayload>((r) => {
+                resolve = r;
+            }),
+        );
+        s().expand(item(1), { ...outSummary, id: 'x', direction: 'in' });
+        s().remove(item(1));
+        resolve(related('sub', rows(50, 30), 'more'));
+        await flush();
+        await flush();
+        expect(s().trail.nodes).toHaveLength(2);
+        expect(Object.keys(s().clusters)).toEqual([]);
+    });
+
+    it('a record response for a removed card is not stored', async () => {
+        await openAndLoad();
+        let resolve!: (p: RecordPayload) => void;
+        api.show.mockReturnValue(
+            new Promise<RecordPayload>((r) => {
+                resolve = r;
+            }),
+        );
+        api.related.mockResolvedValue(related('items', rows(1, 2), null));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(3));
+        s().remove(item(1));
+        resolve(payload('items', 1));
+        await flush();
+        await flush();
+        expect(s().records[item(1)]).toBeUndefined();
     });
 });

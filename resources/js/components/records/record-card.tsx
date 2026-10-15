@@ -12,11 +12,15 @@ import { cellKind } from '@/grid/cells';
 import { cn } from '@/lib/utils';
 import { recordFields, recordTitle, titleColumn } from '@/records/heuristics';
 import { useRecords, type RecordEntry } from '@/records/records-store';
-import type { RelationshipSummary } from '@/records/types';
+import type { RecordKeyValues, RelationshipSummary } from '@/records/types';
 import type { QueryCell } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
 
-export type RecordNodeData = { id: string; table: string };
+export type RecordNodeData = {
+    id: string;
+    table: string;
+    key: RecordKeyValues;
+};
 export type RecordNodeType = Node<RecordNodeData, 'record'>;
 
 const handleClass = 'pointer-events-none !size-1.5 !border-0 !opacity-0';
@@ -87,6 +91,7 @@ function Port({
             onClick={() => onExpand(summary)}
             className={cn(
                 'nodrag nopan relative flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors motion-reduce:transition-none',
+                'focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none',
                 disabled
                     ? 'cursor-not-allowed text-muted-foreground/50'
                     : 'hover:bg-muted',
@@ -135,6 +140,9 @@ function PortGroup({
 
 export type RecordCardProps = {
     table: string;
+    recordKey: RecordKeyValues;
+    /** Handle ids (`rel:dir`) that trail edges or clusters leave from, whether or not their port is drawn. */
+    edgeHandles?: string[];
     entry: RecordEntry | undefined;
     selected: boolean;
     showInferred: boolean;
@@ -144,8 +152,15 @@ export type RecordCardProps = {
     onReload: () => void;
 };
 
+const formatKey = (key: RecordKeyValues) =>
+    Object.entries(key)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(', ');
+
 export function RecordCard({
     table,
+    recordKey,
+    edgeHandles = [],
     entry,
     selected,
     showInferred,
@@ -170,9 +185,11 @@ export function RecordCard({
     );
     const outgoing = relationships.filter((r) => r.direction === 'out');
     const incoming = relationships.filter((r) => r.direction === 'in');
-    const portKey = relationships
-        .map((r) => `${r.id}:${r.direction}`)
-        .join('|');
+    const portIds = relationships.map((r) => `${r.id}:${r.direction}`);
+    // Edges attach to port handles. A port can be hidden (inferred off) or not drawn yet
+    // (loading, failed, restored trail), so a quiet handle backs every edge without one.
+    const extraHandles = edgeHandles.filter((h) => !portIds.includes(h));
+    const portKey = [...portIds, '#', ...extraHandles].join('|');
 
     // Ports appear after the record loads, so React Flow re-reads the handle positions.
     const updateInternals = useUpdateNodeInternals();
@@ -206,15 +223,27 @@ export function RecordCard({
                 isConnectable={false}
                 className={handleClass}
             />
+            {extraHandles.map((h) => (
+                <Handle
+                    key={h}
+                    type="source"
+                    id={h}
+                    position={
+                        h.endsWith(':out') ? Position.Left : Position.Right
+                    }
+                    isConnectable={false}
+                    className={handleClass}
+                />
+            ))}
             {missing ? (
                 <div className="flex items-center gap-2 px-3 py-3">
-                    <span className="text-muted-foreground">
-                        Record not found
+                    <span className="min-w-0 truncate text-muted-foreground">
+                        {table} · {formatKey(recordKey)} not found
                     </span>
                     <button
                         type="button"
                         onClick={onRemove}
-                        className="nodrag nopan ml-auto rounded border px-2 py-0.5 hover:bg-muted"
+                        className="nodrag nopan ml-auto rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
                     >
                         Remove
                     </button>
@@ -234,25 +263,27 @@ export function RecordCard({
                         </span>
                     </button>
                     {fields.length > 0 && (
-                        <dl
-                            role="list"
+                        <div
+                            role="group"
                             aria-label="Fields"
-                            className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 px-3 pb-2"
+                            className="px-3 pb-2"
                         >
-                            {fields.map((f) => (
-                                <div key={f.name} className="contents">
-                                    <dt className="truncate text-muted-foreground">
-                                        {f.name}
-                                    </dt>
-                                    <dd className="m-0 min-w-0 truncate font-mono">
-                                        <FieldValue
-                                            value={f.value}
-                                            type={types.get(f.name) ?? ''}
-                                        />
-                                    </dd>
-                                </div>
-                            ))}
-                        </dl>
+                            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+                                {fields.map((f) => (
+                                    <div key={f.name} className="contents">
+                                        <dt className="truncate text-muted-foreground">
+                                            {f.name}
+                                        </dt>
+                                        <dd className="m-0 min-w-0 truncate font-mono">
+                                            <FieldValue
+                                                value={f.value}
+                                                type={types.get(f.name) ?? ''}
+                                            />
+                                        </dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        </div>
                     )}
                     {entry?.status === 'error' && (
                         <div className="flex items-center gap-2 border-t px-3 py-2">
@@ -262,7 +293,7 @@ export function RecordCard({
                             <button
                                 type="button"
                                 onClick={onReload}
-                                className="nodrag nopan ml-auto rounded border px-2 py-0.5 hover:bg-muted"
+                                className="nodrag nopan ml-auto rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
                             >
                                 Retry
                             </button>
@@ -309,9 +340,21 @@ export function RecordNode({ data }: NodeProps<RecordNodeType>) {
     const entry = useRecords((s) => s.records[data.id]);
     const selected = useRecords((s) => s.trail.selected === data.id);
     const showInferred = useWorkspace((s) => s.showInferred);
+    // Joined so the selector's result compares equal until the set of edge handles really changes.
+    const handles = useRecords((s) => {
+        const ids = new Set<string>();
+        for (const e of s.trail.edges)
+            if (e.from === data.id) ids.add(`${e.rel}:${e.dir}`);
+        for (const c of Object.values(s.clusters))
+            if (c.from === data.id)
+                ids.add(`${c.summary.id}:${c.summary.direction}`);
+        return [...ids].sort().join('\u0000');
+    });
     return (
         <RecordCard
             table={data.table}
+            recordKey={data.key}
+            edgeHandles={handles === '' ? [] : handles.split('\u0000')}
             entry={entry}
             selected={selected}
             showInferred={showInferred}
