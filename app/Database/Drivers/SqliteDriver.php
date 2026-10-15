@@ -7,6 +7,7 @@ use App\Database\Contracts\SchemaInspector;
 use App\Database\SqlitePathPolicy;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
+use Illuminate\Database\Connection;
 use Pdo\Sqlite;
 
 class SqliteDriver implements Driver
@@ -37,5 +38,10 @@ class SqliteDriver implements Driver
     public function versionQuery(): string
     {
         return 'select sqlite_version() as version';
+    }
+
+    public function applyStatementTimeout(Connection $db, int $seconds): void
+    {
+        // SQLite is in-process; there is no server-side statement timeout to set.
     }
 }

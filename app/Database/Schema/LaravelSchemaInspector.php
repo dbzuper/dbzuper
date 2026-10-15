@@ -29,14 +29,15 @@ abstract class LaravelSchemaInspector implements SchemaInspector
         $rawViews = $builder->getViews($schema);
         $counts = $this->rowCounts($db, $schema, array_column($rawTables, 'name'));
 
+        $described = $this->describe($db, $schema, array_column($rawTables, 'name'), array_column($rawViews, 'name'));
+
         $tables = [];
         $declared = [];
 
         foreach ($rawTables as $raw) {
-            $qualified = $this->qualify($schema, $raw['name']);
             $indexes = array_map(
                 fn (array $i) => new IndexInfo((string) $i['name'], array_values($i['columns']), (bool) $i['unique'], (bool) $i['primary']),
-                $builder->getIndexes($qualified),
+                $described['indexes'][$raw['name']] ?? [],
             );
             usort($indexes, fn (IndexInfo $a, IndexInfo $b) => strcmp($a->name, $b->name));
             $primary = collect($indexes)->firstWhere('primary', true);
@@ -45,12 +46,12 @@ abstract class LaravelSchemaInspector implements SchemaInspector
                 $raw['name'], 'table',
                 $counts[$raw['name']] ?? RowCount::unknown(),
                 isset($raw['size']) ? (int) $raw['size'] : null,
-                array_map(ColumnInfo::fromLaravel(...), $builder->getColumns($qualified)),
+                array_map(ColumnInfo::fromLaravel(...), $described['columns'][$raw['name']] ?? []),
                 $primary?->columns ?? [],
                 $indexes,
             );
 
-            foreach ($builder->getForeignKeys($qualified) as $fk) {
+            foreach ($described['foreignKeys'][$raw['name']] ?? [] as $fk) {
                 if (! $this->sameSchema($fk['foreign_schema'] ?? null, $schema)) {
                     continue; // cross-schema relationships are out of scope for the MVP
                 }
@@ -61,7 +62,7 @@ abstract class LaravelSchemaInspector implements SchemaInspector
         foreach ($rawViews as $raw) {
             $tables[] = new TableInfo(
                 $raw['name'], 'view', RowCount::unknown(), null,
-                array_map(ColumnInfo::fromLaravel(...), $builder->getColumns($this->qualify($schema, $raw['name']))),
+                array_map(ColumnInfo::fromLaravel(...), $described['columns'][$raw['name']] ?? []),
                 [], [],
             );
         }
@@ -78,6 +79,46 @@ abstract class LaravelSchemaInspector implements SchemaInspector
             $tables,
             $relationships,
         );
+    }
+
+    /**
+     * Columns, indexes and foreign keys for the given tables/views, keyed by name.
+     * Default: one Laravel builder call per object (fine for in-process SQLite).
+     *
+     * @param  list<string>  $tableNames
+     * @param  list<string>  $viewNames
+     * @return array{columns: array<string, list<array>>, indexes: array<string, list<array>>, foreignKeys: array<string, list<array>>}
+     */
+    protected function describe(Connection $db, string $schema, array $tableNames, array $viewNames): array
+    {
+        $builder = $db->getSchemaBuilder();
+        $out = ['columns' => [], 'indexes' => [], 'foreignKeys' => []];
+
+        foreach ([...$tableNames, ...$viewNames] as $name) {
+            $out['columns'][$name] = $builder->getColumns($this->qualify($schema, $name));
+        }
+        foreach ($tableNames as $name) {
+            $qualified = $this->qualify($schema, $name);
+            $out['indexes'][$name] = $builder->getIndexes($qualified);
+            $out['foreignKeys'][$name] = $builder->getForeignKeys($qualified);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<object>  $rows  rows carrying a `table_name` property
+     * @param  callable(list<object>): list<array>  $process  a Laravel post-processor method
+     * @return array<string, list<array>>
+     */
+    protected function groupByTable(array $rows, callable $process): array
+    {
+        $grouped = [];
+        foreach ($rows as $row) {
+            $grouped[$row->table_name][] = $row;
+        }
+
+        return array_map(fn (array $group) => $process($group), $grouped);
     }
 
     /** Whether a foreign key's target schema is the inspected one (null means the same schema). */

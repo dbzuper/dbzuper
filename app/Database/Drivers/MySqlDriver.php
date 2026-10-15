@@ -6,6 +6,7 @@ use App\Database\Contracts\Driver;
 use App\Database\Contracts\SchemaInspector;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
+use Illuminate\Database\Connection;
 use PDO;
 use Pdo\Mysql;
 
@@ -54,5 +55,10 @@ class MySqlDriver implements Driver
     public function versionQuery(): string
     {
         return 'select version() as version';
+    }
+
+    public function applyStatementTimeout(Connection $db, int $seconds): void
+    {
+        $db->statement('SET SESSION max_execution_time = '.max(1, $seconds) * 1000);
     }
 }

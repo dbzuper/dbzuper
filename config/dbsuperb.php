@@ -15,4 +15,10 @@ return [
 
     // Schema snapshots retained per connection.
     'snapshot_keep' => 20,
+
+    // Seconds any single schema-introspection statement may run.
+    'introspection_timeout' => (int) env('DBSUPERB_INTROSPECTION_TIMEOUT', 30),
+
+    // Seconds any single data query (table samples, later the SQL editor) may run.
+    'query_timeout' => (int) env('DBSUPERB_QUERY_TIMEOUT', 15),
 ];

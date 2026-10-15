@@ -7,6 +7,7 @@ use App\Database\Contracts\SchemaInspector;
 use App\Database\Exceptions\InvalidConnectionOption;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
+use Illuminate\Database\Connection;
 use PDO;
 
 class PostgresDriver implements Driver
@@ -67,5 +68,10 @@ class PostgresDriver implements Driver
     public function versionQuery(): string
     {
         return 'select version() as version';
+    }
+
+    public function applyStatementTimeout(Connection $db, int $seconds): void
+    {
+        $db->statement('SET statement_timeout = '.max(1, $seconds) * 1000);
     }
 }

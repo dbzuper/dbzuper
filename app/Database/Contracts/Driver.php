@@ -4,6 +4,7 @@ namespace App\Database\Contracts;
 
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
+use Illuminate\Database\Connection;
 
 interface Driver
 {
@@ -16,4 +17,7 @@ interface Driver
 
     /** SQL returning one row with a `version` column. */
     public function versionQuery(): string;
+
+    /** Bound how long any single statement on this session may run. */
+    public function applyStatementTimeout(Connection $db, int $seconds): void;
 }

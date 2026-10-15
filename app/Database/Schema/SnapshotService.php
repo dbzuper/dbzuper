@@ -27,10 +27,12 @@ final class SnapshotService
     public function refresh(SavedConnection $connection): StoredSnapshot
     {
         try {
-            $snapshot = $this->factory->using(
-                $connection,
-                fn (Connection $db) => $this->drivers->for($connection->driver)->inspector()->inspect($db, $connection),
-            );
+            $snapshot = $this->factory->using($connection, function (Connection $db) use ($connection) {
+                $driver = $this->drivers->for($connection->driver);
+                $driver->applyStatementTimeout($db, (int) config('dbsuperb.introspection_timeout'));
+
+                return $driver->inspector()->inspect($db, $connection);
+            });
         } catch (Throwable $e) {
             throw new DatabaseOperationFailed($this->errors->map($e));
         }
