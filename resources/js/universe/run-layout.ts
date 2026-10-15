@@ -13,11 +13,7 @@ export function runLayout(
             new URL('./layout.worker.ts', import.meta.url),
             { type: 'module' },
         );
-        worker.onmessage = (e: MessageEvent<Positions>) => {
-            worker.terminate();
-            resolve(e.data);
-        };
-        worker.onerror = () => {
+        const fallback = () => {
             worker.terminate();
             try {
                 resolve(computeLayout(input, iterations));
@@ -25,6 +21,16 @@ export function runLayout(
                 reject(err);
             }
         };
-        worker.postMessage({ input, iterations });
+        worker.onmessage = (e: MessageEvent<Positions>) => {
+            worker.terminate();
+            resolve(e.data);
+        };
+        worker.onerror = fallback;
+        worker.onmessageerror = fallback;
+        try {
+            worker.postMessage({ input, iterations });
+        } catch {
+            fallback();
+        }
     });
 }
