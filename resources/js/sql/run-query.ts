@@ -1,10 +1,6 @@
 import { ApiError } from '@/lib/http';
 import { dbErrorFrom } from '@/lib/workspace-api';
-import type {
-    ConfirmationPayload,
-    DbErrorPayload,
-    StatementResultPayload,
-} from '@/types/schema';
+import type { ConfirmationPayload, DbErrorPayload } from '@/types/schema';
 import { queryApi, type RunResponse, type StatementInput } from './query-api';
 
 export type ConfirmAnswer = { confirmed: true; typed?: string } | null;
