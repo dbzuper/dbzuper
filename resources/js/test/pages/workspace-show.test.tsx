@@ -151,4 +151,34 @@ describe('workspace page', () => {
         fireEvent.keyDown(window, { key: 'Escape' });
         expect(useWorkspace.getState().selected).toBeNull();
     });
+
+    it('closes only the palette when Escape dismisses it', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByText('orders');
+        act(() => {
+            useWorkspace.getState().select('users');
+            useWorkspace.getState().setFocus('users');
+            useWorkspace.getState().setPaletteOpen(true);
+        });
+        const input = await screen.findByPlaceholderText(
+            'Search tables, columns and actions…',
+        );
+        fireEvent.keyDown(input, { key: 'Escape' });
+        expect(useWorkspace.getState().paletteOpen).toBe(false);
+        expect(useWorkspace.getState().focus).toEqual({
+            table: 'users',
+            depth: 1,
+        });
+        expect(useWorkspace.getState().selected).toBe('users');
+    });
+
+    it('ignores Escape typed into a text field', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByText('orders');
+        act(() => useWorkspace.getState().select('users'));
+        fireEvent.keyDown(screen.getByPlaceholderText('Filter tables'), {
+            key: 'Escape',
+        });
+        expect(useWorkspace.getState().selected).toBe('users');
+    });
 });

@@ -25,7 +25,7 @@ import type {
     LayoutPositionEntry,
     SchemaResponse,
 } from '@/types/schema';
-import { handleEscape } from '@/universe/keyboard';
+import { escapeHandledElsewhere, handleEscape } from '@/universe/keyboard';
 import { useWorkspace } from '@/universe/store';
 import { useDebounced } from '@/universe/use-debounced';
 import { useUniverseModel } from '@/universe/use-universe-model';
@@ -114,6 +114,7 @@ export default function WorkspaceShow({
         const onKey = (e: KeyboardEvent) => {
             if (
                 e.key === 'Escape' &&
+                !escapeHandledElsewhere(e) &&
                 !useWorkspace.getState().paletteOpen &&
                 handleEscape(useWorkspace.getState())
             )
