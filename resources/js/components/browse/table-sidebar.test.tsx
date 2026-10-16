@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import {
+    act,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+    within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse } from '@/browse/browse-store';
 import { usePins } from '@/browse/pins-store';
@@ -231,6 +238,42 @@ describe('TableSidebar', () => {
         expect(
             within(pinned).getByRole('button', { name: 'Remove gone' }),
         ).toBeInTheDocument();
+    });
+
+    it('reaches a missing pin with the arrow keys and removes it with Delete or *', async () => {
+        usePins.setState({
+            byConnection: {
+                1: [
+                    { id: 1, table: 'orders', position: 1 },
+                    { id: 2, table: 'gone', position: 2 },
+                    { id: 4, table: 'lost', position: 3 },
+                ],
+            },
+        });
+        renderSidebar();
+        const orders = within(
+            screen.getByRole('group', { name: 'Pinned' }),
+        ).getByRole('treeitem', { name: /^orders/ });
+        orders.focus();
+        fireEvent.keyDown(orders, { key: 'ArrowDown' });
+        const gone = screen.getByRole('treeitem', {
+            name: 'gone (no longer exists)',
+        });
+        expect(gone).toHaveFocus();
+        expect(gone).toHaveAttribute('tabindex', '0');
+        fireEvent.keyDown(gone, { key: 'Enter' });
+        expect(actions.open).not.toHaveBeenCalled();
+        fireEvent.keyDown(gone, { key: 'Delete' });
+        expect(usePins.getState().isPinned(1, 'gone')).toBe(false);
+        const lost = screen.getByRole('treeitem', {
+            name: 'lost (no longer exists)',
+        });
+        expect(lost).toHaveFocus();
+        fireEvent.keyDown(lost, { key: '*' });
+        // Pin operations on a connection run one after another.
+        await waitFor(() =>
+            expect(usePins.getState().isPinned(1, 'lost')).toBe(false),
+        );
     });
 
     it("highlights the active tab's table", () => {

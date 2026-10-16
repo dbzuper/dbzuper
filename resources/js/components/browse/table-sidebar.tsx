@@ -38,8 +38,13 @@ const NO_PINS: Pin[] = [];
 const NO_RECENTS: string[] = [];
 
 type Section = 'pinned' | 'recent' | 'all';
-/** A tree row: a table, or (table null) a section header. */
-type Item = { key: string; section: Section; table: string | null };
+/** A tree row: a table, or (table null) a section header. `missing` marks a pin whose table no longer exists. */
+type Item = {
+    key: string;
+    section: Section;
+    table: string | null;
+    missing?: boolean;
+};
 const itemKey = (section: Section, table: string) => `${section}:${table}`;
 const headerKey = (section: Section) => `header:${section}`;
 
@@ -302,14 +307,16 @@ export function TableSidebar({
             out.push({ key: headerKey(section), section, table: null });
             if (!openSections[section]) return;
             tables.forEach((table) =>
-                out.push({ key: itemKey(section, table), section, table }),
+                out.push({
+                    key: itemKey(section, table),
+                    section,
+                    table,
+                    // Only pins can name a table the schema no longer has.
+                    missing: !byName.has(table) || undefined,
+                }),
             );
         };
-        if (showPinned)
-            add(
-                'pinned',
-                pinnedTables.filter((t) => byName.has(t)),
-            );
+        if (showPinned) add('pinned', pinnedTables);
         if (showRecent) add('recent', recentTables);
         add('all', allNames);
         return out;
@@ -413,6 +420,17 @@ export function TableSidebar({
         }
         const table = item.table;
         if (table === null) return;
+        if (item.missing) {
+            // A pin of a dropped table can only be removed; focus moves on to its neighbour.
+            if (!['Delete', 'Backspace', '*'].includes(event.key)) return;
+            event.preventDefault();
+            const next = items[index + 1] ?? items[index - 1];
+            if (next) {
+                pendingFocus.current = next.key;
+                setFocusKey(next.key);
+            }
+            return void usePins.getState().toggle(connectionId, table);
+        }
         switch (event.key) {
             case 'Enter':
                 event.preventDefault();
@@ -567,6 +585,7 @@ export function TableSidebar({
                             <div className="overflow-y-auto px-1">
                                 {pins.map((pin) => {
                                     const t = byName.get(pin.table);
+                                    const key = itemKey('pinned', pin.table);
                                     if (!t)
                                         return (
                                             <div
@@ -574,7 +593,13 @@ export function TableSidebar({
                                                 role="treeitem"
                                                 aria-disabled="true"
                                                 aria-label={`${pin.table} (no longer exists)`}
-                                                className="flex h-7 items-center gap-2 pr-1 pl-2 text-sm text-muted-foreground"
+                                                aria-keyshortcuts="Delete *"
+                                                data-key={key}
+                                                tabIndex={
+                                                    tabbableKey === key ? 0 : -1
+                                                }
+                                                onFocus={() => setFocusKey(key)}
+                                                className="flex h-7 items-center gap-2 rounded-sm pr-1 pl-2 text-sm text-muted-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                             >
                                                 <Table2
                                                     className="size-3.5 shrink-0"
@@ -586,8 +611,11 @@ export function TableSidebar({
                                                 >
                                                     {pin.table}
                                                 </span>
+                                                {/* A pointer shortcut: the keyboard removes the pin with Delete or *. */}
                                                 <button
                                                     type="button"
+                                                    tabIndex={-1}
+                                                    title="Remove (Delete)"
                                                     aria-label={`Remove ${pin.table}`}
                                                     onClick={() =>
                                                         void usePins
