@@ -39,7 +39,7 @@ describe('RecordsView', () => {
         render(<RecordsView connection={connection} snapshot={snapshot} />);
         expect(
             screen.getByRole('region', { name: 'Record explorer' }),
-        ).toHaveTextContent('Open a record from the Data tab');
+        ).toHaveTextContent('Open a record from a table tab');
     });
 
     it('renders the trail as cards and shows a dismissible notice', async () => {
@@ -72,16 +72,16 @@ describe('RecordsView', () => {
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
 
-    it('offers the Data tab for a table the explorer cannot open', () => {
+    it('offers a table tab for a table the explorer cannot open', () => {
         render(<RecordsView connection={connection} snapshot={snapshot} />);
         act(() =>
             useRecords.setState({
-                notice: 'logs has no primary key; open it in the Data tab instead.',
+                notice: 'logs has no primary key; open it in a table tab instead.',
                 noticeTable: 'logs',
             }),
         );
         fireEvent.click(
-            screen.getByRole('button', { name: 'Open logs in Data tab' }),
+            screen.getByRole('button', { name: 'Open logs in table tab' }),
         );
         const browse = useBrowse.getState().get(connection.id);
         expect(browse.activeId).toBe('t:logs');
@@ -161,9 +161,9 @@ describe('RecordsView', () => {
         expect(useRecords.getState().trail.selected).toBe(users);
     });
 
-    it('a port to a table without a primary key opens the Data tab filtered on this record', async () => {
+    it('a port to a table without a primary key opens a table tab filtered on this record', async () => {
         await twoCards({ kind: 'table', primary_key: [] });
-        fireEvent.click(await button('Open items (order_id) in Data tab'));
+        fireEvent.click(await button('Open items (order_id) in table tab'));
         expect(api.related).not.toHaveBeenCalled();
         const browse = useBrowse.getState().get(connection.id);
         expect(browse.activeId).toBe('t:items');

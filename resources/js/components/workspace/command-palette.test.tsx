@@ -42,7 +42,7 @@ describe('CommandPalette', () => {
     const searchBox = () =>
         screen.getByPlaceholderText('Search tables, columns and actions…');
 
-    it('opens the picked table as a data tab', () => {
+    it('opens the picked table as a table tab', () => {
         render(
             <CommandPalette
                 connectionId={1}
@@ -60,7 +60,7 @@ describe('CommandPalette', () => {
         expect(useWorkspace.getState().paletteOpen).toBe(false);
     });
 
-    it('opens a data tab with a draft filter when a column is picked', () => {
+    it('opens a table tab with a draft filter when a column is picked', () => {
         render(
             <CommandPalette
                 connectionId={1}

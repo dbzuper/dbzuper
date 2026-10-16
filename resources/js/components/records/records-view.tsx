@@ -52,7 +52,7 @@ const prefersReducedMotion = () =>
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const EMPTY_TEXT =
-    'Open a record from the Data tab, a result row, a foreign-key cell, or the command palette (users 42).';
+    'Open a record from a table tab, a result row, a foreign-key cell, or the command palette (users 42).';
 
 function Explorer({
     connection,
@@ -296,7 +296,7 @@ function Explorer({
                         {noticeTable !== null && (
                             <button
                                 type="button"
-                                aria-label={`Open ${noticeTable} in Data tab`}
+                                aria-label={`Open ${noticeTable} in table tab`}
                                 onClick={() =>
                                     openTableTab(connection.id, noticeTable, {
                                         mode: 'permanent',
@@ -304,7 +304,7 @@ function Explorer({
                                 }
                                 className="ml-auto rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
                             >
-                                Open in Data tab
+                                Open in table tab
                             </button>
                         )}
                         <button

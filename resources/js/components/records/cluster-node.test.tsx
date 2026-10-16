@@ -94,11 +94,11 @@ describe('ClusterNode', () => {
         expect(more).toHaveBeenCalledWith(key);
     });
 
-    it('Open in Data tab opens the table tab filtered on every key column', () => {
+    it('Open in table tab opens the table tab filtered on every key column', () => {
         mount(5);
         useRecords.setState({ connectionId: 1 });
         fireEvent.click(
-            screen.getByRole('button', { name: 'Open in Data tab' }),
+            screen.getByRole('button', { name: 'Open in table tab' }),
         );
         const browse = useBrowse.getState().get(1);
         expect(browse.activeId).toBe('t:order_items');

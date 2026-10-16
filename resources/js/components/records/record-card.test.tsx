@@ -125,7 +125,7 @@ describe('RecordCard', () => {
         expect(onExpand).toHaveBeenCalledWith(s);
     });
 
-    it('opens a parent that cannot be explored in the Data tab, filtered on its key', () => {
+    it('opens a parent that cannot be explored in a table tab, filtered on its key', () => {
         const s = summary({
             table: 'blobs',
             columns: ['a'],
@@ -135,7 +135,7 @@ describe('RecordCard', () => {
             isExplorable: (t) => t !== 'blobs',
         });
         fireEvent.click(
-            screen.getByRole('button', { name: 'Open blobs (a) in Data tab' }),
+            screen.getByRole('button', { name: 'Open blobs (a) in table tab' }),
         );
         expect(onOpenInData).toHaveBeenCalledWith('blobs', [
             { column: 'id', value: '1' },
@@ -143,7 +143,7 @@ describe('RecordCard', () => {
         expect(onExpand).not.toHaveBeenCalled();
     });
 
-    it('opens children that cannot be explored in the Data tab, filtered on this record', () => {
+    it('opens children that cannot be explored in a table tab, filtered on this record', () => {
         const s = summary({
             direction: 'in',
             table: 'audit_log',
@@ -156,7 +156,7 @@ describe('RecordCard', () => {
         });
         fireEvent.click(
             screen.getByRole('button', {
-                name: 'Open audit_log (order_id, shop) in Data tab',
+                name: 'Open audit_log (order_id, shop) in table tab',
             }),
         );
         expect(onOpenInData).toHaveBeenCalledWith('audit_log', [

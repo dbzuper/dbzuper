@@ -91,7 +91,7 @@ function Port({
     /** The port's first page is being fetched. */
     loading: boolean;
     onExpand: (s: RelationshipSummary) => void;
-    /** Set when the target table cannot be explored: the port opens these rows in the Data tab instead. */
+    /** Set when the target table cannot be explored: the port opens these rows in a table tab instead. */
     dataTab: { filters: DataFilters | null } | null;
     onOpenInData: (table: string, filters: DataFilters) => void;
 }) {
@@ -102,7 +102,7 @@ function Port({
         : summary.count !== null && summary.count.value === 0;
     const disabled = empty || (dataTab !== null && dataTab.filters === null);
     const label = dataTab
-        ? `Open ${summary.table} (${cols}) in Data tab`
+        ? `Open ${summary.table} (${cols}) in table tab`
         : out
           ? `Open ${summary.table} (${cols})`
           : `Show ${summary.table} (${cols}), ${recordCountText(summary.count)}`;
@@ -206,7 +206,7 @@ export type RecordCardProps = {
     onReload: () => void;
     /** Handle ids (`rel:dir`) of the ports whose first page is loading. */
     loadingPorts?: string[];
-    /** Whether a related table can be explored as records; other ports open the Data tab. */
+    /** Whether a related table can be explored as records; other ports open a table tab. */
     isExplorable?: (table: string) => boolean;
     onOpenInData?: (table: string, filters: DataFilters) => void;
 };

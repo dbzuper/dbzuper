@@ -103,14 +103,14 @@ describe('open', () => {
                     kind: 'unknown',
                     reason: 'no_primary_key',
                     message:
-                        'logs has no primary key; open it in the Data tab instead.',
+                        'logs has no primary key; open it in a table tab instead.',
                 },
             }),
         );
         s().open('logs', { id: 1 });
         await vi.waitFor(() =>
             expect(s().notice).toBe(
-                'logs has no primary key; open it in the Data tab instead.',
+                'logs has no primary key; open it in a table tab instead.',
             ),
         );
         expect(s().trail.nodes).toEqual([]);
@@ -332,7 +332,7 @@ describe('expand and more', () => {
         expect(s().trail.nodes).toHaveLength(100);
     });
 
-    it('offers the Data tab when the related table has no usable primary key', async () => {
+    it('offers a table tab when the related table has no usable primary key', async () => {
         api.related.mockRejectedValue(
             new ApiError(422, {
                 error: {
@@ -340,7 +340,7 @@ describe('expand and more', () => {
                     reason: 'no_primary_key',
                     sqlstate: null,
                     message:
-                        'items has a binary primary key; open it in the Data tab instead.',
+                        'items has a binary primary key; open it in a table tab instead.',
                 },
             }),
         );

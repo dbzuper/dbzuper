@@ -67,7 +67,7 @@ export function CommandPalette({
         close();
     };
 
-    // Enter and click open the data tab; Shift+Enter keeps the inspector behaviour.
+    // Enter and click open the table tab; Shift+Enter keeps the inspector behaviour.
     const shiftRef = useRef(false);
 
     const pickTable = (table: string) => {

@@ -87,7 +87,7 @@ export function ClusterNode({ data }: NodeProps<ClusterNodeType>) {
                     }}
                     className="nodrag nopan rounded border px-2 py-1 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none disabled:opacity-50"
                 >
-                    Open in Data tab
+                    Open in table tab
                 </button>
             </div>
         </div>

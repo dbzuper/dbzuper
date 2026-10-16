@@ -220,8 +220,8 @@ test('sql: write, run, confirm, inspect results and history', async () => {
 });
 
 test('table tab: filter, sort and open in SQL', async () => {
-    await addSqliteConnection(page, 'Data tab demo', DEMO);
-    await page.getByRole('link', { name: /Data tab demo/ }).click();
+    await addSqliteConnection(page, 'Table tab demo', DEMO);
+    await page.getByRole('link', { name: /Table tab demo/ }).click();
     await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
         timeout: 30_000,
     });
@@ -529,7 +529,7 @@ test('accessibility: no serious or critical axe violations on the main screens',
     ).toBeVisible({ timeout: 15_000 });
     await expectNoA11yViolations(page, { label: 'workspace: SQL dock' });
 
-    // Inspector (Shift+click keeps the palette's inspector behaviour), then its Open data table tab.
+    // Inspector (Shift+click keeps the palette's inspector behaviour), then its Open table tab.
     await page.keyboard.press('Control+k');
     await page.getByPlaceholder(PALETTE_PLACEHOLDER).fill('orders');
     await page

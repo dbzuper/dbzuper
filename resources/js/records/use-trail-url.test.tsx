@@ -393,7 +393,7 @@ describe('useTrailUrl', () => {
                     reason: 'no_primary_key',
                     sqlstate: null,
                     message:
-                        'users has no primary key; open it in the Data tab instead.',
+                        'users has no primary key; open it in a table tab instead.',
                 },
             }),
         );

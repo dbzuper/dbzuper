@@ -50,7 +50,7 @@ type Props = {
      * onOpenForeign), and a leading "Open record" button appears on each row that maps to a record of one explorable table.
      */
     onOpenRecord?: (target: RecordTarget) => void;
-    /** Server-side sorting (data tab); when omitted the grid sorts the fetched rows client-side. */
+    /** Server-side sorting (table tabs); when omitted the grid sorts the fetched rows client-side. */
     sort?: {
         columns: SortColumn[];
         onChange: (columns: SortColumn[]) => void;
