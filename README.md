@@ -2,11 +2,22 @@
 
 **One Workspace. Every Database.** A self-hosted, visual database workspace for MySQL, MariaDB, PostgreSQL and SQLite.
 
-## Requirements
+- **Schema Universe**: your schema as a zoomable graph of tables, relationships (declared and inferred) and clusters, with path finding and JOIN generation.
+- **SQL workspace**: Monaco editor with schema-aware autocompletion, tabs per connection, explain, confirm-before-write safety, read-only connections and query history.
+- **Data explorer**: server-side filters, sorting and paging per table, plus a record explorer that follows a row through its relationships.
+- **Dark by default**: ink and paper themes (dark, light or system), keyboard-first with a command palette, and an automated accessibility gate.
+- **Self-hosted**: one Docker image, no external services at runtime, credentials encrypted at rest.
 
-PHP 8.4 (pdo_mysql, pdo_pgsql, pdo_sqlite), Composer 2, Node 24.
+## Quick start (Docker)
 
-## Local setup
+    docker compose up -d --build
+    docker compose exec app php artisan dbsuperb:install --name=Admin --email=admin@example.com --password='Str0ng-passphrase' --no-interaction
+
+Then open <http://localhost:8080> (or skip the second command and use the setup screen). HTTPS, SQLite files, backups, upgrades and the full environment reference are in [docs/self-hosting.md](docs/self-hosting.md).
+
+## Local development
+
+Requires PHP 8.4 (pdo_mysql, pdo_pgsql, pdo_sqlite), Composer 2 and Node 24.
 
     composer install && npm install
     cp .env.example .env && php artisan key:generate
