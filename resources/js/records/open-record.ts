@@ -1,3 +1,4 @@
+import { useBrowse } from '@/browse/browse-store';
 import { fkTarget } from '@/grid/cells';
 import type {
     QueryCell,
@@ -5,7 +6,6 @@ import type {
     SchemaSnapshot,
     TableSchema,
 } from '@/types/schema';
-import { useWorkspace } from '@/universe/store';
 import { useRecords } from './records-store';
 import type { RecordKeyValues } from './types';
 
@@ -166,7 +166,15 @@ export function parsePaletteRecord(
 export const keyDisplay = (key: RecordKeyValues) =>
     Object.values(key).join(', ');
 
+export const recordsTabTitle = (target: RecordTarget) =>
+    `Records · ${target.table} #${keyDisplay(target.key)}`;
+
+/** Opens a record in the records store and shows the connection's records tab. */
 export function openRecord(target: RecordTarget) {
-    useRecords.getState().open(target.table, target.key);
-    useWorkspace.getState().setView('records');
+    const records = useRecords.getState();
+    records.open(target.table, target.key);
+    if (records.connectionId !== null)
+        useBrowse
+            .getState()
+            .showRecords(records.connectionId, recordsTabTitle(target));
 }

@@ -121,7 +121,7 @@ it('refuses tables whose primary key is binary', function () {
     DB::purge('w');
 
     ($this->show)('blobs', ['id' => 'x'])->assertUnprocessable()->assertJsonPath('error.reason', 'no_primary_key')
-        ->assertJsonPath('error.message', 'blobs has a binary primary key; open it in the Data tab instead.');
+        ->assertJsonPath('error.message', 'blobs has a binary primary key; open it in a table tab instead.');
 });
 
 it('refuses tables whose primary key is floating point', function (string $type) {
@@ -130,7 +130,7 @@ it('refuses tables whose primary key is floating point', function (string $type)
     DB::purge('w');
 
     ($this->show)('readings', ['id' => 1.5])->assertUnprocessable()->assertJsonPath('error.reason', 'no_primary_key')
-        ->assertJsonPath('error.message', 'readings has a floating-point primary key; open it in the Data tab instead.');
+        ->assertJsonPath('error.message', 'readings has a floating-point primary key; open it in a table tab instead.');
 })->with(['REAL', 'DOUBLE', 'FLOAT', 'DOUBLE PRECISION']);
 
 it('counts children and round-trips string keys that are long or contain special characters', function (string $code) {

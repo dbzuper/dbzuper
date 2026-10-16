@@ -129,7 +129,7 @@ it('refuses targets with a binary primary key using the binary message', functio
 
     ($this->related)('blob_kids', ['id' => 1], ($this->relId)('blob_kids', 'blob_parents'), 'out')->assertUnprocessable()
         ->assertJsonPath('error.reason', 'no_primary_key')
-        ->assertJsonPath('error.message', 'blob_parents has a binary primary key; open it in the Data tab instead.');
+        ->assertJsonPath('error.message', 'blob_parents has a binary primary key; open it in a table tab instead.');
 });
 
 it('refuses targets with a floating-point primary key', function () {
@@ -141,7 +141,7 @@ it('refuses targets with a floating-point primary key', function () {
 
     ($this->related)('real_kids', ['id' => 1], ($this->relId)('real_kids', 'real_parents'), 'out')->assertUnprocessable()
         ->assertJsonPath('error.reason', 'no_primary_key')
-        ->assertJsonPath('error.message', 'real_parents has a floating-point primary key; open it in the Data tab instead.');
+        ->assertJsonPath('error.message', 'real_parents has a floating-point primary key; open it in a table tab instead.');
 });
 
 it('refuses a view as the source', function () {

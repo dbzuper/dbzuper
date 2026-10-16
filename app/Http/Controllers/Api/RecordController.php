@@ -165,7 +165,7 @@ class RecordController extends Controller
 
         return response()->json(['error' => [
             'kind' => 'unknown', 'sqlstate' => null, 'reason' => 'no_primary_key',
-            'message' => "{$info['name']} has {$what}; open it in the Data tab instead.",
+            'message' => "{$info['name']} has {$what}; open it in a table tab instead.",
         ]], 422);
     }
 }

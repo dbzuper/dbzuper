@@ -54,10 +54,11 @@ test('universe: explore, inspect and find a path', async ({ page }) => {
     await page
         .getByPlaceholder('Search tables, columns and actions…')
         .fill('orders');
+    // Shift+click keeps the inspector behaviour (a plain pick opens the table tab).
     await page
         .getByRole('option', { name: /^orders/ })
         .first()
-        .click();
+        .click({ modifiers: ['Shift'] });
 
     const inspector = page.getByRole('complementary', { name: 'Inspector' });
     await expect(
@@ -68,8 +69,23 @@ test('universe: explore, inspect and find a path', async ({ page }) => {
     await inspector.getByRole('tab', { name: 'Relationships' }).click();
     await expect(inspector.getByText(/% inferred/)).toBeVisible();
 
-    await inspector.getByRole('tab', { name: 'Data' }).click();
-    await expect(inspector.getByText('paid')).toBeVisible();
+    // The inspector's rows live in the table tab now; the Universe tab brings the inspector back.
+    await inspector.getByRole('button', { name: 'Open data' }).click();
+    const tabs = page.getByRole('tablist', { name: 'Open tabs' });
+    await expect(tabs.getByRole('tab', { name: 'orders' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+    );
+    await expect(
+        page
+            .getByRole('main')
+            .getByRole('tabpanel')
+            .getByRole('gridcell', { name: 'paid', exact: true }),
+    ).toBeVisible();
+    await tabs.getByRole('tab', { name: 'Universe' }).click();
+    await expect(
+        inspector.getByRole('heading', { name: 'orders' }),
+    ).toBeVisible();
 
     await inspector.getByRole('tab', { name: 'DDL' }).click();
     await expect(inspector.getByTestId('ddl')).toContainText('CREATE TABLE');
@@ -89,9 +105,10 @@ test('universe: explore, inspect and find a path', async ({ page }) => {
     expect(monacoRequests).toEqual([]);
 
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'List view' }).click();
     await expect(
-        page.getByRole('button', { name: 'order_items' }),
+        page
+            .getByRole('tree', { name: 'Tables' })
+            .getByRole('treeitem', { name: /^order_items,/ }),
     ).toBeVisible();
 });
 
@@ -123,11 +140,28 @@ test('universe: 2,000-table schema becomes interactive within budget (and the co
 
     const t0 = Date.now();
     await page.reload();
-    // locator.waitFor() re-checks every animation frame; expect().toBeVisible() backs off to
-    // 1 s retries, which would add up to a second of polling delay to the measurement.
-    await page
-        .locator('[data-universe-ready="true"]')
-        .waitFor({ state: 'visible', timeout: 30_000 });
+    // Checked on every animation frame in the page: locator.waitFor() and expect() retry with
+    // backoff (up to 500 ms and 1 s), which would add polling delay to the measurement.
+    await page.waitForFunction(
+        () => {
+            // Present, rendered (not inside a hidden tab, not visibility: hidden or opacity 0) and with a
+            // non-empty box: Playwright's 'visible' state plus the opacity check.
+            const el = document.querySelector('[data-universe-ready="true"]');
+            if (!el) return false;
+            const rect = el.getBoundingClientRect();
+            return (
+                (el.checkVisibility?.({
+                    visibilityProperty: true,
+                    opacityProperty: true,
+                }) ??
+                    el.getClientRects().length > 0) &&
+                rect.width > 0 &&
+                rect.height > 0
+            );
+        },
+        null,
+        { polling: 'raf', timeout: 30_000 },
+    );
     const elapsed = Date.now() - t0;
 
     test.info().annotations.push({

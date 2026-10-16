@@ -9,10 +9,19 @@ import {
     useState,
 } from 'react';
 import { toast } from 'sonner';
+import { useActiveTab, useBrowse } from '@/browse/browse-store';
+import { usePins } from '@/browse/pins-store';
+import { rowsCache } from '@/browse/rows-cache';
+import { dispatchBrowseKey } from '@/browse/key-dispatch';
+import { useSidebarPrefs } from '@/browse/sidebar-prefs';
+import { makeTableActions } from '@/browse/table-actions';
+import { useBrowseUrl } from '@/browse/use-browse-url';
+import { panelDomId, TabBar, tabDomId } from '@/components/browse/tab-bar';
+import { TableSidebar } from '@/components/browse/table-sidebar';
+import { TableTabView } from '@/components/browse/table-tab';
 import { HistoryList } from '@/components/history/history-list';
 import { InspectorPanel } from '@/components/inspector/inspector-panel';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { SkipLink } from '@/components/skip-link';
 import { UniverseBoundary } from '@/components/universe/universe-boundary';
 import { CommandPalette } from '@/components/workspace/command-palette';
@@ -20,7 +29,6 @@ import { FocusChip } from '@/components/workspace/focus-chip';
 import { PathDialog } from '@/components/workspace/path-dialog';
 import { PathPickChip } from '@/components/workspace/path-pick-chip';
 import { LeftRail } from '@/components/workspace/left-rail';
-import { TableList } from '@/components/workspace/table-list';
 import { WorkspaceHeader } from '@/components/workspace/workspace-header';
 import { historyApi } from '@/lib/history-api';
 import { dbErrorFrom, workspaceApi } from '@/lib/workspace-api';
@@ -34,6 +42,7 @@ import type {
     LayoutPositionEntry,
     SchemaResponse,
 } from '@/types/schema';
+import { clearPendingFlyTo } from '@/universe/controller';
 import { escapeHandledElsewhere, handleEscape } from '@/universe/keyboard';
 import { createLayoutSaver, type LayoutSaver } from '@/universe/layout-save';
 import { useWorkspace } from '@/universe/store';
@@ -52,7 +61,7 @@ const UniverseCanvas = lazy(() =>
 );
 
 const SqlDock = lazy(() => import('@/components/sql/sql-dock'));
-// React Flow stays out of the main and workspace chunks until the records view is opened.
+// React Flow stays out of the main and workspace chunks until the records tab is opened.
 const RecordsView = lazy(() => import('@/components/records/records-view'));
 
 const centered =
@@ -67,33 +76,38 @@ export default function WorkspaceShow({
     const [saved, setSaved] = useState<LayoutPositionEntry[] | null>(null);
     const [error, setError] = useState<DbErrorPayload | null>(null);
     const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState('');
     const [webgl] = useState(() => hasWebGL());
     const [renderFailed, setRenderFailed] = useState(false);
     const renderFailedRef = useRef(false);
 
-    const view = useWorkspace((s) => s.view);
     const selected = useWorkspace((s) => s.selected);
-    const select = useWorkspace((s) => s.select);
     const universeAvailable = webgl && !renderFailed;
-    const universeAvailableRef = useRef(universeAvailable);
-    universeAvailableRef.current = universeAvailable;
+    const active = useActiveTab(connection.id);
+    const sidebarCollapsed = useSidebarPrefs((s) => s.collapsed);
+    // The universe mounts the first time its tab is shown and then stays mounted (hidden behind
+    // other tabs), so switching back keeps the camera and costs no rebuild.
+    const [universeVisited, setUniverseVisited] = useState(false);
+    if (active.kind === 'universe' && !universeVisited)
+        setUniverseVisited(true);
+    // Read by the window Escape handler: path, focus and selection only unwind on the Universe tab.
+    const onUniverseRef = useRef(active.kind === 'universe');
+    onUniverseRef.current = active.kind === 'universe';
 
     // Keyed on the connection only: losing the universe must not wipe the selection or other state.
     useEffect(() => {
         useWorkspace.getState().reset();
-        if (!universeAvailableRef.current)
-            useWorkspace.getState().setView('list');
+        clearPendingFlyTo();
     }, [connection.id]);
-
-    useEffect(() => {
-        if (!universeAvailable) useWorkspace.getState().setView('list');
-    }, [universeAvailable]);
 
     // Keyed on the connection only: a universe render failure must not wipe the record trail.
     useEffect(() => {
         useRecords.getState().reset();
         useRecords.getState().setConnection(connection.id);
+    }, [connection.id]);
+
+    // Pins are loaded here, not by the sidebar, so the table-tab star and tab menu are right while it is collapsed.
+    useEffect(() => {
+        void usePins.getState().load(connection.id);
     }, [connection.id]);
 
     // `?history=<id>` (from the global history page) opens that entry in a new tab once; it is never auto-run.
@@ -172,6 +186,23 @@ export default function WorkspaceShow({
                     })),
                 ]);
                 if (!isCurrent()) return;
+                // Open tabs (also those restored from storage) may filter or sort on columns the
+                // schema no longer has.
+                const { cleaned } = useBrowse
+                    .getState()
+                    .reconcile(
+                        connection.id,
+                        new Map(
+                            schema.snapshot.tables.map((t) => [
+                                t.name,
+                                t.columns.map((c) => c.name),
+                            ]),
+                        ),
+                    );
+                for (const t of cleaned)
+                    toast(`Filters on removed columns of ${t} were cleared.`);
+                // Cached pages may predate the refreshed schema.
+                if (refresh) rowsCache.clear();
                 setData(schema);
                 setSaved(layout.positions);
             } catch (e) {
@@ -249,7 +280,7 @@ export default function WorkspaceShow({
                 e.key === 'Escape' &&
                 !escapeHandledElsewhere(e) &&
                 !useWorkspace.getState().paletteOpen &&
-                handleEscape(useWorkspace.getState())
+                handleEscape(useWorkspace.getState(), onUniverseRef.current)
             )
                 e.preventDefault();
         };
@@ -279,6 +310,17 @@ export default function WorkspaceShow({
         return () => window.removeEventListener('keydown', onKey);
     }, []);
 
+    const tableTabActive = active.kind === 'table';
+    const tableTabActiveRef = useRef(tableTabActive);
+    tableTabActiveRef.current = tableTabActive;
+    const connectionId = connection.id;
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) =>
+            dispatchBrowseKey(e, connectionId, tableTabActiveRef.current);
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [connectionId]);
+
     const dockOpen = useWorkspace((s) => s.dockOpen);
     const historyOpen = useWorkspace((s) => s.historyOpen);
     const pathFrom = useWorkspace((s) => s.pathFrom);
@@ -291,6 +333,12 @@ export default function WorkspaceShow({
     // `?r=` keeps the exploration trail in the URL (restore, push per change, back/forward). It must
     // come after the effect that binds the records store to the connection.
     useTrailUrl(snapshot);
+    // `?tab=` names the active table tab; it is read once the snapshot is in.
+    useBrowseUrl(connection.id, snapshot);
+    const actions = useMemo(
+        () => (snapshot ? makeTableActions(connection, snapshot) : null),
+        [connection, snapshot],
+    );
     const {
         model,
         status,
@@ -318,10 +366,13 @@ export default function WorkspaceShow({
         renderFailedRef.current = true;
         setRenderFailed(true);
         toast.error(
-            'The universe could not be rendered; showing the table list instead.',
+            'The universe could not be rendered; browse tables from the sidebar instead.',
             { id: 'universe-render-failed' },
         );
     }, []);
+
+    const hasTables = snapshot !== null && snapshot.tables.length > 0;
+    const onUniverse = active.kind === 'universe';
 
     return (
         <div className="flex h-dvh flex-col bg-background text-foreground">
@@ -355,24 +406,22 @@ export default function WorkspaceShow({
                     {historyNotice}
                 </div>
             )}
-            {!universeAvailable && (
-                <div
-                    role="status"
-                    className="border-b px-4 py-1.5 text-xs text-muted-foreground"
-                >
-                    WebGL is not available in this browser, so the schema is
-                    shown as a list.
-                </div>
-            )}
 
             <div className="flex min-h-0 flex-1">
-                <LeftRail universeAvailable={universeAvailable} />
+                <LeftRail connectionId={connection.id} />
+                {!sidebarCollapsed && snapshot && actions && (
+                    <TableSidebar
+                        connectionId={connection.id}
+                        snapshot={snapshot}
+                        actions={actions}
+                    />
+                )}
 
                 <main
                     id="main"
                     tabIndex={-1}
                     data-testid="workspace-main"
-                    className="relative min-w-0 flex-1 focus:outline-none"
+                    className="relative flex min-w-0 flex-1 flex-col focus:outline-none"
                 >
                     {error && (
                         <div className="absolute inset-x-0 top-0 z-10 m-4 flex items-center gap-3 rounded-md border border-destructive/40 bg-background px-3 py-2 text-sm">
@@ -390,38 +439,41 @@ export default function WorkspaceShow({
                         </div>
                     )}
 
-                    {snapshot && snapshot.tables.length === 0 && (
-                        <div className={centered}>
-                            This database has no tables yet.
-                        </div>
+                    {snapshot && actions && (
+                        <TabBar
+                            connectionId={connection.id}
+                            actions={actions}
+                        />
                     )}
 
-                    {snapshot &&
-                        snapshot.tables.length > 0 &&
-                        view === 'list' && (
-                            <div className="h-full overflow-auto p-4">
-                                <Input
-                                    placeholder="Filter tables"
-                                    value={filter}
-                                    onChange={(e) => setFilter(e.target.value)}
-                                    className="mb-3 w-64"
-                                />
-                                <div className="rounded-lg border">
-                                    <TableList
-                                        snapshot={snapshot}
-                                        filter={filter}
-                                        onSelect={(t) => select(t)}
-                                        selected={selected}
-                                    />
-                                </div>
+                    <div
+                        role={snapshot ? 'tabpanel' : undefined}
+                        id={snapshot ? panelDomId : undefined}
+                        aria-labelledby={
+                            snapshot ? tabDomId(active.id) : undefined
+                        }
+                        className="relative min-h-0 flex-1"
+                    >
+                        {!snapshot && loading && (
+                            <div className={centered}>Loading schema…</div>
+                        )}
+
+                        {snapshot && !hasTables && onUniverse && (
+                            <div className={centered}>
+                                This database has no tables yet.
                             </div>
                         )}
 
-                    {snapshot &&
-                        snapshot.tables.length > 0 &&
-                        view === 'universe' &&
-                        universeAvailable && (
-                            <>
+                        {hasTables && onUniverse && !universeAvailable && (
+                            <div className={centered}>
+                                {webgl
+                                    ? 'The universe could not be rendered. Browse tables from the sidebar.'
+                                    : 'WebGL is not available in this browser. Browse tables from the sidebar.'}
+                            </div>
+                        )}
+
+                        {hasTables && universeAvailable && universeVisited && (
+                            <div hidden={!onUniverse} className="h-full">
                                 {model && status === 'ready' && (
                                     <UniverseBoundary onError={onRenderError}>
                                         <Suspense
@@ -432,6 +484,7 @@ export default function WorkspaceShow({
                                             }
                                         >
                                             <UniverseCanvas
+                                                connectionId={connection.id}
                                                 model={model}
                                                 snapshot={snapshot}
                                                 onRelayout={relayout}
@@ -455,29 +508,39 @@ export default function WorkspaceShow({
                                         role="alert"
                                         className="flex h-full items-center justify-center text-sm text-destructive"
                                     >
-                                        Layout failed. Switch to the list view
-                                        or refresh the schema.
+                                        Layout failed. Browse tables from the
+                                        sidebar or refresh the schema.
                                     </div>
                                 )}
-                            </>
+                            </div>
                         )}
 
-                    {snapshot && view === 'records' && (
-                        <Suspense
-                            fallback={
-                                <div className={centered}>Loading records…</div>
-                            }
-                        >
-                            <RecordsView
+                        {snapshot && active.kind === 'records' && (
+                            <Suspense
+                                fallback={
+                                    <div className={centered}>
+                                        Loading records…
+                                    </div>
+                                }
+                            >
+                                <RecordsView
+                                    connection={connection}
+                                    snapshot={snapshot}
+                                />
+                            </Suspense>
+                        )}
+
+                        {snapshot && actions && active.kind === 'table' && (
+                            <TableTabView
+                                key={active.id}
                                 connection={connection}
                                 snapshot={snapshot}
+                                tab={active}
+                                actions={actions}
                             />
-                        </Suspense>
-                    )}
+                        )}
+                    </div>
 
-                    {!snapshot && loading && (
-                        <div className={centered}>Loading schema…</div>
-                    )}
                     {dockOpen && (
                         <Suspense fallback={null}>
                             <SqlDock
@@ -494,13 +557,13 @@ export default function WorkspaceShow({
                     )}
                     {snapshot && (
                         <CommandPalette
+                            connectionId={connection.id}
                             snapshot={snapshot}
                             onRefresh={() => void load(true)}
-                            universeAvailable={universeAvailable}
                         />
                     )}
-                    <FocusChip />
-                    <PathPickChip />
+                    {onUniverse && <FocusChip />}
+                    {onUniverse && <PathPickChip />}
                 </main>
 
                 {historyOpen && (
@@ -519,7 +582,7 @@ export default function WorkspaceShow({
                         />
                     </aside>
                 )}
-                {!historyOpen && selectedTable && (
+                {!historyOpen && onUniverse && selectedTable && (
                     <aside
                         aria-label="Inspector"
                         className="flex w-[420px] shrink-0 flex-col border-l"

@@ -61,7 +61,7 @@ type State = {
     records: Record<string, RecordEntry>;
     clusters: Record<string, ClusterState>;
     notice: string | null;
-    /** A table the notice offers to open in the Data tab (it cannot be explored as records). */
+    /** A table the notice offers to open in a table tab (it cannot be explored as records). */
     noticeTable: string | null;
     /** Relationship ports whose first page is loading, by cluster key. */
     loadingPorts: Record<string, { from: string; port: string }>;

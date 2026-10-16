@@ -27,9 +27,10 @@ export const TableCard = memo(function TableCard({
 
     return (
         <div
+            // Named by its visible text (table, rows, columns): WCAG 2.5.3 wants a label that
+            // starts from what is on screen, which an aria-label like "Table orders" did not.
             role="button"
             tabIndex={0}
-            aria-label={`Table ${table.name}`}
             onClick={() => onSelect(table.name)}
             onDoubleClick={() => onFocus?.(table.name)}
             onKeyDown={(e) => {
@@ -48,7 +49,7 @@ export const TableCard = memo(function TableCard({
             <div className="flex items-center gap-2 border-b px-3 py-1.5">
                 <span className="truncate font-mono text-xs font-semibold">
                     {table.name}
-                </span>
+                </span>{' '}
                 {table.kind === 'view' && (
                     <span className="rounded border border-dashed px-1 text-[10px] text-muted-foreground">
                         view

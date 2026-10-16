@@ -337,3 +337,254 @@ describe('CellView object values', () => {
         ).toBeInTheDocument();
     });
 });
+
+describe('table tab features', () => {
+    const tabColumns: QueryColumn[] = [
+        { name: 'id', type: 'integer', table: 'users' },
+        { name: 'name', type: 'text', table: 'users' },
+        { name: 'secret', type: 'text', table: 'users' },
+    ];
+    const data: QueryCell[][] = [
+        [1, 'Ada', 'x'],
+        [2, 'Grace', 'y'],
+    ];
+    const wrap = (node: React.ReactNode) => (
+        <div style={{ blockSize: 400 }}>{node}</div>
+    );
+    const idOnly = {
+        columns: tabColumns.slice(0, 1),
+        rows: data.map((r) => [r[0]]),
+    };
+
+    it('hides columns and reports filter clicks without sorting', () => {
+        const onFilterColumn = vi.fn();
+        const onSort = vi.fn();
+        render(
+            wrap(
+                <ResultGrid
+                    columns={tabColumns}
+                    rows={data}
+                    layout={{
+                        value: { widths: {}, hidden: ['id'] },
+                        onChange: vi.fn(),
+                    }}
+                    onFilterColumn={onFilterColumn}
+                    sort={{ columns: [], onChange: onSort, maxKeys: 3 }}
+                />,
+            ),
+        );
+        expect(
+            screen.queryByRole('columnheader', { name: /id/ }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.getByRole('columnheader', { name: /name/ }),
+        ).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Filter name' }));
+        expect(onFilterColumn).toHaveBeenCalledWith('name');
+        expect(onSort).not.toHaveBeenCalled();
+    });
+
+    it('filters, not sorts, when the header filter button is activated by keyboard', () => {
+        const onFilterColumn = vi.fn();
+        const onSort = vi.fn();
+        render(
+            wrap(
+                <ResultGrid
+                    {...idOnly}
+                    onFilterColumn={onFilterColumn}
+                    sort={{ columns: [], onChange: onSort }}
+                />,
+            ),
+        );
+        fireEvent.keyDown(screen.getByRole('button', { name: 'Filter id' }), {
+            key: 'Enter',
+        });
+        expect(onFilterColumn).toHaveBeenCalledWith('id');
+        expect(onSort).not.toHaveBeenCalled();
+    });
+
+    it('offers no row menu when the context click is on the header', () => {
+        render(
+            wrap(
+                <ResultGrid
+                    {...idOnly}
+                    rowMenu={{ dialect: 'pgsql', table: 'users' }}
+                />,
+            ),
+        );
+        fireEvent.contextMenu(screen.getByRole('gridcell', { name: '2' }));
+        fireEvent.keyDown(document.body, { key: 'Escape' });
+        fireEvent.contextMenu(screen.getByRole('columnheader', { name: /id/ }));
+        expect(screen.queryByRole('menuitem')).toBeNull();
+    });
+
+    it('opens rows from the row button and highlights the active row', () => {
+        const onOpenRow = vi.fn();
+        render(
+            wrap(
+                <ResultGrid
+                    columns={tabColumns}
+                    rows={data}
+                    onOpenRow={onOpenRow}
+                    activeRow={1}
+                />,
+            ),
+        );
+        expect(
+            screen.getAllByRole('button', { name: 'Open row' })[1],
+        ).toHaveAttribute('data-row-index', '1');
+        fireEvent.click(screen.getAllByRole('button', { name: 'Open row' })[1]);
+        expect(onOpenRow).toHaveBeenCalledWith(1);
+        expect(
+            screen
+                .getAllByRole('row')
+                .some((r) => r.classList.contains('rdg-row-active')),
+        ).toBe(true);
+    });
+
+    it('keeps up to maxKeys sort keys', () => {
+        const onChange = vi.fn();
+        render(
+            wrap(
+                <ResultGrid
+                    {...idOnly}
+                    sort={{
+                        columns: [{ columnKey: '5', direction: 'ASC' }],
+                        onChange,
+                        maxKeys: 3,
+                    }}
+                />,
+            ),
+        );
+        fireEvent.click(screen.getByRole('columnheader', { name: /id/ }), {
+            ctrlKey: true,
+        });
+        expect(onChange.mock.calls[0][0]).toHaveLength(2);
+    });
+
+    it('trims the oldest sort key beyond maxKeys and defaults to one key', () => {
+        const onChange = vi.fn();
+        const { rerender } = render(
+            wrap(
+                <ResultGrid
+                    {...idOnly}
+                    sort={{
+                        columns: [
+                            { columnKey: '5', direction: 'ASC' },
+                            { columnKey: '6', direction: 'ASC' },
+                        ],
+                        onChange,
+                        maxKeys: 2,
+                    }}
+                />,
+            ),
+        );
+        fireEvent.click(screen.getByRole('columnheader', { name: /id/ }), {
+            ctrlKey: true,
+        });
+        expect(onChange.mock.calls[0][0]).toHaveLength(2);
+        rerender(
+            wrap(<ResultGrid {...idOnly} sort={{ columns: [], onChange }} />),
+        );
+        fireEvent.click(screen.getByRole('columnheader', { name: /id/ }));
+        expect(onChange.mock.calls[1][0]).toHaveLength(1);
+    });
+
+    it('copies selected rows as INSERT from the row menu', async () => {
+        const write = vi.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText: write } });
+        render(
+            wrap(
+                <ResultGrid
+                    columns={tabColumns}
+                    rows={data}
+                    rowMenu={{ dialect: 'pgsql', table: 'users' }}
+                />,
+            ),
+        );
+        fireEvent.contextMenu(screen.getByRole('gridcell', { name: '2' }));
+        fireEvent.click(
+            await screen.findByRole('menuitem', { name: 'Copy as INSERT' }),
+        );
+        await vi.waitFor(() =>
+            expect(write).toHaveBeenCalledWith(
+                expect.stringContaining("(2, 'Grace', 'y');"),
+            ),
+        );
+    });
+
+    it('calls onOpenRow on Enter', () => {
+        const onOpenRow = vi.fn();
+        render(
+            wrap(
+                <ResultGrid
+                    columns={tabColumns}
+                    rows={data}
+                    onOpenRow={onOpenRow}
+                />,
+            ),
+        );
+        const cell = screen.getByRole('gridcell', { name: '2' });
+        fireEvent.mouseDown(cell);
+        fireEvent.click(cell);
+        fireEvent.keyDown(cell, { key: 'Enter' });
+        expect(onOpenRow).toHaveBeenCalledWith(1);
+    });
+});
+
+describe('cell display', () => {
+    it('marks an empty string distinctly from NULL', () => {
+        const { container } = render(
+            <CellView value="" type="text" onOpen={() => {}} />,
+        );
+        const el = container.querySelector('[data-empty="true"]');
+        expect(el).not.toBeNull();
+        expect(el).toHaveClass('bg-muted/40');
+        expect(container.querySelector('[data-null="true"]')).toBeNull();
+    });
+
+    it('renders booleans as check and cross marks', () => {
+        render(
+            <>
+                <CellView value={true} type="bool" onOpen={() => {}} />
+                <CellView value={false} type="bool" onOpen={() => {}} />
+            </>,
+        );
+        expect(screen.getByLabelText('true')).toHaveTextContent('✓');
+        expect(screen.getByLabelText('false')).toHaveTextContent('✗');
+    });
+
+    it('renders the binary placeholder as a blob size', () => {
+        render(
+            <CellView
+                value="[binary 12288 bytes]"
+                type="blob"
+                onOpen={() => {}}
+            />,
+        );
+        expect(screen.getByText('‹blob 12 KB›')).toBeInTheDocument();
+    });
+
+    it('gives truncated text a title with its first 500 characters', () => {
+        const long = 'y'.repeat(700);
+        const { container } = render(
+            <CellView value={long} type="text" onOpen={() => {}} />,
+        );
+        expect(container.querySelector('[title]')).toHaveAttribute(
+            'title',
+            'y'.repeat(500),
+        );
+    });
+});
+
+describe('cell titles', () => {
+    it('titles short text cells too', () => {
+        const { container } = render(
+            <CellView value="hello" type="text" onOpen={() => {}} />,
+        );
+        expect(container.querySelector('[title]')).toHaveAttribute(
+            'title',
+            'hello',
+        );
+    });
+});

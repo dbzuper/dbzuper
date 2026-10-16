@@ -1,0 +1,308 @@
+import {
+    act,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+    within,
+} from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useBrowse } from '@/browse/browse-store';
+import { usePins } from '@/browse/pins-store';
+import type { SchemaSnapshot } from '@/types/schema';
+import { TableSidebar } from './table-sidebar';
+
+vi.mock('@tanstack/react-virtual', () => ({
+    useVirtualizer: ({ count }: { count: number }) => ({
+        getVirtualItems: () =>
+            Array.from({ length: count }, (_, index) => ({
+                index,
+                key: index,
+                start: index * 28,
+                size: 28,
+            })),
+        getTotalSize: () => count * 28,
+        scrollToIndex: vi.fn(),
+    }),
+}));
+vi.mock('@/lib/pins-api', () => ({
+    pinsApi: {
+        list: vi.fn().mockResolvedValue({ pins: [] }),
+        add: vi.fn().mockResolvedValue({
+            pin: { id: 3, table: 'orders', position: 1 },
+        }),
+        remove: vi.fn(),
+        reorder: vi.fn(),
+    },
+}));
+
+const table = (name: string, kind: 'table' | 'view' = 'table') => ({
+    name,
+    kind,
+    row_count: { count: 1200, kind: 'estimate' as const },
+    size_bytes: null,
+    primary_key: ['id'],
+    columns: [
+        {
+            name: 'id',
+            type: 'integer',
+            type_name: 'integer',
+            nullable: false,
+            default: null,
+            auto_increment: true,
+            comment: null,
+        },
+    ],
+    indexes: [],
+});
+const snapshot = {
+    driver: 'mysql',
+    database: 'd',
+    schema: null,
+    generated_at: '',
+    hash: '',
+    relationships: [],
+    tables: [
+        table('users'),
+        table('orders'),
+        table('order items'),
+        table('active_users', 'view'),
+    ],
+} as SchemaSnapshot;
+
+const actions = {
+    open: vi.fn(),
+    structure: vi.fn(),
+    openInSql: vi.fn(),
+    showInUniverse: vi.fn(),
+};
+
+const renderSidebar = () =>
+    render(
+        <TableSidebar connectionId={1} snapshot={snapshot} actions={actions} />,
+    );
+
+beforeEach(() => {
+    vi.clearAllMocks();
+    useBrowse.setState({ byConnection: {} });
+    usePins.setState({ byConnection: {} });
+});
+
+describe('TableSidebar', () => {
+    it('lists all tables with counts and marks views', () => {
+        renderSidebar();
+        const tree = screen.getByRole('tree', { name: 'Tables' });
+        // Four table rows under the section's own header treeitem.
+        expect(
+            within(tree)
+                .getAllByRole('treeitem')
+                .filter((r) => r.hasAttribute('data-table')),
+        ).toHaveLength(4);
+        expect(
+            within(tree).getByRole('treeitem', { name: 'All tables (4)' }),
+        ).toHaveAttribute('aria-expanded', 'true');
+        // The name holds the visible text: the table and its row count.
+        expect(
+            screen.getByRole('treeitem', { name: 'users, ~1.2K rows' }),
+        ).toBeInTheDocument();
+        expect(
+            within(
+                screen.getByRole('treeitem', { name: /active_users/ }),
+            ).getByLabelText('View'),
+        ).toBeInTheDocument();
+        expect(
+            within(screen.getByRole('treeitem', { name: /^users/ })).getByText(
+                '~1.2K',
+            ),
+        ).toBeInTheDocument();
+    });
+
+    it('opens a preview on click, a permanent tab on double-click and Ctrl+click, a background tab on middle-click', () => {
+        renderSidebar();
+        const row = screen.getByRole('treeitem', { name: /^orders/ });
+        fireEvent.click(row);
+        fireEvent.doubleClick(row);
+        fireEvent.click(row, { ctrlKey: true });
+        fireEvent(
+            row,
+            new MouseEvent('auxclick', { bubbles: true, button: 1 }),
+        );
+        expect(actions.open.mock.calls).toEqual([
+            ['orders', 'preview'],
+            ['orders', 'permanent'],
+            ['orders', 'permanent'],
+            ['orders', 'background'],
+        ]);
+    });
+
+    it('keeps the recent rows still under the pointer, so a double-click lands on one table', () => {
+        useBrowse.getState().openTable(1, 'users');
+        renderSidebar();
+        const tree = screen.getByRole('tree', { name: 'Tables' });
+        const recentNames = () =>
+            within(screen.getByRole('group', { name: 'Recent' }))
+                .getAllByRole('treeitem')
+                .flatMap((el) => el.getAttribute('data-table') ?? []);
+        fireEvent.pointerEnter(tree);
+        // Opening tables while the pointer is in the tree neither reorders nor grows Recent.
+        act(() => {
+            useBrowse.getState().openTable(1, 'orders');
+            useBrowse.getState().openTable(1, 'order items');
+        });
+        expect(recentNames()).toEqual(['users']);
+        fireEvent.pointerLeave(tree);
+        expect(recentNames()).toEqual(['order items', 'orders', 'users']);
+    });
+
+    it('filters by search and hides the pinned and recent sections while searching', () => {
+        useBrowse.getState().openTable(1, 'users');
+        renderSidebar();
+        expect(
+            screen.getByRole('treeitem', { name: 'Recent' }),
+        ).toBeInTheDocument();
+        fireEvent.change(
+            screen.getByRole('searchbox', { name: 'Search tables' }),
+            { target: { value: 'order' } },
+        );
+        expect(
+            screen.queryByRole('treeitem', { name: 'Recent' }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen
+                .getAllByRole('treeitem')
+                .flatMap((r) => r.getAttribute('data-table') ?? []),
+        ).toEqual(['orders', 'order items']);
+    });
+
+    it('moves focus with the arrow keys and opens with Enter', () => {
+        renderSidebar();
+        const rows = screen.getAllByRole('treeitem');
+        rows[0].focus();
+        fireEvent.keyDown(rows[0], { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(rows[1]);
+        fireEvent.keyDown(rows[1], { key: 'Enter' });
+        expect(actions.open).toHaveBeenCalledWith(
+            rows[1].getAttribute('data-table'),
+            'permanent',
+        );
+    });
+
+    it('collapses and expands a section from its header treeitem by click and keyboard', () => {
+        renderSidebar();
+        const header = screen.getByRole('treeitem', { name: 'All tables (4)' });
+        // The first header is the tree's tab stop.
+        expect(header).toHaveAttribute('tabindex', '0');
+        fireEvent.click(header);
+        expect(header).toHaveAttribute('aria-expanded', 'false');
+        expect(
+            screen.queryByRole('treeitem', { name: /^orders/ }),
+        ).not.toBeInTheDocument();
+        header.focus();
+        fireEvent.keyDown(header, { key: 'ArrowRight' });
+        expect(header).toHaveAttribute('aria-expanded', 'true');
+        fireEvent.keyDown(header, { key: 'ArrowLeft' });
+        expect(header).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.keyDown(header, { key: 'Enter' });
+        expect(header).toHaveAttribute('aria-expanded', 'true');
+        expect(actions.open).not.toHaveBeenCalled();
+    });
+
+    it('moves from the search box to the first table, past its section header', () => {
+        renderSidebar();
+        fireEvent.keyDown(
+            screen.getByRole('searchbox', { name: 'Search tables' }),
+            { key: 'ArrowDown' },
+        );
+        expect(document.activeElement).toHaveAttribute('data-table', 'users');
+    });
+
+    it('pins from the row star without opening the table', () => {
+        renderSidebar();
+        fireEvent.click(screen.getByRole('button', { name: 'Pin orders' }));
+        expect(usePins.getState().isPinned(1, 'orders')).toBe(true);
+        expect(actions.open).not.toHaveBeenCalled();
+    });
+
+    it('shows pinned tables first and a missing pin as removable', () => {
+        usePins.setState({
+            byConnection: {
+                1: [
+                    { id: 1, table: 'orders', position: 1 },
+                    { id: 2, table: 'gone', position: 2 },
+                ],
+            },
+        });
+        renderSidebar();
+        const pinned = screen.getByRole('group', { name: 'Pinned' });
+        expect(within(pinned).getByText('orders')).toBeInTheDocument();
+        expect(
+            within(pinned).getByRole('button', { name: 'Remove gone' }),
+        ).toBeInTheDocument();
+    });
+
+    it('reaches a missing pin with the arrow keys and removes it with Delete or *', async () => {
+        usePins.setState({
+            byConnection: {
+                1: [
+                    { id: 1, table: 'orders', position: 1 },
+                    { id: 2, table: 'gone', position: 2 },
+                    { id: 4, table: 'lost', position: 3 },
+                ],
+            },
+        });
+        renderSidebar();
+        const orders = within(
+            screen.getByRole('group', { name: 'Pinned' }),
+        ).getByRole('treeitem', { name: /^orders/ });
+        orders.focus();
+        fireEvent.keyDown(orders, { key: 'ArrowDown' });
+        const gone = screen.getByRole('treeitem', {
+            name: 'gone (no longer exists)',
+        });
+        expect(gone).toHaveFocus();
+        expect(gone).toHaveAttribute('tabindex', '0');
+        fireEvent.keyDown(gone, { key: 'Enter' });
+        expect(actions.open).not.toHaveBeenCalled();
+        fireEvent.keyDown(gone, { key: 'Delete' });
+        expect(usePins.getState().isPinned(1, 'gone')).toBe(false);
+        const lost = screen.getByRole('treeitem', {
+            name: 'lost (no longer exists)',
+        });
+        expect(lost).toHaveFocus();
+        fireEvent.keyDown(lost, { key: '*' });
+        // Pin operations on a connection run one after another.
+        await waitFor(() =>
+            expect(usePins.getState().isPinned(1, 'lost')).toBe(false),
+        );
+    });
+
+    it("highlights the active tab's table", () => {
+        useBrowse.getState().openTable(1, 'orders');
+        renderSidebar();
+        const all = screen.getByRole('group', { name: /All tables/ });
+        expect(
+            within(all).getByRole('treeitem', { name: /^orders/ }),
+        ).toHaveAttribute('aria-current', 'true');
+    });
+
+    it('pins the focused table with the asterisk key', () => {
+        renderSidebar();
+        const row = screen.getByRole('treeitem', { name: /^orders/ });
+        row.focus();
+        fireEvent.keyDown(row, { key: '*' });
+        expect(usePins.getState().isPinned(1, 'orders')).toBe(true);
+    });
+
+    it('makes the clicked row the tab stop', () => {
+        renderSidebar();
+        const row = screen.getByRole('treeitem', { name: /^orders/ });
+        expect(row).toHaveAttribute('tabindex', '-1');
+        fireEvent.click(row);
+        expect(row).toHaveAttribute('tabindex', '0');
+        expect(
+            screen
+                .getAllByRole('treeitem')
+                .filter((r) => r.getAttribute('tabindex') === '0'),
+        ).toHaveLength(1);
+    });
+});

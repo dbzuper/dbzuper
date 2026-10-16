@@ -50,6 +50,11 @@ class SavedConnection extends Model
         return $this->hasOne(LayoutPosition::class, 'connection_id');
     }
 
+    public function pins(): HasMany
+    {
+        return $this->hasMany(PinnedTable::class, 'connection_id');
+    }
+
     public function history(): HasMany
     {
         return $this->hasMany(QueryHistoryEntry::class, 'connection_id');

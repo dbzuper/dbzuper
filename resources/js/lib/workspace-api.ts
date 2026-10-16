@@ -23,9 +23,12 @@ export type FilterOp =
     | 'is_null'
     | 'is_not_null';
 export type RowFilter = { column: string; op: FilterOp; value?: string };
+export type SortKey = { column: string; direction: 'asc' | 'desc' };
+export const PER_PAGE_OPTIONS = [50, 100, 500, 1000] as const;
+export type PerPage = (typeof PER_PAGE_OPTIONS)[number];
 export type RowsRequest = {
     filters: RowFilter[];
-    sort: { column: string; direction: 'asc' | 'desc' } | null;
+    sort: SortKey[];
     page: number;
     per_page: number;
 };
@@ -37,6 +40,7 @@ export type RowsResponse = {
     per_page: number;
     sql: string;
 };
+export type CountResponse = { count: number | null; kind: 'exact' | 'timeout' };
 
 export const FILTER_OPS: {
     value: FilterOp;
@@ -90,6 +94,17 @@ export const workspaceApi = {
         }),
     ddl: (id: number, name: string) =>
         apiFetch<DdlResponse>(table(id, name, 'ddl')),
+    count: (
+        id: number,
+        name: string,
+        body: { filters: RowFilter[]; exact: boolean },
+        signal?: AbortSignal,
+    ) =>
+        apiFetch<CountResponse>(table(id, name, 'count'), {
+            method: 'POST',
+            body,
+            signal,
+        }),
 };
 
 /** First message of a Laravel validation response (422 {message, errors}), else its message. */

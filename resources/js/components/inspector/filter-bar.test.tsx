@@ -178,4 +178,43 @@ describe('FilterBar', () => {
             expect(onChange).not.toHaveBeenCalled();
         });
     });
+
+    it('starts a draft for a column and focuses the value input', () => {
+        const { rerender } = render(
+            <FilterBar
+                columns={['id', 'name']}
+                filters={[]}
+                onChange={vi.fn()}
+                draft={null}
+            />,
+        );
+        rerender(
+            <FilterBar
+                columns={['id', 'name']}
+                filters={[]}
+                onChange={vi.fn()}
+                draft={{ column: 'name', nonce: 1 }}
+            />,
+        );
+        expect(screen.getByLabelText('Filter column')).toHaveValue('name');
+        expect(screen.getByLabelText('Filter operator')).toHaveValue(
+            'contains',
+        );
+        expect(screen.getByLabelText('Filter value')).toHaveFocus();
+    });
+
+    it('puts the first control id on the column select', () => {
+        render(
+            <FilterBar
+                id="the-filter"
+                columns={columns}
+                filters={[]}
+                onChange={vi.fn()}
+            />,
+        );
+        expect(screen.getByLabelText('Filter column')).toHaveAttribute(
+            'id',
+            'the-filter',
+        );
+    });
 });

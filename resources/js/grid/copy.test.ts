@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { toCSV, toJSON, toTSV, writeClipboard } from './copy';
+import { toCSV, toInsert, toJSON, toTSV, writeClipboard } from './copy';
 
 const columns = [
     { name: 'id', type: 'int', table: null },
@@ -65,5 +65,49 @@ describe('writeClipboard', () => {
         vi.stubGlobal('navigator', { clipboard: { writeText } });
         await expect(writeClipboard('x')).resolves.toBe(true);
         expect(writeText).toHaveBeenCalledWith('x');
+    });
+});
+
+describe('toInsert', () => {
+    const columns = [
+        { name: 'id', type: 'integer', table: 'users' },
+        { name: 'na"me', type: 'text', table: 'users' },
+        { name: 'ok', type: 'boolean', table: 'users' },
+    ];
+    it('quotes per dialect and escapes values', () => {
+        expect(
+            toInsert('pgsql', 'users', columns, [
+                [1, "O'Brien", true],
+                [2, null, false],
+            ]),
+        ).toBe(
+            'INSERT INTO "users" ("id", "na""me", "ok") VALUES\n' +
+                "(1, 'O''Brien', TRUE),\n" +
+                '(2, NULL, FALSE);',
+        );
+        expect(
+            toInsert('mysql', 'order items', columns.slice(0, 1), [[1]]),
+        ).toBe('INSERT INTO `order items` (`id`) VALUES\n(1);');
+        expect(
+            toInsert(
+                'mariadb',
+                'a`b',
+                [{ name: 'x', type: 'text', table: 'a`b' }],
+                [['back\\slash']],
+            ),
+        ).toBe("INSERT INTO `a``b` (`x`) VALUES\n('back\\\\slash');");
+    });
+    it('writes numeric strings from numeric columns unquoted and objects as JSON text', () => {
+        expect(
+            toInsert(
+                'sqlite',
+                't',
+                [
+                    { name: 'n', type: 'decimal(10,2)', table: 't' },
+                    { name: 'j', type: 'json', table: 't' },
+                ],
+                [['12.50', { a: 1 } as never]],
+            ),
+        ).toBe('INSERT INTO "t" ("n", "j") VALUES\n(12.50, \'{"a":1}\');');
     });
 });

@@ -7,9 +7,9 @@ describe('workspace store', () => {
     beforeEach(() => s().reset());
 
     it('selects a table and optionally switches inspector tab', () => {
-        s().select('orders', 'data');
+        s().select('orders', 'ddl');
         expect(s().selected).toBe('orders');
-        expect(s().inspectorTab).toBe('data');
+        expect(s().inspectorTab).toBe('ddl');
         s().select(null);
         expect(s().selected).toBeNull();
     });
@@ -51,48 +51,5 @@ describe('workspace store', () => {
         s().setZoomLevel('closeup');
         unsub();
         expect(calls).toBe(1);
-    });
-});
-
-describe('data filter', () => {
-    beforeEach(() => s().reset());
-
-    it('openDataFilter selects the table, opens the data tab and stores the filter', () => {
-        s().openDataFilter('users', [{ column: 'id', value: '2' }]);
-        expect(s().selected).toBe('users');
-        expect(s().inspectorTab).toBe('data');
-        expect(s().dataFilter).toEqual({
-            table: 'users',
-            filters: [{ column: 'id', value: '2' }],
-        });
-    });
-
-    it('openDataFilter closes the history panel so the Data tab shows', () => {
-        s().setHistoryOpen(true);
-        s().openDataFilter('users', [{ column: 'id', value: '2' }]);
-        expect(s().historyOpen).toBe(false);
-    });
-
-    it('clearDataFilter and reset drop the filter', () => {
-        s().openDataFilter('users', [{ column: 'id', value: '2' }]);
-        s().clearDataFilter();
-        expect(s().dataFilter).toBeNull();
-        s().openDataFilter('users', [{ column: 'id', value: '2' }]);
-        s().reset();
-        expect(s().dataFilter).toBeNull();
-    });
-});
-
-describe('multi-column data filter', () => {
-    beforeEach(() => s().reset());
-
-    it('stores several column/value pairs and allows the records view', () => {
-        s().setView('records');
-        expect(s().view).toBe('records');
-        s().openDataFilter('order_items', [
-            { column: 'order_id', value: '1' },
-            { column: 'shop_id', value: '2' },
-        ]);
-        expect(s().dataFilter?.filters).toHaveLength(2);
     });
 });

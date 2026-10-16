@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { openTableFiltered } from '@/browse/table-actions';
 import { ResultGrid } from '@/components/grid/result-grid';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,12 +12,12 @@ import {
 import { toCSV, toJSON, toTSV, writeClipboard } from '@/grid/copy';
 import { cn } from '@/lib/utils';
 import { openRecord } from '@/records/open-record';
+import { useRecords } from '@/records/records-store';
 import type {
     DbErrorPayload,
     SchemaSnapshot,
     StatementResultPayload,
 } from '@/types/schema';
-import { useWorkspace } from '@/universe/store';
 
 const keywordOf = (sql: string) =>
     (sql.trim().match(/^[A-Za-z]+/)?.[0] ?? 'SQL').toUpperCase();
@@ -42,8 +43,11 @@ function ErrorView({
     );
 }
 
-const openForeign = (table: string, column: string, value: string) =>
-    useWorkspace.getState().openDataFilter(table, [{ column, value }]);
+/** FK cells open the target table filtered on the key; the records store holds the workspace's connection. */
+const openForeign = (table: string, column: string, value: string) => {
+    const c = useRecords.getState().connectionId;
+    if (c !== null) openTableFiltered(c, table, [{ column, value }]);
+};
 
 const FORMATS = [
     { label: 'TSV', run: toTSV },

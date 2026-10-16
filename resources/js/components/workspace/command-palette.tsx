@@ -1,6 +1,10 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Command } from 'cmdk';
 import { useMemo, useRef, useState } from 'react';
+import { useBrowse } from '@/browse/browse-store';
+import { openTableTab } from '@/browse/table-actions';
+import { requestFilterDraft } from '@/components/browse/data-view';
+import { useSidebarPrefs } from '@/browse/sidebar-prefs';
 import { INSPECTOR_HEADING_ID } from '@/components/inspector/inspector-panel';
 import { takePaletteOpener } from '@/lib/workspace-shortcuts';
 import { nextAppearance, useAppearance } from '@/hooks/use-appearance';
@@ -19,18 +23,19 @@ const itemClass =
     'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm aria-selected:bg-muted';
 
 export function CommandPalette({
+    connectionId,
     snapshot,
     onRefresh,
-    universeAvailable = true,
 }: {
+    connectionId: number;
     snapshot: SchemaSnapshot;
     onRefresh: () => void;
-    /** False without WebGL or after a render failure: the list view is then the only view. */
-    universeAvailable?: boolean;
 }) {
     const open = useWorkspace((s) => s.paletteOpen);
     const setOpen = useWorkspace((s) => s.setPaletteOpen);
     const pathFrom = useWorkspace((s) => s.pathFrom);
+    const mode = useWorkspace((s) => s.paletteMode);
+    const quick = mode === 'tables';
     const { appearance, updateAppearance } = useAppearance();
     const [query, setQuery] = useState('');
     const results = useMemo(
@@ -38,10 +43,11 @@ export function CommandPalette({
         [snapshot, query],
     );
 
-    const record = useMemo(
+    const parsedRecord = useMemo(
         () => parsePaletteRecord(snapshot, query),
         [snapshot, query],
     );
+    const record = quick ? null : parsedRecord;
 
     // Set when a pick opens the inspector: focus then lands on its heading instead of going back to
     // whatever had it before the palette (often the body).
@@ -52,16 +58,45 @@ export function CommandPalette({
         setQuery('');
     };
 
+    // The inspector only lives on the Universe tab.
     const showInInspector = (table: string, tab?: 'columns') => {
+        useBrowse.getState().activate(connectionId, 'universe');
         useWorkspace.getState().select(table, tab);
         universe.flyTo(table);
         focusInspector.current = true;
         close();
     };
 
+    // Enter and click open the table tab; Shift+Enter keeps the inspector behaviour.
+    const shiftRef = useRef(false);
+
     const pickTable = (table: string) => {
         if (pickPathTarget(snapshot, table)) close();
-        else showInInspector(table);
+        else if (shiftRef.current && !quick) showInInspector(table);
+        else {
+            openTableTab(connectionId, table, { mode: 'permanent' });
+            close();
+        }
+    };
+
+    const pickColumn = (table: string, column: string) => {
+        if (shiftRef.current) {
+            showInInspector(table, 'columns');
+            return;
+        }
+        // Keeps the tab's filters, sort and page; only the data view is needed for the filter draft.
+        openTableTab(connectionId, table, {
+            mode: 'permanent',
+            state: { view: 'data' },
+            merge: true,
+        });
+        requestFilterDraft(table, column);
+        close();
+    };
+
+    const onUniverse = (fn: () => void) => () => {
+        useBrowse.getState().activate(connectionId, 'universe');
+        fn();
     };
 
     const action =
@@ -74,6 +109,15 @@ export function CommandPalette({
 
     const st = useWorkspace.getState();
     const actions: { label: string; run: () => void; keepOpen?: boolean }[] = [
+        {
+            label: 'Open table…',
+            run: () => st.setPaletteOpen(true, 'tables'),
+            keepOpen: true,
+        },
+        {
+            label: 'Toggle table sidebar',
+            run: () => useSidebarPrefs.getState().toggle(),
+        },
         { label: 'Refresh schema', run: onRefresh },
         {
             label: st.showInferred
@@ -85,34 +129,25 @@ export function CommandPalette({
             label: 'Toggle theme',
             run: () => updateAppearance(nextAppearance(appearance)),
         },
-        { label: 'Fit everything on screen', run: universe.fitAll },
-        { label: 'Re-layout the universe', run: universe.relayout },
-        ...(st.view === 'list'
-            ? universeAvailable
-                ? [
-                      {
-                          label: 'Switch to universe view',
-                          run: () => st.setView('universe'),
-                      },
-                  ]
-                : []
-            : [
-                  {
-                      label: 'Switch to list view',
-                      run: () => st.setView('list'),
-                  },
-              ]),
+        {
+            label: 'Fit everything on screen',
+            run: onUniverse(universe.fitAll),
+        },
+        {
+            label: 'Re-layout the universe',
+            run: onUniverse(universe.relayout),
+        },
         ...(st.selected
             ? [
                   {
                       label: `Focus on ${st.selected}`,
-                      run: () => st.setFocus(st.selected, 1),
+                      run: onUniverse(() => st.setFocus(st.selected, 1)),
                   },
                   {
                       label: `Find path from ${st.selected} to…`,
                       // The palette stays open to pick the end table.
                       keepOpen: true,
-                      run: () => st.startPath(st.selected!),
+                      run: onUniverse(() => st.startPath(st.selected!)),
                   },
               ]
             : []),
@@ -149,7 +184,17 @@ export function CommandPalette({
                         target.focus();
                     }}
                 >
-                    <Command label="Command palette" shouldFilter={false}>
+                    <Command
+                        label="Command palette"
+                        shouldFilter={false}
+                        onKeyDownCapture={(e) => {
+                            if (e.key === 'Enter')
+                                shiftRef.current = e.shiftKey;
+                        }}
+                        onClickCapture={(e) => {
+                            shiftRef.current = e.shiftKey;
+                        }}
+                    >
                         {pathFrom && (
                             <div className="border-b px-3 py-2 text-xs text-muted-foreground">
                                 Find path from {pathFrom} to…
@@ -158,7 +203,11 @@ export function CommandPalette({
                         <Command.Input
                             value={query}
                             onValueChange={setQuery}
-                            placeholder="Search tables, columns and actions…"
+                            placeholder={
+                                quick
+                                    ? 'Open a table…'
+                                    : 'Search tables, columns and actions…'
+                            }
                             className="w-full border-b bg-transparent px-3 py-3 text-sm outline-none"
                         />
                         <Command.List className="max-h-[50vh] overflow-auto p-1.5">
@@ -212,36 +261,38 @@ export function CommandPalette({
                                     )}
                                 </Command.Group>
                             )}
-                            {!pathFrom && results.columns.length > 0 && (
-                                <Command.Group
-                                    heading="Columns"
-                                    className="text-[10px] tracking-wide text-muted-foreground uppercase"
-                                >
-                                    {results.columns.map((h) =>
-                                        h.kind === 'column' ? (
-                                            <Command.Item
-                                                key={`c:${h.table}.${h.column}`}
-                                                value={`c:${h.table}.${h.column}`}
-                                                onSelect={() =>
-                                                    showInInspector(
-                                                        h.table,
-                                                        'columns',
-                                                    )
-                                                }
-                                                className={itemClass}
-                                            >
-                                                <span className="font-mono text-foreground normal-case">
-                                                    {h.table}.{h.column}
-                                                </span>
-                                                <span className="ml-auto font-mono text-[11px] normal-case">
-                                                    {h.type}
-                                                </span>
-                                            </Command.Item>
-                                        ) : null,
-                                    )}
-                                </Command.Group>
-                            )}
-                            {!pathFrom && (
+                            {!pathFrom &&
+                                !quick &&
+                                results.columns.length > 0 && (
+                                    <Command.Group
+                                        heading="Columns"
+                                        className="text-[10px] tracking-wide text-muted-foreground uppercase"
+                                    >
+                                        {results.columns.map((h) =>
+                                            h.kind === 'column' ? (
+                                                <Command.Item
+                                                    key={`c:${h.table}.${h.column}`}
+                                                    value={`c:${h.table}.${h.column}`}
+                                                    onSelect={() =>
+                                                        pickColumn(
+                                                            h.table,
+                                                            h.column,
+                                                        )
+                                                    }
+                                                    className={itemClass}
+                                                >
+                                                    <span className="font-mono text-foreground normal-case">
+                                                        {h.table}.{h.column}
+                                                    </span>
+                                                    <span className="ml-auto font-mono text-[11px] normal-case">
+                                                        {h.type}
+                                                    </span>
+                                                </Command.Item>
+                                            ) : null,
+                                        )}
+                                    </Command.Group>
+                                )}
+                            {!pathFrom && !quick && (
                                 <Command.Group
                                     heading="Actions"
                                     className="text-[10px] tracking-wide text-muted-foreground uppercase"

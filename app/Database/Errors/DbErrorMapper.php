@@ -57,7 +57,7 @@ final class DbErrorMapper
             $driverCode === 1049 || (str_contains($lower, 'database "') && str_contains($lower, 'does not exist')) => ['not_found', 'unknown_database'],
             $connectionClass && (str_contains($lower, 'no pg_hba.conf entry') || $driverCode === 3159 || $this->mentionsTls($lower)) => ['connection', 'tls'],
             $sqlstate === '25006' || in_array($driverCode, [1792, 1290], true) || str_contains($lower, 'readonly database') => ['readonly', null],
-            $sqlstate === '57014' || $driverCode === 3024 => ['timeout', null],
+            $sqlstate === '57014' || in_array($driverCode, [3024, 1969], true) => ['timeout', null],
             $sqlstate === '42501' || in_array($driverCode, [1142, 1044, 1227], true) => ['permission', null],
             $sqlstate === '42601' || $driverCode === 1064 || str_contains($lower, 'syntax error') => ['syntax', null],
             str_starts_with((string) $sqlstate, '08') || $driverCode === 2002 || $driverCode === 2006 => ['connection', null],

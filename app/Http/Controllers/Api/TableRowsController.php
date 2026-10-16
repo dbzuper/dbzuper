@@ -32,9 +32,11 @@ class TableRowsController extends Controller
                 throw ValidationException::withMessages(["filters.{$i}.column" => 'Unknown column.']);
             }
         }
-        $sort = $request->validated('sort');
-        if ($sort && ! in_array($sort['column'], $names, true)) {
-            throw ValidationException::withMessages(['sort.column' => 'Unknown column.']);
+        $sort = $request->validated('sort') ?? [];
+        foreach ($sort as $i => $s) {
+            if (! in_array($s['column'], $names, true)) {
+                throw ValidationException::withMessages(["sort.{$i}.column" => 'Unknown column.']);
+            }
         }
         $page = (int) $request->validated('page', 1);
         $perPage = (int) $request->validated('per_page', 100);

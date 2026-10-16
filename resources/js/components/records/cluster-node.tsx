@@ -1,8 +1,8 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
+import { openTableFiltered } from '@/browse/table-actions';
 import { useRecords, type ClusterState } from '@/records/records-store';
 import type { RelationshipSummary } from '@/records/types';
 import type { QueryCell } from '@/types/schema';
-import { useWorkspace } from '@/universe/store';
 
 export type ClusterNodeData = { key: string };
 export type ClusterNodeType = Node<ClusterNodeData, 'cluster'>;
@@ -81,13 +81,13 @@ export function ClusterNode({ data }: NodeProps<ClusterNodeType>) {
                     }
                     onClick={() => {
                         if (!filters) return;
-                        const ws = useWorkspace.getState();
-                        ws.openDataFilter(cluster.table, filters);
-                        ws.select(cluster.table, 'data');
+                        const c = useRecords.getState().connectionId;
+                        if (c !== null)
+                            openTableFiltered(c, cluster.table, filters);
                     }}
                     className="nodrag nopan rounded border px-2 py-1 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none disabled:opacity-50"
                 >
-                    Open in Data tab
+                    Open in table tab
                 </button>
             </div>
         </div>

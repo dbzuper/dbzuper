@@ -3,7 +3,7 @@ type NavigatorWithUAData = Navigator & {
 };
 
 /** True on Apple platforms, where the command key replaces Ctrl. */
-function isApplePlatform(): boolean {
+export function isApplePlatform(): boolean {
     if (typeof navigator === 'undefined') return false;
     const nav = navigator as NavigatorWithUAData;
     const platform = nav.userAgentData?.platform || nav.platform || '';

@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SchemaSnapshot, TableSchema } from '@/types/schema';
-import { useWorkspace } from '@/universe/store';
+import { useBrowse } from '@/browse/browse-store';
 import { useRecords } from './records-store';
 import { addRelated, nodeId, openRoot } from './trail';
 import { useTrailUrl } from './use-trail-url';
@@ -66,7 +66,7 @@ beforeEach(() => {
     window.history.replaceState({ page: 'inertia' }, '', '/?keep=1#h');
     useRecords.getState().reset();
     useRecords.getState().setConnection(1);
-    useWorkspace.getState().reset();
+    useBrowse.setState({ byConnection: {} });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -157,7 +157,7 @@ describe('useTrailUrl', () => {
         expect(push).not.toHaveBeenCalled();
     });
 
-    it('restores the trail from ?r= on mount, switches to the records view and does not push', async () => {
+    it('restores the trail from ?r= on mount, opens the records tab and does not push', async () => {
         const r = encodeTrail(openRoot('users', { id: 3 }), pks);
         window.history.replaceState({ page: 'x' }, '', `/?r=${r}&keep=1#h`);
         const push = pushSpy();
@@ -165,10 +165,41 @@ describe('useTrailUrl', () => {
             renderHook(() => useTrailUrl(snapshot));
         });
         expect(useRecords.getState().trail.nodes[0].key).toEqual({ id: 3 });
-        expect(useWorkspace.getState().view).toBe('records');
+        const browse = useBrowse.getState().get(1);
+        expect(browse.activeId).toBe('records');
+        expect(browse.tabs.find((t) => t.id === 'records')).toMatchObject({
+            title: 'Records · users #3',
+        });
         expect(push).not.toHaveBeenCalled();
         expect(param()).toBe(r);
         expect(window.location.hash).toBe('#h');
+    });
+
+    it('clears the trail and ?r= when the records tab is closed', async () => {
+        renderHook(() => useTrailUrl(snapshot));
+        await act(async () => useRecords.getState().open('users', { id: 1 }));
+        act(() => useBrowse.getState().showRecords(1, 'Records · users #1'));
+        expect(param()).not.toBeNull();
+        act(() => useBrowse.getState().closeRecords(1));
+        expect(useRecords.getState().trail.nodes).toHaveLength(0);
+        expect(param()).toBeNull();
+        expect(new URL(window.location.href).searchParams.get('keep')).toBe(
+            '1',
+        );
+    });
+
+    it('closes a lingering records tab when the URL has no trail', async () => {
+        useBrowse.getState().showRecords(1, 'Records · users #9');
+        await act(async () => {
+            renderHook(() => useTrailUrl(snapshot));
+        });
+        expect(useBrowse.getState().get(1).activeId).toBe('universe');
+        expect(
+            useBrowse
+                .getState()
+                .get(1)
+                .tabs.some((t) => t.kind === 'records'),
+        ).toBe(false);
     });
 
     it('waits for the snapshot before restoring', async () => {
@@ -362,7 +393,7 @@ describe('useTrailUrl', () => {
                     reason: 'no_primary_key',
                     sqlstate: null,
                     message:
-                        'users has no primary key; open it in the Data tab instead.',
+                        'users has no primary key; open it in a table tab instead.',
                 },
             }),
         );

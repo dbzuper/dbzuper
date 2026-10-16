@@ -47,7 +47,25 @@ async function openRecordFromPalette(query: string, option: string | RegExp) {
     await page.getByRole('option', { name: option }).click();
 }
 
-test('records: entry points (result row, Data tab row) and tables without a primary key', async () => {
+/** The workspace's tab panel (the inspector's own tab panels live outside <main>). */
+const browsePanel = () => page.getByRole('main').getByRole('tabpanel');
+
+/** Opens a table's tab from the command palette (a plain pick opens the table tab). */
+async function openTableFromPalette(table: string) {
+    await page.keyboard.press('Control+k');
+    await page.getByPlaceholder(PALETTE_PLACEHOLDER).fill(table);
+    await page
+        .getByRole('option', { name: new RegExp(`^${table}`) })
+        .first()
+        .click();
+    await expect(
+        page
+            .getByRole('tablist', { name: 'Open tabs' })
+            .getByRole('tab', { name: table, exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+}
+
+test('records: entry points (result row, table tab row) and tables without a primary key', async () => {
     await openWorkspace('Records entry demo');
 
     // A result row opens its record.
@@ -76,21 +94,29 @@ test('records: entry points (result row, Data tab row) and tables without a prim
             .getByRole('button', { name: 'orders · 1', exact: true }),
     ).toBeVisible();
 
-    // A Data tab row opens its record: users row 3 is Grace Hopper.
-    await openRecordFromPalette('users', /^users/);
-    const inspector = page.getByRole('complementary', { name: 'Inspector' });
-    await inspector.getByRole('tab', { name: 'Data' }).click();
+    // The dock overlays the bottom of the tab panel (and so of the row drawer): close it first.
+    await page.keyboard.press('Control+j');
+    await expect(dock).toBeHidden();
+
+    // A table tab row opens its record (row drawer -> Explore graph): users row 3 is Grace Hopper.
+    await openTableFromPalette('users');
+    const panel = browsePanel();
     await expect(
-        inspector.getByRole('gridcell', { name: 'Grace Hopper' }),
+        panel.getByRole('gridcell', { name: 'Grace Hopper' }),
     ).toBeVisible();
-    await inspector
+    await panel
         .getByRole('row')
         .filter({ hasText: 'Grace Hopper' })
-        .getByRole('button', { name: 'Open record', exact: true })
+        .getByRole('button', { name: 'Open row', exact: true })
         .click();
+    const drawer = page.getByRole('complementary', { name: 'Row details' });
+    await expect(
+        drawer.getByRole('heading', { name: 'users · 3' }),
+    ).toBeVisible();
+    await drawer.getByRole('button', { name: 'Explore graph' }).click();
     await expect(explorer.getByText('Grace Hopper').first()).toBeVisible();
 
-    // A table without a primary key: no palette record option and no Data tab row action.
+    // A table without a primary key: no palette record option and no record action on its rows.
     // (This test runs before the destructive DELETE below, so audit_log still has rows.)
     await page.keyboard.press('Control+k');
     const search = page.getByPlaceholder(PALETTE_PLACEHOLDER);
@@ -105,14 +131,24 @@ test('records: entry points (result row, Data tab row) and tables without a prim
         0,
     );
     await page.keyboard.press('Escape');
-    await openRecordFromPalette('audit_log', /^audit_log/);
-    await inspector.getByRole('tab', { name: 'Data' }).click();
+    await openTableFromPalette('audit_log');
     // Header row plus at least one data row has rendered before asserting the absence.
-    await expect
-        .poll(() => inspector.getByRole('row').count())
-        .toBeGreaterThan(1);
+    await expect.poll(() => panel.getByRole('row').count()).toBeGreaterThan(1);
     await expect(
-        inspector.getByRole('button', { name: 'Open record', exact: true }),
+        panel.getByRole('button', { name: 'Open record', exact: true }),
+    ).toHaveCount(0);
+    // Its rows still open in the drawer, which shows values only: no relations, no graph.
+    await panel
+        .getByRole('button', { name: 'Open row', exact: true })
+        .first()
+        .click();
+    await expect(
+        drawer.getByText(
+            'Relations are available for tables with a primary key.',
+        ),
+    ).toBeVisible();
+    await expect(
+        drawer.getByRole('button', { name: 'Explore graph' }),
     ).toHaveCount(0);
 });
 
@@ -183,40 +219,32 @@ test('sql: write, run, confirm, inspect results and history', async () => {
     await expect(history.getByText('select * from orders')).toBeVisible();
 });
 
-test('data tab: filter, sort and open in SQL', async () => {
-    await addSqliteConnection(page, 'Data tab demo', DEMO);
-    await page.getByRole('link', { name: /Data tab demo/ }).click();
+test('table tab: filter, sort and open in SQL', async () => {
+    await addSqliteConnection(page, 'Table tab demo', DEMO);
+    await page.getByRole('link', { name: /Table tab demo/ }).click();
     await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
         timeout: 30_000,
     });
 
-    await page.keyboard.press('Control+k');
-    await page
-        .getByPlaceholder('Search tables, columns and actions…')
-        .fill('orders');
-    await page
-        .getByRole('option', { name: /^orders/ })
-        .first()
-        .click();
-    const inspector = page.getByRole('complementary', { name: 'Inspector' });
-    await inspector.getByRole('tab', { name: 'Data' }).click();
+    await openTableFromPalette('orders');
+    const panel = browsePanel();
     await expect(
-        inspector.getByRole('gridcell', { name: 'pending', exact: true }),
+        panel.getByRole('gridcell', { name: 'pending', exact: true }),
     ).toBeVisible();
 
     // Filter: only paid orders remain.
-    await inspector.getByLabel('Filter column').selectOption('status');
-    await inspector.getByLabel('Filter value').fill('paid');
-    await inspector.getByRole('button', { name: 'Add filter' }).click();
+    await panel.getByLabel('Filter column').selectOption('status');
+    await panel.getByLabel('Filter value').fill('paid');
+    await panel.getByRole('button', { name: 'Add filter' }).click();
     await expect(
-        inspector.getByRole('gridcell', { name: 'pending', exact: true }),
+        panel.getByRole('gridcell', { name: 'pending', exact: true }),
     ).toHaveCount(0);
     await expect(
-        inspector.getByRole('gridcell', { name: 'paid', exact: true }),
+        panel.getByRole('gridcell', { name: 'paid', exact: true }),
     ).toHaveCount(1);
 
     // Open in SQL carries the filter into the dock.
-    await inspector.getByRole('button', { name: 'Open in SQL' }).click();
+    await panel.getByRole('button', { name: 'Open in SQL' }).click();
     const dock = page.getByRole('region', { name: 'SQL editor' });
     await expect(dock).toBeVisible();
     await expect(dock.locator('.view-lines')).toContainText(
@@ -227,33 +255,20 @@ test('data tab: filter, sort and open in SQL', async () => {
     );
 });
 
-test('data tab: server sort by column header', async () => {
+test('table tab: server sort by column header', async () => {
     await addSqliteConnection(page, 'Data sort demo', DEMO);
     await page.getByRole('link', { name: /Data sort demo/ }).click();
     await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
         timeout: 30_000,
     });
-    await page.keyboard.press('Control+k');
-    await page
-        .getByPlaceholder('Search tables, columns and actions…')
-        .fill('orders');
-    await page
-        .getByRole('option', { name: /^orders/ })
-        .first()
-        .click();
-    const inspector = page.getByRole('complementary', { name: 'Inspector' });
-    await inspector.getByRole('tab', { name: 'Data' }).click();
+    await openTableFromPalette('orders');
+    const panel = browsePanel();
 
-    const firstStatus = async () =>
-        inspector.getByRole('row').nth(1).textContent();
-    await expect(
-        inspector.getByRole('gridcell', { name: 'paid' }),
-    ).toBeVisible();
+    const firstStatus = async () => panel.getByRole('row').nth(1).textContent();
+    await expect(panel.getByRole('gridcell', { name: 'paid' })).toBeVisible();
     const before = await firstStatus();
-    const header = inspector.getByRole('columnheader', {
-        name: 'id',
-        exact: true,
-    });
+    // The header's name also carries its "Filter id" button.
+    const header = panel.getByRole('columnheader', { name: /^id\b/ });
     await header.click();
     await header.click();
     await expect.poll(firstStatus).not.toBe(before);
@@ -481,12 +496,13 @@ test('accessibility: no serious or critical axe violations on the main screens',
     await openWorkspace('A11y workspace demo');
     await expectNoA11yViolations(page, { label: 'workspace: universe' });
 
-    // List view.
-    await page.getByRole('button', { name: 'List view' }).click();
+    // Table sidebar (beside the universe).
     await expect(
-        page.getByRole('button', { name: 'order_items' }),
+        page
+            .getByRole('tree', { name: 'Tables' })
+            .getByRole('treeitem', { name: /^order_items,/ }),
     ).toBeVisible();
-    await expectNoA11yViolations(page, { label: 'workspace: list' });
+    await expectNoA11yViolations(page, { label: 'workspace: sidebar' });
 
     // Records view with a card (users 1, built the way the app encodes it).
     const workspace = new URL(page.url()).pathname;
@@ -513,9 +529,13 @@ test('accessibility: no serious or critical axe violations on the main screens',
     ).toBeVisible({ timeout: 15_000 });
     await expectNoA11yViolations(page, { label: 'workspace: SQL dock' });
 
-    // Inspector: Columns and Data tabs.
-    await page.getByRole('button', { name: 'List view' }).click();
-    await page.getByRole('button', { name: 'orders', exact: true }).click();
+    // Inspector (Shift+click keeps the palette's inspector behaviour), then its Open table tab.
+    await page.keyboard.press('Control+k');
+    await page.getByPlaceholder(PALETTE_PLACEHOLDER).fill('orders');
+    await page
+        .getByRole('option', { name: /^orders/ })
+        .first()
+        .click({ modifiers: ['Shift'] });
     const inspector = page.getByRole('complementary', { name: 'Inspector' });
     await expect(
         inspector.getByRole('heading', { name: 'orders' }),
@@ -524,11 +544,11 @@ test('accessibility: no serious or critical axe violations on the main screens',
     await expectNoA11yViolations(page, {
         label: 'workspace: inspector Columns',
     });
-    await inspector.getByRole('tab', { name: 'Data' }).click();
+    await inspector.getByRole('button', { name: 'Open data' }).click();
     await expect(
-        inspector.getByRole('gridcell', { name: 'pending', exact: true }),
+        browsePanel().getByRole('gridcell', { name: 'pending', exact: true }),
     ).toBeVisible();
-    await expectNoA11yViolations(page, { label: 'workspace: inspector Data' });
+    await expectNoA11yViolations(page, { label: 'workspace: table tab' });
 
     // History panel.
     await page.getByRole('button', { name: 'History' }).click();
@@ -541,7 +561,10 @@ test('accessibility: no serious or critical axe violations on the main screens',
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await switchTheme('light');
     await expectNoA11yViolations(page, { label: 'workspace: light' });
-    await page.getByRole('button', { name: 'Records' }).click();
+    await page
+        .getByRole('tablist', { name: 'Open tabs' })
+        .getByRole('tab', { name: /^Records/ })
+        .click();
     await expectNoA11yViolations(page, { label: 'workspace: records, light' });
     await switchTheme('dark');
     await page.emulateMedia({ reducedMotion: null });

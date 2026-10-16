@@ -13,9 +13,13 @@ type Props = {
     columns: string[];
     filters: RowFilter[];
     onChange: (filters: RowFilter[]) => void;
+    /** Id of the first control (the column select), for focusing the bar from elsewhere. */
+    id?: string;
+    /** A header filter click: switches to this column with `contains` and focuses the value input. */
+    draft?: { column: string; nonce: number } | null;
 };
 
-export function FilterBar({ columns, filters, onChange }: Props) {
+export function FilterBar({ columns, filters, onChange, id, draft }: Props) {
     const [column, setColumn] = useState('');
     const [op, setOp] = useState<FilterOp>('eq');
     const [value, setValue] = useState('');
@@ -25,6 +29,22 @@ export function FilterBar({ columns, filters, onChange }: Props) {
     const canAdd = selected !== '' && (!needsValue || value !== '');
 
     const columnSelect = useRef<HTMLSelectElement>(null);
+    const valueInput = useRef<HTMLInputElement>(null);
+    const focusValue = useRef(false);
+    const draftColumn = draft?.column;
+    const draftNonce = draft?.nonce;
+    useEffect(() => {
+        if (draftColumn === undefined) return;
+        setColumn(draftColumn);
+        setOp('contains');
+        focusValue.current = true;
+    }, [draftColumn, draftNonce]);
+    // The value input may only appear once the operator has switched, so focus waits for that render.
+    useEffect(() => {
+        if (!focusValue.current || !valueInput.current) return;
+        focusValue.current = false;
+        valueInput.current.focus();
+    });
     const removeButtons = useRef<(HTMLButtonElement | null)[]>([]);
     // After a chip is removed focus goes to its neighbour (or the column select), never to <body>.
     const focusAfterRemoval = useRef<{
@@ -64,6 +84,7 @@ export function FilterBar({ columns, filters, onChange }: Props) {
             <div className="flex flex-wrap items-center gap-1.5">
                 <select
                     ref={columnSelect}
+                    id={id}
                     aria-label="Filter column"
                     className={fieldClass}
                     value={selected}
@@ -91,6 +112,7 @@ export function FilterBar({ columns, filters, onChange }: Props) {
                 </select>
                 {needsValue && (
                     <input
+                        ref={valueInput}
                         aria-label="Filter value"
                         className={`${fieldClass} w-36`}
                         value={value}

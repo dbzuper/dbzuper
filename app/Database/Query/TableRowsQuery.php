@@ -16,14 +16,14 @@ final class TableRowsQuery
     /**
      * @param  array{name: string, columns: list<array{name: string, type_name: string, type: string}>}  $table
      * @param  list<array{column: string, op: string, value?: ?string}>  $filters
-     * @param  ?array{column: string, direction: string}  $sort
+     * @param  list<array{column: string, direction: string}>  $sort
      * @return array{columns: list<array{name:string,type:?string,table:string}>, rows: list<list<mixed>>, has_more: bool, sql: string}
      */
-    public static function run(Connection $db, Driver $driver, array $table, array $filters, ?array $sort, int $page, int $perPage): array
+    public static function run(Connection $db, Driver $driver, array $table, array $filters, array $sort, int $page, int $perPage): array
     {
         $q = fn (string $name) => $driver->quoteIdentifier($name);
-        $sortColumns = $sort ? [$sort['column']] : [];
-        $order = $sort ? [[$sort['column'], $sort['direction'] === 'desc' ? 'desc' : 'asc']] : [];
+        $sortColumns = array_column($sort, 'column');
+        $order = array_map(fn ($s) => [$s['column'], $s['direction'] === 'desc' ? 'desc' : 'asc'], $sort);
         // The primary key is the (tie-breaking) last sort key so OFFSET paging is deterministic.
         foreach (self::primaryKey($table) as $column) {
             if (! in_array($column, $sortColumns, true)) {
@@ -33,9 +33,7 @@ final class TableRowsQuery
 
         $build = function (array $select, int $limit, bool $literal) use ($db, $driver, $table, $filters, $order, $page, $perPage, $q): Builder {
             $query = $db->table($db->raw($q($table['name'])))->select($select);
-            foreach ($filters as $f) {
-                self::apply($query, $db, $driver, $q($f['column']), $f['op'], $f['value'] ?? null, $literal);
-            }
+            self::applyFilters($query, $db, $driver, $filters, $literal);
             foreach ($order as [$column, $direction]) {
                 $query->orderByRaw($q($column).' '.$direction);
             }
@@ -74,6 +72,14 @@ final class TableRowsQuery
         }
 
         return [];
+    }
+
+    /** @param  list<array{column: string, op: string, value?: ?string}>  $filters */
+    public static function applyFilters(Builder $query, Connection $db, Driver $driver, array $filters, bool $literal): void
+    {
+        foreach ($filters as $f) {
+            self::apply($query, $db, $driver, $driver->quoteIdentifier($f['column']), $f['op'], $f['value'] ?? null, $literal);
+        }
     }
 
     private static function apply(Builder $query, Connection $db, Driver $driver, string $column, string $op, ?string $value, bool $literal): void
