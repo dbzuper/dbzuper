@@ -1,3 +1,4 @@
+import { formatBytes } from '@/lib/format';
 import type { QueryCell, QueryColumn, SchemaSnapshot } from '@/types/schema';
 
 /** A query cell as the grid may receive it: drivers can hand back decoded JSON objects and arrays. */
@@ -53,3 +54,25 @@ export function fkTarget(
     );
     return rel ? { table: rel.to_table, column: rel.to_columns[0] } : null;
 }
+
+const BINARY_PLACEHOLDER = /^\[binary (\d+) bytes\]$/;
+
+/** The empty string, which renders distinctly from NULL. */
+export const isEmptyString = (value: CellValue) => value === '';
+
+/** Byte count of the server's `[binary N bytes]` placeholder, else null. */
+export function binaryBytes(value: CellValue): number | null {
+    if (typeof value !== 'string') return null;
+    const match = BINARY_PLACEHOLDER.exec(value);
+    return match ? Number(match[1]) : null;
+}
+
+/** `‹blob 12 KB›` for a binary placeholder. */
+export const blobLabel = (value: CellValue): string =>
+    `‹blob ${formatBytes(binaryBytes(value))}›`;
+
+const TITLE_CHARS = 500;
+
+/** Tooltip text for a truncated cell: its first 500 characters. */
+export const cellTitle = (text: string): string =>
+    Array.from(text).slice(0, TITLE_CHARS).join('');

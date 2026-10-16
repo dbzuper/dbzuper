@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
-import { cellKind, cellText, fkTarget, isLong } from './cells';
+import {
+    binaryBytes,
+    blobLabel,
+    cellKind,
+    cellText,
+    cellTitle,
+    fkTarget,
+    isEmptyString,
+    isLong,
+} from './cells';
 
 describe('cells', () => {
     it.each([
@@ -55,5 +64,23 @@ describe('object-valued cells', () => {
         expect(cellText(3)).toBe('3');
         expect(cellText(false)).toBe('false');
         expect(cellText('hi')).toBe('hi');
+    });
+});
+
+describe('cell display helpers', () => {
+    it('detects empty strings and binary placeholders', () => {
+        expect(isEmptyString('')).toBe(true);
+        expect(isEmptyString(' ')).toBe(false);
+        expect(isEmptyString(null)).toBe(false);
+        expect(binaryBytes('[binary 12288 bytes]')).toBe(12288);
+        expect(binaryBytes('binary')).toBeNull();
+        expect(binaryBytes(5)).toBeNull();
+    });
+
+    it('builds the blob label and the truncation title', () => {
+        expect(blobLabel('[binary 12288 bytes]')).toBe('‹blob 12 KB›');
+        expect(blobLabel('[binary 5 bytes]')).toBe('‹blob 5 B›');
+        expect(cellTitle('a'.repeat(700))).toBe('a'.repeat(500));
+        expect(cellTitle('😀'.repeat(600))).toBe('😀'.repeat(500));
     });
 });

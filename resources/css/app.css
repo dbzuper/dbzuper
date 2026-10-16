@@ -233,6 +233,10 @@
     color-scheme: dark;
 }
 
+.rdg-dbsuperb .rdg-row-active {
+    background: color-mix(in oklab, var(--universe-accent) 14%, transparent);
+}
+
 /* React Flow (record explorer): map its variables to the app theme tokens (follows light/dark). */
 .react-flow.records-flow {
     --xy-background-color: var(--universe-bg);
