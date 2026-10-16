@@ -141,7 +141,12 @@ test('browse: table opens within budget', async () => {
         () =>
             Array.from(
                 document.querySelectorAll('#browse-panel [role="gridcell"]'),
-            ).some((c) => c.textContent === 'Mechanical Keyboard'),
+            ).some(
+                // Rendered too, like waitFor({ state: 'visible' }).
+                (c) =>
+                    c.textContent === 'Mechanical Keyboard' &&
+                    (c.checkVisibility?.() ?? c.getClientRects().length > 0),
+            ),
         null,
         { polling: 'raf', timeout: 30_000 },
     );

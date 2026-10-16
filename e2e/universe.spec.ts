@@ -143,7 +143,14 @@ test('universe: 2,000-table schema becomes interactive within budget (and the co
     // Checked on every animation frame in the page: locator.waitFor() and expect() retry with
     // backoff (up to 500 ms and 1 s), which would add polling delay to the measurement.
     await page.waitForFunction(
-        () => !!document.querySelector('[data-universe-ready="true"]'),
+        () => {
+            // Present and rendered (not inside a hidden tab), like waitFor({ state: 'visible' }).
+            const el = document.querySelector('[data-universe-ready="true"]');
+            return (
+                !!el &&
+                (el.checkVisibility?.() ?? el.getClientRects().length > 0)
+            );
+        },
         null,
         { polling: 'raf', timeout: 30_000 },
     );
