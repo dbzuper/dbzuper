@@ -365,7 +365,7 @@ describe('table tab features', () => {
                     columns={tabColumns}
                     rows={data}
                     layout={{
-                        value: { widths: {}, hidden: ['secret'] },
+                        value: { widths: {}, hidden: ['id'] },
                         onChange: vi.fn(),
                     }}
                     onFilterColumn={onFilterColumn}
@@ -374,11 +374,48 @@ describe('table tab features', () => {
             ),
         );
         expect(
-            screen.queryByRole('columnheader', { name: /secret/ }),
+            screen.queryByRole('columnheader', { name: /id/ }),
         ).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Filter id' }));
+        expect(
+            screen.getByRole('columnheader', { name: /name/ }),
+        ).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Filter name' }));
+        expect(onFilterColumn).toHaveBeenCalledWith('name');
+        expect(onSort).not.toHaveBeenCalled();
+    });
+
+    it('filters, not sorts, when the header filter button is activated by keyboard', () => {
+        const onFilterColumn = vi.fn();
+        const onSort = vi.fn();
+        render(
+            wrap(
+                <ResultGrid
+                    {...idOnly}
+                    onFilterColumn={onFilterColumn}
+                    sort={{ columns: [], onChange: onSort }}
+                />,
+            ),
+        );
+        fireEvent.keyDown(screen.getByRole('button', { name: 'Filter id' }), {
+            key: 'Enter',
+        });
         expect(onFilterColumn).toHaveBeenCalledWith('id');
         expect(onSort).not.toHaveBeenCalled();
+    });
+
+    it('offers no row menu when the context click is on the header', () => {
+        render(
+            wrap(
+                <ResultGrid
+                    {...idOnly}
+                    rowMenu={{ dialect: 'pgsql', table: 'users' }}
+                />,
+            ),
+        );
+        fireEvent.contextMenu(screen.getByRole('gridcell', { name: '2' }));
+        fireEvent.keyDown(document.body, { key: 'Escape' });
+        fireEvent.contextMenu(screen.getByRole('columnheader', { name: /id/ }));
+        expect(screen.queryByRole('menuitem')).toBeNull();
     });
 
     it('opens rows from the row button and highlights the active row', () => {
@@ -533,6 +570,18 @@ describe('cell display', () => {
         expect(container.querySelector('[title]')).toHaveAttribute(
             'title',
             'y'.repeat(500),
+        );
+    });
+});
+
+describe('cell titles', () => {
+    it('titles short text cells too', () => {
+        const { container } = render(
+            <CellView value="hello" type="text" onOpen={() => {}} />,
+        );
+        expect(container.querySelector('[title]')).toHaveAttribute(
+            'title',
+            'hello',
         );
     });
 });

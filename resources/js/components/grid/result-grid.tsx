@@ -122,7 +122,11 @@ export function CellView({
     ) : (
         <span
             data-kind={kind}
-            title={expandable ? cellTitle(textValue) : undefined}
+            title={
+                kind === 'boolean' || kind === 'binary'
+                    ? undefined
+                    : cellTitle(textValue)
+            }
             role={kind === 'boolean' ? 'img' : undefined}
             aria-label={kind === 'boolean' ? textValue : undefined}
             className={cn(
@@ -199,6 +203,7 @@ export function ResultGrid({
     if (selection.rows !== rows) {
         selected = new Set();
         setSelection({ rows, selected });
+        setMenuRow(null);
     }
 
     const layoutRef = useRef(layout);
@@ -209,7 +214,22 @@ export function ResultGrid({
     const resizeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
         undefined,
     );
-    useEffect(() => () => clearTimeout(resizeTimer.current), []);
+    const flushWidths = () => {
+        clearTimeout(resizeTimer.current);
+        const current = layoutRef.current;
+        if (!current || Object.keys(pendingWidths.current).length === 0) return;
+        const widths = pendingWidths.current;
+        pendingWidths.current = {};
+        current.onChange({
+            ...current.value,
+            widths: { ...current.value.widths, ...widths },
+        });
+    };
+    const flushRef = useRef(flushWidths);
+    useEffect(() => {
+        flushRef.current = flushWidths;
+    });
+    useEffect(() => () => flushRef.current(), []);
     const onColumnResize = (column: { name: unknown }, width: number) => {
         if (!layoutRef.current || typeof column.name !== 'string') return;
         pendingWidths.current[column.name] = Math.min(
@@ -217,15 +237,7 @@ export function ResultGrid({
             Math.round(width),
         );
         clearTimeout(resizeTimer.current);
-        resizeTimer.current = setTimeout(() => {
-            const current = layoutRef.current;
-            if (!current) return;
-            current.onChange({
-                ...current.value,
-                widths: { ...current.value.widths, ...pendingWidths.current },
-            });
-            pendingWidths.current = {};
-        }, RESIZE_DEBOUNCE_MS);
+        resizeTimer.current = setTimeout(flushWidths, RESIZE_DEBOUNCE_MS);
     };
 
     useEffect(() => {
@@ -364,6 +376,17 @@ export function ResultGrid({
                                               event.stopPropagation();
                                               onFilterColumn(column.name);
                                           }}
+                                          onKeyDown={(event) => {
+                                              if (
+                                                  event.key !== 'Enter' &&
+                                                  event.key !== ' '
+                                              )
+                                                  return;
+                                              // The header sorts on Enter and Space; this button filters.
+                                              event.stopPropagation();
+                                              event.preventDefault();
+                                              onFilterColumn(column.name);
+                                          }}
                                           className="shrink-0 rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
                                       >
                                           <Filter className="size-3" />
@@ -478,7 +501,8 @@ export function ResultGrid({
                           if (
                               args.mode === 'ACTIVE' &&
                               args.row &&
-                              event.key === 'Enter'
+                              event.key === 'Enter' &&
+                              !(event.target instanceof HTMLButtonElement)
                           ) {
                               onOpenRow(args.row.__i);
                               event.preventGridDefault();
@@ -489,11 +513,11 @@ export function ResultGrid({
             onScroll={
                 onScrollTopChange
                     ? (event) => {
-                          const top = event.currentTarget.scrollTop;
+                          const element = event.currentTarget;
                           if (frame.current !== null) return;
                           frame.current = requestAnimationFrame(() => {
                               frame.current = null;
-                              onScrollTopChange(top);
+                              onScrollTopChange(element.scrollTop);
                           });
                       }
                     : undefined
@@ -512,21 +536,42 @@ export function ResultGrid({
     return (
         <>
             {rowMenu ? (
-                <ContextMenu>
+                <ContextMenu
+                    onOpenChange={(open) => {
+                        if (!open) setMenuRow(null);
+                    }}
+                >
                     <ContextMenuTrigger asChild>
-                        <div className="h-full">{grid}</div>
+                        <div
+                            className="h-full"
+                            onContextMenu={(event) => {
+                                // Only body cells have rows to act on; headers and empty space get no menu.
+                                if (
+                                    !(event.target as HTMLElement).closest(
+                                        '[role="row"]:not([aria-rowindex="1"]) [role="gridcell"]',
+                                    )
+                                ) {
+                                    setMenuRow(null);
+                                    event.preventDefault();
+                                }
+                            }}
+                        >
+                            {grid}
+                        </div>
                     </ContextMenuTrigger>
-                    <RowMenu
-                        dialect={rowMenu.dialect}
-                        table={rowMenu.table}
-                        columns={columns}
-                        rows={menuRows}
-                        onOpenRow={
-                            onOpenRow && menuRow !== null
-                                ? () => onOpenRow(menuRow)
-                                : undefined
-                        }
-                    />
+                    {menuRows.length > 0 && (
+                        <RowMenu
+                            dialect={rowMenu.dialect}
+                            table={rowMenu.table}
+                            columns={columns}
+                            rows={menuRows}
+                            onOpenRow={
+                                onOpenRow && menuRow !== null
+                                    ? () => onOpenRow(menuRow)
+                                    : undefined
+                            }
+                        />
+                    )}
                 </ContextMenu>
             ) : (
                 grid
