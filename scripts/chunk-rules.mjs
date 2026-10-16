@@ -1,5 +1,11 @@
 // Rules for scripts/check-chunks.mjs, kept separate so they can be unit tested.
 
+/**
+ * Where vite.config.ts writes the chunk -> module ids map (relative to the project root). It stays out of
+ * public/ so the web server never serves the list of source modules.
+ */
+export const chunkModulesFile = 'storage/build/chunk-modules.json';
+
 /** Packages (and scopes ending in `/`) that must never load eagerly. Companion packages match by prefix. */
 export const banned = [
     'sigma',

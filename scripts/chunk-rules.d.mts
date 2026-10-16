@@ -1,3 +1,4 @@
+export const chunkModulesFile: string;
 export const banned: string[];
 export function bannedPackage(id: string): string | null;
 export function entryKeys(manifest: Record<string, unknown>): string[];

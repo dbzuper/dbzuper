@@ -46,3 +46,4 @@ yarn-error.log
 /test-results
 /playwright-report
 /storage/app/demo
+/storage/build

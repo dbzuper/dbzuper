@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { bannedPackage, findProblems } from '../../../scripts/chunk-rules.mjs';
+import {
+    bannedPackage,
+    chunkModulesFile,
+    findProblems,
+} from '../../../scripts/chunk-rules.mjs';
+
+describe('chunkModulesFile', () => {
+    it('is written outside public/, so the web server never serves it', () => {
+        expect(chunkModulesFile).not.toMatch(/^(\.\/)?public\//);
+        expect(chunkModulesFile.endsWith('chunk-modules.json')).toBe(true);
+    });
+});
 
 describe('bannedPackage', () => {
     it.each([

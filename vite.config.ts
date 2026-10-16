@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import inertia from '@inertiajs/vite';
 import { wayfinder } from '@laravel/vite-plugin-wayfinder';
 import babel from '@rolldown/plugin-babel';
@@ -5,6 +7,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import laravel from 'laravel-vite-plugin';
 import { defineConfig, lazyPlugins } from 'vite-plus';
+import { chunkModulesFile } from './scripts/chunk-rules.mjs';
 
 // @monaco-editor/loader ships a default CDN URL it never uses once
 // loader.config({ monaco }) is set. Blank it so no CDN reference reaches the bundle.
@@ -18,7 +21,8 @@ const noMonacoCdn = {
 };
 
 // Lists the source modules inside every emitted chunk (chunk file -> module ids) so that
-// scripts/check-chunks.mjs can prove which libraries ship in which chunk. Written next to the manifest.
+// scripts/check-chunks.mjs can prove which libraries ship in which chunk. Written to
+// storage/build (not public/build), so the web server never serves it.
 const chunkModules = {
     name: 'dbsuperb:chunk-modules',
     apply: 'build' as const,
@@ -30,19 +34,9 @@ const chunkModules = {
         for (const [file, chunk] of Object.entries(bundle)) {
             if (chunk.type === 'chunk') modules[file] = chunk.moduleIds ?? [];
         }
-        (
-            this as unknown as {
-                emitFile(file: {
-                    type: 'asset';
-                    fileName: string;
-                    source: string;
-                }): void;
-            }
-        ).emitFile({
-            type: 'asset',
-            fileName: 'chunk-modules.json',
-            source: JSON.stringify(modules),
-        });
+        const file = path.resolve(import.meta.dirname, chunkModulesFile);
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, JSON.stringify(modules));
     },
 };
 

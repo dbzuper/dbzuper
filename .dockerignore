@@ -30,3 +30,4 @@ Dockerfile
 .phpunit.result.cache
 bootstrap/cache/*
 !bootstrap/cache/.gitignore
+storage/build
