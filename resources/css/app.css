@@ -234,7 +234,8 @@
 }
 
 .rdg-dbsuperb .rdg-row-active {
-    background: color-mix(in oklab, var(--universe-accent) 14%, transparent);
+    /* Light enough that muted text (NULL cells) keeps 4.5:1 contrast on it. */
+    background: color-mix(in oklab, var(--universe-accent) 10%, transparent);
 }
 
 /* React Flow (record explorer): map its variables to the app theme tokens (follows light/dark). */

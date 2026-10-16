@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse } from '@/browse/browse-store';
 import { usePins } from '@/browse/pins-store';
@@ -85,8 +85,19 @@ describe('TableSidebar', () => {
     it('lists all tables with counts and marks views', () => {
         renderSidebar();
         const tree = screen.getByRole('tree', { name: 'Tables' });
-        expect(within(tree).getAllByRole('treeitem')).toHaveLength(4);
-        expect(screen.getByText('All tables (4)')).toBeInTheDocument();
+        // Four table rows under the section's own header treeitem.
+        expect(
+            within(tree)
+                .getAllByRole('treeitem')
+                .filter((r) => r.hasAttribute('data-table')),
+        ).toHaveLength(4);
+        expect(
+            within(tree).getByRole('treeitem', { name: 'All tables (4)' }),
+        ).toHaveAttribute('aria-expanded', 'true');
+        // The name holds the visible text: the table and its row count.
+        expect(
+            screen.getByRole('treeitem', { name: 'users, ~1.2K rows' }),
+        ).toBeInTheDocument();
         expect(
             within(
                 screen.getByRole('treeitem', { name: /active_users/ }),
@@ -117,23 +128,42 @@ describe('TableSidebar', () => {
         ]);
     });
 
+    it('keeps the recent rows still under the pointer, so a double-click lands on one table', () => {
+        useBrowse.getState().openTable(1, 'users');
+        renderSidebar();
+        const tree = screen.getByRole('tree', { name: 'Tables' });
+        const recentNames = () =>
+            within(screen.getByRole('group', { name: 'Recent' }))
+                .getAllByRole('treeitem')
+                .flatMap((el) => el.getAttribute('data-table') ?? []);
+        fireEvent.pointerEnter(tree);
+        // Opening tables while the pointer is in the tree neither reorders nor grows Recent.
+        act(() => {
+            useBrowse.getState().openTable(1, 'orders');
+            useBrowse.getState().openTable(1, 'order items');
+        });
+        expect(recentNames()).toEqual(['users']);
+        fireEvent.pointerLeave(tree);
+        expect(recentNames()).toEqual(['order items', 'orders', 'users']);
+    });
+
     it('filters by search and hides the pinned and recent sections while searching', () => {
         useBrowse.getState().openTable(1, 'users');
         renderSidebar();
         expect(
-            screen.getByRole('button', { name: /Recent/ }),
+            screen.getByRole('treeitem', { name: 'Recent' }),
         ).toBeInTheDocument();
         fireEvent.change(
             screen.getByRole('searchbox', { name: 'Search tables' }),
             { target: { value: 'order' } },
         );
         expect(
-            screen.queryByRole('button', { name: /Recent/ }),
+            screen.queryByRole('treeitem', { name: 'Recent' }),
         ).not.toBeInTheDocument();
         expect(
             screen
                 .getAllByRole('treeitem')
-                .map((r) => r.getAttribute('data-table')),
+                .flatMap((r) => r.getAttribute('data-table') ?? []),
         ).toEqual(['orders', 'order items']);
     });
 
@@ -148,6 +178,42 @@ describe('TableSidebar', () => {
             rows[1].getAttribute('data-table'),
             'permanent',
         );
+    });
+
+    it('collapses and expands a section from its header treeitem by click and keyboard', () => {
+        renderSidebar();
+        const header = screen.getByRole('treeitem', { name: 'All tables (4)' });
+        // The first header is the tree's tab stop.
+        expect(header).toHaveAttribute('tabindex', '0');
+        fireEvent.click(header);
+        expect(header).toHaveAttribute('aria-expanded', 'false');
+        expect(
+            screen.queryByRole('treeitem', { name: /^orders/ }),
+        ).not.toBeInTheDocument();
+        header.focus();
+        fireEvent.keyDown(header, { key: 'ArrowRight' });
+        expect(header).toHaveAttribute('aria-expanded', 'true');
+        fireEvent.keyDown(header, { key: 'ArrowLeft' });
+        expect(header).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.keyDown(header, { key: 'Enter' });
+        expect(header).toHaveAttribute('aria-expanded', 'true');
+        expect(actions.open).not.toHaveBeenCalled();
+    });
+
+    it('moves from the search box to the first table, past its section header', () => {
+        renderSidebar();
+        fireEvent.keyDown(
+            screen.getByRole('searchbox', { name: 'Search tables' }),
+            { key: 'ArrowDown' },
+        );
+        expect(document.activeElement).toHaveAttribute('data-table', 'users');
+    });
+
+    it('pins from the row star without opening the table', () => {
+        renderSidebar();
+        fireEvent.click(screen.getByRole('button', { name: 'Pin orders' }));
+        expect(usePins.getState().isPinned(1, 'orders')).toBe(true);
+        expect(actions.open).not.toHaveBeenCalled();
     });
 
     it('shows pinned tables first and a missing pin as removable', () => {

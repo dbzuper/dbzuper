@@ -91,7 +91,7 @@ export function CellView({
     const kind = cellKind(value, type);
     if (kind === 'null')
         return (
-            <span data-null="true" className="text-muted-foreground/60 italic">
+            <span data-null="true" className="text-muted-foreground italic">
                 NULL
             </span>
         );

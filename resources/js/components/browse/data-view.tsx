@@ -629,7 +629,7 @@ function DataViewBody({
                 }
             >
                 {view && countState.failed && (
-                    <span className="text-muted-foreground/70">
+                    <span className="text-muted-foreground">
                         count unavailable
                     </span>
                 )}

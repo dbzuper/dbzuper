@@ -231,9 +231,11 @@ describe('RowDrawer', () => {
             ),
         );
         setup();
-        fireEvent.click(
-            await screen.findByRole('button', { name: 'users · user_id' }),
-        );
+        const reference = await screen.findByRole('button', {
+            name: 'users · user_id',
+        });
+        reference.focus();
+        fireEvent.click(reference);
         expect(api.related).toHaveBeenCalledWith(
             1,
             'orders',
@@ -245,10 +247,16 @@ describe('RowDrawer', () => {
             await screen.findByRole('heading', { name: 'users · 3' }),
         ).toBeInTheDocument();
         expect(await screen.findByText('Ann')).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+        // The clicked reference is gone: focus stays in the drawer (on its heading), so Escape still closes it.
+        expect(screen.getByRole('heading', { level: 3 })).toHaveFocus();
+        const back = screen.getByRole('button', { name: 'Back' });
+        back.focus();
+        fireEvent.click(back);
         expect(
             screen.getByRole('heading', { name: 'orders · 1' }),
         ).toBeInTheDocument();
+        // Back unmounts itself; focus moves to the heading instead of falling to <body>.
+        expect(screen.getByRole('heading', { level: 3 })).toHaveFocus();
         expect(
             screen.queryByRole('button', { name: 'Back' }),
         ).not.toBeInTheDocument();

@@ -28,9 +28,7 @@ describe('TabBar', () => {
         ]);
         expect(tabs[2]).toHaveAttribute('aria-selected', 'true');
         expect(tabs[2]).toHaveAttribute('data-preview', 'true');
-        expect(
-            screen.queryByRole('button', { name: 'Close Universe' }),
-        ).not.toBeInTheDocument();
+        expect(screen.queryByTitle('Close Universe')).not.toBeInTheDocument();
     });
 
     it('activates on click, promotes on double-click, closes on middle-click and ×', () => {
@@ -49,7 +47,7 @@ describe('TabBar', () => {
                 .get(1)
                 .tabs.map((t) => t.id),
         ).toEqual(['universe', tableTabId('users')]);
-        fireEvent.click(screen.getByRole('button', { name: 'Close users' }));
+        fireEvent.click(screen.getByTitle('Close users'));
         expect(
             st()
                 .get(1)

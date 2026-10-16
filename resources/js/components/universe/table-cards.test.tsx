@@ -84,14 +84,10 @@ describe('TableCards', () => {
         const { unmount } = render(
             <TableCards sigma={sigma} snapshot={snapshot} />,
         );
+        expect(screen.getByRole('button', { name: /^a / })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^b / })).toBeInTheDocument();
         expect(
-            screen.getByRole('button', { name: 'Table a' }),
-        ).toBeInTheDocument();
-        expect(
-            screen.getByRole('button', { name: 'Table b' }),
-        ).toBeInTheDocument();
-        expect(
-            screen.queryByRole('button', { name: 'Table far' }),
+            screen.queryByRole('button', { name: /^far / }),
         ).not.toBeInTheDocument();
         expect(listeners.size).toBe(1);
         unmount();
@@ -117,7 +113,7 @@ describe('TableCards', () => {
             render(<TableCards sigma={sigma} snapshot={snapshot} />);
             const yOf = (name: string) => {
                 const slot = screen.getByRole('button', {
-                    name,
+                    name: new RegExp(`^${name} `),
                 }).parentElement!;
                 return Number(
                     /translate\([\d.]+px, ([\d.]+)px\)/.exec(
@@ -125,10 +121,8 @@ describe('TableCards', () => {
                     )![1],
                 );
             };
-            expect(yOf('Table a')).toBe(100);
-            expect(yOf('Table b') - yOf('Table a')).toBeGreaterThanOrEqual(
-                120 + CARD_GAP,
-            );
+            expect(yOf('a')).toBe(100);
+            expect(yOf('b') - yOf('a')).toBeGreaterThanOrEqual(120 + CARD_GAP);
             expect(nodes.b).toEqual({ x: 130, y: 140 });
         } finally {
             nodes.b = saved;
@@ -149,7 +143,7 @@ describe('TableCards', () => {
         useWorkspace.getState().setZoomLevel('closeup');
         const { sigma } = fakeSigma();
         render(<TableCards sigma={sigma} snapshot={snapshot} />);
-        const card = screen.getByRole('button', { name: 'Table a' });
+        const card = screen.getByRole('button', { name: /^a / });
         act(() => {
             pointer('pointerdown', card, 100, 100);
             pointer('pointermove', card, 150, 120);
@@ -167,7 +161,7 @@ describe('TableCards', () => {
         useWorkspace.getState().setZoomLevel('closeup');
         const { sigma } = fakeSigma();
         render(<TableCards sigma={sigma} snapshot={snapshot} />);
-        const card = screen.getByRole('button', { name: 'Table b' });
+        const card = screen.getByRole('button', { name: /^b / });
         act(() => {
             pointer('pointerdown', card, 100, 100);
             pointer('pointermove', card, 102, 102);
@@ -187,7 +181,7 @@ describe('TableCards', () => {
             () =>
                 void pointer(
                     'click',
-                    screen.getByRole('button', { name: 'Table b' }),
+                    screen.getByRole('button', { name: /^b / }),
                     0,
                     0,
                 ),
@@ -200,7 +194,7 @@ describe('TableCards', () => {
         useWorkspace.getState().setZoomLevel('closeup');
         const { sigma } = fakeSigma();
         render(<TableCards sigma={sigma} snapshot={snapshot} />);
-        const card = screen.getByRole('button', { name: 'Table a' });
+        const card = screen.getByRole('button', { name: /^a / });
         act(() => {
             pointer('pointerdown', card, 100, 100);
             pointer('pointermove', card, 150, 100);

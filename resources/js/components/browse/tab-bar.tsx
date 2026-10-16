@@ -256,6 +256,11 @@ export function TabBar({
                                     aria-controls={panelDomId}
                                     tabIndex={active ? 0 : -1}
                                     data-preview={preview ? 'true' : undefined}
+                                    aria-keyshortcuts={
+                                        tab.kind !== 'universe'
+                                            ? 'Delete'
+                                            : undefined
+                                    }
                                     draggable={draggable}
                                     ref={(el) => {
                                         if (el) refs.current.set(tab.id, el);
@@ -302,10 +307,15 @@ export function TabBar({
                                     <TabIcon tab={tab} />
                                     <span className="truncate">{title}</span>
                                 </button>
+                                {/* A tablist may only own tabs, so the close button is a pointer
+                                    shortcut hidden from assistive tech: Delete on the tab and the
+                                    tab's context menu close it too. */}
                                 {tab.kind !== 'universe' && (
                                     <button
                                         type="button"
                                         tabIndex={-1}
+                                        aria-hidden="true"
+                                        title={`Close ${title}`}
                                         aria-label={`Close ${title}`}
                                         className="mr-1 rounded p-0.5 opacity-60 group-hover:opacity-100 hover:bg-muted hover:opacity-100"
                                         onClick={() => close(tab)}

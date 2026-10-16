@@ -196,13 +196,15 @@ export function RowDrawer({
     onExplore,
 }: Props) {
     const heading = useRef<HTMLHeadingElement>(null);
-    useEffect(() => heading.current?.focus(), []);
 
     const baseTarget = useMemo(
         () => rowRecordTarget(snapshot, columns, row),
         [snapshot, columns, row],
     );
     const [stack, setStack] = useState<RecordTarget[]>([]);
+    // The heading takes focus on open and after every hop or Back: the reference that was clicked
+    // and the Back button both unmount, and focus on <body> would leave Escape unable to close.
+    useEffect(() => heading.current?.focus(), [stack.length]);
     const current = stack.length > 0 ? stack[stack.length - 1] : baseTarget;
     const currentId = current ? targetId(current) : null;
     const hopped = stack.length > 0;

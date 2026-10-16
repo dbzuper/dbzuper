@@ -38,8 +38,16 @@ const NO_PINS: Pin[] = [];
 const NO_RECENTS: string[] = [];
 
 type Section = 'pinned' | 'recent' | 'all';
-type Item = { key: string; section: Section; table: string };
+/** A tree row: a table, or (table null) a section header. */
+type Item = { key: string; section: Section; table: string | null };
 const itemKey = (section: Section, table: string) => `${section}:${table}`;
+const headerKey = (section: Section) => `header:${section}`;
+
+/** A row's accessible name holds its visible text (name and row count), as WCAG 2.5.3 asks. */
+const rowLabel = (name: string, count: string) =>
+    count === '—'
+        ? name
+        : `${name}, ${count} ${count === '1' ? 'row' : 'rows'}`;
 
 type RowProps = {
     connectionId: number;
@@ -77,6 +85,7 @@ function SidebarRow({
         );
     };
     const Icon = table.kind === 'view' ? Eye : Table2;
+    const count = formatRowCount(table.row_count);
 
     return (
         <TableContextMenu
@@ -108,7 +117,7 @@ function SidebarRow({
                     role="treeitem"
                     aria-selected={active}
                     aria-current={active ? 'true' : undefined}
-                    aria-label={name}
+                    aria-label={rowLabel(name, count)}
                     data-table={name}
                     data-key={itemKey(section, name)}
                     aria-keyshortcuts="*"
@@ -136,55 +145,80 @@ function SidebarRow({
                         aria-label={table.kind === 'view' ? 'View' : 'Table'}
                         className="size-3.5 shrink-0 text-muted-foreground"
                     />
-                    <span className="min-w-0 flex-1 truncate">{name}</span>
+                    {/* The space keeps name and count apart in the row's text. */}
+                    <span className="min-w-0 flex-1 truncate">{name}</span>{' '}
                     <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                        {formatRowCount(table.row_count)}
+                        {count}
                     </span>
+                    {/* Inside the treeitem: a tree may only own groups and treeitems. It is a pointer
+                        shortcut; the keyboard pins with * and the context menu. */}
+                    <button
+                        type="button"
+                        tabIndex={-1}
+                        title={pinned ? 'Unpin (*)' : 'Pin (*)'}
+                        aria-label={pinned ? `Unpin ${name}` : `Pin ${name}`}
+                        onMouseDown={(e) => {
+                            // Keeps focus (and the click) away from the row.
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            void usePins.getState().toggle(connectionId, name);
+                        }}
+                        onDoubleClick={(e) => e.stopPropagation()}
+                        onAuxClick={(e) => e.stopPropagation()}
+                        className={cn(
+                            'absolute right-1 flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring',
+                            pinned
+                                ? 'opacity-100'
+                                : 'opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100',
+                        )}
+                    >
+                        <Star
+                            className={cn('size-3.5', pinned && 'fill-current')}
+                        />
+                    </button>
                 </div>
-                <button
-                    type="button"
-                    tabIndex={-1}
-                    title={pinned ? 'Unpin (*)' : 'Pin (*)'}
-                    aria-label={pinned ? `Unpin ${name}` : `Pin ${name}`}
-                    onClick={() =>
-                        void usePins.getState().toggle(connectionId, name)
-                    }
-                    className={cn(
-                        'absolute right-1 flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring',
-                        pinned
-                            ? 'opacity-100'
-                            : 'opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100',
-                    )}
-                >
-                    <Star
-                        className={cn('size-3.5', pinned && 'fill-current')}
-                    />
-                </button>
             </div>
         </TableContextMenu>
     );
 }
 
+/**
+ * A section header is a treeitem (a tree may only own groups and treeitems): it is in the arrow-key
+ * order, and click, Enter, Space or Left/Right collapse and expand its section.
+ */
 function SectionHeader({
+    section,
     label,
     open,
+    tabbable,
     onToggle,
+    onFocusRow,
 }: {
+    section: Section;
     label: string;
     open: boolean;
+    tabbable: boolean;
     onToggle: () => void;
+    onFocusRow: (key: string) => void;
 }) {
     const Chevron = open ? ChevronDown : ChevronRight;
     return (
-        <button
-            type="button"
+        <div
+            role="treeitem"
             aria-expanded={open}
+            aria-label={label}
+            data-key={headerKey(section)}
+            tabIndex={tabbable ? 0 : -1}
+            onFocus={() => onFocusRow(headerKey(section))}
             onClick={onToggle}
-            className="flex h-7 w-full shrink-0 items-center gap-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase hover:text-foreground"
+            className="flex h-7 w-full shrink-0 cursor-default items-center gap-1 rounded-sm px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase outline-none select-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
         >
-            <Chevron className="size-3.5" />
+            <Chevron className="size-3.5" aria-hidden />
             {label}
-        </button>
+        </div>
     );
 }
 
@@ -208,9 +242,14 @@ export function TableSidebar({
     const width = useSidebarPrefs((s) => s.width);
     const collapsed = useSidebarPrefs((s) => s.collapsed);
     const pins = usePins((s) => s.byConnection[connectionId] ?? NO_PINS);
-    const recents = useBrowse(
+    const liveRecents = useBrowse(
         (s) => s.byConnection[connectionId]?.recents ?? NO_RECENTS,
     );
+    // Opening a table moves it to the top of Recent (and may add the section). While the pointer is
+    // in the tree the rows stay where they are, so the second click of a double-click lands on the
+    // same table as the first; the list catches up when the pointer leaves.
+    const [frozenRecents, setFrozenRecents] = useState<string[] | null>(null);
+    const recents = frozenRecents ?? liveRecents;
     const activeTable = useBrowse((s) => {
         const c = s.byConnection[connectionId];
         const tab = c?.tabs.find((t) => t.id === c.activeId);
@@ -263,17 +302,20 @@ export function TableSidebar({
 
     const items = useMemo<Item[]>(() => {
         const out: Item[] = [];
-        const add = (section: Section, tables: string[]) =>
+        const add = (section: Section, tables: string[]) => {
+            out.push({ key: headerKey(section), section, table: null });
+            if (!openSections[section]) return;
             tables.forEach((table) =>
                 out.push({ key: itemKey(section, table), section, table }),
             );
-        if (showPinned && openSections.pinned)
+        };
+        if (showPinned)
             add(
                 'pinned',
                 pinnedTables.filter((t) => byName.has(t)),
             );
-        if (showRecent && openSections.recent) add('recent', recentTables);
-        if (openSections.all) add('all', allNames);
+        if (showRecent) add('recent', recentTables);
+        add('all', allNames);
         return out;
     }, [
         showPinned,
@@ -327,7 +369,7 @@ export function TableSidebar({
         if (!item) return;
         pendingFocus.current = item.key;
         setFocusKey(item.key);
-        if (item.section === 'all')
+        if (item.section === 'all' && item.table !== null)
             virtualizer.scrollToIndex(allNames.indexOf(item.table));
         const el = document.querySelector<HTMLElement>(
             `[data-sidebar-tree] [data-key="${CSS.escape(item.key)}"]`,
@@ -346,6 +388,19 @@ export function TableSidebar({
         if (index < 0) return;
         const item = items[index];
 
+        if (item.table === null) {
+            const open = openSections[item.section];
+            if (
+                event.key === 'Enter' ||
+                event.key === ' ' ||
+                (event.key === 'ArrowRight' && !open) ||
+                (event.key === 'ArrowLeft' && open)
+            ) {
+                event.preventDefault();
+                return toggleSection(item.section);
+            }
+        }
+
         switch (event.key) {
             case 'ArrowDown':
                 event.preventDefault();
@@ -359,15 +414,19 @@ export function TableSidebar({
             case 'End':
                 event.preventDefault();
                 return moveTo(items.length - 1);
+        }
+        const table = item.table;
+        if (table === null) return;
+        switch (event.key) {
             case 'Enter':
                 event.preventDefault();
-                return actions.open(item.table, 'permanent');
+                return actions.open(table, 'permanent');
             case ' ':
                 event.preventDefault();
-                return actions.open(item.table, 'preview');
+                return actions.open(table, 'preview');
             case '*':
                 event.preventDefault();
-                return void usePins.getState().toggle(connectionId, item.table);
+                return void usePins.getState().toggle(connectionId, table);
         }
 
         if (
@@ -387,7 +446,7 @@ export function TableSidebar({
         const start = buffer.length === 1 ? index + 1 : index;
         for (let step = 0; step < items.length; step++) {
             const at = (start + step) % items.length;
-            if (items[at].table.toLowerCase().startsWith(buffer))
+            if (items[at].table?.toLowerCase().startsWith(buffer))
                 return moveTo(at);
         }
     };
@@ -472,7 +531,13 @@ export function TableSidebar({
                         }
                         if (e.key === 'ArrowDown' && items.length > 0) {
                             e.preventDefault();
-                            moveTo(0);
+                            // The first table, past its section header.
+                            moveTo(
+                                Math.max(
+                                    0,
+                                    items.findIndex((i) => i.table !== null),
+                                ),
+                            );
                         }
                     }}
                     className="h-8 w-full rounded-md border bg-background pr-2 pl-7 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring [&::-webkit-search-cancel-button]:appearance-none"
@@ -484,6 +549,8 @@ export function TableSidebar({
                 aria-label="Tables"
                 data-sidebar-tree
                 onKeyDown={onTreeKeyDown}
+                onPointerEnter={() => setFrozenRecents(liveRecents)}
+                onPointerLeave={() => setFrozenRecents(null)}
                 className="flex min-h-0 flex-1 flex-col"
             >
                 {showPinned && (
@@ -493,9 +560,12 @@ export function TableSidebar({
                         className="flex max-h-[40%] shrink-0 flex-col"
                     >
                         <SectionHeader
+                            section="pinned"
                             label="Pinned"
                             open={openSections.pinned}
+                            tabbable={tabbableKey === headerKey('pinned')}
                             onToggle={() => toggleSection('pinned')}
+                            onFocusRow={setFocusKey}
                         />
                         {openSections.pinned && (
                             <div className="overflow-y-auto px-1">
@@ -505,6 +575,9 @@ export function TableSidebar({
                                         return (
                                             <div
                                                 key={pin.id}
+                                                role="treeitem"
+                                                aria-disabled="true"
+                                                aria-label={`${pin.table} (no longer exists)`}
                                                 className="flex h-7 items-center gap-2 pr-1 pl-2 text-sm text-muted-foreground"
                                             >
                                                 <Table2
@@ -557,9 +630,12 @@ export function TableSidebar({
                         className="flex max-h-[30%] shrink-0 flex-col"
                     >
                         <SectionHeader
+                            section="recent"
                             label="Recent"
                             open={openSections.recent}
+                            tabbable={tabbableKey === headerKey('recent')}
                             onToggle={() => toggleSection('recent')}
+                            onFocusRow={setFocusKey}
                         />
                         {openSections.recent && (
                             <div className="overflow-y-auto px-1">
@@ -583,9 +659,12 @@ export function TableSidebar({
                     className="flex min-h-0 flex-1 flex-col"
                 >
                     <SectionHeader
+                        section="all"
                         label={`All tables (${allNames.length})`}
                         open={openSections.all}
+                        tabbable={tabbableKey === headerKey('all')}
                         onToggle={() => toggleSection('all')}
+                        onFocusRow={setFocusKey}
                     />
                     {openSections.all && (
                         <div

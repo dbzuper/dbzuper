@@ -40,6 +40,16 @@ export default defineConfig({
     fullyParallel: false,
     globalSetup: './e2e/global-setup.ts',
     use: { baseURL: 'http://127.0.0.1:8123' },
+    // The foundation spec walks the first-run setup, so it must sign in before any other spec creates
+    // the administrator (files otherwise run alphabetically, and browse.spec sorts before it).
+    projects: [
+        { name: 'setup', testMatch: /foundation\.spec\.ts$/ },
+        {
+            name: 'e2e',
+            testIgnore: /foundation\.spec\.ts$/,
+            dependencies: ['setup'],
+        },
+    ],
     webServer: {
         // --no-reload passes the environment (PHP_INI_SCAN_DIR) through to the `php -S` child.
         command: 'php artisan serve --host=127.0.0.1 --port=8123 --no-reload',

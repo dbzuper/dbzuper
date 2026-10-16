@@ -54,10 +54,11 @@ test('universe: explore, inspect and find a path', async ({ page }) => {
     await page
         .getByPlaceholder('Search tables, columns and actions…')
         .fill('orders');
+    // Shift+click keeps the inspector behaviour (a plain pick opens the table tab).
     await page
         .getByRole('option', { name: /^orders/ })
         .first()
-        .click();
+        .click({ modifiers: ['Shift'] });
 
     const inspector = page.getByRole('complementary', { name: 'Inspector' });
     await expect(
@@ -68,8 +69,23 @@ test('universe: explore, inspect and find a path', async ({ page }) => {
     await inspector.getByRole('tab', { name: 'Relationships' }).click();
     await expect(inspector.getByText(/% inferred/)).toBeVisible();
 
-    await inspector.getByRole('tab', { name: 'Data' }).click();
-    await expect(inspector.getByText('paid')).toBeVisible();
+    // The inspector's rows live in the table tab now; the Universe tab brings the inspector back.
+    await inspector.getByRole('button', { name: 'Open data' }).click();
+    const tabs = page.getByRole('tablist', { name: 'Open tabs' });
+    await expect(tabs.getByRole('tab', { name: 'orders' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+    );
+    await expect(
+        page
+            .getByRole('main')
+            .getByRole('tabpanel')
+            .getByRole('gridcell', { name: 'paid', exact: true }),
+    ).toBeVisible();
+    await tabs.getByRole('tab', { name: 'Universe' }).click();
+    await expect(
+        inspector.getByRole('heading', { name: 'orders' }),
+    ).toBeVisible();
 
     await inspector.getByRole('tab', { name: 'DDL' }).click();
     await expect(inspector.getByTestId('ddl')).toContainText('CREATE TABLE');
@@ -89,9 +105,10 @@ test('universe: explore, inspect and find a path', async ({ page }) => {
     expect(monacoRequests).toEqual([]);
 
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'List view' }).click();
     await expect(
-        page.getByRole('button', { name: 'order_items' }),
+        page
+            .getByRole('tree', { name: 'Tables' })
+            .getByRole('treeitem', { name: /^order_items,/ }),
     ).toBeVisible();
 });
 

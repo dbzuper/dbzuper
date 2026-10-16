@@ -31,7 +31,7 @@ describe('TableCard', () => {
             />,
         );
         expect(
-            screen.getByRole('button', { name: 'Table orders' }),
+            screen.getByRole('button', { name: /^orders / }),
         ).toBeInTheDocument();
         expect(screen.getByText('~1.2K rows')).toBeInTheDocument();
         expect(screen.getByText('col_9')).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe('TableCard', () => {
                 onSelect={onSelect}
             />,
         );
-        const card = screen.getByRole('button', { name: 'Table orders' });
+        const card = screen.getByRole('button', { name: /^orders / });
         fireEvent.keyDown(card, { key: 'Enter' });
         fireEvent.keyDown(card, { key: ' ' });
         expect(onSelect).toHaveBeenCalledTimes(2);
@@ -72,7 +72,7 @@ describe('TableCard', () => {
             />,
         );
         expect(screen.getByText('view')).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Table v' }));
+        fireEvent.click(screen.getByRole('button', { name: /^v / }));
         expect(onSelect).toHaveBeenCalledWith('v');
     });
 });
