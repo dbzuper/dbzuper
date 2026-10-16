@@ -1,5 +1,6 @@
-import { Crosshair, Route, X } from 'lucide-react';
+import { Crosshair, Route, Table2, X } from 'lucide-react';
 import { useMemo } from 'react';
+import { openTableTab } from '@/browse/table-actions';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatBytes, formatRowCount } from '@/lib/format';
@@ -7,7 +8,6 @@ import type { SchemaSnapshot, TableSchema } from '@/types/schema';
 import { useWorkspace, type InspectorTab } from '@/universe/store';
 import { fkColumnsByTable } from '@/universe/visible';
 import { ColumnsTab } from './columns-tab';
-import { DataTab } from './data-tab';
 import { DdlTab } from './ddl-tab';
 import { IndexesTab } from './indexes-tab';
 import { RelationshipsTab } from './relationships-tab';
@@ -78,6 +78,17 @@ export function InspectorPanel({ connectionId, snapshot, table }: Props) {
                 >
                     <Route className="size-3.5" /> Find path to…
                 </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                        openTableTab(connectionId, table.name, {
+                            mode: 'permanent',
+                        })
+                    }
+                >
+                    <Table2 className="size-3.5" /> Open data
+                </Button>
             </div>
             <Tabs
                 value={tab}
@@ -90,7 +101,6 @@ export function InspectorPanel({ connectionId, snapshot, table }: Props) {
                         Relationships
                     </TabsTrigger>
                     <TabsTrigger value="indexes">Indexes</TabsTrigger>
-                    <TabsTrigger value="data">Data</TabsTrigger>
                     <TabsTrigger value="ddl">DDL</TabsTrigger>
                 </TabsList>
                 <TabsContent value="columns">
@@ -101,14 +111,6 @@ export function InspectorPanel({ connectionId, snapshot, table }: Props) {
                 </TabsContent>
                 <TabsContent value="indexes">
                     <IndexesTab table={table} />
-                </TabsContent>
-                <TabsContent value="data" className="overflow-hidden">
-                    <DataTab
-                        key={`${connectionId}:${table.name}`}
-                        connectionId={connectionId}
-                        table={table.name}
-                        snapshot={snapshot}
-                    />
                 </TabsContent>
                 <TabsContent value="ddl">
                     <DdlTab

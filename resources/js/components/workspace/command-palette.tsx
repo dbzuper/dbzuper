@@ -1,6 +1,7 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Command } from 'cmdk';
 import { useMemo, useRef, useState } from 'react';
+import { useBrowse } from '@/browse/browse-store';
 import { INSPECTOR_HEADING_ID } from '@/components/inspector/inspector-panel';
 import { takePaletteOpener } from '@/lib/workspace-shortcuts';
 import { nextAppearance, useAppearance } from '@/hooks/use-appearance';
@@ -19,14 +20,13 @@ const itemClass =
     'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm aria-selected:bg-muted';
 
 export function CommandPalette({
+    connectionId,
     snapshot,
     onRefresh,
-    universeAvailable = true,
 }: {
+    connectionId: number;
     snapshot: SchemaSnapshot;
     onRefresh: () => void;
-    /** False without WebGL or after a render failure: the list view is then the only view. */
-    universeAvailable?: boolean;
 }) {
     const open = useWorkspace((s) => s.paletteOpen);
     const setOpen = useWorkspace((s) => s.setPaletteOpen);
@@ -52,7 +52,9 @@ export function CommandPalette({
         setQuery('');
     };
 
+    // The inspector only lives on the Universe tab.
     const showInInspector = (table: string, tab?: 'columns') => {
+        useBrowse.getState().activate(connectionId, 'universe');
         useWorkspace.getState().select(table, tab);
         universe.flyTo(table);
         focusInspector.current = true;
@@ -87,21 +89,6 @@ export function CommandPalette({
         },
         { label: 'Fit everything on screen', run: universe.fitAll },
         { label: 'Re-layout the universe', run: universe.relayout },
-        ...(st.view === 'list'
-            ? universeAvailable
-                ? [
-                      {
-                          label: 'Switch to universe view',
-                          run: () => st.setView('universe'),
-                      },
-                  ]
-                : []
-            : [
-                  {
-                      label: 'Switch to list view',
-                      run: () => st.setView('list'),
-                  },
-              ]),
         ...(st.selected
             ? [
                   {

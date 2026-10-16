@@ -6,6 +6,7 @@ import {
     waitFor,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useBrowse } from '@/browse/browse-store';
 import { initializeTheme } from '@/hooks/use-appearance';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useRecords } from '@/records/records-store';
@@ -33,18 +34,28 @@ const snap = makeSnapshot(
 beforeEach(() => {
     useWorkspace.getState().reset();
     useWorkspace.getState().setPaletteOpen(true);
+    useBrowse.setState({ byConnection: {} });
+    useRecords.setState({ connectionId: 1 });
 });
 
 describe('CommandPalette', () => {
-    it('selects a table and flies to it', () => {
+    it('selects a table on the Universe tab and flies to it', () => {
+        useBrowse.getState().openTable(1, 'orders');
         const fly = vi.spyOn(universe, 'flyTo');
-        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
         fireEvent.change(
             screen.getByPlaceholderText('Search tables, columns and actions…'),
             { target: { value: 'users' } },
         );
         fireEvent.click(screen.getByRole('option', { name: /users/ }));
         expect(useWorkspace.getState().selected).toBe('users');
+        expect(useBrowse.getState().get(1).activeId).toBe('universe');
         expect(fly).toHaveBeenCalledWith('users');
         expect(useWorkspace.getState().paletteOpen).toBe(false);
     });
@@ -60,7 +71,11 @@ describe('CommandPalette', () => {
                     <h2 id={INSPECTOR_HEADING_ID} tabIndex={-1}>
                         users
                     </h2>
-                    <CommandPalette snapshot={snap} onRefresh={() => {}} />
+                    <CommandPalette
+                        connectionId={1}
+                        snapshot={snap}
+                        onRefresh={() => {}}
+                    />
                 </>,
             );
             const input = screen.getByPlaceholderText(
@@ -86,7 +101,11 @@ describe('CommandPalette', () => {
         render(
             <>
                 <textarea aria-label="sql" />
-                <CommandPalette snapshot={snap} onRefresh={() => {}} />
+                <CommandPalette
+                    connectionId={1}
+                    snapshot={snap}
+                    onRefresh={() => {}}
+                />
             </>,
         );
         screen.getByLabelText('sql').focus();
@@ -106,7 +125,11 @@ describe('CommandPalette', () => {
                 <h2 id={INSPECTOR_HEADING_ID} tabIndex={-1}>
                     users
                 </h2>
-                <CommandPalette snapshot={snap} onRefresh={() => {}} />
+                <CommandPalette
+                    connectionId={1}
+                    snapshot={snap}
+                    onRefresh={() => {}}
+                />
             </>,
         );
         fireEvent.keyDown(
@@ -122,7 +145,13 @@ describe('CommandPalette', () => {
 
     it('completes a pending path when a table is picked', () => {
         useWorkspace.getState().startPath('users');
-        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
         expect(
             screen.getByText('Find path from users to…'),
         ).toBeInTheDocument();
@@ -137,7 +166,13 @@ describe('CommandPalette', () => {
 
     it('cancels a pending path when its start table is picked again', () => {
         useWorkspace.getState().startPath('users');
-        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
         fireEvent.click(screen.getByRole('option', { name: /users/ }));
         expect(useWorkspace.getState().pathFrom).toBeNull();
         expect(useWorkspace.getState().path).toBeNull();
@@ -146,7 +181,13 @@ describe('CommandPalette', () => {
 
     it('keeps a pending path start when the palette is dismissed, so the end can be picked elsewhere', () => {
         useWorkspace.getState().startPath('users');
-        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
         fireEvent.keyDown(
             screen.getByPlaceholderText('Search tables, columns and actions…'),
             { key: 'Escape' },
@@ -165,7 +206,13 @@ describe('CommandPalette', () => {
 
     it('keeps a completed path (and its start) after picking the end table', () => {
         useWorkspace.getState().startPath('users');
-        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
         fireEvent.click(screen.getByRole('option', { name: /products/ }));
         expect(useWorkspace.getState().paletteOpen).toBe(false);
         expect(useWorkspace.getState().pathFrom).toBe('users');
@@ -174,7 +221,13 @@ describe('CommandPalette', () => {
 
     it('starting a path from the palette keeps it open to pick the end', () => {
         useWorkspace.getState().select('orders');
-        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
         fireEvent.click(
             screen.getByRole('option', { name: /Find path from orders to/ }),
         );
@@ -182,35 +235,31 @@ describe('CommandPalette', () => {
         expect(useWorkspace.getState().paletteOpen).toBe(true);
     });
 
-    it('hides the universe view switch when the universe is unavailable', () => {
-        useWorkspace.getState().setView('list');
+    it('offers no list or universe view switch', () => {
         render(
             <CommandPalette
+                connectionId={1}
                 snapshot={snap}
                 onRefresh={() => {}}
-                universeAvailable={false}
             />,
         );
         expect(
-            screen.queryByRole('option', { name: 'Switch to universe view' }),
+            screen.queryByRole('option', { name: /Switch to/ }),
         ).not.toBeInTheDocument();
         expect(
             screen.getByRole('option', { name: 'Refresh schema' }),
         ).toBeInTheDocument();
     });
 
-    it('offers the universe view switch when the universe is available', () => {
-        useWorkspace.getState().setView('list');
-        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
-        fireEvent.click(
-            screen.getByRole('option', { name: 'Switch to universe view' }),
-        );
-        expect(useWorkspace.getState().view).toBe('universe');
-    });
-
     it('runs actions', () => {
         const onRefresh = vi.fn();
-        render(<CommandPalette snapshot={snap} onRefresh={onRefresh} />);
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={onRefresh}
+            />,
+        );
         fireEvent.click(screen.getByRole('option', { name: 'Refresh schema' }));
         expect(onRefresh).toHaveBeenCalled();
     });
@@ -218,7 +267,13 @@ describe('CommandPalette', () => {
     it('offers a Records item first for `table key` and opens the record view', () => {
         const open = vi.fn();
         useRecords.setState({ open });
-        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
         fireEvent.change(
             screen.getByPlaceholderText('Search tables, columns and actions…'),
             { target: { value: 'users 2' } },
@@ -227,13 +282,19 @@ describe('CommandPalette', () => {
         expect(options[0]).toHaveTextContent('Open record users · 2');
         fireEvent.click(options[0]);
         expect(open).toHaveBeenCalledWith('users', { id: 2 });
-        expect(useWorkspace.getState().view).toBe('records');
+        expect(useBrowse.getState().get(1).activeId).toBe('records');
         expect(useWorkspace.getState().paletteOpen).toBe(false);
     });
 
     it('shows no Records item for a table that cannot be explored', () => {
         const keyless = makeSnapshot([{ name: 'logs', primary_key: [] }]);
-        render(<CommandPalette snapshot={keyless} onRefresh={() => {}} />);
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={keyless}
+                onRefresh={() => {}}
+            />,
+        );
         fireEvent.change(
             screen.getByPlaceholderText('Search tables, columns and actions…'),
             { target: { value: 'logs 2' } },
@@ -246,7 +307,13 @@ describe('CommandPalette theme action', () => {
     it('toggles the theme', () => {
         localStorage.setItem('appearance', 'dark');
         initializeTheme();
-        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
         fireEvent.click(screen.getByRole('option', { name: /Toggle theme/ }));
         expect(document.documentElement).not.toHaveClass('dark');
         expect(localStorage.getItem('appearance')).toBe('light');

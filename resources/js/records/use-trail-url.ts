@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { SchemaSnapshot } from '@/types/schema';
-import { useWorkspace } from '@/universe/store';
+import { useBrowse } from '@/browse/browse-store';
+import { recordsTabTitle } from './open-record';
 import { useRecords } from './records-store';
 import { emptyTrail } from './trail';
 import { setPopstateHandler } from './popstate-guard';
@@ -63,6 +64,9 @@ export function useTrailUrl(snapshot: SchemaSnapshot | null) {
                     applying.current = false;
                 }
             }
+            // No trail, no records tab (one may linger from storage or an earlier entry).
+            if (records.connectionId !== null)
+                useBrowse.getState().closeRecords(records.connectionId);
             return;
         }
         const decoded = decodeTrail(raw, snap);
@@ -82,7 +86,11 @@ export function useTrailUrl(snapshot: SchemaSnapshot | null) {
         } finally {
             applying.current = false;
         }
-        useWorkspace.getState().setView('records');
+        const root = decoded.trail.nodes[0];
+        if (records.connectionId !== null)
+            useBrowse
+                .getState()
+                .showRecords(records.connectionId, recordsTabTitle(root));
         if (decoded.dropped > 0)
             useRecords.setState({
                 notice: droppedNotice(decoded.dropped),
@@ -124,6 +132,17 @@ export function useTrailUrl(snapshot: SchemaSnapshot | null) {
                 state.systemEpoch !== prev.systemEpoch ? 'replace' : 'push',
             );
         });
+        // Closing the records tab ends the exploration: the trail empties, so `?r=` goes too.
+        const unsubscribeTabs = useBrowse.subscribe((state, prev) => {
+            const records = useRecords.getState();
+            const c = records.connectionId;
+            if (c === null || records.trail.nodes.length === 0) return;
+            const hasRecords = (s: typeof state) =>
+                s.byConnection[c]?.tabs.some((t) => t.kind === 'records') ??
+                false;
+            if (hasRecords(prev) && !hasRecords(state))
+                records.setTrail(emptyTrail());
+        });
         // Entries of this workspace (same pathname, or tagged by us) are applied here; the
         // popstate guard keeps Inertia from re-mounting the page for them.
         setPopstateHandler((event) => {
@@ -136,6 +155,7 @@ export function useTrailUrl(snapshot: SchemaSnapshot | null) {
         });
         return () => {
             unsubscribe();
+            unsubscribeTabs();
             setPopstateHandler(null);
         };
     }, []);

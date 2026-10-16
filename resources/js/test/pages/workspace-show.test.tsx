@@ -6,6 +6,9 @@ import {
     waitFor,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useBrowse } from '@/browse/browse-store';
+import { rowsCache } from '@/browse/rows-cache';
+import { useSidebarPrefs } from '@/browse/sidebar-prefs';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useRecords } from '@/records/records-store';
 import { useSqlTabs } from '@/sql/tabs-store';
@@ -38,6 +41,31 @@ vi.mock('@/components/records/records-view', () => ({
     default: () => <section aria-label="Record explorer" />,
 }));
 vi.mock('@/universe/webgl', () => ({ hasWebGL: () => false }));
+vi.mock('@tanstack/react-virtual', () => ({
+    useVirtualizer: ({ count }: { count: number }) => ({
+        getVirtualItems: () =>
+            Array.from({ length: count }, (_, index) => ({
+                index,
+                key: index,
+                start: index * 28,
+                size: 28,
+            })),
+        getTotalSize: () => count * 28,
+        scrollToIndex: vi.fn(),
+    }),
+}));
+vi.mock('@/lib/pins-api', () => ({
+    pinsApi: {
+        list: vi.fn().mockResolvedValue({ pins: [] }),
+        add: vi.fn(),
+        remove: vi.fn(),
+        reorder: vi.fn(),
+    },
+}));
+const toast = vi.hoisted(() =>
+    Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }),
+);
+vi.mock('sonner', () => ({ toast, Toaster: () => null }));
 
 const api = vi.hoisted(() => ({
     schema: vi.fn(),
@@ -46,6 +74,8 @@ const api = vi.hoisted(() => ({
     saveLayout: vi.fn(),
     sample: vi.fn(),
     ddl: vi.fn(),
+    rows: vi.fn(() => new Promise(() => undefined)),
+    count: vi.fn(() => new Promise(() => undefined)),
 }));
 vi.mock('@/lib/workspace-api', async (orig) => ({
     ...(await orig<typeof import('@/lib/workspace-api')>()),
@@ -88,6 +118,8 @@ beforeEach(() => {
     vi.clearAllMocks();
     useWorkspace.getState().reset();
     useSqlTabs.setState({ byConnection: {} });
+    useBrowse.setState({ byConnection: {} });
+    useSidebarPrefs.setState({ collapsed: false });
     historyApi.list.mockResolvedValue({
         entries: [
             {
@@ -127,40 +159,160 @@ describe('workspace page', () => {
                 id: 3,
             }),
         );
-        expect(useWorkspace.getState().view).toBe('records');
-        window.history.replaceState(null, '', '/');
-    });
-
-    it('opens the records view from the rail and binds the records store to the connection', async () => {
-        render(<WorkspaceShow connection={connection} />);
-        await screen.findByText('orders');
-        expect(useRecords.getState().connectionId).toBe(1);
-        const records = screen.getByRole('button', { name: 'Records' });
-        expect(records).toBeEnabled();
-        fireEvent.click(records);
-        expect(useWorkspace.getState().view).toBe('records');
+        await waitFor(() =>
+            expect(useBrowse.getState().get(1).activeId).toBe('records'),
+        );
         expect(
             await screen.findByRole('region', { name: 'Record explorer' }),
         ).toBeInTheDocument();
-        expect(records).toHaveAttribute('aria-pressed', 'true');
+        expect(
+            screen.getByRole('tab', { name: /Records · users #3/ }),
+        ).toHaveAttribute('aria-selected', 'true');
+        window.history.replaceState(null, '', '/');
     });
 
-    it('falls back to the list view when WebGL is unavailable', async () => {
+    it('binds the records store to the connection and switches tabs from the rail', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByRole('treeitem', { name: /orders/ });
+        expect(useRecords.getState().connectionId).toBe(1);
+        const universe = screen.getByRole('button', { name: 'Universe' });
+        expect(universe).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByRole('button', { name: 'Records' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'List view' })).toBeNull();
+        act(() => {
+            useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+        });
+        expect(universe).toHaveAttribute('aria-pressed', 'false');
+        fireEvent.click(universe);
+        expect(useBrowse.getState().get(1).activeId).toBe('universe');
+        expect(universe).toHaveAttribute('aria-pressed', 'true');
+        window.history.replaceState(null, '', '/');
+    });
+
+    it('toggles the table sidebar from the rail', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByRole('treeitem', { name: /orders/ });
+        const toggle = screen.getByRole('button', {
+            name: 'Toggle table sidebar',
+        });
+        expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(toggle);
+        expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.queryByRole('treeitem', { name: /orders/ })).toBeNull();
+        fireEvent.click(toggle);
+        expect(
+            await screen.findByRole('treeitem', { name: /orders/ }),
+        ).toBeInTheDocument();
+    });
+
+    it('shows the WebGL message on the Universe tab and the tables in the sidebar', async () => {
         render(<WorkspaceShow connection={connection} />);
         expect(
-            await screen.findByText(/WebGL is not available/),
+            await screen.findByText(
+                'WebGL is not available in this browser. Browse tables from the sidebar.',
+            ),
         ).toBeInTheDocument();
-        expect(await screen.findByText('orders')).toBeInTheDocument();
+        expect(
+            screen.getByRole('treeitem', { name: /orders/ }),
+        ).toBeInTheDocument();
         expect(screen.getByText('read-only')).toBeInTheDocument();
+        expect(screen.getByRole('tabpanel')).toHaveAttribute(
+            'aria-labelledby',
+            screen.getByRole('tab', { name: /Universe/ }).id,
+        );
     });
 
-    it('opens the inspector slot when a table is selected from the list', async () => {
+    it('opens a table tab from the sidebar and shows it in the panel', async () => {
         render(<WorkspaceShow connection={connection} />);
-        fireEvent.click(await screen.findByRole('button', { name: 'users' }));
-        expect(useWorkspace.getState().selected).toBe('users');
+        fireEvent.click(
+            await screen.findByRole('treeitem', { name: /orders/ }),
+        );
+        expect(useBrowse.getState().get(1).activeId).toBe('t:orders');
+        expect(
+            screen.getByRole('heading', { name: 'orders' }),
+        ).toBeInTheDocument();
+        expect(screen.getByRole('tabpanel')).toHaveAttribute(
+            'aria-labelledby',
+            screen.getByRole('tab', { name: /orders/ }).id,
+        );
+        expect(new URL(window.location.href).searchParams.get('tab')).toBe(
+            'orders',
+        );
+        window.history.replaceState(null, '', '/');
+    });
+
+    it('opens the table named by ?tab= and drops an unknown one with a toast', async () => {
+        window.history.replaceState(null, '', '/c/1?tab=order+items&keep=1');
+        api.schema.mockResolvedValue({
+            snapshot: makeSnapshot([
+                { name: 'users' },
+                { name: 'order items' },
+            ]),
+            snapshot_id: 1,
+            stored_at: new Date().toISOString(),
+        });
+        const { unmount } = render(<WorkspaceShow connection={connection} />);
+        await waitFor(() =>
+            expect(useBrowse.getState().get(1).activeId).toBe('t:order items'),
+        );
+        unmount();
+
+        useBrowse.setState({ byConnection: {} });
+        window.history.replaceState(null, '', '/c/1?tab=ghost&keep=1');
+        render(<WorkspaceShow connection={connection} />);
+        await waitFor(() =>
+            expect(toast.error).toHaveBeenCalledWith('Table not found: ghost'),
+        );
+        expect(window.location.search).toBe('?keep=1');
+        expect(useBrowse.getState().get(1).activeId).toBe('universe');
+        window.history.replaceState(null, '', '/');
+    });
+
+    it('reconciles tabs after a refresh, clears cached rows and says which filters were dropped', async () => {
+        useBrowse.getState().openTable(1, 'orders', {
+            mode: 'permanent',
+            state: { filters: [{ column: 'gone', op: 'eq', value: '1' }] },
+        });
+        render(<WorkspaceShow connection={connection} />);
+        await waitFor(() =>
+            expect(toast).toHaveBeenCalledWith(
+                'Filters on removed columns of orders were cleared.',
+            ),
+        );
+        const clear = vi.spyOn(rowsCache, 'clear');
+        api.refresh.mockResolvedValue({
+            snapshot: makeSnapshot([{ name: 'orders' }]),
+            snapshot_id: 2,
+            stored_at: new Date().toISOString(),
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh schema' }));
+        await waitFor(() => expect(clear).toHaveBeenCalled());
+        expect(toast).toHaveBeenCalledTimes(1);
+        clear.mockRestore();
+        window.history.replaceState(null, '', '/');
+    });
+
+    it('shows the inspector only on the Universe tab', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByRole('treeitem', { name: /orders/ });
+        act(() => useWorkspace.getState().select('users'));
         expect(
             screen.getByRole('complementary', { name: 'Inspector' }),
         ).toBeInTheDocument();
+        act(() => {
+            useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+        });
+        expect(
+            screen.queryByRole('complementary', { name: 'Inspector' }),
+        ).toBeNull();
+        window.history.replaceState(null, '', '/');
+    });
+
+    it('shows the loading state before the schema arrives', () => {
+        api.schema.mockReturnValue(new Promise(() => undefined));
+        render(<WorkspaceShow connection={connection} />);
+        expect(screen.getByText('Loading schema…')).toBeInTheDocument();
+        expect(screen.queryByRole('tablist')).toBeNull();
     });
 
     it('shows a truncation banner', async () => {
@@ -215,7 +367,7 @@ describe('workspace page', () => {
 
     it('keeps the selection when inferred relationships are toggled', async () => {
         render(<WorkspaceShow connection={connection} />);
-        await screen.findByText('orders');
+        await screen.findByRole('treeitem', { name: /orders/ });
         act(() => useWorkspace.getState().select('users'));
         fireEvent.click(screen.getByRole('button', { name: 'Hide inferred' }));
         expect(useWorkspace.getState().selected).toBe('users');
@@ -223,7 +375,7 @@ describe('workspace page', () => {
 
     it('shows the focus chip and clears focus then selection on Escape', async () => {
         render(<WorkspaceShow connection={connection} />);
-        await screen.findByText('orders');
+        await screen.findByRole('treeitem', { name: /orders/ });
         act(() => {
             useWorkspace.getState().select('users');
             useWorkspace.getState().setFocus('users');
@@ -240,7 +392,7 @@ describe('workspace page', () => {
 
     it('closes only the palette when Escape dismisses it', async () => {
         render(<WorkspaceShow connection={connection} />);
-        await screen.findByText('orders');
+        await screen.findByRole('treeitem', { name: /orders/ });
         act(() => {
             useWorkspace.getState().select('users');
             useWorkspace.getState().setFocus('users');
@@ -260,9 +412,9 @@ describe('workspace page', () => {
 
     it('ignores Escape typed into a text field', async () => {
         render(<WorkspaceShow connection={connection} />);
-        await screen.findByText('orders');
+        await screen.findByRole('treeitem', { name: /orders/ });
         act(() => useWorkspace.getState().select('users'));
-        fireEvent.keyDown(screen.getByPlaceholderText('Filter tables'), {
+        fireEvent.keyDown(screen.getByPlaceholderText('Search tables'), {
             key: 'Escape',
         });
         expect(useWorkspace.getState().selected).toBe('users');
@@ -270,7 +422,7 @@ describe('workspace page', () => {
 
     it('toggles the SQL dock with Ctrl+J and the rail button', async () => {
         render(<WorkspaceShow connection={connection} />);
-        await screen.findByText('orders');
+        await screen.findByRole('treeitem', { name: /orders/ });
         expect(screen.queryByRole('region', { name: 'SQL editor' })).toBeNull();
         fireEvent.keyDown(window, { key: 'j', ctrlKey: true });
         expect(
@@ -288,7 +440,7 @@ describe('workspace page', () => {
 
     it('opens a found path in a new SQL tab', async () => {
         render(<WorkspaceShow connection={connection} />);
-        await screen.findByText('orders');
+        await screen.findByRole('treeitem', { name: /orders/ });
         act(() => useWorkspace.getState().startPath('orders'));
         act(() => {
             useWorkspace.getState().setPaletteOpen(false);
@@ -309,7 +461,7 @@ describe('workspace page', () => {
 
     it('opens the history panel from the rail and an entry opens the dock with its SQL', async () => {
         render(<WorkspaceShow connection={connection} />);
-        await screen.findByText('orders');
+        await screen.findByRole('treeitem', { name: /orders/ });
         fireEvent.click(screen.getByRole('button', { name: 'History' }));
         expect(
             screen.getByRole('complementary', { name: 'History' }),
@@ -338,7 +490,7 @@ describe('workspace page', () => {
         window.history.replaceState(null, '', '/c/1?history=9&keep=1#x');
         const fetchSpy = vi.spyOn(globalThis, 'fetch');
         render(<WorkspaceShow connection={connection} />);
-        await screen.findByText('orders');
+        await screen.findByRole('treeitem', { name: /orders/ });
         await waitFor(() =>
             expect(useWorkspace.getState().dockOpen).toBe(true),
         );
@@ -361,7 +513,7 @@ describe('workspace page', () => {
             '/c/1?sql=select%201&history=abc',
         );
         render(<WorkspaceShow connection={connection} />);
-        await screen.findByText('orders');
+        await screen.findByRole('treeitem', { name: /orders/ });
         expect(historyApi.show).not.toHaveBeenCalled();
         expect(useWorkspace.getState().dockOpen).toBe(false);
         expect(useSqlTabs.getState().byConnection[1]).toBeUndefined();
@@ -372,7 +524,7 @@ describe('workspace page', () => {
         historyApi.show.mockRejectedValue(new Error('404'));
         window.history.replaceState(null, '', '/c/1?history=9');
         render(<WorkspaceShow connection={connection} />);
-        await screen.findByText('orders');
+        await screen.findByRole('treeitem', { name: /orders/ });
         expect(
             await screen.findByText(
                 'That history entry is no longer available.',

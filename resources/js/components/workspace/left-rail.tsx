@@ -1,4 +1,6 @@
-import { Database, History, List, Orbit, TerminalSquare } from 'lucide-react';
+import { History, Orbit, PanelLeft, TerminalSquare } from 'lucide-react';
+import { useActiveTab, useBrowse } from '@/browse/browse-store';
+import { useSidebarPrefs } from '@/browse/sidebar-prefs';
 import {
     Tooltip,
     TooltipContent,
@@ -8,13 +10,9 @@ import {
 import { cn } from '@/lib/utils';
 import { useWorkspace } from '@/universe/store';
 
-export function LeftRail({
-    universeAvailable,
-}: {
-    universeAvailable: boolean;
-}) {
-    const view = useWorkspace((s) => s.view);
-    const setView = useWorkspace((s) => s.setView);
+export function LeftRail({ connectionId }: { connectionId: number }) {
+    const universeActive = useActiveTab(connectionId).kind === 'universe';
+    const sidebarCollapsed = useSidebarPrefs((s) => s.collapsed);
     const dockOpen = useWorkspace((s) => s.dockOpen);
     const setDockOpen = useWorkspace((s) => s.setDockOpen);
     const historyOpen = useWorkspace((s) => s.historyOpen);
@@ -24,8 +22,7 @@ export function LeftRail({
         label: string,
         Icon: typeof Orbit,
         active: boolean,
-        onClick?: () => void,
-        isDisabled = false,
+        onClick: () => void,
     ) => (
         <Tooltip key={label}>
             <TooltipTrigger asChild>
@@ -33,21 +30,17 @@ export function LeftRail({
                     type="button"
                     aria-label={label}
                     aria-pressed={active}
-                    disabled={isDisabled}
                     onClick={onClick}
                     className={cn(
                         'flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors motion-reduce:transition-none',
+                        'hover:bg-muted hover:text-foreground',
                         active && 'bg-muted text-foreground',
-                        !isDisabled && 'hover:bg-muted hover:text-foreground',
-                        isDisabled && 'opacity-40',
                     )}
                 >
                     <Icon className="size-4" />
                 </button>
             </TooltipTrigger>
-            <TooltipContent side="right">
-                {isDisabled ? `${label} — coming soon` : label}
-            </TooltipContent>
+            <TooltipContent side="right">{label}</TooltipContent>
         </Tooltip>
     );
 
@@ -60,20 +53,16 @@ export function LeftRail({
                 aria-label="Workspace views"
                 className="flex w-12 shrink-0 flex-col items-center gap-1 border-r py-2"
             >
-                {item(
-                    'Universe',
-                    Orbit,
-                    view === 'universe',
-                    () => setView('universe'),
-                    !universeAvailable,
+                {item('Universe', Orbit, universeActive, () =>
+                    useBrowse.getState().activate(connectionId, 'universe'),
                 )}
-                {item('List view', List, view === 'list', () =>
-                    setView('list'),
+                {item(
+                    'Toggle table sidebar',
+                    PanelLeft,
+                    !sidebarCollapsed,
+                    () => useSidebarPrefs.getState().toggle(),
                 )}
                 <div className="my-1 h-px w-6 bg-border" />
-                {item('Records', Database, view === 'records', () =>
-                    setView('records'),
-                )}
                 {item('SQL', TerminalSquare, dockOpen, () =>
                     setDockOpen(!dockOpen),
                 )}

@@ -13,12 +13,12 @@ import {
     type NodeTypes,
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { openTableTab } from '@/browse/table-actions';
 import { cn } from '@/lib/utils';
 import { COLUMN_GAP, pathTo, placements, ROW_GAP } from '@/records/trail';
 import { useRecords, type Point } from '@/records/records-store';
 import type { ConnectionSummary } from '@/types/connection';
 import type { SchemaSnapshot } from '@/types/schema';
-import { useWorkspace } from '@/universe/store';
 import { ClusterNode, clusterNodeId } from './cluster-node';
 import { RecordNode, RecordsSnapshotContext } from './record-card';
 import { RecordsBreadcrumb } from './records-breadcrumb';
@@ -297,11 +297,11 @@ function Explorer({
                             <button
                                 type="button"
                                 aria-label={`Open ${noticeTable} in Data tab`}
-                                onClick={() => {
-                                    const ws = useWorkspace.getState();
-                                    ws.clearDataFilter();
-                                    ws.select(noticeTable, 'data');
-                                }}
+                                onClick={() =>
+                                    openTableTab(connection.id, noticeTable, {
+                                        mode: 'permanent',
+                                    })
+                                }
                                 className="ml-auto rounded border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
                             >
                                 Open in Data tab

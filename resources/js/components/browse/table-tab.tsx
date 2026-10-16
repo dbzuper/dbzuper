@@ -14,6 +14,7 @@ import {
 } from '@/browse/browse-store';
 import { usePins } from '@/browse/pins-store';
 import { rowsCache } from '@/browse/rows-cache';
+import { openTableTab } from '@/browse/table-actions';
 import { tabDomId } from '@/components/browse/tab-bar';
 import type { TableActions } from '@/components/browse/table-context-menu';
 import { Button } from '@/components/ui/button';
@@ -58,7 +59,7 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
 
     const openFiltered = useCallback(
         (target: string, filters: RowFilter[]) =>
-            useBrowse.getState().openTable(connectionId, target, {
+            openTableTab(connectionId, target, {
                 mode: 'permanent',
                 state: { filters },
             }),

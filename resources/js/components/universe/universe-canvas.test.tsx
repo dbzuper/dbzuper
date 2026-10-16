@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { syntheticSnapshot } from '@/universe/__fixtures__/synthetic';
 import { assignClusters } from '@/universe/clusters';
 import { buildSchemaGraph } from '@/universe/graph';
+import { useBrowse } from '@/browse/browse-store';
 import { useWorkspace } from '@/universe/store';
 import { UniverseCanvas } from './universe-canvas';
 
@@ -11,6 +12,7 @@ const sigmaCalls = vi.hoisted(() => ({
     refresh: 0,
     scheduleRender: 0,
     resize: 0,
+    handlers: new Map<string, (event: unknown) => void>(),
 }));
 
 type RoCallback = (entries: { contentRect: DOMRect }[]) => void;
@@ -45,7 +47,8 @@ vi.mock('sigma', () => {
         getCamera() {
             return this.camera;
         }
-        on() {
+        on(event: string, handler: (event: unknown) => void) {
+            sigmaCalls.handlers.set(event, handler);
             return this;
         }
         once() {
@@ -94,6 +97,7 @@ describe('UniverseCanvas', () => {
 
         render(
             <UniverseCanvas
+                connectionId={1}
                 model={model}
                 snapshot={snapshot}
                 onRelayout={() => undefined}
@@ -125,6 +129,7 @@ describe('UniverseCanvas', () => {
 
         render(
             <UniverseCanvas
+                connectionId={1}
                 model={model}
                 snapshot={snapshot}
                 onRelayout={() => undefined}
@@ -180,6 +185,7 @@ describe('UniverseCanvas resize', () => {
         const model = { graph, clusters: assignClusters(graph) };
         const { unmount } = render(
             <UniverseCanvas
+                connectionId={1}
                 model={model}
                 snapshot={snapshot}
                 onRelayout={() => undefined}
@@ -221,5 +227,34 @@ describe('UniverseCanvas resize', () => {
         expect(observers.disconnected).toBe(1);
         raf.mockRestore();
         vi.unstubAllGlobals();
+    });
+
+    it('opens the table tab on a node double-click instead of zooming', async () => {
+        useBrowse.setState({ byConnection: {} });
+        const snapshot = syntheticSnapshot(5);
+        const graph = buildSchemaGraph(snapshot);
+        const model = { graph, clusters: assignClusters(graph) };
+        render(
+            <UniverseCanvas
+                connectionId={7}
+                model={model}
+                snapshot={snapshot}
+                onRelayout={() => undefined}
+                onPositionsChanged={() => undefined}
+                onError={() => undefined}
+            />,
+        );
+        const preventSigmaDefault = vi.fn();
+        const node = snapshot.tables[0].name;
+        act(() =>
+            sigmaCalls.handlers.get('doubleClickNode')!({
+                node,
+                preventSigmaDefault,
+            }),
+        );
+        expect(preventSigmaDefault).toHaveBeenCalled();
+        const browse = useBrowse.getState().get(7);
+        expect(browse.activeId).toBe(`t:${node}`);
+        expect(browse.tabs[1]).toMatchObject({ preview: false });
     });
 });

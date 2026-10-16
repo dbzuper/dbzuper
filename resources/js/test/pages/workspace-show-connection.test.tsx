@@ -108,11 +108,16 @@ describe('universe render failure', () => {
         expect(toast.error).toHaveBeenCalledTimes(1);
     });
 
-    it('falls back to the list but keeps the selection', async () => {
-        await mount();
+    it('falls back to the sidebar message but keeps the selection', async () => {
+        const view = await mount();
         act(() => useWorkspace.getState().select('users'));
         act(() => canvas.props!.onError(new Error('boom')));
-        expect(useWorkspace.getState().view).toBe('list');
+        expect(view.queryByTestId('fake-canvas')).toBeNull();
+        expect(
+            view.getByText(
+                'The universe could not be rendered. Browse tables from the sidebar.',
+            ),
+        ).toBeInTheDocument();
         expect(useWorkspace.getState().selected).toBe('users');
     });
 });

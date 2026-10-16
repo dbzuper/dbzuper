@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clusterKey, useRecords } from '@/records/records-store';
 import { openRoot, nodeId } from '@/records/trail';
 import type { RelationshipSummary } from '@/records/types';
+import { useBrowse } from '@/browse/browse-store';
 import { useWorkspace } from '@/universe/store';
 import { ClusterNode } from './cluster-node';
 
@@ -64,6 +65,7 @@ function mount(remaining: number | null) {
 beforeEach(() => {
     useRecords.getState().reset();
     useWorkspace.getState().reset();
+    useBrowse.setState({ byConnection: {} });
 });
 
 describe('ClusterNode', () => {
@@ -92,21 +94,24 @@ describe('ClusterNode', () => {
         expect(more).toHaveBeenCalledWith(key);
     });
 
-    it('Open in Data tab filters on every key column without changing the view', () => {
+    it('Open in Data tab opens the table tab filtered on every key column', () => {
         mount(5);
+        useRecords.setState({ connectionId: 1 });
         fireEvent.click(
             screen.getByRole('button', { name: 'Open in Data tab' }),
         );
-        const ws = useWorkspace.getState();
-        expect(ws.view).toBe('universe');
-        expect(ws.selected).toBe('order_items');
-        expect(ws.inspectorTab).toBe('data');
-        expect(ws.dataFilter).toEqual({
-            table: 'order_items',
-            filters: [
-                { column: 'order_id', value: '1' },
-                { column: 'shop_id', value: '2' },
-            ],
-        });
+        const browse = useBrowse.getState().get(1);
+        expect(browse.activeId).toBe('t:order_items');
+        expect(browse.tabs.find((t) => t.id === 't:order_items')).toMatchObject(
+            {
+                preview: false,
+                state: {
+                    filters: [
+                        { column: 'order_id', op: 'eq', value: '1' },
+                        { column: 'shop_id', op: 'eq', value: '2' },
+                    ],
+                },
+            },
+        );
     });
 });

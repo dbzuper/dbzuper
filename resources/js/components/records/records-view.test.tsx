@@ -4,6 +4,7 @@ import { useRecords } from '@/records/records-store';
 import { nodeId, openRoot } from '@/records/trail';
 import type { ConnectionSummary } from '@/types/connection';
 import type { SchemaSnapshot } from '@/types/schema';
+import { useBrowse } from '@/browse/browse-store';
 import { useWorkspace } from '@/universe/store';
 import RecordsView, { dragPositions, flowId } from './records-view';
 
@@ -28,6 +29,7 @@ const connection = { id: 1 } as ConnectionSummary;
 beforeEach(() => {
     vi.resetAllMocks();
     useWorkspace.getState().reset();
+    useBrowse.setState({ byConnection: {} });
     useRecords.getState().reset();
     useRecords.getState().setConnection(1);
 });
@@ -81,10 +83,12 @@ describe('RecordsView', () => {
         fireEvent.click(
             screen.getByRole('button', { name: 'Open logs in Data tab' }),
         );
-        const ws = useWorkspace.getState();
-        expect(ws.selected).toBe('logs');
-        expect(ws.inspectorTab).toBe('data');
-        expect(ws.dataFilter).toBeNull();
+        const browse = useBrowse.getState().get(connection.id);
+        expect(browse.activeId).toBe('t:logs');
+        expect(browse.tabs.find((t) => t.id === 't:logs')).toMatchObject({
+            preview: false,
+            state: { filters: [] },
+        });
     });
 
     const users = nodeId('users', { id: 1 });
@@ -161,12 +165,10 @@ describe('RecordsView', () => {
         await twoCards({ kind: 'table', primary_key: [] });
         fireEvent.click(await button('Open items (order_id) in Data tab'));
         expect(api.related).not.toHaveBeenCalled();
-        const ws = useWorkspace.getState();
-        expect(ws.selected).toBe('items');
-        expect(ws.inspectorTab).toBe('data');
-        expect(ws.dataFilter).toEqual({
-            table: 'items',
-            filters: [{ column: 'order_id', value: '5' }],
+        const browse = useBrowse.getState().get(connection.id);
+        expect(browse.activeId).toBe('t:items');
+        expect(browse.tabs.find((t) => t.id === 't:items')).toMatchObject({
+            state: { filters: [{ column: 'order_id', op: 'eq', value: '5' }] },
         });
     });
 

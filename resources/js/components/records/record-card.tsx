@@ -17,6 +17,7 @@ import {
     useState,
     type ReactNode,
 } from 'react';
+import { openTableFiltered } from '@/browse/table-actions';
 import { cellKind } from '@/grid/cells';
 import { cn } from '@/lib/utils';
 import { recordFields, recordTitle, titleColumn } from '@/records/heuristics';
@@ -523,9 +524,8 @@ export function RecordNode({ data }: NodeProps<RecordNodeType>) {
                 snapshot === null || explorableTable(snapshot, table) !== null
             }
             onOpenInData={(table, filters) => {
-                const ws = useWorkspace.getState();
-                ws.openDataFilter(table, filters);
-                ws.select(table, 'data');
+                const c = useRecords.getState().connectionId;
+                if (c !== null) openTableFiltered(c, table, filters);
             }}
         />
     );

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { QueryColumn } from '@/types/schema';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useWorkspace } from '@/universe/store';
+import { useBrowse } from '@/browse/browse-store';
 import {
     explorableTable,
     foreignRecordTarget,
@@ -249,14 +250,24 @@ describe('parsePaletteRecord', () => {
 });
 
 describe('openRecord', () => {
-    beforeEach(() => useWorkspace.getState().reset());
+    beforeEach(() => {
+        useWorkspace.getState().reset();
+        useBrowse.setState({ byConnection: {} });
+        useRecords.setState({ connectionId: 1 });
+    });
 
-    it('opens the record in the store and switches to the records view', () => {
+    it('opens the record in the store and activates the records tab', () => {
         const open = vi.fn();
         useRecords.setState({ open });
-        openRecord({ table: 'users', key: { id: 2 } });
-        expect(open).toHaveBeenCalledWith('users', { id: 2 });
-        expect(useWorkspace.getState().view).toBe('records');
+        openRecord({ table: 'users', key: { id: 42 } });
+        expect(open).toHaveBeenCalledWith('users', { id: 42 });
+        const browse = useBrowse.getState().get(1);
+        expect(browse.activeId).toBe('records');
+        expect(browse.tabs.find((t) => t.id === 'records')).toEqual({
+            id: 'records',
+            kind: 'records',
+            title: 'Records · users #42',
+        });
     });
 
     it('displays a key', () => {

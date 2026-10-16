@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Sigma from 'sigma';
 import type { CameraState, NodeDisplayData } from 'sigma/types';
+import { openTableTab } from '@/browse/table-actions';
 import type { LayoutPositionEntry, SchemaSnapshot } from '@/types/schema';
 import { registerUniverse } from '@/universe/controller';
 import type {
@@ -34,6 +35,7 @@ import { Legend } from './legend';
 import { TableCards } from './table-cards';
 
 type Props = {
+    connectionId: number;
     model: UniverseModel;
     snapshot: SchemaSnapshot;
     onRelayout: () => void;
@@ -44,6 +46,7 @@ type Props = {
 export type UniverseSigma = Sigma<TableNodeAttributes, RelationEdgeAttributes>;
 
 export function UniverseCanvas({
+    connectionId,
     model,
     snapshot,
     onRelayout,
@@ -60,6 +63,8 @@ export function UniverseCanvas({
     positionsRef.current = onPositionsChanged;
     const errorRef = useRef(onError);
     errorRef.current = onError;
+    const connectionRef = useRef(connectionId);
+    connectionRef.current = connectionId;
     // Camera state saved on teardown so a theme rebuild of the same graph keeps the viewport.
     const cameraRef = useRef<{ graph: SchemaGraph; state: CameraState } | null>(
         null,
@@ -183,9 +188,12 @@ export function UniverseCanvas({
             useWorkspace.getState().select(node);
         });
         instance.on('clickStage', () => useWorkspace.getState().select(null));
+        // Double-click opens the table's data; sigma's default (zoom in) is suppressed.
         instance.on('doubleClickNode', (event) => {
             event.preventSigmaDefault();
-            useWorkspace.getState().setFocus(event.node, 1);
+            openTableTab(connectionRef.current, event.node, {
+                mode: 'permanent',
+            });
         });
         // The constructor has already rendered synchronously. Mark ready on the next frame rather than
         // forcing a second full render, which costs a whole extra frame on software-rasterised WebGL.
