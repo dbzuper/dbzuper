@@ -15,7 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { COLUMN_GAP, pathTo, placements, ROW_GAP } from '@/records/trail';
-import { useRecords } from '@/records/records-store';
+import { useRecords, type Point } from '@/records/records-store';
 import type { ConnectionSummary } from '@/types/connection';
 import type { SchemaSnapshot } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
@@ -25,8 +25,6 @@ import { RecordsBreadcrumb } from './records-breadcrumb';
 
 const nodeTypes: NodeTypes = { record: RecordNode, cluster: ClusterNode };
 
-type Point = { x: number; y: number };
-
 // Trail ids contain quotes and NUL, which React Flow interpolates into CSS selectors
 // (`[data-id="…"]`), so every flow id is a hex encoding of the logical id.
 const encoder = new TextEncoder();
@@ -34,6 +32,20 @@ export const flowId = (id: string) =>
     Array.from(encoder.encode(id), (b) => b.toString(16).padStart(2, '0')).join(
         '',
     );
+
+/** What a drag leaves in the store: every moved node (a multi-node drag moves several), by logical id. */
+export function dragPositions(moved: Node[]): Record<string, Point> {
+    const at: Record<string, Point> = {};
+    for (const n of moved) {
+        const data = n.data as { id?: string; key?: string };
+        const id =
+            n.type === 'cluster' && data.key !== undefined
+                ? clusterNodeId(data.key)
+                : data.id;
+        if (id !== undefined) at[id] = { x: n.position.x, y: n.position.y };
+    }
+    return at;
+}
 
 const prefersReducedMotion = () =>
     typeof window.matchMedia === 'function' &&
@@ -56,20 +68,14 @@ function Explorer({
     const epoch = useRecords((s) => s.epoch);
     const { fitView } = useReactFlow();
 
-    // Positions the user dragged live in memory only and are dropped whenever the trail is replaced.
-    const [dragged, setDragged] = useState<{
-        epoch: number;
-        at: Record<string, Point>;
-    }>({
-        epoch,
-        at: {},
-    });
-    const draggedAt = dragged.epoch === epoch ? dragged.at : undefined;
+    // Positions the user dragged live in the store (so they survive a view switch and Back/Forward)
+    // and are dropped when a record is opened.
+    const draggedAt = useRecords((s) => s.dragged);
 
     const desired = useMemo(() => {
         const base = placements(trail);
         const pos = (id: string): Point =>
-            draggedAt?.[flowId(id)] ?? base.get(id) ?? { x: 0, y: 0 };
+            draggedAt[id] ?? base.get(id) ?? { x: 0, y: 0 };
         const nodes: Node[] = trail.nodes.map((n) => ({
             id: flowId(n.id),
             type: 'record',
@@ -97,7 +103,7 @@ function Explorer({
             nodes.push({
                 id: flowId(clusterNodeId(key)),
                 type: 'cluster',
-                position: draggedAt?.[flowId(clusterNodeId(key))] ?? { x, y },
+                position: draggedAt[clusterNodeId(key)] ?? { x, y },
                 data: { key },
                 draggable: true,
             });
@@ -246,14 +252,10 @@ function Explorer({
                         edges={edges}
                         nodeTypes={nodeTypes}
                         onNodesChange={onNodesChange}
-                        onNodeDragStop={(_, node) =>
-                            setDragged((d) => ({
-                                epoch,
-                                at: {
-                                    ...(d.epoch === epoch ? d.at : {}),
-                                    [node.id]: node.position,
-                                },
-                            }))
+                        onNodeDragStop={(_, node, moved) =>
+                            useRecords
+                                .getState()
+                                .moveNodes(dragPositions(moved ?? [node]))
                         }
                         onNodeClick={(event, node) => {
                             // A button inside the card (a port, Remove, Retry) does its own thing; selecting

@@ -20,6 +20,8 @@ import type {
 
 const PAGE = 25;
 const CONCURRENCY = 4;
+/** How many payloads of nodes that Back removed are kept for Forward. */
+export const REMOVED_CACHE_SIZE = 50;
 
 export const TRAIL_FULL_NOTICE = `Trail is full (${MAX_NODES} records). Close the explorer or start from another record.`;
 
@@ -51,6 +53,8 @@ export type ClusterState = {
 export const clusterKey = (from: string, rel: string, dir: 'out' | 'in') =>
     `${from}|${rel}|${dir}`;
 
+export type Point = { x: number; y: number };
+
 type State = {
     connectionId: number | null;
     trail: Trail;
@@ -59,6 +63,10 @@ type State = {
     notice: string | null;
     /** A table the notice offers to open in the Data tab (it cannot be explored as records). */
     noticeTable: string | null;
+    /** Relationship ports whose first page is loading, by cluster key. */
+    loadingPorts: Record<string, { from: string; port: string }>;
+    /** Positions the user dragged cards and clusters to, by node id; they survive view switches and Back/Forward. */
+    dragged: Record<string, Point>;
     /** Bumped whenever the trail is replaced (open, setTrail, reset), so views can refit and drop drag state. */
     epoch: number;
     /** Bumped when the store itself empties the trail (a failed root), so the URL is rewritten, not pushed. */
@@ -81,6 +89,8 @@ type Actions = {
     reload: (id: string) => void;
     /** Replaces the whole trail (URL restore); nodes are fetched lazily. */
     setTrail: (trail: Trail) => void;
+    /** Remembers where the user dragged nodes (cards by trail id, clusters by `cluster:` key). */
+    moveNodes: (positions: Record<string, Point>) => void;
     dismissNotice: () => void;
     reset: () => void;
 };
@@ -94,6 +104,8 @@ const initial = (): State => ({
     clusters: {},
     notice: null,
     noticeTable: null,
+    loadingPorts: {},
+    dragged: {},
     epoch: 0,
     systemEpoch: 0,
 });
@@ -109,8 +121,19 @@ let pageRequests = new Map<string, { from: string; ctl: AbortController }>();
 // Advanced whenever the trail is replaced wholesale (also by setTrail, which keeps the generation).
 let trailToken = 0;
 let queue: Queue = { active: 0, pending: [] };
+// Settled records that setTrail took off the trail (Back), kept for Forward within the same
+// connection and generation. Insertion order is recency: the oldest entry is evicted first.
+let removedCache = new Map<string, RecordEntry>();
+
+function rememberRemoved(id: string, entry: RecordEntry) {
+    removedCache.delete(id);
+    removedCache.set(id, entry);
+    while (removedCache.size > REMOVED_CACHE_SIZE)
+        removedCache.delete(removedCache.keys().next().value!);
+}
 
 function bump() {
+    removedCache = new Map();
     generation += 1;
     for (const c of recordRequests.values()) c.abort();
     for (const r of pageRequests.values()) r.ctl.abort();
@@ -296,6 +319,23 @@ export const useRecords = create<RecordsState>()((set, get) => {
                     [key]: { ...existing, loading: true },
                 },
             });
+        else
+            set({
+                loadingPorts: {
+                    ...get().loadingPorts,
+                    [key]: {
+                        from: fromId,
+                        port: `${summary.id}:${summary.direction}`,
+                    },
+                },
+            });
+        // Only the request that is still current clears its flag; whoever aborts one resets it.
+        const clearLoading = () => {
+            if (fresh(gen) && token === trailToken && get().loadingPorts[key]) {
+                const { [key]: _done, ...rest } = get().loadingPorts;
+                set({ loadingPorts: rest });
+            }
+        };
         recordsApi
             .related(
                 connectionId,
@@ -311,6 +351,7 @@ export const useRecords = create<RecordsState>()((set, get) => {
             )
             .then((page) => {
                 finish();
+                clearLoading();
                 // The trail was replaced, or the source card was removed meanwhile.
                 if (!fresh(gen) || token !== trailToken || !inTrail(fromId))
                     return;
@@ -397,6 +438,7 @@ export const useRecords = create<RecordsState>()((set, get) => {
             })
             .catch((e) => {
                 finish();
+                clearLoading();
                 if (
                     !fresh(gen) ||
                     token !== trailToken ||
@@ -440,6 +482,8 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 trail,
                 records: {},
                 clusters: {},
+                loadingPorts: {},
+                dragged: {},
                 notice: null,
                 noticeTable: null,
                 epoch: get().epoch + 1,
@@ -494,6 +538,17 @@ export const useRecords = create<RecordsState>()((set, get) => {
             const keep = (k: string) => reach.has(k);
             abortRemoved(keep);
             set({
+                loadingPorts: Object.fromEntries(
+                    Object.entries(get().loadingPorts).filter(([, p]) =>
+                        keep(p.from),
+                    ),
+                ),
+                dragged: Object.fromEntries(
+                    Object.entries(get().dragged).filter(
+                        ([k]) =>
+                            !trail.nodes.some((n) => n.id === k) || keep(k),
+                    ),
+                ),
                 trail: {
                     nodes,
                     edges: edges.filter((e) => keep(e.from) && keep(e.to)),
@@ -520,9 +575,23 @@ export const useRecords = create<RecordsState>()((set, get) => {
             for (const r of pageRequests.values()) r.ctl.abort();
             pageRequests = new Map();
             trailToken += 1;
+            // What leaves the trail is remembered for Forward; what comes back is served from there.
+            for (const [id, entry] of Object.entries(state.records))
+                if (
+                    !ids.has(id) &&
+                    (entry.status === 'ready' || entry.status === 'missing')
+                )
+                    rememberRemoved(id, entry);
             const records = Object.fromEntries(
                 Object.entries(state.records).filter(([id]) => ids.has(id)),
             );
+            for (const id of ids) {
+                const cached = removedCache.get(id);
+                if (cached && !records[id]) {
+                    records[id] = cached;
+                    removedCache.delete(id);
+                }
+            }
             const clusters = Object.fromEntries(
                 Object.entries(state.clusters)
                     .filter(
@@ -563,6 +632,7 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 trail,
                 records,
                 clusters,
+                loadingPorts: {},
                 notice: null,
                 noticeTable: null,
                 epoch: state.epoch + 1,
@@ -573,6 +643,8 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 loadRecord(n.id, i === 0);
             });
         },
+        moveNodes: (positions) =>
+            set({ dragged: { ...get().dragged, ...positions } }),
         dismissNotice: () => set({ notice: null, noticeTable: null }),
         reset: () => {
             bump();

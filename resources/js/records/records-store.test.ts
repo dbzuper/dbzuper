@@ -646,3 +646,138 @@ describe('trail replacement and removal', () => {
         expect(s().clusters[key].cursor).toBe('c2');
     });
 });
+
+describe('Back/Forward payload cache', () => {
+    const item = (n: number) => nodeId('items', { id: n });
+    const expanded = async (count: number) => {
+        s().open('orders', { id: 1 });
+        await vi.waitFor(() => expect(s().records[root].status).toBe('ready'));
+        api.related.mockResolvedValue(related('items', rows(1, count), null));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(count + 1));
+        await vi.waitFor(() =>
+            expect(
+                Object.values(s().records).every((r) => r.status === 'ready'),
+            ).toBe(true),
+        );
+    };
+
+    it('Back then Forward makes zero record requests', async () => {
+        await expanded(2);
+        const full = structuredClone(s().trail);
+        s().setTrail(openRoot('orders', { id: 1 }));
+        expect(s().records[item(1)]).toBeUndefined();
+        api.show.mockClear();
+        api.related.mockClear();
+        s().setTrail(full);
+        expect(s().records[item(1)].status).toBe('ready');
+        expect(s().records[item(2)].payload?.values[1]).toBe('items 2');
+        await flush();
+        expect(api.show).not.toHaveBeenCalled();
+        expect(api.related).not.toHaveBeenCalled();
+    });
+
+    it('is dropped by open, so a later trail fetches again', async () => {
+        await expanded(1);
+        const full = structuredClone(s().trail);
+        s().setTrail(openRoot('orders', { id: 1 }));
+        s().open('orders', { id: 1 });
+        await vi.waitFor(() => expect(s().records[root].status).toBe('ready'));
+        api.show.mockClear();
+        s().setTrail(full);
+        await vi.waitFor(() =>
+            expect(s().records[item(1)].status).toBe('ready'),
+        );
+        expect(api.show).toHaveBeenCalledTimes(1);
+    });
+
+    it('is dropped when the connection changes', async () => {
+        await expanded(1);
+        const full = structuredClone(s().trail);
+        s().setTrail(openRoot('orders', { id: 1 }));
+        s().setConnection(8);
+        api.show.mockClear();
+        s().setTrail(full);
+        await vi.waitFor(() => expect(api.show).toHaveBeenCalledTimes(2));
+    });
+
+    it('keeps at most 50 removed payloads, evicting the oldest', async () => {
+        await expanded(60);
+        const full = structuredClone(s().trail);
+        s().setTrail(openRoot('orders', { id: 1 }));
+        api.show.mockClear();
+        s().setTrail(full);
+        // 60 children were removed; only the 50 most recently removed are served from the cache.
+        await vi.waitFor(() =>
+            expect(
+                Object.values(s().records).every((r) => r.status === 'ready'),
+            ).toBe(true),
+        );
+        expect(api.show).toHaveBeenCalledTimes(10);
+    });
+});
+
+describe('dragged positions', () => {
+    it('keeps positions across setTrail and clears them on open, reset and connection change', async () => {
+        s().open('orders', { id: 1 });
+        s().moveNodes({
+            [root]: { x: 10, y: 20 },
+            'cluster:a': { x: 1, y: 2 },
+        });
+        s().moveNodes({ 'cluster:b': { x: 3, y: 4 } });
+        expect(s().dragged).toEqual({
+            [root]: { x: 10, y: 20 },
+            'cluster:a': { x: 1, y: 2 },
+            'cluster:b': { x: 3, y: 4 },
+        });
+        s().setTrail(openRoot('orders', { id: 1 }));
+        expect(s().dragged[root]).toEqual({ x: 10, y: 20 });
+        s().open('orders', { id: 2 });
+        expect(s().dragged).toEqual({});
+        s().moveNodes({ x: { x: 1, y: 1 } });
+        s().setConnection(9);
+        expect(s().dragged).toEqual({});
+        s().moveNodes({ x: { x: 1, y: 1 } });
+        s().reset();
+        expect(s().dragged).toEqual({});
+    });
+});
+
+describe('port loading', () => {
+    it('marks a port loading until its first page arrives', async () => {
+        s().open('orders', { id: 1 });
+        await vi.waitFor(() => expect(s().records[root].status).toBe('ready'));
+        let resolve!: (p: RelatedPayload) => void;
+        api.related.mockReturnValue(
+            new Promise<RelatedPayload>((r) => {
+                resolve = r;
+            }),
+        );
+        s().expand(root, inSummary);
+        const key = clusterKey(root, inSummary.id, 'in');
+        expect(s().loadingPorts[key]).toEqual({
+            from: root,
+            port: 'fk_items_order:in',
+        });
+        resolve(related('items', rows(1, 1), null));
+        await vi.waitFor(() => expect(s().loadingPorts).toEqual({}));
+        expect(s().trail.nodes).toHaveLength(2);
+    });
+
+    it('clears the flag when the request fails or the trail is replaced', async () => {
+        s().open('orders', { id: 1 });
+        await vi.waitFor(() => expect(s().records[root].status).toBe('ready'));
+        api.related.mockRejectedValueOnce(new Error('boom'));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().notice).not.toBeNull());
+        expect(s().loadingPorts).toEqual({});
+        api.related.mockReturnValue(new Promise(() => undefined));
+        s().expand(root, inSummary);
+        expect(Object.keys(s().loadingPorts)).toHaveLength(1);
+        s().setTrail(openRoot('orders', { id: 1 }));
+        expect(s().loadingPorts).toEqual({});
+        s().expand(root, inSummary);
+        s().open('orders', { id: 1 });
+        expect(s().loadingPorts).toEqual({});
+    });
+});

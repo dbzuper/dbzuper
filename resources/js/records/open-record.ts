@@ -13,12 +13,16 @@ export type RecordTarget = { table: string; key: RecordKeyValues };
 
 const BINARY_TYPE = /blob|binary|varbinary|bytea/i;
 const BINARY_PLACEHOLDER = /^\[binary \d+ bytes\]$/;
-const INTEGER_TYPE = /int/i;
+// Anchored like trail-sql's NUMERIC_TYPE (so PG `interval` and `point` are not integers), integers only.
+const INTEGER_TYPE =
+    /^\s*((tiny|small|medium|big)?int\d*|integer|serial|bigserial|smallserial)(?![a-z])/i;
+// Floats cannot be keys: PDO binds them with 14 digits, so keyset paging repeats rows.
+const FLOAT_TYPE = /^\s*(real|double|float)(?![a-z])/i;
 
 const columnType = (table: TableSchema, name: string) =>
     table.columns.find((c) => c.name === name)?.type ?? '';
 
-/** A table whose rows can be opened as records: a real table with a usable, non-binary primary key. */
+/** A table whose rows can be opened as records: a real table with a usable, non-binary, non-floating-point primary key. */
 export function explorableTable(
     snapshot: SchemaSnapshot,
     table: string,
@@ -26,7 +30,12 @@ export function explorableTable(
     const found = snapshot.tables.find((t) => t.name === table);
     if (!found || found.kind !== 'table' || found.primary_key.length === 0)
         return null;
-    if (found.primary_key.some((c) => BINARY_TYPE.test(columnType(found, c))))
+    if (
+        found.primary_key.some((c) => {
+            const type = columnType(found, c);
+            return BINARY_TYPE.test(type) || FLOAT_TYPE.test(type);
+        })
+    )
         return null;
     return found;
 }

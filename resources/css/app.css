@@ -252,6 +252,15 @@
     --xy-node-background-color: var(--card);
 }
 
+/* Clipped card content: fade the bottom edge while the scroller can scroll further. */
+.scroll-fade-bottom {
+    mask-image: linear-gradient(
+        to bottom,
+        #000 calc(100% - 1.5rem),
+        transparent
+    );
+}
+
 /* Honour the OS "reduce motion" setting app-wide (tw-animate-css, Radix, transitions). */
 @media (prefers-reduced-motion: reduce) {
     *,

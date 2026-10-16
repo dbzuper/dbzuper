@@ -123,8 +123,8 @@ class RecordController extends Controller
     /** Binary keys cannot travel through a JSON key, so such records are not addressable. */
     private function hasBinaryKey(array $info): bool
     {
-        foreach ($info['columns'] as $column) {
-            if (in_array($column['name'], $info['primary_key'], true) && ColumnKind::classify(strtolower((string) ($column['type_name'] ?? ''))) === ColumnKind::Binary) {
+        foreach ($this->keyColumns($info) as $column) {
+            if (ColumnKind::classify(strtolower((string) ($column['type_name'] ?? ''))) === ColumnKind::Binary) {
                 return true;
             }
         }
@@ -132,13 +132,36 @@ class RecordController extends Controller
         return false;
     }
 
-    private function notExplorable(array $info): ?JsonResponse
+    /** PDO binds floats with 14 digits of precision, so keyset paging and key equality on them repeat or miss rows. */
+    private function hasFloatKey(array $info): bool
     {
-        if (($info['kind'] ?? 'table') === 'table' && ($info['primary_key'] ?? []) !== [] && ! $this->hasBinaryKey($info)) {
-            return null;
+        foreach ($this->keyColumns($info) as $column) {
+            if (preg_match('/^\s*(real|double|float)(?![a-z])/i', (string) ($column['type_name'] ?? ''))) {
+                return true;
+            }
         }
 
-        $what = ($info['primary_key'] ?? []) !== [] && ($info['kind'] ?? 'table') === 'table' ? 'a binary primary key' : 'no primary key';
+        return false;
+    }
+
+    /** @return list<array> */
+    private function keyColumns(array $info): array
+    {
+        return array_values(array_filter($info['columns'], fn ($c) => in_array($c['name'], $info['primary_key'], true)));
+    }
+
+    private function notExplorable(array $info): ?JsonResponse
+    {
+        $hasKey = ($info['primary_key'] ?? []) !== [] && ($info['kind'] ?? 'table') === 'table';
+        $what = match (true) {
+            ! $hasKey => 'no primary key',
+            $this->hasBinaryKey($info) => 'a binary primary key',
+            $this->hasFloatKey($info) => 'a floating-point primary key',
+            default => null,
+        };
+        if ($what === null) {
+            return null;
+        }
 
         return response()->json(['error' => [
             'kind' => 'unknown', 'sqlstate' => null, 'reason' => 'no_primary_key',

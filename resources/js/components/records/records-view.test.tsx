@@ -5,7 +5,7 @@ import { nodeId, openRoot } from '@/records/trail';
 import type { ConnectionSummary } from '@/types/connection';
 import type { SchemaSnapshot } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
-import RecordsView from './records-view';
+import RecordsView, { dragPositions, flowId } from './records-view';
 
 const api = vi.hoisted(() => ({ show: vi.fn(), related: vi.fn() }));
 vi.mock('@/records/records-api', () => ({ recordsApi: api }));
@@ -167,6 +167,72 @@ describe('RecordsView', () => {
         expect(ws.dataFilter).toEqual({
             table: 'items',
             filters: [{ column: 'order_id', value: '5' }],
+        });
+    });
+
+    it('draws a card where it was dragged, also after leaving and re-entering the view', async () => {
+        api.show.mockResolvedValue({
+            table: 'users',
+            key: { id: 1 },
+            columns: [{ name: 'id', type: 'int' }],
+            values: [1],
+            relationships: [],
+        });
+        const id = nodeId('users', { id: 1 });
+        const first = render(
+            <RecordsView connection={connection} snapshot={snapshot} />,
+        );
+        act(() => useRecords.getState().open('users', { id: 1 }));
+        act(() =>
+            useRecords.getState().moveNodes({ [id]: { x: 480, y: 270 } }),
+        );
+        const at = () =>
+            document.querySelector<HTMLElement>(
+                `.react-flow__node[data-id="${flowId(id)}"]`,
+            )?.style.transform;
+        await vi.waitFor(() =>
+            expect(at()).toContain('translate(480px,270px)'),
+        );
+        first.unmount();
+        render(<RecordsView connection={connection} snapshot={snapshot} />);
+        await vi.waitFor(() =>
+            expect(at()).toContain('translate(480px,270px)'),
+        );
+        // Opening a record starts from the default layout again.
+        act(() => useRecords.getState().open('users', { id: 1 }));
+        await vi.waitFor(() => expect(at()).not.toContain('480px'));
+    });
+});
+
+describe('dragPositions', () => {
+    it('maps every moved node, cards and clusters, to its logical id', () => {
+        const node = (n: object) =>
+            n as Parameters<typeof dragPositions>[0][number];
+        expect(
+            dragPositions([
+                node({
+                    id: 'aa',
+                    type: 'record',
+                    position: { x: 1, y: 2 },
+                    data: { id: 'users:1' },
+                }),
+                node({
+                    id: 'bb',
+                    type: 'record',
+                    position: { x: 3, y: 4 },
+                    data: { id: 'orders:5' },
+                }),
+                node({
+                    id: 'cc',
+                    type: 'cluster',
+                    position: { x: 5, y: 6 },
+                    data: { key: 'k|rel|in' },
+                }),
+            ]),
+        ).toEqual({
+            'users:1': { x: 1, y: 2 },
+            'orders:5': { x: 3, y: 4 },
+            'cluster:k|rel|in': { x: 5, y: 6 },
         });
     });
 });

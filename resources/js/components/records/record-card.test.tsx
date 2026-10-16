@@ -321,3 +321,68 @@ describe('RecordCard', () => {
         expect(onReload).toHaveBeenCalled();
     });
 });
+
+describe('RecordCard port loading', () => {
+    it('marks only the port whose first page is loading as busy, with a spinner', () => {
+        setup(
+            ready([
+                summary({
+                    id: 'fk_a',
+                    direction: 'in',
+                    table: 'items',
+                    count: { value: 2, capped: false },
+                }),
+                summary({
+                    id: 'fk_b',
+                    direction: 'in',
+                    table: 'notes',
+                    count: { value: 1, capped: false },
+                }),
+            ]),
+            { loadingPorts: ['fk_a:in'] },
+        );
+        const busy = screen.getByRole('button', { name: /Show items/ });
+        expect(busy).toHaveAttribute('aria-busy', 'true');
+        expect(busy.querySelector('svg.animate-spin')).toHaveClass(
+            'motion-reduce:animate-none',
+        );
+        const idle = screen.getByRole('button', { name: /Show notes/ });
+        expect(idle).not.toHaveAttribute('aria-busy');
+        expect(idle.querySelector('svg')).toBeNull();
+    });
+});
+
+describe('RecordCard scroll affordance', () => {
+    const scrollerOf = () =>
+        document.querySelector<HTMLElement>('[data-card-scroller]')!;
+    const metrics = (
+        el: HTMLElement,
+        m: { scrollHeight: number; clientHeight: number; scrollTop: number },
+    ) => {
+        for (const [k, v] of Object.entries(m))
+            Object.defineProperty(el, k, { value: v, configurable: true });
+    };
+
+    it('fades the bottom edge only while the scroller can scroll further', () => {
+        setup(ready());
+        const el = scrollerOf();
+        expect(el).not.toHaveClass('scroll-fade-bottom');
+        metrics(el, { scrollHeight: 300, clientHeight: 100, scrollTop: 0 });
+        fireEvent.scroll(el);
+        expect(el).toHaveClass('scroll-fade-bottom');
+        metrics(el, { scrollHeight: 300, clientHeight: 100, scrollTop: 100 });
+        fireEvent.scroll(el);
+        expect(el).toHaveClass('scroll-fade-bottom');
+        metrics(el, { scrollHeight: 300, clientHeight: 100, scrollTop: 200 });
+        fireEvent.scroll(el);
+        expect(el).not.toHaveClass('scroll-fade-bottom');
+    });
+
+    it('stays unfaded when nothing is clipped', () => {
+        setup(ready());
+        const el = scrollerOf();
+        metrics(el, { scrollHeight: 100, clientHeight: 100, scrollTop: 0 });
+        fireEvent.scroll(el);
+        expect(el).not.toHaveClass('scroll-fade-bottom');
+    });
+});

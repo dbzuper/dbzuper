@@ -42,6 +42,15 @@ const snapshot = makeSnapshot(
         },
         { name: 'v_users', kind: 'view' },
         { name: 'big', columns: [col('id', 'bigint')] },
+        { name: 'readings', columns: [col('id', 'real')] },
+        { name: 'doubles', columns: [col('id', 'double precision')] },
+        { name: 'floats', columns: [col('id', 'float(10,2)')] },
+        { name: 'floats8', columns: [col('id', 'float8')] },
+        { name: 'spans', columns: [col('id', 'interval')] },
+        { name: 'places', columns: [col('id', 'point')] },
+        { name: 'prices', columns: [col('id', 'numeric(10,2)')] },
+        { name: 'small_ids', columns: [col('id', 'int4')] },
+        { name: 'unsigned_ids', columns: [col('id', 'int(10) unsigned')] },
     ],
     [
         { from_table: 'orders', to_table: 'users', from_columns: ['user_id'] },
@@ -78,6 +87,18 @@ describe('explorableTable', () => {
         expect(explorableTable(snapshot, 'v_users')).toBeNull();
         expect(explorableTable(snapshot, 'blobs')).toBeNull();
         expect(explorableTable(snapshot, 'nope')).toBeNull();
+    });
+
+    it.each(['readings', 'doubles', 'floats', 'floats8'])(
+        'refuses %s: a floating-point primary key',
+        (name) => {
+            expect(explorableTable(snapshot, name)).toBeNull();
+        },
+    );
+
+    it('keeps numeric and integer keys explorable', () => {
+        for (const name of ['prices', 'small_ids', 'unsigned_ids'])
+            expect(explorableTable(snapshot, name)?.name).toBe(name);
     });
 });
 
@@ -192,6 +213,24 @@ describe('parsePaletteRecord', () => {
         expect(parsePaletteRecord(snapshot, 'v_users 1')).toBeNull();
         expect(parsePaletteRecord(snapshot, 'users abc')).toBeNull();
         expect(parsePaletteRecord(snapshot, 'users')).toBeNull();
+    });
+
+    it('anchors integer typing: interval and point keys stay text, int variants stay numbers', () => {
+        expect(parsePaletteRecord(snapshot, 'spans 1 day')?.key).toEqual({
+            id: '1 day',
+        });
+        expect(parsePaletteRecord(snapshot, 'places (1,2)')?.key).toEqual({
+            id: '(1,2)',
+        });
+        expect(parsePaletteRecord(snapshot, 'prices 12.50')?.key).toEqual({
+            id: '12.50',
+        });
+        expect(parsePaletteRecord(snapshot, 'small_ids 7')?.key).toEqual({
+            id: 7,
+        });
+        expect(parsePaletteRecord(snapshot, 'unsigned_ids 7')?.key).toEqual({
+            id: 7,
+        });
     });
 
     it('keeps integers beyond 2^53 as strings', () => {

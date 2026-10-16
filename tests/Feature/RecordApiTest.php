@@ -124,6 +124,15 @@ it('refuses tables whose primary key is binary', function () {
         ->assertJsonPath('error.message', 'blobs has a binary primary key; open it in the Data tab instead.');
 });
 
+it('refuses tables whose primary key is floating point', function (string $type) {
+    $w = DB::connectUsing('w', ['driver' => 'sqlite', 'database' => $this->connection->database, 'prefix' => ''], force: true);
+    $w->statement("CREATE TABLE readings (id {$type} PRIMARY KEY, label TEXT)");
+    DB::purge('w');
+
+    ($this->show)('readings', ['id' => 1.5])->assertUnprocessable()->assertJsonPath('error.reason', 'no_primary_key')
+        ->assertJsonPath('error.message', 'readings has a floating-point primary key; open it in the Data tab instead.');
+})->with(['REAL', 'DOUBLE', 'FLOAT', 'DOUBLE PRECISION']);
+
 it('counts children and round-trips string keys that are long or contain special characters', function (string $code) {
     $w = DB::connectUsing('w', ['driver' => 'sqlite', 'database' => $this->connection->database, 'prefix' => '', 'foreign_key_constraints' => true], force: true);
     $w->statement('CREATE TABLE docs (code TEXT PRIMARY KEY, label TEXT)');

@@ -7,12 +7,14 @@ import {
     type Node,
     type NodeProps,
 } from '@xyflow/react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, LoaderCircle } from 'lucide-react';
 import {
     createContext,
     useContext,
     useEffect,
+    useLayoutEffect,
     useRef,
+    useState,
     type ReactNode,
 } from 'react';
 import { cellKind } from '@/grid/cells';
@@ -82,8 +84,11 @@ function Port({
     onExpand,
     dataTab,
     onOpenInData,
+    loading,
 }: {
     summary: RelationshipSummary;
+    /** The port's first page is being fetched. */
+    loading: boolean;
     onExpand: (s: RelationshipSummary) => void;
     /** Set when the target table cannot be explored: the port opens these rows in the Data tab instead. */
     dataTab: { filters: DataFilters | null } | null;
@@ -115,6 +120,7 @@ function Port({
             aria-label={label}
             title={title}
             disabled={disabled}
+            aria-busy={loading ? 'true' : undefined}
             data-inferred={summary.inferred ? 'true' : undefined}
             data-direction={summary.direction}
             onClick={() => {
@@ -140,6 +146,12 @@ function Port({
             </span>
             {/* Text nodes between flex items are not drawn, but they keep the visible text in the same
                 word order as the accessible name ("orders (user_id) 3 records"). */}
+            {loading && (
+                <LoaderCircle
+                    aria-hidden
+                    className="size-3 shrink-0 animate-spin text-[var(--universe-accent)] motion-reduce:animate-none"
+                />
+            )}
             {!out && (
                 <>
                     {' '}
@@ -191,6 +203,8 @@ export type RecordCardProps = {
     onSelect: () => void;
     onRemove: () => void;
     onReload: () => void;
+    /** Handle ids (`rel:dir`) of the ports whose first page is loading. */
+    loadingPorts?: string[];
     /** Whether a related table can be explored as records; other ports open the Data tab. */
     isExplorable?: (table: string) => boolean;
     onOpenInData?: (table: string, filters: DataFilters) => void;
@@ -203,6 +217,7 @@ const panDuration = () =>
         ? 0
         : PAN_MS;
 
+const NUL = String.fromCharCode(0);
 const always = () => true;
 const nothing = () => undefined;
 
@@ -215,6 +230,7 @@ export function RecordCard({
     table,
     recordKey,
     edgeHandles = [],
+    loadingPorts = [],
     entry,
     selected,
     showInferred,
@@ -273,6 +289,17 @@ export function RecordCard({
             { zoom: getZoom(), duration: panDuration() },
         );
     };
+
+    // Content clipped by the capped card height fades out at the bottom edge while there is more to scroll to.
+    const scroller = useRef<HTMLDivElement>(null);
+    const [moreBelow, setMoreBelow] = useState(false);
+    const measureScroll = () => {
+        const el = scroller.current;
+        if (el)
+            setMoreBelow(el.scrollHeight - el.clientHeight - el.scrollTop > 1);
+    };
+    // Content changes (record loaded, ports drawn) change the scroll height without a scroll event.
+    useLayoutEffect(measureScroll, [entry, showInferred]);
 
     const dataTab = (s: RelationshipSummary) =>
         isExplorable(s.table)
@@ -358,7 +385,15 @@ export function RecordCard({
                     </button>
                     {/* Fields and ports scroll inside the capped card height; a scrolled-out port keeps its
                         (hidden) handle, so its edge still attaches at the port's real position. */}
-                    <div className="nowheel nodrag min-h-0 flex-1 overflow-y-auto">
+                    <div
+                        ref={scroller}
+                        onScroll={measureScroll}
+                        data-card-scroller
+                        className={cn(
+                            'nowheel nodrag min-h-0 flex-1 overflow-y-auto',
+                            moreBelow && 'scroll-fade-bottom',
+                        )}
+                    >
                         {fields.length > 0 && (
                             <div
                                 role="group"
@@ -416,6 +451,9 @@ export function RecordCard({
                                         onExpand={onExpand}
                                         dataTab={dataTab(s)}
                                         onOpenInData={onOpenInData}
+                                        loading={loadingPorts.includes(
+                                            `${s.id}:${s.direction}`,
+                                        )}
                                     />
                                 ))}
                             </PortGroup>
@@ -429,6 +467,9 @@ export function RecordCard({
                                         onExpand={onExpand}
                                         dataTab={dataTab(s)}
                                         onOpenInData={onOpenInData}
+                                        loading={loadingPorts.includes(
+                                            `${s.id}:${s.direction}`,
+                                        )}
                                     />
                                 ))}
                             </PortGroup>
@@ -456,10 +497,18 @@ export function RecordNode({ data }: NodeProps<RecordNodeType>) {
                 ids.add(`${c.summary.id}:${c.summary.direction}`);
         return [...ids].sort().join('\u0000');
     });
+    const loading = useRecords((s) =>
+        Object.values(s.loadingPorts)
+            .filter((p) => p.from === data.id)
+            .map((p) => p.port)
+            .sort()
+            .join(NUL),
+    );
     return (
         <RecordCard
             table={data.table}
             recordKey={data.key}
+            loadingPorts={loading === '' ? [] : loading.split(NUL)}
             edgeHandles={handles === '' ? [] : handles.split('\u0000')}
             entry={entry}
             selected={selected}

@@ -29,7 +29,7 @@ type Props = {
     onOpenForeign?: (table: string, column: string, value: string) => void;
     /**
      * Opens a record. FK cells use it when the relationship targets the parent's whole key (else
-     * onOpenForeign), and a leading "Open record" button appears when the rows map to one explorable table.
+     * onOpenForeign), and a leading "Open record" button appears on each row that maps to a record of one explorable table.
      */
     onOpenRecord?: (target: RecordTarget) => void;
     /** Server-side sorting (data tab); when omitted the grid sorts the fetched rows client-side. */
@@ -136,14 +136,14 @@ export function ResultGrid({
         return sorted.map((cells, i) => ({ __i: i, cells }));
     }, [rows, localSort, sort]);
 
-    // Whether the rows stand for records is a property of the result, decided once from its first row.
+    // The column shows when any row stands for a record; each row then decides for itself
+    // (a row with a NULL key has nothing to open).
     const rowActions = useMemo(
         () =>
             !!(
                 snapshot &&
                 onOpenRecord &&
-                rows.length > 0 &&
-                rowRecordTarget(snapshot, columns, rows[0])
+                rows.some((row) => rowRecordTarget(snapshot, columns, row))
             ),
         [snapshot, onOpenRecord, columns, rows],
     );
@@ -162,24 +162,25 @@ export function ResultGrid({
                           resizable: false,
                           sortable: false,
                           draggable: false,
-                          renderCell: ({ row }) => (
-                              <button
-                                  type="button"
-                                  aria-label="Open record"
-                                  title="Open record"
-                                  onClick={() => {
-                                      const target = rowRecordTarget(
-                                          snapshot,
-                                          columns,
-                                          row.cells,
-                                      );
-                                      if (target) onOpenRecord(target);
-                                  }}
-                                  className="rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
-                              >
-                                  <ExternalLink className="size-3.5" />
-                              </button>
-                          ),
+                          renderCell: ({ row }) => {
+                              const target = rowRecordTarget(
+                                  snapshot,
+                                  columns,
+                                  row.cells,
+                              );
+                              if (!target) return null;
+                              return (
+                                  <button
+                                      type="button"
+                                      aria-label="Open record"
+                                      title="Open record"
+                                      onClick={() => onOpenRecord(target)}
+                                      className="rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+                                  >
+                                      <ExternalLink className="size-3.5" />
+                                  </button>
+                              );
+                          },
                       },
                   ]
                 : [];

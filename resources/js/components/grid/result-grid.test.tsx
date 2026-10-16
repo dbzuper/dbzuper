@@ -252,6 +252,51 @@ describe('ResultGrid', () => {
         });
     });
 
+    it('decides Open record per row: none on a NULL-PK row, present on rows that resolve even when row 0 does not', () => {
+        const onOpenRecord = vi.fn();
+        const pkRows: QueryCell[][] = [
+            [null, 2],
+            [2, 3],
+            [3, null],
+        ];
+        render(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid
+                    columns={columns.slice(0, 2)}
+                    rows={pkRows}
+                    snapshot={snapshot}
+                    onOpenRecord={onOpenRecord}
+                />
+            </div>,
+        );
+        const buttons = screen.getAllByRole('button', { name: 'Open record' });
+        expect(buttons).toHaveLength(2);
+        fireEvent.click(buttons[0]);
+        expect(onOpenRecord).toHaveBeenCalledWith({
+            table: 'orders',
+            key: { id: 2 },
+        });
+    });
+
+    it('offers no Open record button when no row resolves', () => {
+        render(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid
+                    columns={columns.slice(0, 2)}
+                    rows={[
+                        [null, 1],
+                        [null, 2],
+                    ]}
+                    snapshot={snapshot}
+                    onOpenRecord={() => {}}
+                />
+            </div>,
+        );
+        expect(
+            screen.queryByRole('button', { name: 'Open record' }),
+        ).toBeNull();
+    });
+
     it('offers no row action without a primary key column, a snapshot or a handler', () => {
         const { rerender } = render(
             <div style={{ blockSize: 400 }}>
