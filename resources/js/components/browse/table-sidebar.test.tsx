@@ -21,7 +21,9 @@ vi.mock('@tanstack/react-virtual', () => ({
 vi.mock('@/lib/pins-api', () => ({
     pinsApi: {
         list: vi.fn().mockResolvedValue({ pins: [] }),
-        add: vi.fn(),
+        add: vi.fn().mockResolvedValue({
+            pin: { id: 3, table: 'orders', position: 1 },
+        }),
         remove: vi.fn(),
         reorder: vi.fn(),
     },
@@ -172,5 +174,26 @@ describe('TableSidebar', () => {
         expect(
             within(all).getByRole('treeitem', { name: /^orders/ }),
         ).toHaveAttribute('aria-current', 'true');
+    });
+
+    it('pins the focused table with the asterisk key', () => {
+        renderSidebar();
+        const row = screen.getByRole('treeitem', { name: /^orders/ });
+        row.focus();
+        fireEvent.keyDown(row, { key: '*' });
+        expect(usePins.getState().isPinned(1, 'orders')).toBe(true);
+    });
+
+    it('makes the clicked row the tab stop', () => {
+        renderSidebar();
+        const row = screen.getByRole('treeitem', { name: /^orders/ });
+        expect(row).toHaveAttribute('tabindex', '-1');
+        fireEvent.click(row);
+        expect(row).toHaveAttribute('tabindex', '0');
+        expect(
+            screen
+                .getAllByRole('treeitem')
+                .filter((r) => r.getAttribute('tabindex') === '0'),
+        ).toHaveLength(1);
     });
 });

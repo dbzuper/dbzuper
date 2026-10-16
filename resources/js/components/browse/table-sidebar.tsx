@@ -1,4 +1,4 @@
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
 import {
     ChevronDown,
     ChevronRight,
@@ -50,6 +50,7 @@ type RowProps = {
     tabbable: boolean;
     actions: TableActions;
     style?: CSSProperties;
+    onFocusRow?: (key: string) => void;
     onDragStart?: (table: string) => void;
     onDropOn?: (table: string) => void;
 };
@@ -63,15 +64,18 @@ function SidebarRow({
     tabbable,
     actions,
     style,
+    onFocusRow,
     onDragStart,
     onDropOn,
 }: RowProps) {
     const name = table.name;
-    const open = (event: MouseEvent) =>
+    const open = (event: MouseEvent) => {
+        onFocusRow?.(itemKey(section, name));
         actions.open(
             name,
             event.ctrlKey || event.metaKey ? 'permanent' : 'preview',
         );
+    };
     const Icon = table.kind === 'view' ? Eye : Table2;
 
     return (
@@ -107,8 +111,10 @@ function SidebarRow({
                     aria-label={name}
                     data-table={name}
                     data-key={itemKey(section, name)}
+                    aria-keyshortcuts="*"
                     tabIndex={tabbable ? 0 : -1}
                     title={name}
+                    onFocus={() => onFocusRow?.(itemKey(section, name))}
                     onClick={open}
                     onDoubleClick={() => actions.open(name, 'permanent')}
                     onAuxClick={(e) => {
@@ -138,6 +144,7 @@ function SidebarRow({
                 <button
                     type="button"
                     tabIndex={-1}
+                    title={pinned ? 'Unpin (*)' : 'Pin (*)'}
                     aria-label={pinned ? `Unpin ${name}` : `Pin ${name}`}
                     onClick={() =>
                         void usePins.getState().toggle(connectionId, name)
@@ -278,17 +285,29 @@ export function TableSidebar({
         byName,
     ]);
 
+    const tabbableKey =
+        focusKey && items.some((i) => i.key === focusKey)
+            ? focusKey
+            : (items[0]?.key ?? null);
+
+    // The tabbable row must stay mounted, or the tree would have no tab stop.
+    const tabbableAllIndex =
+        tabbableKey?.startsWith('all:') && openSections.all
+            ? allNames.indexOf(tabbableKey.slice(4))
+            : -1;
+
     const virtualizer = useVirtualizer({
         count: openSections.all ? allNames.length : 0,
         getScrollElement: () => scrollRef.current,
         estimateSize: () => ROW_HEIGHT,
         overscan: 12,
+        rangeExtractor: (range) => {
+            const indexes = defaultRangeExtractor(range);
+            if (tabbableAllIndex < 0 || indexes.includes(tabbableAllIndex))
+                return indexes;
+            return [...indexes, tabbableAllIndex].sort((a, b) => a - b);
+        },
     });
-
-    const tabbableKey =
-        focusKey && items.some((i) => i.key === focusKey)
-            ? focusKey
-            : (items[0]?.key ?? null);
 
     // Move DOM focus once the target row exists (virtualized rows render lazily).
     useEffect(() => {
@@ -346,6 +365,9 @@ export function TableSidebar({
             case ' ':
                 event.preventDefault();
                 return actions.open(item.table, 'preview');
+            case '*':
+                event.preventDefault();
+                return void usePins.getState().toggle(connectionId, item.table);
         }
 
         if (
@@ -391,6 +413,7 @@ export function TableSidebar({
         table,
         section,
         actions,
+        onFocusRow: setFocusKey,
         active: activeTable === table.name,
         pinned: pinnedSet.has(table.name),
         tabbable: tabbableKey === itemKey(section, table.name),
