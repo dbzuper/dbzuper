@@ -13,7 +13,7 @@ import {
     type TableView,
 } from '@/browse/browse-store';
 import { usePins } from '@/browse/pins-store';
-import { rowsCache } from '@/browse/rows-cache';
+import { rowsCache, rowsRequestKey } from '@/browse/rows-cache';
 import { openTableTab } from '@/browse/table-actions';
 import { tabDomId } from '@/components/browse/tab-bar';
 import type { TableActions } from '@/components/browse/table-context-menu';
@@ -79,10 +79,13 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
     const setView = (view: TableView) =>
         useBrowse.getState().updateTable(connectionId, tab.id, { view });
 
-    /** The last rows request's SQL when there is one, else a plain first-page SELECT. */
-    const selectSql = () =>
-        rowsCache.get(`${connectionId}:${tab.table}`)?.rows.sql ??
-        `SELECT * FROM ${quoteIdent(connection.driver, tab.table)} LIMIT 100`;
+    /** The SQL of the cached rows when they answer the tab's current request, else a plain first-page SELECT. */
+    const selectSql = () => {
+        const hit = rowsCache.get(`${connectionId}:${tab.table}`);
+        return hit && hit.requestKey === rowsRequestKey(tab.state)
+            ? hit.rows.sql
+            : `SELECT * FROM ${quoteIdent(connection.driver, tab.table)} LIMIT 100`;
+    };
 
     const openInSql = () => {
         useSqlTabs.getState().openTab(connectionId, selectSql(), tab.table);

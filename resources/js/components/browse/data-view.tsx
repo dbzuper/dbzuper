@@ -28,7 +28,7 @@ import {
     writeGridLayout,
     type GridLayout,
 } from '@/browse/local-prefs';
-import { rowsCache } from '@/browse/rows-cache';
+import { rowsCache, rowsRequestKey } from '@/browse/rows-cache';
 import { FilterBar } from '@/components/inspector/filter-bar';
 import { Button } from '@/components/ui/button';
 import {
@@ -135,7 +135,7 @@ function DataViewBody({
     const name = table.name;
     const cacheKey = `${connectionId}:${name}`;
     const { filters, sort, page, perPage, drawerRow } = tab.state;
-    const requestKey = JSON.stringify({ filters, sort, page, perPage });
+    const requestKey = rowsRequestKey(tab.state);
     const filtersKey = JSON.stringify(filters);
     const dialect = snapshot.driver as Dialect;
 

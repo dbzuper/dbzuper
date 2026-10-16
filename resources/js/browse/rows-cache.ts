@@ -1,4 +1,9 @@
-import type { RowsResponse } from '@/lib/workspace-api';
+import type {
+    PerPage,
+    RowFilter,
+    RowsResponse,
+    SortKey,
+} from '@/lib/workspace-api';
 import type { Total } from './counts';
 
 export type CacheEntry = {
@@ -11,6 +16,20 @@ export type CacheEntry = {
     countFailed?: boolean;
     scrollTop: number;
 };
+
+/** The cache key of the rows request a tab's state asks for. */
+export const rowsRequestKey = (state: {
+    filters: RowFilter[];
+    sort: SortKey[];
+    page: number;
+    perPage: PerPage;
+}): string =>
+    JSON.stringify({
+        filters: state.filters,
+        sort: state.sort,
+        page: state.page,
+        perPage: state.perPage,
+    });
 
 /** Only the most recently used tabs keep their rows in memory; older ones refetch when shown again. */
 export const ROWS_CACHE_SIZE = 8;

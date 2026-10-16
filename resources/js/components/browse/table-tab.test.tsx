@@ -89,6 +89,45 @@ describe('TableTabView', () => {
         expect(useWorkspace.getState().dockOpen).toBe(true);
     });
 
+    const cacheWith = (page: number, sql: string) =>
+        rowsCache.set('1:orders', {
+            requestKey: JSON.stringify({
+                filters: [],
+                sort: [],
+                page,
+                perPage: 100,
+            }),
+            rows: {
+                columns: [{ name: 'id', type: 'int', table: 'orders' }],
+                rows: [[1]],
+                has_more: false,
+                page,
+                per_page: 100,
+                sql,
+            },
+            total: { count: 1, exact: true },
+            scrollTop: 0,
+        });
+    const openedSql = () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Open in SQL' }));
+        const tabs = useSqlTabs.getState().byConnection[1].tabs;
+        return tabs[tabs.length - 1].sql;
+    };
+
+    it('opens the SQL of the cached rows when they answer the current request', () => {
+        useBrowse.getState().openTable(1, 'orders');
+        cacheWith(1, 'select * from `orders` limit 100 offset 0');
+        render(<Harness />);
+        expect(openedSql()).toBe('select * from `orders` limit 100 offset 0');
+    });
+
+    it('builds the SELECT when the cached rows answer an older request', () => {
+        useBrowse.getState().openTable(1, 'orders');
+        cacheWith(2, 'select * from `orders` limit 100 offset 100');
+        render(<Harness />);
+        expect(openedSql()).toBe('SELECT * FROM `orders` LIMIT 100');
+    });
+
     it('says when the table no longer exists', () => {
         useBrowse.getState().openTable(1, 'gone');
         render(<Harness table="gone" />);
