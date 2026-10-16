@@ -11,7 +11,11 @@ import { useBrowse, type OpenMode, type TableTabState } from './browse-store';
 export function openTableTab(
     connectionId: number,
     table: string,
-    opts?: { mode?: OpenMode; state?: Partial<TableTabState> },
+    opts?: {
+        mode?: OpenMode;
+        state?: Partial<TableTabState>;
+        merge?: boolean;
+    },
 ): void {
     useBrowse.getState().openTable(connectionId, table, opts);
     useWorkspace.getState().setHistoryOpen(false);
@@ -57,6 +61,7 @@ export function makeTableActions(
             openTableTab(c, table, {
                 mode: 'permanent',
                 state: { view: 'structure' },
+                merge: true,
             }),
         openInSql: (table) => {
             useSqlTabs

@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { tableTabId, useBrowse } from './browse-store';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushBrowse, tableTabId, useBrowse } from './browse-store';
 
 const C = 1;
 const st = () => useBrowse.getState();
@@ -10,8 +10,10 @@ const tabs = () =>
 const active = () => st().get(C).activeId;
 
 beforeEach(() => {
-    localStorage.clear();
+    flushBrowse();
     useBrowse.setState({ byConnection: {} });
+    flushBrowse();
+    localStorage.clear();
 });
 
 describe('opening tables', () => {
@@ -67,6 +69,40 @@ describe('opening tables', () => {
         expect(tab.kind === 'table' && tab.state.page).toBe(1);
     });
 
+    it('merges state into an existing tab when asked, keeping its filters, sort and page', () => {
+        const filters = [{ column: 'user_id', op: 'eq' as const, value: '3' }];
+        st().openTable(C, 'orders', { mode: 'permanent', state: { filters } });
+        st().updateTable(C, tableTabId('orders'), { page: 4 });
+        // A column pick from the command palette.
+        st().openTable(C, 'orders', { state: {}, merge: true });
+        let tab = st().get(C).tabs[1];
+        expect(tab.kind === 'table' && tab.state.filters).toEqual(filters);
+        expect(tab.kind === 'table' && tab.state.page).toBe(4);
+        // The Structure action.
+        st().openTable(C, 'orders', {
+            mode: 'permanent',
+            state: { view: 'structure' },
+            merge: true,
+        });
+        tab = st().get(C).tabs[1];
+        expect(tab.kind === 'table' && tab.state.filters).toEqual(filters);
+        expect(tab.kind === 'table' && tab.state.view).toBe('structure');
+        expect(tab.kind === 'table' && tab.state.page).toBe(4);
+    });
+
+    it('merges state into defaults for a new tab', () => {
+        st().openTable(C, 'orders', {
+            state: { view: 'structure' },
+            merge: true,
+        });
+        const tab = st().get(C).tabs[1];
+        expect(tab.kind === 'table' && tab.state).toMatchObject({
+            view: 'structure',
+            filters: [],
+            page: 1,
+        });
+    });
+
     it('uses the connection page size for new tabs and remembers changes to it', () => {
         st().openTable(C, 'users', { mode: 'permanent' });
         st().updateTable(C, tableTabId('users'), { perPage: 500 });
@@ -94,14 +130,21 @@ describe('opening tables', () => {
 });
 
 describe('promotion', () => {
-    it('promotes a preview on filter, sort, page or page-size changes but not on view or drawer changes', () => {
+    it('promotes a preview on filter, sort, page, page-size changes or opening the drawer, but not on view changes or closing the drawer', () => {
         st().openTable(C, 'users');
         const id = tableTabId('users');
-        st().updateTable(C, id, { view: 'structure', drawerRow: 2 });
+        st().updateTable(C, id, { view: 'structure', drawerRow: null });
         let tab = st().get(C).tabs[1];
         expect(tab.kind === 'table' && tab.preview).toBe(true);
         st().updateTable(C, id, { page: 2 });
         tab = st().get(C).tabs[1];
+        expect(tab.kind === 'table' && tab.preview).toBe(false);
+    });
+
+    it('promotes a preview when the row drawer opens', () => {
+        st().openTable(C, 'users');
+        st().updateTable(C, tableTabId('users'), { drawerRow: 2 });
+        const tab = st().get(C).tabs[1];
         expect(tab.kind === 'table' && tab.preview).toBe(false);
     });
 });
@@ -231,5 +274,63 @@ describe('persistence', () => {
             recents: [],
             perPage: 100,
         });
+    });
+
+    const KEY = 'dbsuperb.browse';
+    const stored = () =>
+        JSON.parse(localStorage.getItem(KEY) ?? '{}').state?.byConnection ??
+        {};
+    const storedTables = (connectionId: number) =>
+        (stored()[connectionId]?.tabs ?? [])
+            .filter((t: { kind: string }) => t.kind === 'table')
+            .map((t: { table: string }) => t.table);
+
+    it('writes only the connections this window changed, keeping what another window stored', () => {
+        st().openTable(1, 'mine', { mode: 'permanent' });
+        st().openTable(2, 'mine too', { mode: 'permanent' });
+        flushBrowse();
+        // Another window saves its own tabs for connection 2.
+        const other = JSON.parse(localStorage.getItem(KEY) ?? '{}');
+        other.state.byConnection[2].tabs.push({
+            id: tableTabId('theirs'),
+            kind: 'table',
+            table: 'theirs',
+            preview: false,
+            state: {},
+        });
+        localStorage.setItem(KEY, JSON.stringify(other));
+
+        st().openTable(1, 'mine later', { mode: 'permanent' });
+        flushBrowse();
+
+        expect(storedTables(1)).toEqual(['mine', 'mine later']);
+        expect(storedTables(2)).toEqual(['mine too', 'theirs']);
+    });
+
+    it('rehydrates when another window saves', async () => {
+        st().openTable(1, 'mine', { mode: 'permanent' });
+        flushBrowse();
+        const other = JSON.parse(localStorage.getItem(KEY) ?? '{}');
+        other.state.byConnection[3] = {
+            tabs: [
+                { id: 'universe', kind: 'universe' },
+                { kind: 'table', table: 'theirs', preview: false, state: {} },
+            ],
+            activeId: 'universe',
+            recents: [],
+            perPage: 100,
+        };
+        localStorage.setItem(KEY, JSON.stringify(other));
+
+        window.dispatchEvent(new StorageEvent('storage', { key: KEY }));
+
+        await vi.waitFor(() =>
+            expect(
+                st()
+                    .get(3)
+                    .tabs.map((t) => t.id),
+            ).toEqual(['universe', tableTabId('theirs')]),
+        );
+        expect(tabs()).toEqual(['universe', tableTabId('mine')]);
     });
 });

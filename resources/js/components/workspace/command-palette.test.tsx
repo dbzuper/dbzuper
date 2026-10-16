@@ -75,6 +75,29 @@ describe('CommandPalette', () => {
         expect(useBrowse.getState().get(1).activeId).toBe('t:users');
     });
 
+    it('keeps the filters and page of an already-open tab when a column is picked', () => {
+        const filters = [{ column: 'id', op: 'eq' as const, value: '7' }];
+        useBrowse.getState().openTable(1, 'users', {
+            mode: 'permanent',
+            state: { filters, view: 'structure' },
+        });
+        useBrowse.getState().updateTable(1, 't:users', { page: 2 });
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
+        fireEvent.change(searchBox(), { target: { value: 'id' } });
+        fireEvent.click(
+            screen.getAllByRole('option', { name: /users\.id/ })[0],
+        );
+        expect(useBrowse.getState().get(1).tabs[1]).toMatchObject({
+            state: { filters, page: 2, view: 'data' },
+        });
+    });
+
     it('keeps the inspector behaviour on Shift+Enter', () => {
         const fly = vi.spyOn(universe, 'flyTo');
         useBrowse.getState().openTable(1, 'orders');

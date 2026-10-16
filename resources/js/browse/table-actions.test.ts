@@ -80,6 +80,16 @@ describe('makeTableActions', () => {
         });
     });
 
+    it('keeps the filters of an already-open tab when switching it to structure', () => {
+        const filters = [{ column: 'id', op: 'eq' as const, value: '1' }];
+        openTableTab(1, 'users', { mode: 'permanent', state: { filters } });
+        useBrowse.getState().updateTable(1, 't:users', { page: 3 });
+        actions.structure('users');
+        expect(browse().tabs[1]).toMatchObject({
+            state: { view: 'structure', filters, page: 3 },
+        });
+    });
+
     it('opens a quoted SELECT in a new SQL tab', () => {
         actions.openInSql('order items');
         const sql = useSqlTabs.getState().byConnection[1];

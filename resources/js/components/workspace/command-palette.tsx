@@ -84,7 +84,12 @@ export function CommandPalette({
             showInInspector(table, 'columns');
             return;
         }
-        openTableTab(connectionId, table, { mode: 'permanent', state: {} });
+        // Keeps the tab's filters, sort and page; only the data view is needed for the filter draft.
+        openTableTab(connectionId, table, {
+            mode: 'permanent',
+            state: { view: 'data' },
+            merge: true,
+        });
         requestFilterDraft(table, column);
         close();
     };

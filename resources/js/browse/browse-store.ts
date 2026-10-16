@@ -70,7 +70,12 @@ type Actions = {
     openTable: (
         connectionId: number,
         table: string,
-        opts?: { mode?: OpenMode; state?: Partial<TableTabState> },
+        opts?: {
+            mode?: OpenMode;
+            state?: Partial<TableTabState>;
+            /** Merge `state` into an existing tab's state instead of replacing it (filtered opens replace). */
+            merge?: boolean;
+        },
     ) => string;
     promote: (connectionId: number, id: string) => void;
     activate: (connectionId: number, id: string) => void;
@@ -204,7 +209,14 @@ export function flushBrowse(): void {
     write?.();
 }
 
-/** Writes are debounced so rapid filter and page changes do not serialise on every update; corrupt JSON reads as empty. */
+/** The map as last read from or written to storage, to tell which connections this browser tab changed. */
+let lastSynced: Record<number, ConnectionBrowse> = {};
+
+/**
+ * Another browser tab may have saved its workspace since this one loaded, so a write replaces only the connections
+ * changed here and keeps the rest of what is stored. Writes are debounced so rapid filter and page changes do not
+ * serialise on every update; corrupt JSON reads as empty.
+ */
 const browseStorage: PersistStorage<Persisted> = {
     getItem: (name) => {
         const raw = safeStorage.getItem(name);
@@ -216,15 +228,42 @@ const browseStorage: PersistStorage<Persisted> = {
         }
     },
     setItem: (name, value) => {
-        pendingWrite = () => safeStorage.setItem(name, JSON.stringify(value));
+        pendingWrite = () => writeMerged(name, value);
         if (pendingTimer) clearTimeout(pendingTimer);
         pendingTimer = setTimeout(flushBrowse, PERSIST_DELAY_MS);
     },
     removeItem: (name) => safeStorage.removeItem(name),
 };
 
-if (typeof window !== 'undefined')
-    window.addEventListener('pagehide', flushBrowse);
+function writeMerged(
+    name: string,
+    value: { state: Persisted; version?: number },
+) {
+    const next = value.state.byConnection;
+    const merged: Record<string, unknown> = {
+        ...(
+            browseStorage.getItem(name) as {
+                state?: { byConnection?: Record<string, unknown> };
+            } | null
+        )?.state?.byConnection,
+    };
+    const ids = new Set([...Object.keys(next), ...Object.keys(lastSynced)]);
+    for (const key of ids) {
+        const id = Number(key);
+        if (next[id] === lastSynced[id]) continue;
+        if (next[id]) merged[key] = next[id];
+        else delete merged[key];
+    }
+    lastSynced = next;
+    safeStorage.setItem(
+        name,
+        JSON.stringify({ ...value, state: { byConnection: merged } }),
+    );
+}
+
+/** Stored and local workspaces are the same when they serialise alike once sanitised (the drawer is never stored). */
+const sameStored = (a: ConnectionBrowse, b: ConnectionBrowse) =>
+    JSON.stringify(sanitize({ 0: a })[0]) === JSON.stringify(b);
 
 export const useBrowse = create<State>()(
     persist(
@@ -278,14 +317,16 @@ export const useBrowse = create<State>()(
                                           ...t,
                                           preview:
                                               t.preview && mode === 'preview',
-                                          state: opts.state
-                                              ? {
-                                                    ...defaultState(
-                                                        t.state.perPage,
-                                                    ),
-                                                    ...opts.state,
-                                                }
-                                              : t.state,
+                                          state: !opts.state
+                                              ? t.state
+                                              : opts.merge
+                                                ? { ...t.state, ...opts.state }
+                                                : {
+                                                      ...defaultState(
+                                                          t.state.perPage,
+                                                      ),
+                                                      ...opts.state,
+                                                  },
                                       }
                                     : t,
                             );
@@ -328,7 +369,11 @@ export const useBrowse = create<State>()(
                     });
                     return id;
                 },
-                promote: (connectionId, id) =>
+                promote: (connectionId, id) => {
+                    const tab = current(connectionId).tabs.find(
+                        (t) => t.id === id,
+                    );
+                    if (tab?.kind !== 'table' || !tab.preview) return;
                     update(connectionId, (c) => ({
                         ...c,
                         tabs: c.tabs.map((t) =>
@@ -336,7 +381,8 @@ export const useBrowse = create<State>()(
                                 ? { ...t, preview: false }
                                 : t,
                         ),
-                    })),
+                    }));
+                },
                 activate: (connectionId, id) =>
                     update(connectionId, (c) =>
                         c.tabs.some((t) => t.id === id)
@@ -385,7 +431,9 @@ export const useBrowse = create<State>()(
                     }),
                 updateTable: (connectionId, id, patch) =>
                     update(connectionId, (c) => {
-                        const promotes = PROMOTING.some((k) => k in patch);
+                        const promotes =
+                            PROMOTING.some((k) => k in patch) ||
+                            patch.drawerRow != null;
                         return {
                             ...c,
                             perPage: patch.perPage ?? c.perPage,
@@ -471,13 +519,32 @@ export const useBrowse = create<State>()(
             version: 1,
             storage: browseStorage,
             partialize: (s) => ({ byConnection: s.byConnection }),
-            merge: (persisted, current) => ({
-                ...current,
-                byConnection: sanitize(
+            merge: (persisted, current) => {
+                const incoming = sanitize(
                     (persisted as { byConnection?: unknown } | null)
                         ?.byConnection,
-                ),
-            }),
+                );
+                const byConnection = { ...incoming };
+                for (const [key, local] of Object.entries(
+                    current.byConnection,
+                )) {
+                    const id = Number(key);
+                    const stored = incoming[id];
+                    if (!stored) continue;
+                    if (sameStored(local, stored)) {
+                        // Unchanged elsewhere: keep this window's objects (and its open drawer).
+                        byConnection[id] = local;
+                        incoming[id] = local;
+                    } else if (stored.tabs.some((t) => t.id === local.activeId))
+                        // Another window may have switched its active tab; this window keeps the one it is looking at.
+                        byConnection[id] = {
+                            ...stored,
+                            activeId: local.activeId,
+                        };
+                }
+                lastSynced = incoming;
+                return { ...current, byConnection };
+            },
         },
     ),
 );
@@ -488,4 +555,14 @@ export function useActiveTab(connectionId: number): BrowseTab {
         const c = s.byConnection[connectionId];
         return c?.tabs.find((t) => t.id === c.activeId) ?? UNIVERSE_TAB;
     });
+}
+
+if (typeof window !== 'undefined') {
+    // A workspace saved by another browser tab replaces this tab's copy; ours is written first so it is not lost.
+    window.addEventListener('storage', (e) => {
+        if (e.key !== STORAGE_KEY) return;
+        flushBrowse();
+        void useBrowse.persist.rehydrate();
+    });
+    window.addEventListener('pagehide', flushBrowse);
 }
