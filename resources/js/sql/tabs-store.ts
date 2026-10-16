@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, type PersistStorage } from 'zustand/middleware';
+import { safeStorage } from '@/browse/safe-storage';
 
 export type SqlTab = { id: string; title: string; sql: string };
 type ConnectionTabs = { tabs: SqlTab[]; activeId: string };
@@ -30,30 +31,6 @@ const newId = () =>
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
         : `t${Date.now()}${Math.random()}`;
-
-const safeStorage = {
-    getItem: (name: string) => {
-        try {
-            return localStorage.getItem(name);
-        } catch {
-            return null;
-        }
-    },
-    setItem: (name: string, value: string) => {
-        try {
-            localStorage.setItem(name, value);
-        } catch {
-            // Quota or blocked storage must never break typing.
-        }
-    },
-    removeItem: (name: string) => {
-        try {
-            localStorage.removeItem(name);
-        } catch {
-            // ignore
-        }
-    },
-};
 
 /** Keeps only well-formed connections: tabs present and activeId pointing at one of them. */
 function sanitize(input: unknown): Record<number, ConnectionTabs> {
