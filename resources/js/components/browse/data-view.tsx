@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type { SortColumn } from 'react-data-grid';
 import { toast } from 'sonner';
+import { create } from 'zustand';
 import {
     useBrowse,
     type TableTab,
@@ -60,6 +61,19 @@ import { RowDrawer, RowDrawerLoading } from './row-drawer';
 
 /** The filter bar's first control; Ctrl+F focuses it. */
 export const TABLE_FILTER_ID = 'table-filter-bar';
+
+type FilterDraftRequest = { table: string; column: string; nonce: number };
+
+const useFilterDraftRequest = create<{ request: FilterDraftRequest | null }>()(
+    () => ({ request: null }),
+);
+
+/** One-shot: the next DataView of `table` starts a draft filter on `column` (palette column hits). */
+export function requestFilterDraft(table: string, column: string): void {
+    useFilterDraftRequest.setState((s) => ({
+        request: { table, column, nonce: (s.request?.nonce ?? 0) + 1 },
+    }));
+}
 
 // react-data-grid stays out of the workspace chunk until a table tab shows rows.
 const ResultGrid = lazy(() =>
@@ -354,6 +368,12 @@ function DataViewBody({
         column: string;
         nonce: number;
     } | null>(null);
+    const draftRequest = useFilterDraftRequest((s) => s.request);
+    useEffect(() => {
+        if (!draftRequest || draftRequest.table !== name) return;
+        setDraft({ column: draftRequest.column, nonce: draftRequest.nonce });
+        useFilterDraftRequest.setState({ request: null });
+    }, [draftRequest, name]);
 
     const changeFilters = useCallback(
         (next: RowFilter[]) =>

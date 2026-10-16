@@ -18,6 +18,7 @@ type State = {
     pathTo: string | null;
     path: string[] | null;
     paletteOpen: boolean;
+    paletteMode: 'all' | 'tables';
     dockOpen: boolean;
     historyOpen: boolean;
     dockHeight: number;
@@ -35,7 +36,7 @@ type Actions = {
     startPath: (from: string) => void;
     completePath: (to: string, path: string[] | null) => void;
     clearPath: () => void;
-    setPaletteOpen: (open: boolean) => void;
+    setPaletteOpen: (open: boolean, mode?: 'all' | 'tables') => void;
     setDockOpen: (open: boolean) => void;
     setHistoryOpen: (open: boolean) => void;
     setDockHeight: (px: number) => void;
@@ -56,6 +57,7 @@ const initial: State = {
     pathTo: null,
     path: null,
     paletteOpen: false,
+    paletteMode: 'all',
     dockOpen: false,
     historyOpen: false,
     dockHeight: 320,
@@ -79,7 +81,8 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
     startPath: (from) => set({ pathFrom: from, pathTo: null, path: null }),
     completePath: (to, path) => set({ pathTo: to, path: path ?? [] }),
     clearPath: () => set({ pathFrom: null, pathTo: null, path: null }),
-    setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+    setPaletteOpen: (paletteOpen, paletteMode = 'all') =>
+        set({ paletteOpen, paletteMode }),
     setDockOpen: (dockOpen) => set({ dockOpen }),
     setHistoryOpen: (historyOpen) => set({ historyOpen }),
     setDockHeight: (px) =>

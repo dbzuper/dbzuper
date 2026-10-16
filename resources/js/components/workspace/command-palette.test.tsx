@@ -39,9 +39,10 @@ beforeEach(() => {
 });
 
 describe('CommandPalette', () => {
-    it('selects a table on the Universe tab and flies to it', () => {
-        useBrowse.getState().openTable(1, 'orders');
-        const fly = vi.spyOn(universe, 'flyTo');
+    const searchBox = () =>
+        screen.getByPlaceholderText('Search tables, columns and actions…');
+
+    it('opens the picked table as a data tab', () => {
         render(
             <CommandPalette
                 connectionId={1}
@@ -49,52 +50,107 @@ describe('CommandPalette', () => {
                 onRefresh={() => {}}
             />,
         );
-        fireEvent.change(
-            screen.getByPlaceholderText('Search tables, columns and actions…'),
-            { target: { value: 'users' } },
+        fireEvent.change(searchBox(), { target: { value: 'orders' } });
+        fireEvent.keyDown(searchBox(), { key: 'Enter' });
+        expect(useBrowse.getState().get(1).activeId).toBe('t:orders');
+        expect(useBrowse.getState().get(1).tabs[1]).toMatchObject({
+            id: 't:orders',
+            preview: false,
+        });
+        expect(useWorkspace.getState().paletteOpen).toBe(false);
+    });
+
+    it('opens a data tab with a draft filter when a column is picked', () => {
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
         );
-        fireEvent.click(screen.getByRole('option', { name: /users/ }));
+        fireEvent.change(searchBox(), { target: { value: 'id' } });
+        fireEvent.click(
+            screen.getAllByRole('option', { name: /users\.id/ })[0],
+        );
+        expect(useBrowse.getState().get(1).activeId).toBe('t:users');
+    });
+
+    it('keeps the inspector behaviour on Shift+Enter', () => {
+        const fly = vi.spyOn(universe, 'flyTo');
+        useBrowse.getState().openTable(1, 'orders');
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
+        fireEvent.change(searchBox(), { target: { value: 'users' } });
+        fireEvent.keyDown(searchBox(), { key: 'Enter', shiftKey: true });
         expect(useWorkspace.getState().selected).toBe('users');
         expect(useBrowse.getState().get(1).activeId).toBe('universe');
         expect(fly).toHaveBeenCalledWith('users');
         expect(useWorkspace.getState().paletteOpen).toBe(false);
     });
 
-    it.each([
-        ['a table', 'users'],
-        ['a column', 'id'],
-    ])(
-        'moves focus to the inspector heading after picking %s with Enter',
-        async (_kind, query) => {
-            render(
-                <>
-                    <h2 id={INSPECTOR_HEADING_ID} tabIndex={-1}>
-                        users
-                    </h2>
-                    <CommandPalette
-                        connectionId={1}
-                        snapshot={snap}
-                        onRefresh={() => {}}
-                    />
-                </>,
-            );
-            const input = screen.getByPlaceholderText(
-                'Search tables, columns and actions…',
-            );
-            fireEvent.change(input, { target: { value: query } });
-            fireEvent.keyDown(input, { key: 'Enter' });
+    it('lists tables only in quick-open mode', () => {
+        useWorkspace.getState().setPaletteOpen(true, 'tables');
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
+        const input = screen.getByPlaceholderText('Open a table…');
+        expect(
+            screen.queryByRole('option', { name: 'Refresh schema' }),
+        ).not.toBeInTheDocument();
+        fireEvent.change(input, { target: { value: 'users 2' } });
+        expect(screen.queryByText(/Open record/)).toBeNull();
+        fireEvent.change(input, { target: { value: 'users' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(useBrowse.getState().get(1).activeId).toBe('t:users');
+        expect(useWorkspace.getState().paletteOpen).toBe(false);
+    });
 
-            expect(useWorkspace.getState().selected).not.toBeNull();
-            await waitFor(() =>
-                expect(screen.queryByRole('dialog')).toBeNull(),
-            );
-            // After the dialog's own focus restore, which would leave focus on the body.
-            await new Promise((r) => setTimeout(r, 10));
-            expect(
-                screen.getByRole('heading', { name: 'users' }),
-            ).toHaveFocus();
-        },
-    );
+    it('activates the Universe tab before acting on the universe', () => {
+        useBrowse.getState().openTable(1, 'orders');
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
+        fireEvent.click(
+            screen.getByRole('option', { name: 'Fit everything on screen' }),
+        );
+        expect(useBrowse.getState().get(1).activeId).toBe('universe');
+    });
+
+    it('moves focus to the inspector heading after a Shift+Enter pick', async () => {
+        render(
+            <>
+                <h2 id={INSPECTOR_HEADING_ID} tabIndex={-1}>
+                    users
+                </h2>
+                <CommandPalette
+                    connectionId={1}
+                    snapshot={snap}
+                    onRefresh={() => {}}
+                />
+            </>,
+        );
+        fireEvent.change(searchBox(), { target: { value: 'users' } });
+        fireEvent.keyDown(searchBox(), { key: 'Enter', shiftKey: true });
+
+        expect(useWorkspace.getState().selected).not.toBeNull();
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        // After the dialog's own focus restore, which would leave focus on the body.
+        await new Promise((r) => setTimeout(r, 10));
+        expect(screen.getByRole('heading', { name: 'users' })).toHaveFocus();
+    });
 
     it('returns focus to where the shortcut opened it from when dismissed', async () => {
         useWorkspace.getState().setPaletteOpen(false);

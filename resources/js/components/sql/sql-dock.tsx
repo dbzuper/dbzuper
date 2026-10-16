@@ -2,7 +2,11 @@ import { X } from 'lucide-react';
 import type * as Monaco from 'monaco-editor';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { toggleDock, togglePalette } from '@/lib/workspace-shortcuts';
+import {
+    toggleDock,
+    togglePalette,
+    toggleSidebar,
+} from '@/lib/workspace-shortcuts';
 import { registerSqlCompletion } from '@/sql/monaco-completion';
 import { disposeClosedModels } from '@/sql/monaco-setup';
 import { queryApi } from '@/sql/query-api';
@@ -396,7 +400,15 @@ export default function SqlDock({
                             // (Ctrl/⌘+K starts a Monaco chord), so they are editor commands too.
                             editor.addCommand(
                                 monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
-                                togglePalette,
+                                () => togglePalette(),
+                            );
+                            editor.addCommand(
+                                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP,
+                                () => togglePalette('tables'),
+                            );
+                            editor.addCommand(
+                                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB,
+                                () => toggleSidebar(),
                             );
                             editor.addCommand(
                                 monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyJ,
