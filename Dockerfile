@@ -49,7 +49,7 @@ ENV APP_ENV=production \
     LOG_CHANNEL=stderr \
     DB_CONNECTION=sqlite \
     DB_DATABASE=/app/storage/database/database.sqlite \
-    DBSUPERB_SQLITE_PATHS=/data/sqlite \
+    DBSUPERB_SQLITE_PATHS=/data/sqlite     APP_URL=http://localhost:8080 \
     SERVER_NAME=:8080 \
     XDG_CONFIG_HOME=/config \
     XDG_DATA_HOME=/data
@@ -61,14 +61,15 @@ COPY --from=assets /app/public/build ./public/build
 COPY docker/Caddyfile /etc/caddy/Caddyfile
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
-# Non-root user; storage and the SQLite directory are volume mount points, so the directories
+# Optimized classmap including App\ (the vendor stage ran before the app existed). composer is mounted
+# for this one step only and does not stay in the image.
+RUN --mount=type=bind,from=composer:2,source=/usr/bin/composer,target=/usr/bin/composer     composer dump-autoload --optimize --no-dev --no-interaction
+
+# Non-root user. Application code is owned by root and read-only for it (whatever modes the build host
+# gave the context, e.g. 0777 on a Windows drive); only storage, bootstrap/cache and the config/data
+# dirs belong to the app user. Storage and the SQLite directory are volume mount points, so they
 # (and their ownership) must exist in the image for named volumes to inherit them on first use.
-RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin dbsuperb \
-    && mkdir -p /config /data/caddy /data/sqlite storage/database storage/app/public \
-        storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs \
-        bootstrap/cache \
-    && (setcap -r /usr/local/bin/frankenphp || true) \
-    && chown -R dbsuperb:dbsuperb /app/storage /app/bootstrap/cache /config /data
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin dbsuperb     && chown -R root:root /app     && chmod -R u=rwX,go=rX /app     && mkdir -p /config /data/caddy /data/sqlite storage/database storage/app/public         storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs         bootstrap/cache     && (setcap -r /usr/local/bin/frankenphp || true)     && chown -R dbsuperb:dbsuperb /app/storage /app/bootstrap/cache /config /data
 
 USER dbsuperb
 VOLUME ["/app/storage", "/data/sqlite"]

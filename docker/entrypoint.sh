@@ -1,12 +1,22 @@
 #!/bin/sh
-# DBSuperb container entrypoint: prepare storage, persist APP_KEY, migrate, cache, then serve.
+# DBSUPERB container entrypoint: prepare storage, persist APP_KEY, then either run the given command
+# (one-off artisan use: `docker compose run --rm app php artisan ...`) or migrate, cache and serve.
 set -eu
 
 cd /app
 
+# DBSUPERB_SQLITE_PATHS is comma-separated: create each directory.
+sqlite_paths="${DBSUPERB_SQLITE_PATHS:-/data/sqlite}"
+old_ifs="$IFS"; IFS=','
+for dir in $sqlite_paths; do
+    dir="$(printf '%s' "$dir" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [ -n "$dir" ] && mkdir -p "$dir"
+done
+IFS="$old_ifs"
+
 mkdir -p storage/app/public storage/database storage/logs \
     storage/framework/cache/data storage/framework/sessions storage/framework/views \
-    bootstrap/cache "${DBSUPERB_SQLITE_PATHS:-/data/sqlite}"
+    bootstrap/cache
 
 # The application database (users, connections, history, sessions) is a SQLite file in the storage volume.
 if [ "${DB_CONNECTION:-sqlite}" = "sqlite" ]; then
@@ -20,8 +30,10 @@ fi
 if [ -z "${APP_KEY:-}" ]; then
     keyfile=storage/app.key
     if [ ! -s "$keyfile" ]; then
-        php artisan key:generate --show --no-ansi > "$keyfile.tmp"
-        chmod 600 "$keyfile.tmp"
+        (
+            umask 077
+            php artisan key:generate --show --no-ansi > "$keyfile.tmp"
+        )
         mv "$keyfile.tmp" "$keyfile"
         echo "entrypoint: generated a new APP_KEY in /app/storage/app.key" >&2
     fi
@@ -29,9 +41,15 @@ if [ -z "${APP_KEY:-}" ]; then
     export APP_KEY
 fi
 
+# One-off command: run it with the prepared environment instead of starting the server.
+if [ "$#" -gt 0 ]; then
+    exec "$@"
+fi
+
+# Never reuse a config cache from a previous start: rebuild it from this start's environment.
+php artisan config:clear
 php artisan migrate --force --no-interaction
 
-# Config is cached from the environment of this start, so changing env and restarting takes effect.
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
