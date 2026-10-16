@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+    act,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse, type TableTab } from '@/browse/browse-store';
 import { rowsCache } from '@/browse/rows-cache';
@@ -374,6 +380,47 @@ describe('DataView', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Open row 2' }));
         expect(tabState().drawerRow).toBe(2);
         expect(screen.getByTestId('active-row')).toHaveTextContent('2');
+    });
+
+    it('steps past the end of a page into the next one', async () => {
+        useBrowse.getState().openTable(1, 'orders', {
+            mode: 'preview',
+            state: { drawerRow: 99 },
+        });
+        render(<Harness />);
+        await screen.findByRole('heading', { level: 3 });
+        api.rows.mockResolvedValue(page(2, 'B', { has_more: false }));
+        fireEvent.keyDown(screen.getByRole('complementary'), {
+            key: 'ArrowDown',
+        });
+        expect(tabState()).toMatchObject({ page: 2, drawerRow: 0 });
+        await screen.findByText('Rows 101–200 of 10');
+        expect(
+            screen.getByRole('complementary', { name: 'Row details' }),
+        ).toBeInTheDocument();
+    });
+
+    it('steps back to the previous page and closes on Escape', async () => {
+        useBrowse.getState().openTable(1, 'orders', {
+            mode: 'preview',
+            state: { page: 2, drawerRow: 0 },
+        });
+        api.rows.mockResolvedValue(page(2, 'B'));
+        render(<Harness />);
+        await screen.findByRole('heading', { level: 3 });
+        fireEvent.keyDown(screen.getByRole('complementary'), {
+            key: 'ArrowUp',
+        });
+        expect(tabState()).toMatchObject({ page: 1, drawerRow: 99 });
+        await waitFor(() =>
+            expect(screen.getByRole('complementary')).not.toHaveAttribute(
+                'aria-busy',
+            ),
+        );
+        fireEvent.keyDown(screen.getByRole('complementary'), {
+            key: 'Escape',
+        });
+        expect(tabState().drawerRow).toBeNull();
     });
 
     it('retries after an error', async () => {

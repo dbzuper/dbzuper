@@ -48,7 +48,7 @@ import {
     type RowsResponse,
     type SortKey,
 } from '@/lib/workspace-api';
-import { openRecord } from '@/records/open-record';
+import { openRecord, type RecordTarget } from '@/records/open-record';
 import type {
     Dialect,
     QueryColumn,
@@ -56,6 +56,7 @@ import type {
     TableSchema,
 } from '@/types/schema';
 import { Pagination } from './pagination';
+import { RowDrawer, RowDrawerLoading } from './row-drawer';
 
 /** The filter bar's first control; Ctrl+F focuses it. */
 export const TABLE_FILTER_ID = 'table-filter-bar';
@@ -437,6 +438,42 @@ function DataViewBody({
         (rowIndex: number) => update({ drawerRow: rowIndex }),
         [update],
     );
+    const gridArea = useRef<HTMLDivElement>(null);
+    const closeDrawer = useCallback(() => {
+        update({ drawerRow: null });
+        // Focus goes back to the row that was open, else the grid itself.
+        requestAnimationFrame(() => {
+            const buttons = gridArea.current?.querySelectorAll<HTMLElement>(
+                'button[aria-label="Open row"]',
+            );
+            const target =
+                buttons?.[lastOpened.current] ??
+                buttons?.[0] ??
+                gridArea.current?.querySelector<HTMLElement>('[role="grid"]');
+            target?.focus();
+        });
+    }, [update]);
+    const lastOpened = useRef(0);
+    useEffect(() => {
+        if (drawerRow !== null) lastOpened.current = drawerRow;
+    }, [drawerRow]);
+    const onStep = useCallback(
+        (dir: 1 | -1) => {
+            const count = view?.rows.rows.length ?? 0;
+            const at = drawerRow ?? 0;
+            const next = at + dir;
+            if (next >= 0 && next < count) update({ drawerRow: next });
+            else if (next >= count && view?.rows.has_more)
+                update({ page: page + 1, drawerRow: 0 });
+            else if (next < 0 && page > 1)
+                update({ page: page - 1, drawerRow: perPage - 1 });
+        },
+        [view, drawerRow, page, perPage, update],
+    );
+    const onExplore = useCallback(
+        (target: RecordTarget) => openRecord(target),
+        [],
+    );
     const onOpenForeign = useCallback(
         (target: string, column: string, value: string) =>
             onOpenTable(target, [{ column, op: 'eq', value }]),
@@ -455,6 +492,10 @@ function DataViewBody({
         !!view &&
         !countPending &&
         (!total || 'atLeast' in total || !total.exact);
+    const drawerRowData =
+        !loading && drawerRow !== null
+            ? (view?.rows.rows[drawerRow] ?? null)
+            : null;
     const label = view
         ? rangeLabel(
               view.rows.page,
@@ -475,61 +516,81 @@ function DataViewBody({
                 onChange={changeFilters}
                 draft={draft}
             />
-            <div className="relative min-h-0 flex-1">
-                {currentError ? (
-                    <div
-                        role="alert"
-                        className="flex flex-col items-start gap-2 px-4 py-3 text-xs"
-                    >
-                        <p className="text-destructive">{currentError}</p>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={retry}
+            <div className="flex min-h-0 flex-1">
+                <div ref={gridArea} className="relative min-h-0 min-w-0 flex-1">
+                    {currentError ? (
+                        <div
+                            role="alert"
+                            className="flex flex-col items-start gap-2 px-4 py-3 text-xs"
                         >
-                            Retry
-                        </Button>
-                    </div>
-                ) : view && view.rows.columns.length > 0 ? (
-                    <div
-                        aria-busy={loading}
-                        className={
-                            loading
-                                ? 'h-full opacity-60 transition-opacity'
-                                : 'h-full'
-                        }
-                    >
-                        <Suspense
-                            fallback={
-                                <p className="px-4 py-3 text-xs text-muted-foreground">
-                                    Loading rows…
-                                </p>
+                            <p className="text-destructive">{currentError}</p>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={retry}
+                            >
+                                Retry
+                            </Button>
+                        </div>
+                    ) : view && view.rows.columns.length > 0 ? (
+                        <div
+                            aria-busy={loading}
+                            className={
+                                loading
+                                    ? 'h-full opacity-60 transition-opacity'
+                                    : 'h-full'
                             }
                         >
-                            <ResultGrid
-                                key={view.key}
-                                columns={recordColumns}
-                                rows={view.rows.rows}
-                                snapshot={snapshot}
-                                onOpenForeign={onOpenForeign}
-                                onOpenRecord={openRecord}
-                                sort={gridSort}
-                                layout={gridLayout}
-                                onFilterColumn={onFilterColumn}
-                                onOpenRow={onOpenRow}
-                                activeRow={drawerRow}
-                                rowMenu={rowMenu}
-                                scrollTop={view.scrollTop}
-                                onScrollTopChange={onScrollTopChange}
-                            />
-                        </Suspense>
-                    </div>
-                ) : (
-                    <p className="px-4 py-3 text-xs text-muted-foreground">
-                        {loading ? 'Loading rows…' : 'No rows.'}
-                    </p>
-                )}
+                            <Suspense
+                                fallback={
+                                    <p className="px-4 py-3 text-xs text-muted-foreground">
+                                        Loading rows…
+                                    </p>
+                                }
+                            >
+                                <ResultGrid
+                                    key={view.key}
+                                    columns={recordColumns}
+                                    rows={view.rows.rows}
+                                    snapshot={snapshot}
+                                    onOpenForeign={onOpenForeign}
+                                    onOpenRecord={openRecord}
+                                    sort={gridSort}
+                                    layout={gridLayout}
+                                    onFilterColumn={onFilterColumn}
+                                    onOpenRow={onOpenRow}
+                                    activeRow={drawerRow}
+                                    rowMenu={rowMenu}
+                                    scrollTop={view.scrollTop}
+                                    onScrollTopChange={onScrollTopChange}
+                                />
+                            </Suspense>
+                        </div>
+                    ) : (
+                        <p className="px-4 py-3 text-xs text-muted-foreground">
+                            {loading ? 'Loading rows…' : 'No rows.'}
+                        </p>
+                    )}
+                </div>
+                {drawerRow !== null &&
+                    (drawerRowData ? (
+                        <RowDrawer
+                            key={`${page}:${drawerRow}`}
+                            connectionId={connectionId}
+                            snapshot={snapshot}
+                            table={table}
+                            columns={recordColumns}
+                            row={drawerRowData}
+                            rowNumber={(page - 1) * perPage + drawerRow + 1}
+                            onClose={closeDrawer}
+                            onStep={onStep}
+                            onOpenTable={onOpenTable}
+                            onExplore={onExplore}
+                        />
+                    ) : loading ? (
+                        <RowDrawerLoading />
+                    ) : null)}
             </div>
             <Pagination
                 page={page}
