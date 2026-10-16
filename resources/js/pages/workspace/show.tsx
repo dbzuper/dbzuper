@@ -12,6 +12,7 @@ import { HistoryList } from '@/components/history/history-list';
 import { InspectorPanel } from '@/components/inspector/inspector-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SkipLink } from '@/components/skip-link';
 import { UniverseBoundary } from '@/components/universe/universe-boundary';
 import { CommandPalette } from '@/components/workspace/command-palette';
 import { FocusChip } from '@/components/workspace/focus-chip';
@@ -262,6 +263,7 @@ export default function WorkspaceShow({
     return (
         <div className="flex h-dvh flex-col bg-background text-foreground">
             <Head title={connection.name} />
+            <SkipLink />
             <WorkspaceHeader
                 connection={connection}
                 storedAt={data?.stored_at ?? null}
@@ -304,6 +306,8 @@ export default function WorkspaceShow({
                 <LeftRail universeAvailable={universeAvailable} />
 
                 <main
+                    id="main"
+                    tabIndex={-1}
                     data-testid="workspace-main"
                     className="relative min-w-0 flex-1"
                 >

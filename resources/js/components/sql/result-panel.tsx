@@ -147,30 +147,32 @@ export const ResultPanel = memo(function ResultPanel({
                     {notice}
                 </p>
             )}
-            <div
-                role="tablist"
-                aria-label="Statement results"
-                className="flex shrink-0 items-center gap-1 overflow-x-auto border-b px-2"
-            >
-                {results.map((r, i) => (
-                    <button
-                        key={i}
-                        type="button"
-                        role="tab"
-                        aria-selected={r === current}
-                        className={cn(
-                            'rounded-md px-2 py-1 text-xs',
-                            r.error
-                                ? 'text-destructive'
-                                : 'text-muted-foreground',
-                            r === current && 'bg-muted font-medium',
-                            r === current && !r.error && 'text-foreground',
-                        )}
-                        onClick={() => setIndex(i)}
-                    >
-                        #{i + 1} {keywordOf(r.sql)}
-                    </button>
-                ))}
+            <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b px-2">
+                <div
+                    role="tablist"
+                    aria-label="Statement results"
+                    className="flex items-center gap-1"
+                >
+                    {results.map((r, i) => (
+                        <button
+                            key={i}
+                            type="button"
+                            role="tab"
+                            aria-selected={r === current}
+                            className={cn(
+                                'rounded-md px-2 py-1 text-xs',
+                                r.error
+                                    ? 'text-destructive'
+                                    : 'text-muted-foreground',
+                                r === current && 'bg-muted font-medium',
+                                r === current && !r.error && 'text-foreground',
+                            )}
+                            onClick={() => setIndex(i)}
+                        >
+                            #{i + 1} {keywordOf(r.sql)}
+                        </button>
+                    ))}
+                </div>
                 {!current.error && current.columns.length > 0 && (
                     <ResultActions result={current} />
                 )}

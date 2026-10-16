@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useSqlTabs } from '@/sql/tabs-store';
 
+const tabDomId = (tabId: string) => `sql-tab-${tabId}`;
+
 export function SqlTabsBar({ connectionId }: { connectionId: number }) {
     const state = useSqlTabs((s) => s.byConnection[connectionId]);
     const setActive = useSqlTabs((s) => s.setActive);
@@ -10,11 +12,14 @@ export function SqlTabsBar({ connectionId }: { connectionId: number }) {
     const openTab = useSqlTabs((s) => s.openTab);
 
     return (
-        <div
-            role="tablist"
-            aria-label="SQL tabs"
-            className="flex min-w-0 items-center gap-1 overflow-x-auto"
-        >
+        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+            {/* A tablist may only own tabs, but each tab sits beside its own close button, so the
+                tablist claims the tab buttons with aria-owns instead of wrapping them. */}
+            <div
+                role="tablist"
+                aria-label="SQL tabs"
+                aria-owns={state?.tabs.map((t) => tabDomId(t.id)).join(' ')}
+            />
             {state?.tabs.map((tab) => {
                 const active = tab.id === state.activeId;
                 return (
@@ -29,6 +34,7 @@ export function SqlTabsBar({ connectionId }: { connectionId: number }) {
                     >
                         <button
                             type="button"
+                            id={tabDomId(tab.id)}
                             role="tab"
                             aria-selected={active}
                             className="max-w-40 truncate py-1 pr-1 pl-2.5"

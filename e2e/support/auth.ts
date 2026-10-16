@@ -6,10 +6,18 @@ export const ADMIN = {
     password: 'correct-horse-battery',
 };
 
-/** Signs in, creating the admin on a fresh install. */
-export async function ensureSignedIn(page: Page): Promise<void> {
+/**
+ * Signs in, creating the admin on a fresh install. `beforeSignIn` runs on the login or setup screen
+ * before the form is filled (used for checks that need the signed-out page, without a second login).
+ */
+export async function ensureSignedIn(
+    page: Page,
+    beforeSignIn?: (pathname: string) => Promise<void>,
+): Promise<void> {
     await page.goto('/');
     const pathname = new URL(page.url()).pathname;
+    if (beforeSignIn && (pathname === '/setup' || pathname === '/login'))
+        await beforeSignIn(pathname);
     if (pathname === '/setup') {
         await page.getByLabel('Name', { exact: true }).fill(ADMIN.name);
         await page.getByLabel('Email').fill(ADMIN.email);

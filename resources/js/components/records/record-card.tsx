@@ -2,12 +2,19 @@ import {
     Handle,
     Position,
     useNodeId,
+    useReactFlow,
     useUpdateNodeInternals,
     type Node,
     type NodeProps,
 } from '@xyflow/react';
 import { ArrowRight } from 'lucide-react';
-import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import {
+    createContext,
+    useContext,
+    useEffect,
+    useRef,
+    type ReactNode,
+} from 'react';
 import { cellKind } from '@/grid/cells';
 import { cn } from '@/lib/utils';
 import { recordFields, recordTitle, titleColumn } from '@/records/heuristics';
@@ -92,7 +99,7 @@ function Port({
         ? `Open ${summary.table} (${cols}) in Data tab`
         : out
           ? `Open ${summary.table} (${cols})`
-          : `Show ${summary.table} (${cols}) — ${recordCountText(summary.count)}`;
+          : `Show ${summary.table} (${cols}) ${recordCountText(summary.count)}`;
     const title = !disabled
         ? dataTab
             ? `${summary.table} cannot be explored as records`
@@ -126,15 +133,23 @@ function Port({
         >
             {out && <ArrowRight aria-hidden className="size-3 shrink-0" />}
             <span className="min-w-0 flex-1 truncate font-medium">
-                {summary.table}
-                <span className="ml-1 font-normal text-muted-foreground">
-                    {cols}
+                {summary.table}{' '}
+                <span className="font-normal text-muted-foreground">
+                    ({cols})
                 </span>
             </span>
+            {/* Text nodes between flex items are not drawn, but they keep the visible text in the same
+                word order as the accessible name ("orders (user_id) 3 records"). */}
             {!out && (
-                <span className="shrink-0 rounded bg-muted px-1.5 text-[10px] tabular-nums">
-                    {countBadge(summary.count)}
-                </span>
+                <>
+                    {' '}
+                    <span
+                        aria-hidden
+                        className="shrink-0 rounded bg-muted px-1.5 text-[10px] tabular-nums"
+                    >
+                        {countBadge(summary.count)}
+                    </span>
+                </>
             )}
             <Handle
                 type="source"
@@ -180,6 +195,13 @@ export type RecordCardProps = {
     isExplorable?: (table: string) => boolean;
     onOpenInData?: (table: string, filters: DataFilters) => void;
 };
+
+const PAN_MS = 200;
+const panDuration = () =>
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 0
+        : PAN_MS;
 
 const always = () => true;
 const nothing = () => undefined;
@@ -233,6 +255,25 @@ export function RecordCard({
         if (nodeId) updateInternals(nodeId);
     }, [nodeId, portKey, updateInternals]);
 
+    // Tabbing to a control inside a card pans the canvas to it. Focus that follows a pointer press
+    // is left alone: the user is already looking at the card.
+    const { setCenter, getZoom, getInternalNode } = useReactFlow();
+    const pointerFocus = useRef(false);
+    const panToCard = () => {
+        if (pointerFocus.current) {
+            pointerFocus.current = false;
+            return;
+        }
+        const node = nodeId ? getInternalNode(nodeId) : undefined;
+        if (!node) return;
+        const { x, y } = node.internals.positionAbsolute;
+        void setCenter(
+            x + (node.measured.width ?? 0) / 2,
+            y + (node.measured.height ?? 0) / 2,
+            { zoom: getZoom(), duration: panDuration() },
+        );
+    };
+
     const dataTab = (s: RelationshipSummary) =>
         isExplorable(s.table)
             ? null
@@ -248,6 +289,13 @@ export function RecordCard({
                     'border-[var(--universe-accent)] ring-2 ring-[var(--universe-accent)]',
             )}
             style={{ maxHeight: CARD_MAX_HEIGHT }}
+            onPointerDownCapture={() => {
+                pointerFocus.current = true;
+            }}
+            onPointerUpCapture={() => {
+                pointerFocus.current = false;
+            }}
+            onFocus={panToCard}
         >
             <Handle
                 type="target"
@@ -277,9 +325,13 @@ export function RecordCard({
             ))}
             {missing ? (
                 <div className="flex items-center gap-2 px-3 py-3">
-                    <span className="min-w-0 truncate text-muted-foreground">
+                    <button
+                        type="button"
+                        onClick={onSelect}
+                        className="nodrag nopan min-w-0 truncate rounded text-left text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+                    >
                         {table} · {formatKey(recordKey)} not found
-                    </span>
+                    </button>
                     <button
                         type="button"
                         onClick={onRemove}

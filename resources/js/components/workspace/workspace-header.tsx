@@ -3,6 +3,7 @@ import { ArrowLeft, RefreshCw, Search } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { formatSnapshotAge } from '@/lib/format';
+import { paletteShortcutHint } from '@/lib/platform';
 import type { ConnectionSummary } from '@/types/connection';
 import { useWorkspace } from '@/universe/store';
 
@@ -68,7 +69,7 @@ export function WorkspaceHeader({
                 >
                     <Search className="size-3.5" /> Search{' '}
                     <kbd className="ml-1 font-mono text-[10px] text-muted-foreground">
-                        ⌘K
+                        {paletteShortcutHint()}
                     </kbd>
                 </Button>
                 <Button

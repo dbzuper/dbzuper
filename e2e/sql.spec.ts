@@ -1,5 +1,12 @@
-import { expect, test, type Page, type Request } from '@playwright/test';
+import {
+    expect,
+    test,
+    type BrowserContext,
+    type Page,
+    type Request,
+} from '@playwright/test';
 import path from 'node:path';
+import { expectNoA11yViolations } from './support/axe';
 import { addSqliteConnection, ensureSignedIn } from './support/auth';
 
 const DEMO = path.resolve('storage/app/demo/commerce.sqlite');
@@ -8,15 +15,20 @@ const DEMO = path.resolve('storage/app/demo/commerce.sqlite');
 // signs in once per test.
 test.describe.configure({ mode: 'serial' });
 
+let context: BrowserContext;
 let page: Page;
 
 test.beforeAll(async ({ browser }) => {
-    page = await browser.newPage();
-    await ensureSignedIn(page);
+    // A context (not browser.newPage()) so that axe can open its own page in it.
+    context = await browser.newContext();
+    page = await context.newPage();
+    await ensureSignedIn(page, (pathname) =>
+        expectNoA11yViolations(page, { label: pathname }),
+    );
 });
 
 test.afterAll(async () => {
-    await page.close();
+    await context.close();
 });
 
 const PALETTE_PLACEHOLDER = 'Search tables, columns and actions…';
@@ -341,7 +353,7 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
         });
     });
     await explorer
-        .getByRole('button', { name: /^Show orders \(user_id\) — 1 record/ })
+        .getByRole('button', { name: /^Show orders \(user_id\) 1 record/ })
         .click();
     await expect(cards).toHaveCount(2);
     const elapsed = await page.evaluate(
@@ -353,7 +365,7 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
     // 3. Hop 2: order 1 -> its two items.
     await explorer
         .getByRole('button', {
-            name: /^Show order_items \(order_id\) — 2 records/,
+            name: /^Show order_items \(order_id\) 2 records/,
         })
         .click();
     await expect(cards).toHaveCount(4);
@@ -402,4 +414,105 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
     await expect(
         dock.getByRole('gridcell', { name: 'Mechanical Keyboard' }),
     ).toBeVisible({ timeout: 15_000 });
+});
+
+async function settleTransitions() {
+    await page.waitForTimeout(600);
+}
+
+const b64urlTrail = (text: string) =>
+    Buffer.from(text, 'utf8')
+        .toString('base64')
+        .replaceAll('+', '-')
+        .replaceAll('/', '_')
+        .replace(/=+$/, '');
+
+test('accessibility: no serious or critical axe violations on the main screens', async () => {
+    // The login screen is checked before sign-in, in beforeAll. Everything here reuses the shared
+    // signed-in page.
+    await page.goto('/connections');
+    await expect(
+        page.getByRole('heading', { name: 'Connections' }),
+    ).toBeVisible();
+    await expectNoA11yViolations(page, { label: '/connections' });
+
+    await page.goto('/connections/create');
+    await expect(page.getByLabel('Name', { exact: true })).toBeVisible();
+    await expectNoA11yViolations(page, { label: '/connections/create' });
+
+    // Workspace: universe.
+    await openWorkspace('A11y workspace demo');
+    await expectNoA11yViolations(page, { label: 'workspace: universe' });
+
+    // List view.
+    await page.getByRole('button', { name: 'List view' }).click();
+    await expect(
+        page.getByRole('button', { name: 'order_items' }),
+    ).toBeVisible();
+    await expectNoA11yViolations(page, { label: 'workspace: list' });
+
+    // Records view with a card (users 1, built the way the app encodes it).
+    const workspace = new URL(page.url()).pathname;
+    const trail = b64urlTrail(
+        JSON.stringify({ v: 1, n: [['users', [1]]], e: [], s: 0 }),
+    );
+    await page.goto(`${workspace}?r=${trail}`);
+    const explorer = page.getByRole('region', { name: 'Record explorer' });
+    await expect(
+        explorer.getByRole('button', { name: /^Open group/ }),
+    ).toBeVisible();
+    await expectNoA11yViolations(page, { label: 'workspace: records' });
+
+    // SQL dock open with a result.
+    await page.keyboard.press('Control+j');
+    const dock = page.getByRole('region', { name: 'SQL editor' });
+    await expect(dock.locator('.monaco-editor')).toBeVisible();
+    await dock.locator('.monaco-editor').click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.insertText('select * from orders');
+    await page.keyboard.press('Control+Enter');
+    await expect(
+        dock.getByRole('gridcell', { name: 'paid', exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expectNoA11yViolations(page, { label: 'workspace: SQL dock' });
+
+    // Inspector: Columns and Data tabs.
+    await page.getByRole('button', { name: 'List view' }).click();
+    await page.getByRole('button', { name: 'orders', exact: true }).click();
+    const inspector = page.getByRole('complementary', { name: 'Inspector' });
+    await expect(
+        inspector.getByRole('heading', { name: 'orders' }),
+    ).toBeVisible();
+    await inspector.getByRole('tab', { name: 'Columns' }).click();
+    await expectNoA11yViolations(page, {
+        label: 'workspace: inspector Columns',
+    });
+    await inspector.getByRole('tab', { name: 'Data' }).click();
+    await expect(
+        inspector.getByRole('gridcell', { name: 'pending', exact: true }),
+    ).toBeVisible();
+    await expectNoA11yViolations(page, { label: 'workspace: inspector Data' });
+
+    // History panel.
+    await page.getByRole('button', { name: 'History' }).click();
+    const history = page.getByRole('complementary', { name: 'History' });
+    await expect(history.getByText('select * from orders')).toBeVisible();
+    await expectNoA11yViolations(page, { label: 'workspace: history panel' });
+
+    // One light pass on the workspace (dark is the default theme).
+    await page.evaluate(() =>
+        document.documentElement.classList.remove('dark'),
+    );
+    // Colours transition for ~150 ms; axe would sample the in-between colours.
+    await settleTransitions();
+    await expectNoA11yViolations(page, { label: 'workspace: light' });
+    await page.getByRole('button', { name: 'Records' }).click();
+    await settleTransitions();
+    await expectNoA11yViolations(page, { label: 'workspace: records, light' });
+    await page.evaluate(() => document.documentElement.classList.add('dark'));
+
+    // The global history page.
+    await page.goto('/history');
+    await expect(page.getByText('select * from orders').first()).toBeVisible();
+    await expectNoA11yViolations(page, { label: '/history' });
 });

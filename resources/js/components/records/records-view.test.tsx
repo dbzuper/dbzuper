@@ -149,7 +149,7 @@ describe('RecordsView', () => {
 
     it('a port click on an unselected card does not select it', async () => {
         await twoCards({ kind: 'table', primary_key: ['id'] });
-        const port = await button('Show items (order_id) — 2 records');
+        const port = await button('Show items (order_id) 2 records');
         const before = useRecords.getState().trail;
         fireEvent.click(port);
         expect(api.related).toHaveBeenCalledOnce();

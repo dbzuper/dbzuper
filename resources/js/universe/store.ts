@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 
+/** The SQL dock's height limits, in px. */
+export const DOCK_MIN_HEIGHT = 160;
+export const DOCK_MAX_HEIGHT = 900;
+
 export type ZoomLevel = 'galaxy' | 'system' | 'closeup';
 export type InspectorTab =
     | 'columns'
@@ -95,7 +99,12 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
     setDockOpen: (dockOpen) => set({ dockOpen }),
     setHistoryOpen: (historyOpen) => set({ historyOpen }),
     setDockHeight: (px) =>
-        set({ dockHeight: Math.max(160, Math.min(px, 900)) }),
+        set({
+            dockHeight: Math.max(
+                DOCK_MIN_HEIGHT,
+                Math.min(px, DOCK_MAX_HEIGHT),
+            ),
+        }),
     openDataFilter: (table, filters) =>
         set({
             selected: table,

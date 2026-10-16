@@ -22,6 +22,7 @@ import type {
     StatementResultPayload,
 } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
+import { DockSeparator } from './dock-separator';
 import { ConfirmDialog, type ConfirmRequest } from './confirm-dialog';
 import { ResultPanel } from './result-panel';
 import { SqlEditor } from './sql-editor';
@@ -48,12 +49,10 @@ export default function SqlDock({
     snapshot: SchemaSnapshot;
 }) {
     const height = useWorkspace((s) => s.dockHeight);
-    const setHeight = useWorkspace((s) => s.setDockHeight);
     const setOpen = useWorkspace((s) => s.setDockOpen);
     const tabs = useSqlTabs((s) => s.byConnection[connection.id]);
     const ensure = useSqlTabs((s) => s.ensure);
     const setSql = useSqlTabs((s) => s.setSql);
-    const drag = useRef<{ y: number; height: number } | null>(null);
     // The completion provider is registered once; it reads the latest schema through this ref.
     const context = useRef({ snapshot });
     useEffect(() => {
@@ -306,38 +305,13 @@ export default function SqlDock({
     });
     const tabResults = active ? resultsByTab[active.id] : undefined;
 
-    const onResizeStart = (e: React.PointerEvent) => {
-        drag.current = {
-            y: e.clientY,
-            height: useWorkspace.getState().dockHeight,
-        };
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    };
-    const onResizeMove = (e: React.PointerEvent) => {
-        if (!drag.current) return;
-        setHeight(drag.current.height + (drag.current.y - e.clientY));
-    };
-    const onResizeEnd = () => {
-        drag.current = null;
-    };
-
     return (
         <section
             aria-label="SQL editor"
             className="absolute inset-x-0 bottom-0 z-20 flex flex-col border-t bg-background shadow-2xl"
             style={{ height }}
         >
-            <div
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label="Resize SQL editor"
-                className="h-1.5 cursor-row-resize bg-border/60 hover:bg-[var(--universe-accent)]"
-                onPointerDown={onResizeStart}
-                onPointerMove={onResizeMove}
-                onPointerUp={onResizeEnd}
-                onPointerCancel={onResizeEnd}
-                onLostPointerCapture={onResizeEnd}
-            />
+            <DockSeparator />
             <div className="flex items-center gap-2 border-b px-2">
                 <SqlTabsBar connectionId={connection.id} />
                 <Button

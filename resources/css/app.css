@@ -151,6 +151,24 @@
     body {
         @apply bg-background text-foreground;
     }
+
+    /* One visible focus ring for every keyboard-reachable control. :where() keeps the specificity at
+       zero, so a component's own focus-visible styles still win. */
+    :where(
+        a[href],
+        button,
+        summary,
+        select,
+        input,
+        textarea,
+        [role='button'],
+        [role='tab'],
+        [role='separator'],
+        [tabindex]:not([tabindex='-1'])
+    ):focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+    }
 }
 
 :root {

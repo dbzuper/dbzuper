@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FILTER_OPS, type FilterOp, type RowFilter } from '@/lib/workspace-api';
 
@@ -24,6 +24,18 @@ export function FilterBar({ columns, filters, onChange }: Props) {
     const selected = columns.includes(column) ? column : (columns[0] ?? '');
     const canAdd = selected !== '' && (!needsValue || value !== '');
 
+    const columnSelect = useRef<HTMLSelectElement>(null);
+    const removeButtons = useRef<(HTMLButtonElement | null)[]>([]);
+    // After a chip is removed focus goes to its neighbour (or the column select), never to <body>.
+    const focusAfterRemoval = useRef<number | null>(null);
+    useEffect(() => {
+        const index = focusAfterRemoval.current;
+        if (index === null) return;
+        focusAfterRemoval.current = null;
+        const next = removeButtons.current[Math.min(index, filters.length - 1)];
+        (filters.length > 0 ? next : columnSelect.current)?.focus();
+    }, [filters]);
+
     const add = () => {
         if (!canAdd) return;
         onChange([
@@ -35,14 +47,23 @@ export function FilterBar({ columns, filters, onChange }: Props) {
         setValue('');
     };
 
+    // Enter in a select adds the filter once nothing more needs typing.
+    const addOnEnter = (e: React.KeyboardEvent) => {
+        if (e.key !== 'Enter' || needsValue) return;
+        e.preventDefault();
+        add();
+    };
+
     return (
         <div className="flex flex-col gap-2 border-b px-4 py-2">
             <div className="flex flex-wrap items-center gap-1.5">
                 <select
+                    ref={columnSelect}
                     aria-label="Filter column"
                     className={fieldClass}
                     value={selected}
                     onChange={(e) => setColumn(e.target.value)}
+                    onKeyDown={addOnEnter}
                 >
                     {columns.map((c) => (
                         <option key={c} value={c}>
@@ -55,6 +76,7 @@ export function FilterBar({ columns, filters, onChange }: Props) {
                     className={fieldClass}
                     value={op}
                     onChange={(e) => setOp(e.target.value as FilterOp)}
+                    onKeyDown={addOnEnter}
                 >
                     {FILTER_OPS.map((o) => (
                         <option key={o.value} value={o.value}>
@@ -98,13 +120,17 @@ export function FilterBar({ columns, filters, onChange }: Props) {
                                 <span>{text}</span>
                                 <button
                                     type="button"
+                                    ref={(el) => {
+                                        removeButtons.current[i] = el;
+                                    }}
                                     aria-label={`Remove filter ${text}`}
-                                    className="text-muted-foreground hover:text-foreground"
-                                    onClick={() =>
+                                    className="rounded-full text-muted-foreground hover:text-foreground"
+                                    onClick={() => {
+                                        focusAfterRemoval.current = i;
                                         onChange(
                                             filters.filter((_, j) => j !== i),
-                                        )
-                                    }
+                                        );
+                                    }}
                                 >
                                     <X className="size-3" />
                                 </button>
