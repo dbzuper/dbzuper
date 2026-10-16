@@ -106,3 +106,9 @@ it('does not classify by text quoted in DETAIL', function () {
 
     expect((new DbErrorMapper)->map(pdoError($raw, 0, ['23505', 7, 'x']))->kind)->toBe('unknown');
 });
+
+it('maps the MariaDB statement timeout to timeout', function () {
+    $e = new PDOException('SQLSTATE[70100]: <<Unknown error>>: 1969 Query execution was interrupted (max_statement_time exceeded)');
+    $e->errorInfo = ['70100', 1969, 'Query execution was interrupted (max_statement_time exceeded)'];
+    expect((new DbErrorMapper)->map($e)->kind)->toBe('timeout');
+});

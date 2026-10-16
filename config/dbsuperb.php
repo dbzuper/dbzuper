@@ -22,6 +22,9 @@ return [
     // Seconds any single data query (table samples, later the SQL editor) may run.
     'query_timeout' => (int) env('DBSUPERB_QUERY_TIMEOUT') ?: 15,
 
+    // Seconds a background row count may take before the grid shows "N+ rows" instead of a total.
+    'count_cap_seconds' => (int) env('DBSUPERB_COUNT_CAP_SECONDS') ?: 2,
+
     // Maximum tables + views kept in one snapshot; larger schemas are truncated alphabetically.
     'schema_max_objects' => (int) env('DBSUPERB_SCHEMA_MAX_OBJECTS') ?: 5000,
 

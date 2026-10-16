@@ -40,6 +40,7 @@ export type RowsResponse = {
     per_page: number;
     sql: string;
 };
+export type CountResponse = { count: number | null; kind: 'exact' | 'timeout' };
 
 export const FILTER_OPS: {
     value: FilterOp;
@@ -93,6 +94,17 @@ export const workspaceApi = {
         }),
     ddl: (id: number, name: string) =>
         apiFetch<DdlResponse>(table(id, name, 'ddl')),
+    count: (
+        id: number,
+        name: string,
+        body: { filters: RowFilter[]; exact: boolean },
+        signal?: AbortSignal,
+    ) =>
+        apiFetch<CountResponse>(table(id, name, 'count'), {
+            method: 'POST',
+            body,
+            signal,
+        }),
 };
 
 /** First message of a Laravel validation response (422 {message, errors}), else its message. */
