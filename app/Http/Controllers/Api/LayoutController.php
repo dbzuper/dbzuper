@@ -7,6 +7,7 @@ use App\Models\SavedConnection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 class LayoutController extends Controller
 {
@@ -30,6 +31,7 @@ class LayoutController extends Controller
         Gate::authorize('view', $connection);
 
         $data = $request->validate([
+            'merge' => ['sometimes', 'boolean'],
             'positions' => ['present', 'array', 'max:'.self::maxEntries()],
             'positions.*.table' => ['required', 'string', 'max:255'],
             'positions.*.x' => ['required', 'numeric', 'between:-10000000,10000000'],
@@ -43,6 +45,21 @@ class LayoutController extends Controller
             'y' => (float) $p['y'],
             'pinned' => (bool) $p['pinned'],
         ], $data['positions']);
+
+        // A partial save (positions changed since the last one) merges into what is stored, by table.
+        if ($request->boolean('merge')) {
+            $merged = [];
+            foreach ($connection->layout?->payload ?? [] as $stored) {
+                $merged[$stored['table']] = $stored;
+            }
+            foreach ($positions as $position) {
+                $merged[$position['table']] = $position;
+            }
+            if (count($merged) > self::maxEntries()) {
+                throw ValidationException::withMessages(['positions' => 'The layout would exceed '.self::maxEntries().' entries.']);
+            }
+            $positions = array_values($merged);
+        }
 
         $connection->layout()->updateOrCreate([], ['payload' => $positions]);
 

@@ -28,7 +28,7 @@ import {
 import { useWorkspace } from '@/universe/store';
 import { readUniverseColors } from '@/universe/theme';
 import type { UniverseModel } from '@/universe/use-universe-model';
-import { zoomLevelFor } from '@/universe/zoom';
+import { firstViewRatio, zoomLevelFor } from '@/universe/zoom';
 import { ClusterLabels } from './cluster-labels';
 import { Legend } from './legend';
 import { TableCards } from './table-cards';
@@ -77,7 +77,12 @@ export function UniverseCanvas({
             cameraRef.current?.graph === graph ? cameraRef.current.state : null;
         useWorkspace
             .getState()
-            .setZoomLevel(zoomLevelFor(restored?.ratio ?? 1, graph.order));
+            .setZoomLevel(
+                zoomLevelFor(
+                    restored?.ratio ?? firstViewRatio(graph.order),
+                    graph.order,
+                ),
+            );
         let display: DisplayState = buildDisplayState(
             graph,
             useWorkspace.getState(),
@@ -121,9 +126,8 @@ export function UniverseCanvas({
         let gridSize = '';
         const onCamera = () => {
             const ratio = camera.getState().ratio;
-            useWorkspace
-                .getState()
-                .setZoomLevel(zoomLevelFor(ratio, graph.order));
+            const ws = useWorkspace.getState();
+            ws.setZoomLevel(zoomLevelFor(ratio, graph.order, ws.zoomLevel));
             const size = `${Math.round(Math.min(64, Math.max(8, 24 / ratio)))}px`;
             if (size === gridSize) return;
             gridSize = size;

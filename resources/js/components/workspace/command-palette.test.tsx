@@ -64,6 +64,36 @@ describe('CommandPalette', () => {
         expect(useWorkspace.getState().selected).toBeNull();
     });
 
+    it('clears a pending path start when the palette is dismissed', () => {
+        useWorkspace.getState().startPath('users');
+        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        fireEvent.keyDown(
+            screen.getByPlaceholderText('Search tables, columns and actions…'),
+            { key: 'Escape' },
+        );
+        expect(useWorkspace.getState().paletteOpen).toBe(false);
+        expect(useWorkspace.getState().pathFrom).toBeNull();
+    });
+
+    it('keeps a completed path (and its start) after picking the end table', () => {
+        useWorkspace.getState().startPath('users');
+        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        fireEvent.click(screen.getByRole('option', { name: /products/ }));
+        expect(useWorkspace.getState().paletteOpen).toBe(false);
+        expect(useWorkspace.getState().pathFrom).toBe('users');
+        expect(useWorkspace.getState().path).not.toBeNull();
+    });
+
+    it('starting a path from the palette keeps it open to pick the end', () => {
+        useWorkspace.getState().select('orders');
+        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        fireEvent.click(
+            screen.getByRole('option', { name: /Find path from orders to/ }),
+        );
+        expect(useWorkspace.getState().pathFrom).toBe('orders');
+        expect(useWorkspace.getState().paletteOpen).toBe(true);
+    });
+
     it('hides the universe view switch when the universe is unavailable', () => {
         useWorkspace.getState().setView('list');
         render(

@@ -93,9 +93,14 @@ describe('workspace layout saving', () => {
         act(() => canvas.props!.onPositionsChanged(dragged));
         expect(api.saveLayout).not.toHaveBeenCalled();
         act(() => void window.dispatchEvent(new Event('pagehide')));
-        expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(1, dragged, {
-            keepalive: true,
-        });
+        expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(
+            1,
+            [dragged[0]],
+            {
+                keepalive: true,
+                merge: true,
+            },
+        );
     });
 
     it('saves a pending drag when the tab becomes hidden', async () => {
@@ -106,18 +111,28 @@ describe('workspace layout saving', () => {
             .mockReturnValue('hidden');
         act(() => void document.dispatchEvent(new Event('visibilitychange')));
         visibility.mockRestore();
-        expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(1, dragged, {
-            keepalive: true,
-        });
+        expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(
+            1,
+            [dragged[0]],
+            {
+                keepalive: true,
+                merge: true,
+            },
+        );
     });
 
     it('saves a pending drag when the page unmounts', async () => {
         const view = await mountCanvas();
         act(() => canvas.props!.onPositionsChanged(dragged));
         view.unmount();
-        expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(1, dragged, {
-            keepalive: true,
-        });
+        expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(
+            1,
+            [dragged[0]],
+            {
+                keepalive: true,
+                merge: true,
+            },
+        );
     });
 
     it('does not let a stale drag save overwrite a re-layout', async () => {

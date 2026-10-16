@@ -94,7 +94,7 @@ describe('computeLayout', () => {
             .map((n) => dist(p[n.key], { x: cx, y: cy }));
         for (const d of outer) {
             expect(d).toBeGreaterThan(rmax);
-            expect(d).toBeLessThan(rmax + 3 * spacing);
+            expect(d).toBeLessThan(rmax + 2 * spacing);
         }
     });
 

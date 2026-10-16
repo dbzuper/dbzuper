@@ -8,6 +8,7 @@ import {
     useState,
 } from 'react';
 import type { SchemaSnapshot } from '@/types/schema';
+import { deOverlapCards, type CardBox } from '@/universe/card-layout';
 import { pickPathTarget } from '@/universe/path-pick';
 import { useWorkspace } from '@/universe/store';
 import { fkColumnsByTable, stableCardKeys } from '@/universe/visible';
@@ -17,13 +18,39 @@ import type { UniverseSigma } from './universe-canvas';
 
 export const MAX_CARDS = 40;
 
+/** Minimum vertical gap, in px, kept between two cards that share horizontal space. */
+export const CARD_GAP = 8;
+
 const EMPTY_FK = { declared: new Set<string>(), inferred: new Set<string>() };
 
-function place(sigma: UniverseSigma, key: string, el: HTMLElement) {
+const transformAt = (x: number, y: number) =>
+    `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+
+/**
+ * Puts every mounted card over its node, then nudges cards along y so none overlap. Only the cards
+ * move, never the graph nodes. Unmeasured cards (width or height 0) are placed but not nudged.
+ */
+function placeCards(sigma: UniverseSigma, refs: Map<string, HTMLElement>) {
     const graph = sigma.getGraph();
-    if (!graph.hasNode(key)) return;
-    const p = sigma.graphToViewport(graph.getNodeAttributes(key));
-    el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`;
+    const boxes: CardBox[] = [];
+    for (const [key, el] of refs) {
+        if (!graph.hasNode(key)) continue;
+        const p = sigma.graphToViewport(graph.getNodeAttributes(key));
+        boxes.push({
+            key,
+            x: p.x,
+            y: p.y,
+            width: el.offsetWidth,
+            height: el.offsetHeight,
+        });
+    }
+    const measured = boxes.filter((b) => b.width > 0 && b.height > 0);
+    const dy = deOverlapCards(measured, CARD_GAP);
+    for (const b of boxes)
+        refs.get(b.key)!.style.transform = transformAt(
+            b.x,
+            b.y + (dy.get(b.key) ?? 0),
+        );
 }
 
 /**
@@ -46,8 +73,8 @@ function CardSlot({
         const el = ref.current;
         if (!el) return;
         refs.set(nodeKey, el);
-        // Position before paint so a new card never flashes at (0, 0).
-        place(sigma, nodeKey, el);
+        // Position before paint so a new card never flashes at (0, 0) or on top of another.
+        placeCards(sigma, refs);
         // Non-passive native listener so the wheel can zoom the graph from over a card.
         const onWheel = (e: WheelEvent) => {
             e.preventDefault();
@@ -117,11 +144,7 @@ export function TableCards({
                     ? prev
                     : next,
             );
-            for (const p of points) {
-                const el = refs.current.get(p.key);
-                if (el)
-                    el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`;
-            }
+            placeCards(sigma, refs.current);
         };
         update();
         sigma.on('afterRender', update);

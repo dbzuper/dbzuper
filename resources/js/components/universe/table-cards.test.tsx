@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useWorkspace } from '@/universe/store';
-import { TableCards } from './table-cards';
+import { CARD_GAP, TableCards } from './table-cards';
 import type { UniverseSigma } from './universe-canvas';
 
 const nodes: Record<string, { x: number; y: number }> = {
@@ -100,6 +100,41 @@ describe('TableCards', () => {
             expect.any(Function),
         );
         expect(listeners.size).toBe(0);
+    });
+
+    it('nudges overlapping cards apart along y without touching the nodes', () => {
+        const width = vi
+            .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
+            .mockReturnValue(224);
+        const height = vi
+            .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
+            .mockReturnValue(120);
+        const saved = { ...nodes.b };
+        nodes.b = { x: 130, y: 140 };
+        try {
+            useWorkspace.getState().setZoomLevel('closeup');
+            const { sigma } = fakeSigma();
+            render(<TableCards sigma={sigma} snapshot={snapshot} />);
+            const yOf = (name: string) => {
+                const slot = screen.getByRole('button', {
+                    name,
+                }).parentElement!;
+                return Number(
+                    /translate\([\d.]+px, ([\d.]+)px\)/.exec(
+                        slot.style.transform,
+                    )![1],
+                );
+            };
+            expect(yOf('Table a')).toBe(100);
+            expect(yOf('Table b') - yOf('Table a')).toBeGreaterThanOrEqual(
+                120 + CARD_GAP,
+            );
+            expect(nodes.b).toEqual({ x: 130, y: 140 });
+        } finally {
+            nodes.b = saved;
+            width.mockRestore();
+            height.mockRestore();
+        }
     });
 
     it('renders nothing unless zoomed close', () => {

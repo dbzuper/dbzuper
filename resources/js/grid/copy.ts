@@ -1,6 +1,7 @@
+import { cellText } from './cells';
 import type { QueryCell, QueryColumn } from '@/types/schema';
 
-const text = (v: QueryCell) => (v === null ? '' : String(v));
+const text = (v: QueryCell) => cellText(v);
 
 export function toTSV(columns: QueryColumn[], rows: QueryCell[][]): string {
     const esc = (v: QueryCell) =>

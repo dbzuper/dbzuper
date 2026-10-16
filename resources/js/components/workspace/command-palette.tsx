@@ -41,6 +41,9 @@ export function CommandPalette({
     );
 
     const close = () => {
+        // Dismissing the palette abandons a path whose end was never picked.
+        const st = useWorkspace.getState();
+        if (st.pathFrom && !st.pathTo) st.clearPath();
         setOpen(false);
         setQuery('');
     };
@@ -53,13 +56,16 @@ export function CommandPalette({
         close();
     };
 
-    const action = (fn: () => void) => () => {
-        fn();
-        close();
-    };
+    const action =
+        (fn: () => void, keepOpen = false) =>
+        () => {
+            fn();
+            if (keepOpen) setQuery('');
+            else close();
+        };
 
     const st = useWorkspace.getState();
-    const actions: { label: string; run: () => void }[] = [
+    const actions: { label: string; run: () => void; keepOpen?: boolean }[] = [
         { label: 'Refresh schema', run: onRefresh },
         {
             label: st.showInferred
@@ -96,10 +102,9 @@ export function CommandPalette({
                   },
                   {
                       label: `Find path from ${st.selected} to…`,
-                      run: () => {
-                          st.startPath(st.selected!);
-                          setTimeout(() => setOpen(true));
-                      },
+                      // The palette stays open to pick the end table.
+                      keepOpen: true,
+                      run: () => st.startPath(st.selected!),
                   },
               ]
             : []),
@@ -222,7 +227,7 @@ export function CommandPalette({
                                 <Command.Item
                                     key={a.label}
                                     value={`a:${a.label}`}
-                                    onSelect={action(a.run)}
+                                    onSelect={action(a.run, a.keepOpen)}
                                     className={itemClass}
                                 >
                                     <span className="text-foreground normal-case">

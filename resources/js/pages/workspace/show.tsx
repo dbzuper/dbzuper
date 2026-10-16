@@ -5,6 +5,7 @@ import {
     useCallback,
     useEffect,
     useMemo,
+    useRef,
     useState,
 } from 'react';
 import { toast } from 'sonner';
@@ -33,6 +34,7 @@ import type {
     SchemaResponse,
 } from '@/types/schema';
 import { escapeHandledElsewhere, handleEscape } from '@/universe/keyboard';
+import { createLayoutSaver, type LayoutSaver } from '@/universe/layout-save';
 import { useWorkspace } from '@/universe/store';
 import { useDebounced } from '@/universe/use-debounced';
 import { useUniverseModel } from '@/universe/use-universe-model';
@@ -67,16 +69,25 @@ export default function WorkspaceShow({
     const [filter, setFilter] = useState('');
     const [webgl] = useState(() => hasWebGL());
     const [renderFailed, setRenderFailed] = useState(false);
+    const renderFailedRef = useRef(false);
 
     const view = useWorkspace((s) => s.view);
     const selected = useWorkspace((s) => s.selected);
     const select = useWorkspace((s) => s.select);
     const universeAvailable = webgl && !renderFailed;
+    const universeAvailableRef = useRef(universeAvailable);
+    universeAvailableRef.current = universeAvailable;
 
+    // Keyed on the connection only: losing the universe must not wipe the selection or other state.
     useEffect(() => {
         useWorkspace.getState().reset();
+        if (!universeAvailableRef.current)
+            useWorkspace.getState().setView('list');
+    }, [connection.id]);
+
+    useEffect(() => {
         if (!universeAvailable) useWorkspace.getState().setView('list');
-    }, [connection.id, universeAvailable]);
+    }, [universeAvailable]);
 
     // Keyed on the connection only: a universe render failure must not wipe the record trail.
     useEffect(() => {
@@ -116,8 +127,12 @@ export default function WorkspaceShow({
         if (universeAvailable) void loadCanvas().catch(() => undefined);
     }, [universeAvailable]);
 
+    // Only the newest load may land: a slow response for a previous connection is ignored.
+    const loadSeq = useRef(0);
     const load = useCallback(
         async (refresh: boolean) => {
+            const seq = ++loadSeq.current;
+            const isCurrent = () => seq === loadSeq.current;
             setLoading(true);
             setError(null);
             try {
@@ -129,38 +144,57 @@ export default function WorkspaceShow({
                         positions: [] as LayoutPositionEntry[],
                     })),
                 ]);
+                if (!isCurrent()) return;
                 setData(schema);
                 setSaved(layout.positions);
             } catch (e) {
+                if (!isCurrent()) return;
                 setError(dbErrorFrom(e, 'Could not load the schema.'));
             } finally {
-                setLoading(false);
+                if (isCurrent()) setLoading(false);
             }
         },
         [connection.id],
     );
 
     useEffect(() => {
+        // `load` changes with the connection: drop the previous connection's schema and layout first.
+        setData(null);
+        setSaved(null);
         void load(false);
+        return () => {
+            loadSeq.current++;
+        };
     }, [load]);
 
-    const persist = useCallback(
-        (entries: LayoutPositionEntry[], keepalive = false) => {
-            workspaceApi
-                .saveLayout(
-                    connection.id,
-                    entries,
-                    keepalive ? { keepalive } : {},
-                )
-                .catch(() => toast.error('Could not save the layout.'));
-        },
+    // One saver per connection: it remembers what the server holds, so a drag save sends only the
+    // positions changed since the last save, and it drops saves made under an older layout generation.
+    const saver = useMemo(
+        () =>
+            createLayoutSaver(
+                connection.id,
+                (id, entries, opts) =>
+                    workspaceApi.saveLayout(id, entries, opts),
+                () => toast.error('Could not save the layout.'),
+            ),
         [connection.id],
     );
+    useEffect(() => {
+        if (saved) saver.baseline(saved);
+    }, [saver, saved]);
 
-    // Drag saves are debounced; keepalive lets a save flushed on pagehide outlive the page.
-    const dragSave = useDebounced<LayoutPositionEntry[]>(
-        (entries) => persist(entries, true),
-        800,
+    // Drag saves are debounced and carry their saver and generation, so one still pending when the
+    // connection changes, the tab hides or the page unmounts is flushed to the right place (keepalive
+    // lets it outlive the page) rather than dropped, and a stale one is discarded.
+    const dragSave = useDebounced<{
+        saver: LayoutSaver;
+        generation: number;
+        entries: LayoutPositionEntry[];
+    }>((p) => p.saver.saveChanged(p.entries, p.generation), 800);
+    const saveDrag = useCallback(
+        (entries: LayoutPositionEntry[]) =>
+            dragSave.call({ saver, generation: saver.generation(), entries }),
+        [dragSave, saver],
     );
 
     useEffect(() => {
@@ -176,13 +210,16 @@ export default function WorkspaceShow({
         };
     }, [dragSave]);
 
+    // Leaving a connection flushes its pending drag save (the pending call carries its own saver).
+    useEffect(() => () => dragSave.flush(), [dragSave, saver]);
+
     // A fresh layout (initial or re-layout) supersedes any drag save still waiting to be sent.
     const persistLaidOut = useCallback(
         (entries: LayoutPositionEntry[]) => {
             dragSave.cancel();
-            persist(entries);
+            saver.saveFull(entries);
         },
-        [dragSave, persist],
+        [dragSave, saver],
     );
 
     useEffect(() => {
@@ -243,20 +280,35 @@ export default function WorkspaceShow({
     // `?r=` keeps the exploration trail in the URL (restore, push per change, back/forward). It must
     // come after the effect that binds the records store to the connection.
     useTrailUrl(snapshot);
-    const { model, status, relayout } = useUniverseModel(
+    const {
+        model,
+        status,
+        relayout: runRelayout,
+    } = useUniverseModel(
         universeAvailable ? snapshot : null,
         saved,
         persistLaidOut,
     );
+    // A re-layout starts a new generation at once: a drag save made before it, even one that comes
+    // due while the layout is still computing, must not overwrite the result.
+    const relayout = useCallback(() => {
+        saver.bump();
+        dragSave.cancel();
+        runRelayout();
+    }, [saver, dragSave, runRelayout]);
     const selectedTable = useMemo(
         () => snapshot?.tables.find((t) => t.name === selected) ?? null,
         [snapshot, selected],
     );
 
+    // Both the error boundary and the canvas report a failure: tell the user once.
     const onRenderError = useCallback(() => {
+        if (renderFailedRef.current) return;
+        renderFailedRef.current = true;
         setRenderFailed(true);
         toast.error(
             'The universe could not be rendered; showing the table list instead.',
+            { id: 'universe-render-failed' },
         );
     }, []);
 
@@ -372,9 +424,7 @@ export default function WorkspaceShow({
                                                 model={model}
                                                 snapshot={snapshot}
                                                 onRelayout={relayout}
-                                                onPositionsChanged={
-                                                    dragSave.call
-                                                }
+                                                onPositionsChanged={saveDrag}
                                                 onError={onRenderError}
                                             />
                                         </Suspense>

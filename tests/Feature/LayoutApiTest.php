@@ -80,3 +80,37 @@ it('clears the layout when the connection is repointed to another database', fun
 
     expect($this->connection->fresh()->layout)->toBeNull();
 });
+
+it('merges a partial save into the stored positions when merge is set', function () {
+    $route = route('api.layout.update', $this->connection);
+    $this->actingAs($this->user)->putJson($route, ['positions' => [
+        ['table' => 'a', 'x' => 1, 'y' => 1, 'pinned' => false],
+        ['table' => 'b', 'x' => 2, 'y' => 2, 'pinned' => false],
+    ]])->assertOk();
+
+    $this->actingAs($this->user)->putJson($route, ['merge' => true, 'positions' => [
+        ['table' => 'b', 'x' => 20, 'y' => 20, 'pinned' => true],
+        ['table' => 'c', 'x' => 3, 'y' => 3, 'pinned' => false],
+    ]])->assertOk()->assertExactJson(['saved' => true]);
+
+    $stored = collect($this->actingAs($this->user)->getJson(route('api.layout.show', $this->connection))->json('positions'))->keyBy('table');
+    expect($stored->keys()->sort()->values()->all())->toBe(['a', 'b', 'c'])
+        ->and($stored['a']['x'])->toEqual(1)
+        ->and($stored['b'])->toEqual(['table' => 'b', 'x' => 20, 'y' => 20, 'pinned' => true]);
+});
+
+it('merges into an empty layout', function () {
+    $this->actingAs($this->user)->putJson(route('api.layout.update', $this->connection), ['merge' => true, 'positions' => [['table' => 'a', 'x' => 1, 'y' => 1, 'pinned' => false]]])->assertOk();
+
+    expect($this->actingAs($this->user)->getJson(route('api.layout.show', $this->connection))->json('positions.*.table'))->toBe(['a']);
+});
+
+it('rejects a merge that would grow the layout past the entry cap', function () {
+    $route = route('api.layout.update', $this->connection);
+    $batch = fn (string $prefix) => array_map(fn ($i) => ['table' => "{$prefix}{$i}", 'x' => 0, 'y' => 0, 'pinned' => false], range(1, 6000));
+
+    $this->actingAs($this->user)->putJson($route, ['positions' => $batch('a')])->assertOk();
+    $this->actingAs($this->user)->putJson($route, ['merge' => true, 'positions' => $batch('b')])
+        ->assertUnprocessable()->assertJsonValidationErrors('positions');
+    expect($this->actingAs($this->user)->getJson(route('api.layout.show', $this->connection))->json('positions'))->toHaveCount(6000);
+});

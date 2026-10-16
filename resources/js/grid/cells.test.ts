@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
-import { cellKind, fkTarget, isLong } from './cells';
+import { cellKind, cellText, fkTarget, isLong } from './cells';
 
 describe('cells', () => {
     it.each([
@@ -40,5 +40,20 @@ describe('cells', () => {
         expect(
             fkTarget({ name: 'user_id', type: 'int', table: null }, s),
         ).toBeNull();
+    });
+});
+
+describe('object-valued cells', () => {
+    it('renders objects and arrays as JSON, never [object Object]', () => {
+        expect(cellText({ a: 1, b: [2] })).toBe('{"a":1,"b":[2]}');
+        expect(cellText([1, 'x'])).toBe('[1,"x"]');
+        expect(cellKind({ a: 1 }, 'jsonb')).toBe('json');
+    });
+
+    it('keeps scalar rendering', () => {
+        expect(cellText(null)).toBe('');
+        expect(cellText(3)).toBe('3');
+        expect(cellText(false)).toBe('false');
+        expect(cellText('hi')).toBe('hi');
     });
 });

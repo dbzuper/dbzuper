@@ -2,7 +2,13 @@ import 'react-data-grid/lib/styles.css';
 import { DataGrid, type Column, type SortColumn } from 'react-data-grid';
 import { ExternalLink } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { cellKind, fkTarget, isLong } from '@/grid/cells';
+import {
+    cellKind,
+    cellText,
+    fkTarget,
+    isLong,
+    type CellValue,
+} from '@/grid/cells';
 import {
     foreignRecordTarget,
     keyDisplay,
@@ -38,7 +44,7 @@ export function CellView({
     onOpen,
     foreign,
 }: {
-    value: QueryCell;
+    value: CellValue;
     type: string | null;
     onOpen: () => void;
     foreign?: { label: string; onClick: () => void } | null;
@@ -50,7 +56,7 @@ export function CellView({
                 NULL
             </span>
         );
-    const textValue = String(value);
+    const textValue = cellText(value);
     const expandable = kind === 'json' || isLong(value);
     const preview = expandable
         ? Array.from(textValue)
@@ -263,10 +269,7 @@ export function ResultGrid({
                 onCellCopy={({ row, column }, event) => {
                     if (column.key === '__open') return;
                     const value = row.cells[Number(column.key)];
-                    event.clipboardData.setData(
-                        'text/plain',
-                        value === null ? '' : String(value),
-                    );
+                    event.clipboardData.setData('text/plain', cellText(value));
                     event.preventDefault();
                 }}
                 rowHeight={28}

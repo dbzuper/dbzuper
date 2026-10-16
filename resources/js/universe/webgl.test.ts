@@ -65,4 +65,21 @@ describe('hasWebGL', () => {
         const hasWebGL = await load();
         expect(hasWebGL()).toBe(false);
     });
+
+    it('releases the probe context through WEBGL_lose_context', async () => {
+        vi.stubGlobal(
+            'WebGL2RenderingContext',
+            function WebGL2RenderingContext() {},
+        );
+        const loseContext = vi.fn();
+        vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+            (() => ({
+                getExtension: (name: string) =>
+                    name === 'WEBGL_lose_context' ? { loseContext } : null,
+            })) as never,
+        );
+        const hasWebGL = await load();
+        expect(hasWebGL()).toBe(true);
+        expect(loseContext).toHaveBeenCalledOnce();
+    });
 });

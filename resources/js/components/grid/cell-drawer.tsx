@@ -7,7 +7,7 @@ import {
     SheetHeader,
     SheetTitle,
 } from '@/components/ui/sheet';
-import { cellKind } from '@/grid/cells';
+import { cellKind, cellText, type CellValue } from '@/grid/cells';
 import { writeClipboard } from '@/grid/copy';
 import type { QueryCell, QueryColumn } from '@/types/schema';
 
@@ -16,9 +16,9 @@ export const TRUNCATION_LIMIT = 4000;
 
 export type DrawerState = { column: QueryColumn; value: QueryCell } | null;
 
-function display(value: QueryCell, type: string | null): string {
+function display(value: CellValue, type: string | null): string {
     if (value === null) return 'NULL';
-    const raw = String(value);
+    const raw = cellText(value);
     if (cellKind(value, type) === 'json') {
         try {
             return JSON.stringify(JSON.parse(raw), null, 2);

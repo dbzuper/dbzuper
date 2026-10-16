@@ -66,15 +66,18 @@ export const workspaceApi = {
             method: 'POST',
         }),
     layout: (id: number) => apiFetch<LayoutResponse>(`/api/c/${id}/layout`),
-    /** `keepalive` lets the save outlive the page (pagehide, navigation) when the body is small enough. */
+    /**
+     * `keepalive` lets the save outlive the page (pagehide, navigation) when the body is small enough;
+     * `merge` updates only the given tables instead of replacing the stored layout.
+     */
     saveLayout: (
         id: number,
         positions: LayoutPositionEntry[],
-        opts: { keepalive?: boolean } = {},
+        opts: { keepalive?: boolean; merge?: boolean } = {},
     ) =>
         apiFetch<{ saved: boolean }>(`/api/c/${id}/layout`, {
             method: 'PUT',
-            body: { positions },
+            body: opts.merge ? { merge: true, positions } : { positions },
             keepalive: opts.keepalive,
         }),
     sample: (id: number, name: string) =>

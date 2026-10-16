@@ -275,3 +275,20 @@ describe('ResultGrid', () => {
         ).toBeNull();
     });
 });
+
+describe('CellView object values', () => {
+    it('shows an object cell as JSON, not [object Object]', () => {
+        const { container } = render(
+            <CellView
+                value={{ a: 1, b: [2] }}
+                type="jsonb"
+                onOpen={() => {}}
+            />,
+        );
+        expect(container).toHaveTextContent('{"a":1,"b":[2]}');
+        expect(container).not.toHaveTextContent('[object Object]');
+        expect(
+            screen.getByRole('button', { name: 'View' }),
+        ).toBeInTheDocument();
+    });
+});

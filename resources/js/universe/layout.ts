@@ -109,6 +109,9 @@ export function computeLayout(
     return out;
 }
 
+/** Gap, in typical edge lengths, between the core and the first ring of unrelated tables. */
+const RING_GAP = 1.5;
+
 /** Outer tables this few sit in a column beside the core rather than on a ring around it. */
 export const OUTER_COLUMN_MAX = 5;
 
@@ -152,7 +155,7 @@ function placeOuter(ring: string[], out: Positions, spacing: number): void {
     // Concentric rings, each filled with neighbours about one spacing apart, then the next ring out.
     let placed = 0;
     for (let k = 0; placed < ring.length; k++) {
-        const R = rmax + (2 + k) * spacing;
+        const R = rmax + (RING_GAP + k) * spacing;
         const capacity = Math.max(1, Math.floor((2 * Math.PI * R) / spacing));
         const count = Math.min(capacity, ring.length - placed);
         const offset = k % 2 === 0 ? 0 : Math.PI / count;

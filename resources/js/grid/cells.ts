@@ -1,10 +1,21 @@
 import type { QueryCell, QueryColumn, SchemaSnapshot } from '@/types/schema';
 
+/** A query cell as the grid may receive it: drivers can hand back decoded JSON objects and arrays. */
+export type CellValue = QueryCell | object;
+
+/** Plain text of a cell for display, copy and the drawer: objects as JSON, null as ''. */
+export function cellText(value: CellValue): string {
+    if (value === null) return '';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+}
+
 export function cellKind(
-    value: QueryCell,
+    value: CellValue,
     type: string | null,
 ): 'null' | 'number' | 'boolean' | 'json' | 'date' | 'binary' | 'text' {
     if (value === null) return 'null';
+    if (typeof value === 'object') return 'json';
     if (typeof value === 'boolean') return 'boolean';
     if (typeof value === 'number') return 'number';
     const t = (type ?? '').toLowerCase();
@@ -26,7 +37,7 @@ export function cellKind(
     return 'text';
 }
 
-export const isLong = (value: QueryCell) =>
+export const isLong = (value: CellValue) =>
     typeof value === 'string' && (value.length > 120 || value.includes('\n'));
 
 export function fkTarget(
