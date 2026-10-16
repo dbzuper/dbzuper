@@ -1,5 +1,6 @@
 import { Command } from 'cmdk';
 import { useMemo, useState } from 'react';
+import { nextAppearance, useAppearance } from '@/hooks/use-appearance';
 import type { SchemaSnapshot } from '@/types/schema';
 import { universe } from '@/universe/controller';
 import {
@@ -27,6 +28,7 @@ export function CommandPalette({
     const open = useWorkspace((s) => s.paletteOpen);
     const setOpen = useWorkspace((s) => s.setPaletteOpen);
     const pathFrom = useWorkspace((s) => s.pathFrom);
+    const { appearance, updateAppearance } = useAppearance();
     const [query, setQuery] = useState('');
     const results = useMemo(
         () => searchSchema(snapshot, query),
@@ -64,6 +66,10 @@ export function CommandPalette({
                 ? 'Hide inferred relationships'
                 : 'Show inferred relationships',
             run: st.toggleInferred,
+        },
+        {
+            label: 'Toggle theme',
+            run: () => updateAppearance(nextAppearance(appearance)),
         },
         { label: 'Fit everything on screen', run: universe.fitAll },
         { label: 'Re-layout the universe', run: universe.relayout },

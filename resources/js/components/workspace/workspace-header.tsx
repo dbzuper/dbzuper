@@ -1,5 +1,6 @@
 import { Link } from '@inertiajs/react';
 import { ArrowLeft, RefreshCw, Search } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { formatSnapshotAge } from '@/lib/format';
 import type { ConnectionSummary } from '@/types/connection';
@@ -93,6 +94,7 @@ export function WorkspaceHeader({
                     />
                     {loading ? 'Loading…' : 'Refresh schema'}
                 </Button>
+                <ThemeToggle />
             </div>
         </header>
     );

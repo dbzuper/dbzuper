@@ -11,3 +11,10 @@ globalThis.ResizeObserver ??= class {
     disconnect() {}
 };
 Element.prototype.scrollIntoView ??= () => {};
+// jsdom has no matchMedia; default to "no match" (tests override as needed).
+window.matchMedia ??= ((query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+})) as unknown as typeof window.matchMedia;

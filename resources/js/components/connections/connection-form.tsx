@@ -301,7 +301,7 @@ export function ConnectionForm({
             {test && (
                 <div
                     role="status"
-                    className={`rounded-md border px-3 py-2 text-sm ${test.ok ? 'border-teal-500/40 text-teal-600 dark:text-teal-400' : 'border-red-500/40 text-red-600 dark:text-red-400'}`}
+                    className={`rounded-md border px-3 py-2 text-sm ${test.ok ? 'border-success/40 text-success' : 'border-destructive/40 text-destructive'}`}
                 >
                     {test.ok
                         ? `Connected · ${test.version} · ${test.latency_ms} ms`

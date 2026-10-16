@@ -142,7 +142,7 @@ export const ResultPanel = memo(function ResultPanel({
             {notice && (
                 <p
                     role="status"
-                    className="shrink-0 border-b bg-amber-500/10 px-3 py-1 text-xs text-amber-800 dark:text-amber-300"
+                    className="shrink-0 border-b bg-warning/10 px-3 py-1 text-xs text-warning-foreground"
                 >
                     {notice}
                 </p>

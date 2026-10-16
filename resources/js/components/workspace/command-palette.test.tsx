@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { initializeTheme } from '@/hooks/use-appearance';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useRecords } from '@/records/records-store';
 import { universe } from '@/universe/controller';
@@ -120,5 +121,16 @@ describe('CommandPalette', () => {
             { target: { value: 'logs 2' } },
         );
         expect(screen.queryByText(/Open record/)).toBeNull();
+    });
+});
+
+describe('CommandPalette theme action', () => {
+    it('toggles the theme', () => {
+        localStorage.setItem('appearance', 'dark');
+        initializeTheme();
+        render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
+        fireEvent.click(screen.getByRole('option', { name: /Toggle theme/ }));
+        expect(document.documentElement).not.toHaveClass('dark');
+        expect(localStorage.getItem('appearance')).toBe('light');
     });
 });

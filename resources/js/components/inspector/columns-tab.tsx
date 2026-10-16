@@ -26,7 +26,7 @@ export function ColumnsTab({
                             {pk.has(c.name) ? (
                                 <KeyRound
                                     aria-label="primary key"
-                                    className="size-3 text-amber-500"
+                                    className="size-3 text-warning"
                                 />
                             ) : fk.declared.has(c.name) ? (
                                 <Link2

@@ -272,7 +272,7 @@ export default function WorkspaceShow({
             {snapshot?.truncated && (
                 <div
                     role="status"
-                    className="border-b bg-amber-500/10 px-4 py-1.5 text-xs text-amber-700 dark:text-amber-300"
+                    className="border-b bg-warning/10 px-4 py-1.5 text-xs text-warning-foreground"
                 >
                     Showing {snapshot.tables.length.toLocaleString('en')} of{' '}
                     {(
