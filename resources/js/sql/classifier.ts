@@ -442,7 +442,15 @@ const DROP_KINDS: string[][] = [
     ['TABLESPACE'],
     ['LANGUAGE'],
     ['CONVERSION'],
+    ['STATISTICS'],
+    ['OPERATOR', 'CLASS'],
+    ['OPERATOR', 'FAMILY'],
     ['OPERATOR'],
+    ['RESOURCE', 'GROUP'],
+    ['LOGFILE', 'GROUP'],
+    ['OWNED', 'BY'],
+    ['TRANSFORM'],
+    ['CAST'],
 ];
 
 /** DROP [TEMPORARY] <kind> [CONCURRENTLY] [IF EXISTS] name [, name ...]: the comma-joined names. */
@@ -452,6 +460,8 @@ function dropTarget(t: SqlToken[]): string | null {
         i++;
     for (const kind of DROP_KINDS) {
         if (kind.every((word, o) => isWord(t[i + o], word))) {
+            // DROP CAST (a AS b) / DROP TRANSFORM FOR t LANGUAGE l name no single object: keyword confirmation.
+            if (['CAST', 'TRANSFORM'].includes(kind[0])) return null;
             i += kind.length;
             break;
         }
@@ -480,19 +490,24 @@ function nameList(t: SqlToken[], i: number): string | null {
         )
             i++;
         const parts: string[] = [];
+        let dangling = false;
         while (
             i < t.length &&
             (t[i].type === 'word' || t[i].type === 'quoted')
         ) {
             parts.push(identifierOf(t[i]));
             i++;
+            dangling = false;
             if (t[i] && isPunct(t[i], '.')) {
                 i++;
+                dangling = true;
                 continue;
             }
             break;
         }
-        if (parts.length === 0) break;
+        // An element after a comma (or a dotted part) that is not a plain name (e.g. MySQL's 2t or $t) means the
+        // statement names objects this parser cannot read: fail closed.
+        if (parts.length === 0 || dangling) return null;
         names.push(parts.join('.'));
         if (t[i] && isPunct(t[i], '(')) i = skipGroup(t, i);
         if (t[i] && isPunct(t[i], '*')) i++;

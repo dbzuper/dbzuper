@@ -34,7 +34,7 @@ function ErrorView({
 }) {
     return (
         <div role="alert" className="p-3 text-sm text-destructive">
-            <p className="font-medium">{error.message}</p>
+            <p className="font-medium whitespace-pre-line">{error.message}</p>
             {error.position && (
                 <p className="mt-1 text-xs">{positionText(error.position)}</p>
             )}
@@ -138,7 +138,21 @@ export const ResultPanel = memo(function ResultPanel({
         [results],
     );
 
-    if (error) return <ErrorView error={error} />;
+    const cancelledNotice = cancelled && !running && (
+        <p
+            role="status"
+            className="shrink-0 border-b px-3 py-1 text-xs text-muted-foreground"
+        >
+            Cancelled.
+        </p>
+    );
+    if (error)
+        return (
+            <>
+                {cancelledNotice}
+                <ErrorView error={error} />
+            </>
+        );
     if (results.length === 0)
         return (
             <p className="p-3 text-xs text-muted-foreground">
@@ -154,6 +168,7 @@ export const ResultPanel = memo(function ResultPanel({
     const notice = transactionNotice(results, openTransactionRolledBack);
     return (
         <div className="flex h-full min-h-0 flex-col">
+            {cancelledNotice}
             {notice && (
                 <p
                     role="status"

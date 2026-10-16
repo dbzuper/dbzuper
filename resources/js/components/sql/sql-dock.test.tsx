@@ -158,6 +158,27 @@ describe('SqlDock', () => {
         });
     });
 
+    it('keeps the previous results when a later run is cancelled', async () => {
+        api.run.mockResolvedValueOnce(ok);
+        render(<SqlDock connection={connection} snapshot={null} />);
+        fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+        await screen.findByRole('tab', { name: /#1 SELECT/ });
+
+        hangingRun();
+        fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+        await waitFor(() =>
+            expect(
+                screen.getByRole('button', { name: 'Cancel' }),
+            ).toBeInTheDocument(),
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+        expect(await screen.findByText('Cancelled.')).toBeInTheDocument();
+        expect(
+            screen.getByRole('tab', { name: /#1 SELECT/ }),
+        ).toBeInTheDocument();
+    });
+
     it('shows Running… only on the tab that is running, and Cancelled. after Cancel', async () => {
         hangingRun();
         render(<SqlDock connection={connection} snapshot={null} />);

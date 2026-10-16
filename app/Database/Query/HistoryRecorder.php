@@ -15,16 +15,10 @@ final class HistoryRecorder
             return;
         }
 
-        // Credential literals are masked before anything is stored; so is any echo of them in the DB's error text.
-        $redacted = SqlRedactor::scan($result->sql, $connection->driver->value);
-        $error = $result->error?->message;
-        foreach ($redacted['secrets'] as $secret) {
-            $inner = trim($secret, "E'\"$");
-            $error = $error === null ? null : str_replace(array_filter([$secret, strlen($inner) >= 4 ? $inner : null]), SqlRedactor::MASK, $error);
-        }
+        [$sql, $error] = self::redact($result->sql, $result->error?->message, $connection->driver->value);
 
         $connection->history()->create([
-            'sql' => mb_substr($redacted['sql'], 0, self::MAX_SQL),
+            'sql' => mb_substr($sql, 0, self::MAX_SQL),
             'kind' => $result->classification->kind,
             'status' => $result->error ? 'error' : 'ok',
             'duration_ms' => $result->durationMs,
@@ -36,6 +30,20 @@ final class HistoryRecorder
         if (random_int(1, 50) === 1) {
             $this->prune($connection);
         }
+    }
+
+    /**
+     * Credential literals are masked before anything is stored, and so is any echo of them in the DB's error text.
+     *
+     * @return array{string, ?string} the SQL and error text to store
+     */
+    public static function redact(string $sql, ?string $error, string $dialect): array
+    {
+        $scan = SqlRedactor::scan($sql, $dialect);
+        // scan() lists each masked literal as written and decoded; scrub both from the error text.
+        $error = $error === null ? null : str_replace($scan['secrets'], SqlRedactor::MASK, $error);
+
+        return [$scan['sql'], $error];
     }
 
     public function prune(SavedConnection $connection): void

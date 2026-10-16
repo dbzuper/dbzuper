@@ -373,5 +373,55 @@
         "sql": "drop user u1",
         "kind": "destructive",
         "target": "u1"
+    },
+    { "dialect": "mysql", "sql": "drop table t1, 2t", "kind": "destructive" },
+    { "dialect": "mysql", "sql": "drop table t1, $t", "kind": "destructive" },
+    { "dialect": "mysql", "sql": "drop table a, ", "kind": "destructive" },
+    { "dialect": "pgsql", "sql": "drop table a.", "kind": "destructive" },
+    {
+        "dialect": "pgsql",
+        "sql": "drop statistics s1, s2",
+        "kind": "destructive",
+        "target": "s1, s2"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop operator class c using btree",
+        "kind": "destructive",
+        "target": "c"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop operator family f using btree",
+        "kind": "destructive",
+        "target": "f"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop cast (int as text)",
+        "kind": "destructive"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop transform for hstore language plpython3u",
+        "kind": "destructive"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "drop resource group rg",
+        "kind": "destructive",
+        "target": "rg"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "drop logfile group lg engine ndb",
+        "kind": "destructive",
+        "target": "lg"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop owned by bob, alice",
+        "kind": "destructive",
+        "target": "bob, alice"
     }
 ]

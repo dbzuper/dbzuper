@@ -224,7 +224,14 @@ export default function SqlDock({
                 setRunningTab(null);
             }
             if ('cancelled' in outcome) {
-                show({ results: [], error: null, cancelled: true });
+                // A cancelled run (or a declined confirmation) leaves what the tab showed before.
+                setResultsByTab((prev) => ({
+                    ...prev,
+                    [tabId]: {
+                        ...(prev[tabId] ?? { results: [], error: null }),
+                        cancelled: true,
+                    },
+                }));
                 return;
             }
             if ('error' in outcome) {

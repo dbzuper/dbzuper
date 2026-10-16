@@ -1,5 +1,6 @@
 <?php
 
+use App\Database\Errors\DbError;
 use App\Database\Query\HistoryRecorder;
 use App\Database\Query\StatementResult;
 use App\Database\Sql\StatementClassifier;
@@ -247,4 +248,41 @@ it('asks for every target of a multi-object DROP, typed exactly as listed', func
 
     ($this->run)([['sql' => $sql, 'typed' => 'm5_a']])->assertStatus(409);
     ($this->run)([['sql' => $sql, 'typed' => 'm5_a, m5_b']])->assertOk();
+});
+
+it('scrubs decoded secrets, not just the literal text, from the stored error', function (string $sql, string $echo) {
+    $connection = SavedConnection::factory()->for($this->user)->create(['driver' => DriverName::Postgres]);
+    $error = new DbError('syntax', "syntax error at or near {$echo}", '42601', null);
+    $result = StatementResult::failed($sql, StatementClassifier::classify($sql, 'pgsql'), $error, 1);
+
+    app(HistoryRecorder::class)->record($connection, $result);
+
+    expect($connection->history()->value('error'))->not->toContain('Eagle1')->not->toContain('s3cretpw');
+})->with([
+    'leading E in the secret' => ["ALTER ROLE x PASSWORD 'Eagle1'", 'Eagle1'],
+    'tagged dollar quote' => ['ALTER ROLE x PASSWORD $t$s3cretpw$t$', 's3cretpw'],
+    'e string' => ["ALTER ROLE x PASSWORD e's3cretpw'", 's3cretpw'],
+    'doubled quote' => ["ALTER ROLE x PASSWORD 's3''cretpw'", "s3'cretpw"],
+]);
+
+it('redacts history recorded before redaction existed', function () {
+    $pg = SavedConnection::factory()->for($this->user)->create(['driver' => DriverName::Postgres]);
+    $my = SavedConnection::factory()->for($this->user)->create(['driver' => DriverName::MySql]);
+    $row = fn ($c, $sql, $error = null) => QueryHistoryEntry::create(['connection_id' => $c->id, 'sql' => $sql, 'kind' => 'ddl', 'status' => $error ? 'error' : 'ok', 'duration_ms' => 1, 'error' => $error]);
+    $a = $row($pg, "ALTER ROLE x PASSWORD 's3cretpw'", "syntax error at or near 's3cretpw'");
+    $b = $row($my, "CREATE USER u IDENTIFIED BY 's3cretpw'");
+    $c = $row($my, 'select 1');
+    foreach (range(1, 600) as $i) {
+        $row($my, "ALTER USER u IDENTIFIED BY 'bulk{$i}x' REPLACE 'oldpw{$i}'"); // more than one chunk
+    }
+
+    (require database_path('migrations/2026_10_16_000002_redact_query_history_secrets.php'))->up();
+
+    expect($a->fresh()->sql)->toBe("ALTER ROLE x PASSWORD '***'")
+        ->and($a->fresh()->error)->toBe("syntax error at or near '***'")
+        ->and($b->fresh()->sql)->toBe("CREATE USER u IDENTIFIED BY '***'")
+        ->and($c->fresh()->sql)->toBe('select 1')
+        ->and(QueryHistoryEntry::where('sql', 'like', '%bulk%')->count())->toBe(0)
+        ->and(QueryHistoryEntry::where('sql', 'like', '%oldpw%')->count())->toBe(0)
+        ->and(QueryHistoryEntry::where('sql', "ALTER USER u IDENTIFIED BY '***' REPLACE '***'")->count())->toBe(600);
 });

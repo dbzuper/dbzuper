@@ -16,7 +16,8 @@ final class StatementClassifier
         ['TEXT', 'SEARCH', 'CONFIGURATION'], ['TEXT', 'SEARCH', 'DICTIONARY'], ['TEXT', 'SEARCH', 'PARSER'], ['TEXT', 'SEARCH', 'TEMPLATE'],
         ['ACCESS', 'METHOD'], ['TABLE'], ['VIEW'], ['INDEX'], ['DATABASE'], ['SCHEMA'], ['SEQUENCE'], ['FUNCTION'], ['PROCEDURE'], ['ROUTINE'],
         ['AGGREGATE'], ['TRIGGER'], ['TYPE'], ['DOMAIN'], ['EXTENSION'], ['ROLE'], ['USER'], ['GROUP'], ['POLICY'], ['EVENT'], ['COLLATION'],
-        ['RULE'], ['PUBLICATION'], ['SUBSCRIPTION'], ['SERVER'], ['TABLESPACE'], ['LANGUAGE'], ['CONVERSION'], ['OPERATOR'],
+        ['RULE'], ['PUBLICATION'], ['SUBSCRIPTION'], ['SERVER'], ['TABLESPACE'], ['LANGUAGE'], ['CONVERSION'], ['STATISTICS'],
+        ['OPERATOR', 'CLASS'], ['OPERATOR', 'FAMILY'], ['OPERATOR'], ['RESOURCE', 'GROUP'], ['LOGFILE', 'GROUP'], ['OWNED', 'BY'], ['TRANSFORM'], ['CAST'],
     ];
 
     private const SESSION = ['SET', 'USE', 'RESET', 'DISCARD', 'LISTEN', 'NOTIFY', 'UNLISTEN'];
@@ -337,6 +338,10 @@ final class StatementClassifier
                     continue 2;
                 }
             }
+            // DROP CAST (a AS b) / DROP TRANSFORM FOR t LANGUAGE l name no single object: keyword confirmation.
+            if (in_array($kind[0], ['CAST', 'TRANSFORM'], true)) {
+                return null;
+            }
             $i += count($kind);
 
             break;
@@ -376,18 +381,23 @@ final class StatementClassifier
                 $i++;
             }
             $parts = [];
+            $dangling = false;
             while (isset($t[$i]) && ($t[$i]->type === 'word' || $t[$i]->type === 'quoted')) {
                 $parts[] = $t[$i]->identifier();
                 $i++;
+                $dangling = false;
                 if (isset($t[$i]) && self::isPunct($t[$i], '.')) {
                     $i++;
+                    $dangling = true;
 
                     continue;
                 }
                 break;
             }
-            if ($parts === []) {
-                break;
+            // An element after a comma (or a dotted part) that is not a plain name (e.g. MySQL's 2t or $t) means the
+            // statement names objects this parser cannot read: fail closed.
+            if ($parts === [] || $dangling) {
+                return null;
             }
             $names[] = implode('.', $parts);
             if (isset($t[$i]) && self::isPunct($t[$i], '(')) {

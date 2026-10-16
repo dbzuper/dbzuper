@@ -224,6 +224,38 @@ describe('ResultPanel', () => {
         );
     });
 
+    it('shows multi-line error messages (PostgreSQL DETAIL/HINT) on their own lines', () => {
+        render(
+            <ResultPanel
+                results={[]}
+                error={{
+                    kind: 'unknown',
+                    message:
+                        'duplicate key\nDETAIL: Key (id)=(1) already exists.',
+                    sqlstate: null,
+                    reason: null,
+                }}
+                running={false}
+            />,
+        );
+        expect(screen.getByText(/duplicate key/)).toHaveClass(
+            'whitespace-pre-line',
+        );
+    });
+
+    it('keeps earlier results next to the Cancelled. notice', () => {
+        render(
+            <ResultPanel
+                results={[result(2)]}
+                error={null}
+                running={false}
+                cancelled
+            />,
+        );
+        expect(screen.getByText('Cancelled.')).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /#1/ })).toBeInTheDocument();
+    });
+
     it('says Cancelled. after a cancelled run, and Running… takes precedence while running', () => {
         const { rerender } = render(
             <ResultPanel results={[]} error={null} running={false} cancelled />,
