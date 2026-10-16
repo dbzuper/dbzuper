@@ -15,28 +15,73 @@ const THIRD_PARTY_EXCLUDES = [
     'canvas',
 ];
 
+/** How long a finite transition or animation may take to finish before the check fails. */
+const SETTLE_TIMEOUT_MS = 2_000;
+
 /**
- * Waits until no CSS transition or animation is running. Under reduced motion the app shortens them
- * to 0.01 ms, but a transition still starts one frame late, so a computed colour read straight after
- * a theme or view change can still be the old one. Two rounds cover transitions started by the
- * restyle that the first round finished.
+ * Waits until no finite CSS transition or animation is running. Under reduced motion the app shortens
+ * them to 0.01 ms, but a transition still starts one frame late, so a computed colour read straight
+ * after a theme or view change can still be the old one. Infinite animations (spinners, skeleton
+ * pulses) never finish and are ignored. Two rounds cover transitions started by the restyle that the
+ * first round finished. Throws, listing what is still running, instead of hanging.
  */
-async function settleStyles(page: Page): Promise<void> {
-    await page.evaluate(async () => {
+export async function settleStyles(page: Page): Promise<void> {
+    await page.evaluate(async (timeoutMs) => {
         const frame = () =>
             new Promise<void>((resolve) =>
                 requestAnimationFrame(() => resolve()),
             );
-        for (let round = 0; round < 2; round++) {
-            await frame();
-            await Promise.all(
-                document
-                    .getAnimations()
-                    .map((a) => a.finished.catch(() => undefined)),
+        const finite = () =>
+            document
+                .getAnimations()
+                .filter(
+                    (a) =>
+                        a.effect?.getComputedTiming().endTime !== Infinity &&
+                        a.playState === 'running',
+                );
+        const describe = (a: Animation) => {
+            const target = (a.effect as KeyframeEffect | null)?.target;
+            const name =
+                a instanceof CSSTransition
+                    ? `transition ${a.transitionProperty}`
+                    : a instanceof CSSAnimation
+                      ? `animation ${a.animationName}`
+                      : 'animation';
+            return `${name} on ${target?.tagName.toLowerCase() ?? '?'}${
+                target?.className
+                    ? `.${String(target.className).split(' ')[0]}`
+                    : ''
+            }`;
+        };
+        let timer = 0;
+        const timeout = new Promise<never>((_, reject) => {
+            timer = window.setTimeout(
+                () =>
+                    reject(
+                        new Error(
+                            `Styles did not settle within ${timeoutMs} ms; still running: ${finite()
+                                .map(describe)
+                                .join(', ')}`,
+                        ),
+                    ),
+                timeoutMs,
             );
+        });
+        const settle = async () => {
+            for (let round = 0; round < 2; round++) {
+                await frame();
+                await Promise.all(
+                    finite().map((a) => a.finished.catch(() => undefined)),
+                );
+            }
+            await frame();
+        };
+        try {
+            await Promise.race([settle(), timeout]);
+        } finally {
+            clearTimeout(timer);
         }
-        await frame();
-    });
+    }, SETTLE_TIMEOUT_MS);
 }
 
 /**
