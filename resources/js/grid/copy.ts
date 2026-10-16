@@ -1,5 +1,5 @@
 import { cellText } from './cells';
-import type { QueryCell, QueryColumn } from '@/types/schema';
+import type { Dialect, QueryCell, QueryColumn } from '@/types/schema';
 
 const text = (v: QueryCell) => cellText(v);
 
@@ -60,4 +60,48 @@ export async function writeClipboard(value: string): Promise<boolean> {
     } catch {
         return false;
     }
+}
+
+const NUMERIC_TYPE = /int|numeric|decimal|float|double|real|money|serial/i;
+
+function quoteIdent(dialect: Dialect, name: string): string {
+    return dialect === 'mysql' || dialect === 'mariadb'
+        ? '`' + name.replace(/`/g, '``') + '`'
+        : '"' + name.replace(/"/g, '""') + '"';
+}
+
+function literal(
+    dialect: Dialect,
+    column: QueryColumn,
+    value: QueryCell | object,
+): string {
+    if (value === null) return 'NULL';
+    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+    if (typeof value === 'number') return String(value);
+    const s = typeof value === 'object' ? JSON.stringify(value) : value;
+    if (NUMERIC_TYPE.test(column.type ?? '') && /^[+-]?\d+(\.\d+)?$/.test(s))
+        return s;
+    // MySQL and MariaDB treat backslash as an escape inside string literals by default.
+    const body =
+        dialect === 'mysql' || dialect === 'mariadb'
+            ? s.replace(/\\/g, '\\\\')
+            : s;
+    return `'${body.replace(/'/g, "''")}'`;
+}
+
+/** Rows as one multi-row INSERT for the given engine. */
+export function toInsert(
+    dialect: Dialect,
+    table: string,
+    columns: QueryColumn[],
+    rows: QueryCell[][],
+): string {
+    const names = columns.map((c) => quoteIdent(dialect, c.name)).join(', ');
+    const values = rows
+        .map(
+            (r) =>
+                `(${columns.map((c, i) => literal(dialect, c, r[i] ?? null)).join(', ')})`,
+        )
+        .join(',\n');
+    return `INSERT INTO ${quoteIdent(dialect, table)} (${names}) VALUES\n${values};`;
 }
