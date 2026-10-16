@@ -441,8 +441,10 @@ function DataViewBody({
         (next: GridLayout) => {
             setLayoutValue(next);
             writeGridLayout(connectionId, name, next);
+            // Resizing or hiding a column is an interaction that keeps a preview tab (spec 4.3).
+            useBrowse.getState().promote(connectionId, tab.id);
         },
-        [connectionId, name],
+        [connectionId, name, tab.id],
     );
     const gridLayout = useMemo(
         () => ({ value: layoutValue, onChange: changeLayout }),

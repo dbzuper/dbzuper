@@ -39,6 +39,13 @@ vi.mock('@/components/grid/result-grid', () => ({
         onOpenRow?: (rowIndex: number) => void;
         onOpenForeign?: (table: string, column: string, value: string) => void;
         activeRow?: number | null;
+        layout?: {
+            value: { widths: Record<string, number>; hidden: string[] };
+            onChange: (next: {
+                widths: Record<string, number>;
+                hidden: string[];
+            }) => void;
+        };
     }) => (
         <div data-testid="grid">
             <span>{`${props.rows.length} rows`}</span>
@@ -52,6 +59,17 @@ vi.mock('@/components/grid/result-grid', () => ({
             </button>
             <button type="button" onClick={() => props.onOpenRow?.(2)}>
                 Open row 2
+            </button>
+            <button
+                type="button"
+                onClick={() =>
+                    props.layout?.onChange({
+                        ...props.layout.value,
+                        widths: { id: 240 },
+                    })
+                }
+            >
+                Resize id
             </button>
             {[0, 1, 2, 3].map((i) => (
                 <button
@@ -360,6 +378,29 @@ describe('DataView', () => {
             { column: 'id', op: 'eq', value: '7' },
         ]);
         expect(tab.preview).toBe(false);
+    });
+
+    it('promotes a preview tab when a column is resized', async () => {
+        open();
+        render(<Harness />);
+        await screen.findByText('100 rows');
+        fireEvent.click(screen.getByRole('button', { name: 'Resize id' }));
+        const tab = useBrowse
+            .getState()
+            .byConnection[1].tabs.find((t) => t.id === 't:orders') as TableTab;
+        expect(tab.preview).toBe(false);
+    });
+
+    it('promotes a preview tab when a row is opened in the drawer', async () => {
+        open();
+        render(<Harness />);
+        await screen.findByText('100 rows');
+        fireEvent.click(screen.getByRole('button', { name: 'Open row 2' }));
+        const tab = useBrowse
+            .getState()
+            .byConnection[1].tabs.find((t) => t.id === 't:orders') as TableTab;
+        expect(tab.preview).toBe(false);
+        expect(tab.state.drawerRow).toBe(2);
     });
 
     it('starts a filter draft from a header filter click', async () => {
