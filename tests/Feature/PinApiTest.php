@@ -65,3 +65,22 @@ it('goes away with its connection', function () {
     $this->connection->delete();
     expect(PinnedTable::count())->toBe(0);
 });
+
+it('returns the existing pin when a concurrent request inserts the same table first', function () {
+    $racer = null;
+    PinnedTable::creating(function (PinnedTable $pin) use (&$racer) {
+        // Simulate another request winning the race after this request's existence check missed.
+        $racer ??= DB::table('pinned_tables')->insertGetId([
+            'user_id' => $pin->user_id,
+            'connection_id' => $pin->connection_id,
+            'table_name' => $pin->table_name,
+            'position' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    $this->actingAs($this->user)->postJson(route('api.pins.store', $this->connection), ['table' => 'users'])
+        ->assertOk()->assertJsonPath('pin.id', $racer)->assertJsonPath('pin.table', 'users');
+    expect($this->connection->pins()->count())->toBe(1);
+});

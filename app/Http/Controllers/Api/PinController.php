@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PinnedTable;
 use App\Models\SavedConnection;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -36,11 +37,16 @@ class PinController extends Controller
         if ((clone $mine)->count() >= self::MAX_PINS) {
             throw ValidationException::withMessages(['table' => 'You can pin up to '.self::MAX_PINS.' tables per connection.']);
         }
-        $pin = $connection->pins()->create([
-            'user_id' => $request->user()->id,
-            'table_name' => $table,
-            'position' => ((clone $mine)->max('position') ?? 0) + 1,
-        ]);
+        try {
+            $pin = $connection->pins()->create([
+                'user_id' => $request->user()->id,
+                'table_name' => $table,
+                'position' => ((clone $mine)->max('position') ?? 0) + 1,
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            // A concurrent request pinned the same table between the check above and this insert.
+            return response()->json(['pin' => (clone $mine)->where('table_name', $table)->firstOrFail()->toClientArray()]);
+        }
 
         return response()->json(['pin' => $pin->toClientArray()], 201);
     }
@@ -64,9 +70,9 @@ class PinController extends Controller
         if ($current !== $given) {
             throw ValidationException::withMessages(['ids' => 'The list must contain exactly your pins for this connection.']);
         }
-        DB::transaction(function () use ($ids) {
+        DB::transaction(function () use ($ids, $request, $connection) {
             foreach ($ids as $position => $id) {
-                PinnedTable::whereKey($id)->update(['position' => $position + 1]);
+                $this->mine($request, $connection)->whereKey($id)->update(['position' => $position + 1]);
             }
         });
 
