@@ -11,6 +11,23 @@ function resolved(boxes: CardBox[], gap = 8): CardBox[] {
 }
 
 describe('deOverlapCards', () => {
+    it('terminates when floating-point round-off leaves the pushed card a hair short of the gap', () => {
+        // Captured from a 200-table schema that froze the page at close zoom:
+        // (495.96087187159884 + 123) - 495.96087187159884 === 122.99999999999994 < 123.
+        const boxes = [
+            {
+                key: 'm004_t04',
+                x: 0,
+                y: 495.96087187159884,
+                width: 224,
+                height: 125,
+            },
+            { key: 'm004_t05', x: 0, y: 542.17, width: 224, height: 105 },
+        ];
+        const out = resolved(boxes, 8);
+        expect(out[1].y - out[0].y).toBeCloseTo(123, 9);
+    });
+
     it('leaves cards that already clear each other alone', () => {
         const boxes = [
             { key: 'a', x: 0, y: 0, width: 224, height: 100 },

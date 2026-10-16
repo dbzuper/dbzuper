@@ -37,8 +37,14 @@ export function deOverlapCards(
                     y - other.y < needed &&
                     other.y - y < needed
                 ) {
-                    y = other.y + needed;
-                    moved = true;
+                    // Only a strictly lower y counts as a move: float round-off can leave
+                    // (other.y + needed) - other.y a hair under `needed`, and re-assigning the
+                    // same y forever would hang the page.
+                    const pushed = other.y + needed;
+                    if (pushed > y) {
+                        y = pushed;
+                        moved = true;
+                    }
                 }
             }
         }
