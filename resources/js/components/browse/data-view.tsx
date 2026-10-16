@@ -1,0 +1,593 @@
+import { Columns3 } from 'lucide-react';
+import {
+    lazy,
+    Suspense,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
+import type { SortColumn } from 'react-data-grid';
+import { toast } from 'sonner';
+import {
+    useBrowse,
+    type TableTab,
+    type TableTabState,
+} from '@/browse/browse-store';
+import {
+    initialTotal,
+    lastPage,
+    rangeLabel,
+    totalFromCount,
+    type Total,
+} from '@/browse/counts';
+import {
+    readGridLayout,
+    writeGridLayout,
+    type GridLayout,
+} from '@/browse/local-prefs';
+import { rowsCache } from '@/browse/rows-cache';
+import { FilterBar } from '@/components/inspector/filter-bar';
+import { Button } from '@/components/ui/button';
+import {
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Spinner } from '@/components/ui/spinner';
+import {
+    dbErrorFrom,
+    workspaceApi,
+    type CountResponse,
+    type PerPage,
+    type RowFilter,
+    type RowsResponse,
+    type SortKey,
+} from '@/lib/workspace-api';
+import { openRecord } from '@/records/open-record';
+import type {
+    Dialect,
+    QueryColumn,
+    SchemaSnapshot,
+    TableSchema,
+} from '@/types/schema';
+import { Pagination } from './pagination';
+
+/** The filter bar's first control; Ctrl+F focuses it. */
+export const TABLE_FILTER_ID = 'table-filter-bar';
+
+// react-data-grid stays out of the workspace chunk until a table tab shows rows.
+const ResultGrid = lazy(() =>
+    import('@/components/grid/result-grid').then((m) => ({
+        default: m.ResultGrid,
+    })),
+);
+
+const NO_COLUMNS: QueryColumn[] = [];
+
+type Props = {
+    connectionId: number;
+    snapshot: SchemaSnapshot;
+    table: TableSchema;
+    tab: TableTab;
+    onOpenTable: (table: string, filters: RowFilter[]) => void;
+    /** Bumped by the header's Refresh: drops the cached rows and refetches rows and count. */
+    refreshNonce?: number;
+};
+
+type Request = {
+    filters: RowFilter[];
+    sort: SortKey[];
+    page: number;
+    perPage: PerPage;
+};
+
+/** The rows on screen and the request they answer. */
+type View = { key: string; rows: RowsResponse; scrollTop: number };
+
+/** What is known about the total for one set of filters. */
+type CountState = {
+    filtersKey: string;
+    /** From the catalogue (unfiltered) or the cache; replaced by `count` once a count answers. */
+    base: Total;
+    count: CountResponse | null;
+    /** The capped count failed for a reason other than the cap. */
+    failed: boolean;
+};
+
+export function DataView(props: Props) {
+    // A different table is a different view: nothing (rows, layout, counts) carries over.
+    return (
+        <DataViewBody
+            key={`${props.connectionId}:${props.table.name}`}
+            {...props}
+        />
+    );
+}
+
+function DataViewBody({
+    connectionId,
+    snapshot,
+    table,
+    tab,
+    onOpenTable,
+    refreshNonce = 0,
+}: Props) {
+    const name = table.name;
+    const cacheKey = `${connectionId}:${name}`;
+    const { filters, sort, page, perPage, drawerRow } = tab.state;
+    const requestKey = JSON.stringify({ filters, sort, page, perPage });
+    const filtersKey = JSON.stringify(filters);
+    const dialect = snapshot.driver as Dialect;
+
+    const [cached] = useState(() => {
+        const hit = rowsCache.get(cacheKey);
+        return hit && hit.requestKey === requestKey ? hit : null;
+    });
+    const [view, setView] = useState<View | null>(() =>
+        cached
+            ? {
+                  key: cached.requestKey,
+                  rows: cached.rows,
+                  scrollTop: cached.scrollTop,
+              }
+            : null,
+    );
+    const [error, setError] = useState<{
+        key: string;
+        message: string;
+    } | null>(null);
+    const [reload, setReload] = useState(0);
+
+    const rcCount = table.row_count.count;
+    const rcKind = table.row_count.kind;
+    const start = useMemo(
+        () => initialTotal({ count: rcCount, kind: rcKind }, snapshot.driver),
+        [rcCount, rcKind, snapshot.driver],
+    );
+    const [countState, setCountState] = useState<CountState>(() => ({
+        filtersKey,
+        base: cached ? cached.total : filters.length === 0 ? start.total : null,
+        count: null,
+        failed: false,
+    }));
+    const [exactPending, setExactPending] = useState(false);
+    const exactRequest = useRef<AbortController | null>(null);
+
+    const update = useCallback(
+        (patch: Partial<TableTabState>) =>
+            useBrowse.getState().updateTable(connectionId, tab.id, patch),
+        [connectionId, tab.id],
+    );
+
+    // The request the screen should answer; responses for any other are dropped.
+    const latestKey = useRef(requestKey);
+    useEffect(() => {
+        latestKey.current = requestKey;
+    }, [requestKey]);
+
+    const lastRefresh = useRef(refreshNonce);
+    useEffect(() => {
+        const forced = lastRefresh.current !== refreshNonce;
+        lastRefresh.current = refreshNonce;
+        if (forced) rowsCache.delete(cacheKey);
+        const hit = rowsCache.get(cacheKey);
+        if (hit && hit.requestKey === requestKey) {
+            setView((v) =>
+                v?.key === requestKey
+                    ? v
+                    : {
+                          key: requestKey,
+                          rows: hit.rows,
+                          scrollTop: hit.scrollTop,
+                      },
+            );
+            return;
+        }
+        const controller = new AbortController();
+        const body = JSON.parse(requestKey) as Request;
+        setError(null);
+        workspaceApi
+            .rows(
+                connectionId,
+                name,
+                {
+                    filters: body.filters,
+                    sort: body.sort,
+                    page: body.page,
+                    per_page: body.perPage,
+                },
+                controller.signal,
+            )
+            .then((rows) => {
+                if (
+                    controller.signal.aborted ||
+                    latestKey.current !== requestKey
+                )
+                    return;
+                // The total is patched in once this view renders.
+                rowsCache.set(cacheKey, {
+                    requestKey,
+                    rows,
+                    total: null,
+                    scrollTop: 0,
+                });
+                setView({ key: requestKey, rows, scrollTop: 0 });
+            })
+            .catch((e) => {
+                if (
+                    controller.signal.aborted ||
+                    latestKey.current !== requestKey
+                )
+                    return;
+                setError({
+                    key: requestKey,
+                    message: dbErrorFrom(e, 'Could not load rows.').message,
+                });
+            });
+        return () => controller.abort();
+    }, [connectionId, name, cacheKey, requestKey, refreshNonce, reload]);
+
+    // Counting runs beside the rows request and never holds it up. A cached view keeps its total.
+    const countedFor = useRef<string | null>(
+        cached ? `${filtersKey}#${refreshNonce}` : null,
+    );
+    useEffect(() => {
+        const token = `${filtersKey}#${refreshNonce}`;
+        if (countedFor.current === token) return;
+        countedFor.current = token;
+        exactRequest.current?.abort();
+        setExactPending(false);
+        const f = JSON.parse(filtersKey) as RowFilter[];
+        const unfiltered = f.length === 0;
+        setCountState({
+            filtersKey,
+            base: unfiltered ? start.total : null,
+            count: null,
+            failed: false,
+        });
+        if (unfiltered && !start.autoCount) return;
+        const controller = new AbortController();
+        let settled = false;
+        workspaceApi
+            .count(
+                connectionId,
+                name,
+                { filters: f, exact: false },
+                controller.signal,
+            )
+            .then((res) => {
+                settled = true;
+                if (controller.signal.aborted) return;
+                setCountState((s) =>
+                    s.filtersKey === filtersKey ? { ...s, count: res } : s,
+                );
+            })
+            .catch(() => {
+                settled = true;
+                if (controller.signal.aborted) return;
+                setCountState((s) =>
+                    s.filtersKey === filtersKey ? { ...s, failed: true } : s,
+                );
+            });
+        return () => {
+            controller.abort();
+            // An interrupted count is asked again if the same filters come back.
+            if (!settled) countedFor.current = null;
+        };
+    }, [connectionId, name, filtersKey, refreshNonce, start]);
+
+    useEffect(() => () => exactRequest.current?.abort(), []);
+
+    const rowsSeen = view
+        ? (view.rows.page - 1) * view.rows.per_page + view.rows.rows.length
+        : 0;
+    const total: Total = useMemo(() => {
+        if (countState.failed) return null;
+        return countState.count
+            ? totalFromCount(countState.count, rowsSeen)
+            : countState.base;
+    }, [countState, rowsSeen]);
+
+    useEffect(() => {
+        if (view && rowsCache.get(cacheKey)?.requestKey === view.key)
+            rowsCache.patch(cacheKey, { total });
+    }, [cacheKey, total, view]);
+
+    const countExactly = () => {
+        exactRequest.current?.abort();
+        const controller = new AbortController();
+        exactRequest.current = controller;
+        const key = filtersKey;
+        setExactPending(true);
+        workspaceApi
+            .count(
+                connectionId,
+                name,
+                { filters, exact: true },
+                controller.signal,
+            )
+            .then((res) => {
+                if (controller.signal.aborted) return;
+                setCountState((s) =>
+                    s.filtersKey === key
+                        ? { ...s, count: res, failed: false }
+                        : s,
+                );
+            })
+            .catch((e) => {
+                if (controller.signal.aborted) return;
+                toast.error(dbErrorFrom(e, 'Could not count rows.').message);
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setExactPending(false);
+            });
+    };
+
+    const retry = () => {
+        rowsCache.delete(cacheKey);
+        setError(null);
+        setReload((n) => n + 1);
+    };
+
+    const [draft, setDraft] = useState<{
+        column: string;
+        nonce: number;
+    } | null>(null);
+
+    const changeFilters = useCallback(
+        (next: RowFilter[]) =>
+            update({ filters: next, page: 1, drawerRow: null }),
+        [update],
+    );
+    const filterColumns = useMemo(
+        () => table.columns.map((c) => c.name),
+        [table.columns],
+    );
+
+    const columns = view?.rows.columns ?? NO_COLUMNS;
+    // Rows of this tab all come from this table, whatever the driver reports for the column origin.
+    const recordColumns = useMemo(
+        () => columns.map((c) => ({ ...c, table: name })),
+        [columns, name],
+    );
+
+    const sortColumns: SortColumn[] = useMemo(
+        () =>
+            sort.flatMap((s) => {
+                const index = columns.findIndex((c) => c.name === s.column);
+                return index < 0
+                    ? []
+                    : [
+                          {
+                              columnKey: String(index),
+                              direction: s.direction === 'asc' ? 'ASC' : 'DESC',
+                          } as const,
+                      ];
+            }),
+        [sort, columns],
+    );
+    const gridSort = useMemo(
+        () => ({
+            columns: sortColumns,
+            maxKeys: 3,
+            onChange: (next: SortColumn[]) =>
+                update({
+                    sort: next.flatMap((sc) => {
+                        const column = columns[Number(sc.columnKey)];
+                        return column
+                            ? [
+                                  {
+                                      column: column.name,
+                                      direction:
+                                          sc.direction === 'ASC'
+                                              ? ('asc' as const)
+                                              : ('desc' as const),
+                                  },
+                              ]
+                            : [];
+                    }),
+                    page: 1,
+                    drawerRow: null,
+                }),
+        }),
+        [sortColumns, columns, update],
+    );
+
+    const [layoutValue, setLayoutValue] = useState<GridLayout>(() =>
+        readGridLayout(connectionId, name),
+    );
+    const changeLayout = useCallback(
+        (next: GridLayout) => {
+            setLayoutValue(next);
+            writeGridLayout(connectionId, name, next);
+        },
+        [connectionId, name],
+    );
+    const gridLayout = useMemo(
+        () => ({ value: layoutValue, onChange: changeLayout }),
+        [layoutValue, changeLayout],
+    );
+
+    const onFilterColumn = useCallback(
+        (column: string) =>
+            setDraft((d) => ({ column, nonce: (d?.nonce ?? 0) + 1 })),
+        [],
+    );
+    const onOpenRow = useCallback(
+        (rowIndex: number) => update({ drawerRow: rowIndex }),
+        [update],
+    );
+    const onOpenForeign = useCallback(
+        (target: string, column: string, value: string) =>
+            onOpenTable(target, [{ column, op: 'eq', value }]),
+        [onOpenTable],
+    );
+    const onScrollTopChange = useCallback(
+        (top: number) => rowsCache.patch(cacheKey, { scrollTop: top }),
+        [cacheKey],
+    );
+    const rowMenu = useMemo(() => ({ dialect, table: name }), [dialect, name]);
+
+    const currentError = error?.key === requestKey ? error.message : null;
+    const loading = !currentError && view?.key !== requestKey;
+    const showExact = !!view && !!total && ('atLeast' in total || !total.exact);
+    const label = view
+        ? rangeLabel(
+              view.rows.page,
+              view.rows.per_page,
+              view.rows.rows.length,
+              total,
+          )
+        : loading
+          ? 'Loading rows…'
+          : 'No rows';
+
+    return (
+        <div className="flex h-full min-h-0 flex-col">
+            <FilterBar
+                id={TABLE_FILTER_ID}
+                columns={filterColumns}
+                filters={filters}
+                onChange={changeFilters}
+                draft={draft}
+            />
+            <div className="relative min-h-0 flex-1">
+                {currentError ? (
+                    <div
+                        role="alert"
+                        className="flex flex-col items-start gap-2 px-4 py-3 text-xs"
+                    >
+                        <p className="text-destructive">{currentError}</p>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={retry}
+                        >
+                            Retry
+                        </Button>
+                    </div>
+                ) : view && view.rows.columns.length > 0 ? (
+                    <div
+                        aria-busy={loading}
+                        className={
+                            loading
+                                ? 'h-full opacity-60 transition-opacity'
+                                : 'h-full'
+                        }
+                    >
+                        <Suspense
+                            fallback={
+                                <p className="px-4 py-3 text-xs text-muted-foreground">
+                                    Loading rows…
+                                </p>
+                            }
+                        >
+                            <ResultGrid
+                                key={view.key}
+                                columns={recordColumns}
+                                rows={view.rows.rows}
+                                snapshot={snapshot}
+                                onOpenForeign={onOpenForeign}
+                                onOpenRecord={openRecord}
+                                sort={gridSort}
+                                layout={gridLayout}
+                                onFilterColumn={onFilterColumn}
+                                onOpenRow={onOpenRow}
+                                activeRow={drawerRow}
+                                rowMenu={rowMenu}
+                                scrollTop={view.scrollTop}
+                                onScrollTopChange={onScrollTopChange}
+                            />
+                        </Suspense>
+                    </div>
+                ) : (
+                    <p className="px-4 py-3 text-xs text-muted-foreground">
+                        {loading ? 'Loading rows…' : 'No rows.'}
+                    </p>
+                )}
+            </div>
+            <Pagination
+                page={page}
+                perPage={perPage}
+                lastPage={lastPage(total, perPage)}
+                hasMore={view?.rows.has_more ?? false}
+                disabled={!view}
+                label={label}
+                onPage={(p) => update({ page: p, drawerRow: null })}
+                onPerPage={(n) =>
+                    update({ perPage: n, page: 1, drawerRow: null })
+                }
+            >
+                {view && countState.failed && (
+                    <span className="text-muted-foreground/70">
+                        count unavailable
+                    </span>
+                )}
+                {showExact && (
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        disabled={exactPending}
+                        onClick={countExactly}
+                    >
+                        {exactPending && <Spinner className="size-3" />}
+                        Count exactly
+                    </Button>
+                )}
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                        >
+                            <Columns3 className="size-3.5" /> Columns
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                        align="start"
+                        className="max-h-80 overflow-y-auto"
+                    >
+                        {filterColumns.map((column) => (
+                            <DropdownMenuCheckboxItem
+                                key={column}
+                                className="font-mono text-xs"
+                                checked={!layoutValue.hidden.includes(column)}
+                                onSelect={(e) => e.preventDefault()}
+                                onCheckedChange={(checked) =>
+                                    changeLayout({
+                                        ...layoutValue,
+                                        hidden: checked
+                                            ? layoutValue.hidden.filter(
+                                                  (h) => h !== column,
+                                              )
+                                            : [...layoutValue.hidden, column],
+                                    })
+                                }
+                            >
+                                {column}
+                            </DropdownMenuCheckboxItem>
+                        ))}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                            onSelect={() =>
+                                changeLayout({ widths: {}, hidden: [] })
+                            }
+                        >
+                            Reset
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </Pagination>
+        </div>
+    );
+}

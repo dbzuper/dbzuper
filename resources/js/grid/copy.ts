@@ -64,7 +64,8 @@ export async function writeClipboard(value: string): Promise<boolean> {
 
 const NUMERIC_TYPE = /int|numeric|decimal|float|double|real|money|serial/i;
 
-function quoteIdent(dialect: Dialect, name: string): string {
+/** An identifier quoted for the engine (backticks for MySQL/MariaDB, double quotes otherwise). */
+export function quoteIdent(dialect: Dialect, name: string): string {
     return dialect === 'mysql' || dialect === 'mariadb'
         ? '`' + name.replace(/`/g, '``') + '`'
         : '"' + name.replace(/"/g, '""') + '"';

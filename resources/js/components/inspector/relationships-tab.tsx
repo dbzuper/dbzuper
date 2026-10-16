@@ -7,11 +7,13 @@ function Row({
     other,
     mine,
     theirs,
+    onOpenTable,
 }: {
     rel: RelationshipSchema;
     other: string;
     mine: string[];
     theirs: string[];
+    onOpenTable?: (table: string) => void;
 }) {
     const select = useWorkspace((s) => s.select);
     return (
@@ -22,6 +24,10 @@ function Row({
                 type="button"
                 className="font-mono font-medium hover:underline"
                 onClick={() => {
+                    if (onOpenTable) {
+                        onOpenTable(other);
+                        return;
+                    }
                     select(other);
                     universe.flyTo(other);
                 }}
@@ -43,9 +49,12 @@ function Row({
 export function RelationshipsTab({
     snapshot,
     table,
+    onOpenTable,
 }: {
     snapshot: SchemaSnapshot;
     table: string;
+    /** Opens the related table instead of selecting it in the Universe. */
+    onOpenTable?: (table: string) => void;
 }) {
     const outgoing = snapshot.relationships.filter(
         (r) => r.from_table === table,
@@ -76,6 +85,7 @@ export function RelationshipsTab({
                         other={r.to_table}
                         mine={r.from_columns}
                         theirs={r.to_columns}
+                        onOpenTable={onOpenTable}
                     />
                 )),
             )}
@@ -88,6 +98,7 @@ export function RelationshipsTab({
                         other={r.from_table}
                         mine={r.to_columns}
                         theirs={r.from_columns}
+                        onOpenTable={onOpenTable}
                     />
                 )),
             )}
