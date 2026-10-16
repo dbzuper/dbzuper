@@ -781,3 +781,32 @@ describe('port loading', () => {
         expect(s().loadingPorts).toEqual({});
     });
 });
+
+describe('dragged position scope', () => {
+    it('clears positions when setTrail switches to a different root, keeps them for the same root', () => {
+        s().open('orders', { id: 1 });
+        s().moveNodes({ [root]: { x: 1, y: 2 } });
+        s().setTrail(openRoot('orders', { id: 1 }));
+        expect(s().dragged[root]).toEqual({ x: 1, y: 2 });
+        s().setTrail(openRoot('orders', { id: 2 }));
+        expect(s().dragged).toEqual({});
+    });
+
+    it('remove() prunes cluster positions whose source node left the trail', async () => {
+        s().open('orders', { id: 1 });
+        await vi.waitFor(() => expect(s().records[root].status).toBe('ready'));
+        api.related.mockResolvedValue(related('items', rows(1, 1), null));
+        s().expand(root, inSummary);
+        await vi.waitFor(() => expect(s().trail.nodes).toHaveLength(2));
+        const item = nodeId('items', { id: 1 });
+        const gone = `cluster:${clusterKey(item, 'fk', 'in')}`;
+        const kept = `cluster:${clusterKey(root, 'fk', 'in')}`;
+        s().moveNodes({
+            [item]: { x: 1, y: 1 },
+            [gone]: { x: 2, y: 2 },
+            [kept]: { x: 3, y: 3 },
+        });
+        s().remove(item);
+        expect(s().dragged).toEqual({ [kept]: { x: 3, y: 3 } });
+    });
+});

@@ -17,6 +17,8 @@ const BINARY_PLACEHOLDER = /^\[binary \d+ bytes\]$/;
 const INTEGER_TYPE =
     /^\s*((tiny|small|medium|big)?int\d*|integer|serial|bigserial|smallserial)(?![a-z])/i;
 // Floats cannot be keys: PDO binds them with 14 digits, so keyset paging repeats rows.
+// SQLite types a column by affinity: any declared type containing "int" is an integer.
+const SQLITE_INTEGER_TYPE = /int/i;
 const FLOAT_TYPE = /^\s*(real|double|float)(?![a-z])/i;
 
 const columnType = (table: TableSchema, name: string) =>
@@ -44,10 +46,13 @@ export function explorableTable(
 function canonicalValue(
     type: string,
     value: QueryCell,
+    dialect: string,
 ): string | number | null {
     if (value === null) return null;
     if (typeof value === 'boolean') return value ? 'true' : 'false';
-    if (INTEGER_TYPE.test(type)) {
+    if (
+        (dialect === 'sqlite' ? SQLITE_INTEGER_TYPE : INTEGER_TYPE).test(type)
+    ) {
         const text = String(value).trim();
         if (/^[+-]?\d+$/.test(text)) {
             const big = BigInt(text);
@@ -62,6 +67,7 @@ function canonicalValue(
 function buildKey(
     table: TableSchema,
     values: QueryCell[],
+    dialect: string,
 ): RecordKeyValues | null {
     const key: RecordKeyValues = {};
     for (let i = 0; i < table.primary_key.length; i++) {
@@ -72,7 +78,11 @@ function buildKey(
             (typeof value === 'string' && BINARY_PLACEHOLDER.test(value))
         )
             return null;
-        const canonical = canonicalValue(columnType(table, name), value);
+        const canonical = canonicalValue(
+            columnType(table, name),
+            value,
+            dialect,
+        );
         if (canonical === null) return null;
         key[name] = canonical;
     }
@@ -100,7 +110,7 @@ export function foreignRecordTarget(
         !parent.primary_key.every((c) => rel.to_columns.includes(c))
     )
         return null;
-    const key = buildKey(parent, [value]);
+    const key = buildKey(parent, [value], snapshot.driver);
     return key ? { table: parent.name, key } : null;
 }
 
@@ -120,7 +130,7 @@ export function rowRecordTarget(
         if (indexes.length !== 1) return null;
         values.push(row[indexes[0]] ?? null);
     }
-    const key = buildKey(table, values);
+    const key = buildKey(table, values, snapshot.driver);
     return key ? { table: table.name, key } : null;
 }
 
@@ -149,7 +159,7 @@ export function parsePaletteRecord(
         parts.some((p) => p === '')
     )
         return null;
-    const key = buildKey(table, parts);
+    const key = buildKey(table, parts, snapshot.driver);
     return key ? { table: table.name, key } : null;
 }
 

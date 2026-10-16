@@ -67,7 +67,7 @@ type State = {
     loadingPorts: Record<string, { from: string; port: string }>;
     /** Positions the user dragged cards and clusters to, by node id; they survive view switches and Back/Forward. */
     dragged: Record<string, Point>;
-    /** Bumped whenever the trail is replaced (open, setTrail, reset), so views can refit and drop drag state. */
+    /** Bumped whenever the trail is replaced (open, setTrail, reset), so views can refit. */
     epoch: number;
     /** Bumped when the store itself empties the trail (a failed root), so the URL is rewritten, not pushed. */
     systemEpoch: number;
@@ -544,10 +544,14 @@ export const useRecords = create<RecordsState>()((set, get) => {
                     ),
                 ),
                 dragged: Object.fromEntries(
-                    Object.entries(get().dragged).filter(
-                        ([k]) =>
-                            !trail.nodes.some((n) => n.id === k) || keep(k),
-                    ),
+                    Object.entries(get().dragged).filter(([k]) => {
+                        // A cluster's key starts with its source node's id.
+                        if (k.startsWith('cluster:'))
+                            return nodes.some((n) =>
+                                k.startsWith(`cluster:${n.id}|`),
+                            );
+                        return !trail.nodes.some((n) => n.id === k) || keep(k);
+                    }),
                 ),
                 trail: {
                     nodes,
@@ -633,6 +637,11 @@ export const useRecords = create<RecordsState>()((set, get) => {
                 records,
                 clusters,
                 loadingPorts: {},
+                // Positions belong to one exploration: another root means another trail.
+                dragged:
+                    trail.nodes[0]?.id === state.trail.nodes[0]?.id
+                        ? state.dragged
+                        : {},
                 notice: null,
                 noticeTable: null,
                 epoch: state.epoch + 1,

@@ -216,19 +216,24 @@ describe('parsePaletteRecord', () => {
     });
 
     it('anchors integer typing: interval and point keys stay text, int variants stay numbers', () => {
-        expect(parsePaletteRecord(snapshot, 'spans 1 day')?.key).toEqual({
+        const pg = makeSnapshot(
+            snapshot.tables.map((t) => ({ ...t })),
+            [],
+            'pgsql',
+        );
+        expect(parsePaletteRecord(pg, 'spans 1 day')?.key).toEqual({
             id: '1 day',
         });
-        expect(parsePaletteRecord(snapshot, 'places (1,2)')?.key).toEqual({
+        expect(parsePaletteRecord(pg, 'places (1,2)')?.key).toEqual({
             id: '(1,2)',
         });
-        expect(parsePaletteRecord(snapshot, 'prices 12.50')?.key).toEqual({
+        expect(parsePaletteRecord(pg, 'prices 12.50')?.key).toEqual({
             id: '12.50',
         });
-        expect(parsePaletteRecord(snapshot, 'small_ids 7')?.key).toEqual({
+        expect(parsePaletteRecord(pg, 'small_ids 7')?.key).toEqual({
             id: 7,
         });
-        expect(parsePaletteRecord(snapshot, 'unsigned_ids 7')?.key).toEqual({
+        expect(parsePaletteRecord(pg, 'unsigned_ids 7')?.key).toEqual({
             id: 7,
         });
     });
@@ -256,5 +261,30 @@ describe('openRecord', () => {
 
     it('displays a key', () => {
         expect(keyDisplay({ a: 1, b: 'x' })).toBe('1, x');
+    });
+});
+
+describe('sqlite integer affinity', () => {
+    const lite = (type: string) =>
+        makeSnapshot([{ name: 't', columns: [col('id', type)] }], [], 'sqlite');
+
+    it.each(['UNSIGNED BIG INT', 'MEDIUMINT', 'INT8', 'int2', 'NATIVE INT'])(
+        'treats %s as an integer key like the server does',
+        (type) => {
+            expect(parsePaletteRecord(lite(type), 't 7')?.key).toEqual({
+                id: 7,
+            });
+        },
+    );
+
+    it('keeps the anchored rule for pgsql, so interval stays text', () => {
+        const pg = makeSnapshot(
+            [{ name: 't', columns: [col('id', 'interval')] }],
+            [],
+            'pgsql',
+        );
+        expect(parsePaletteRecord(pg, 't 1 day')?.key).toEqual({
+            id: '1 day',
+        });
     });
 });
