@@ -96,6 +96,12 @@ function ConfirmBody({
                     <Label htmlFor="confirm-typed">
                         Type {target} to confirm
                     </Label>
+                    {target.includes(', ') && (
+                        <p className="text-xs text-muted-foreground">
+                            This statement names several objects: type them
+                            exactly as listed, separated by a comma and a space.
+                        </p>
+                    )}
                     <Input
                         id="confirm-typed"
                         autoComplete="off"

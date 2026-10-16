@@ -127,6 +127,25 @@ it('returns runnable display sql for quotes and placeholders in identifiers and 
     }
 });
 
+it('rejects comparison operators without a value instead of failing in the database', function (string $op, mixed $value) {
+    $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['filters' => [['column' => 'id', 'op' => $op, 'value' => $value]]])
+        ->assertUnprocessable()->assertJsonValidationErrors('filters.0.value');
+})->with([
+    ['eq', ''], ['neq', null], ['lt', ''], ['lte', ''], ['gt', null], ['gte', ''],
+]);
+
+it('still accepts an empty value for pattern and null operators, and 0 for comparisons', function () {
+    foreach ([['contains', ''], ['starts_with', null], ['is_null', null], ['eq', '0']] as [$op, $value]) {
+        $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['filters' => [['column' => 'id', 'op' => $op, 'value' => $value]]])->assertOk();
+    }
+});
+
+it('matches contains, starts_with and ends_with case-insensitively', function (string $op, string $value) {
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['filters' => [['column' => 'name', 'op' => $op, 'value' => $value]]])->assertOk();
+
+    expect($res->json('rows'))->toHaveCount(1)->and($res->json('rows.0.2'))->toBe('Ada Lovelace');
+})->with([['contains', 'ADA'], ['contains', 'lOvE'], ['starts_with', 'ada'], ['ends_with', 'LACE']]);
+
 it('rejects NUL bytes in filter values', function () {
     $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['filters' => [['column' => 'name', 'op' => 'eq', 'value' => "a\0b"]]])
         ->assertUnprocessable()->assertJsonValidationErrors('filters.0.value');

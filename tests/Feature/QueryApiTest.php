@@ -1,6 +1,7 @@
 <?php
 
 use App\Database\Query\HistoryRecorder;
+use App\Database\Query\StatementResult;
 use App\Database\Sql\StatementClassifier;
 use App\Enums\DriverName;
 use App\Models\QueryHistoryEntry;
@@ -215,4 +216,35 @@ it('rolls back a transaction left open at the end of a run and says so', functio
 
 it('forbids explaining on another user\'s connection', function () {
     $this->actingAs(User::factory()->create())->postJson(route('api.query.explain', $this->connection), ['sql' => 'select 1'])->assertForbidden();
+});
+
+it('stores credential literals redacted in history, also from a failing statement and its error text', function () {
+    // "select 1 as password 'x'" is a syntax error on SQLite: both the statement and the DB message mention the secret.
+    ($this->run)([['sql' => "select 1 as password 's3cretpw'"]])->assertOk()->assertJsonPath('results.0.error.kind', 'syntax');
+
+    $entry = QueryHistoryEntry::where('connection_id', $this->connection->id)->firstOrFail();
+    expect($entry->sql)->toBe("select 1 as password '***'")
+        ->and($entry->error)->not->toContain('s3cretpw')
+        ->and(json_encode($entry->toArray()))->not->toContain('s3cretpw');
+});
+
+it('redacts per dialect when recording history', function (DriverName $driver, string $sql, string $expected) {
+    $connection = SavedConnection::factory()->for($this->user)->create(['driver' => $driver]);
+    $result = new StatementResult($sql, StatementClassifier::classify($sql, $driver->value), [], [], false, 0, 1);
+
+    app(HistoryRecorder::class)->record($connection, $result);
+
+    expect($connection->history()->value('sql'))->toBe($expected);
+})->with([
+    'pgsql' => [DriverName::Postgres, "ALTER ROLE x PASSWORD 's3cret'", "ALTER ROLE x PASSWORD '***'"],
+    'mysql' => [DriverName::MySql, "CREATE USER u IDENTIFIED BY 's3cret'", "CREATE USER u IDENTIFIED BY '***'"],
+]);
+
+it('asks for every target of a multi-object DROP, typed exactly as listed', function () {
+    $sql = 'drop table if exists m5_a, m5_b';
+    ($this->run)([['sql' => $sql, 'confirmed' => true]])
+        ->assertStatus(409)->assertJsonPath('confirmation.mode', 'typed')->assertJsonPath('confirmation.target', 'm5_a, m5_b');
+
+    ($this->run)([['sql' => $sql, 'typed' => 'm5_a']])->assertStatus(409);
+    ($this->run)([['sql' => $sql, 'typed' => 'm5_a, m5_b']])->assertOk();
 });

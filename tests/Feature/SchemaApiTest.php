@@ -58,3 +58,19 @@ it('forbids other users and guests', function () {
     auth()->logout();
     $this->getJson(route('api.schema.show', $this->connection))->assertUnauthorized();
 });
+
+it('introspects SQLite tables, views and indexes whose names contain a quote', function () {
+    $pdo = new PDO('sqlite:'.$this->connection->database);
+    $pdo->exec('create table "o\'clock" (id integer primary key, "it\'s" text, owner_id integer references users(id))');
+    $pdo->exec('create index "o\'clock idx" on "o\'clock" ("it\'s")');
+    $pdo->exec('create view "v\'iew" as select id from "o\'clock"');
+    unset($pdo);
+
+    $response = $this->actingAs($this->user)->getJson(route('api.schema.show', $this->connection))->assertOk();
+
+    $table = collect($response->json('snapshot.tables'))->firstWhere('name', "o'clock");
+    expect($table)->not->toBeNull()
+        ->and(collect($table['columns'])->pluck('name')->all())->toBe(['id', "it's", 'owner_id'])
+        ->and(collect($table['indexes'])->pluck('name')->all())->toContain("o'clock idx")
+        ->and(collect($response->json('snapshot.tables'))->pluck('name'))->toContain("v'iew");
+});

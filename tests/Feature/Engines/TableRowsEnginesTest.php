@@ -25,6 +25,11 @@ it('filters rows with LIKE on every engine', function (string $engine) {
         $rows('users', ['filters' => [['column' => 'name', 'op' => 'starts_with', 'value' => 'A']]])->assertOk()->assertJsonCount(2, 'rows');
         $rows('users', ['filters' => [['column' => 'name', 'op' => 'contains', 'value' => '%']]])->assertOk()->assertJsonCount(0, 'rows');
         $rows('users', ['filters' => [['column' => 'name', 'op' => 'contains', 'value' => '!']]])->assertOk()->assertJsonCount(0, 'rows');
+        // contains / starts_with / ends_with ignore case on every engine (PostgreSQL via ILIKE).
+        foreach ([['contains', 'ADA'], ['starts_with', 'ada'], ['ends_with', 'LACE']] as [$op, $value]) {
+            expect($rows('users', ['filters' => [['column' => 'name', 'op' => $op, 'value' => $value]]])->assertOk()->json('rows.0.2'))->toBe('Ada Lovelace');
+        }
+        $rows('users', ['filters' => [['column' => 'id', 'op' => 'eq', 'value' => '']]])->assertUnprocessable();
         $rows('users', ['sort' => ['column' => 'id', 'direction' => 'desc'], 'per_page' => 1])->assertOk()
             ->assertJsonPath('rows.0.0', 3)->assertJsonPath('has_more', true);
         expect($rows('audit_log', [])->assertOk()->json('rows.0.1'))->toBe(str_repeat('x', 4000).'…');

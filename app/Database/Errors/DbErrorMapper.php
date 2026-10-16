@@ -43,7 +43,8 @@ final class DbErrorMapper
         $message = $this->clean($raw);
         $position = $this->position($raw, $columnOffset);
         // Match on the cleaned message only: the raw QueryException suffix embeds user SQL text.
-        $lower = strtolower($message);
+        // The first line only: DETAIL/HINT lines quote row values, which must not steer the classification.
+        $lower = strtolower((string) strtok($message, "\n"));
         $connectionClass = str_starts_with((string) $sqlstate, '08')
             || in_array($driverCode, [2002, 2003, 2005, 2006, 2026, 3159], true)
             || ($pdo !== null && $pdo->errorInfo === null);
@@ -83,8 +84,17 @@ final class DbErrorMapper
         $message = preg_replace('/\s*\(Connection: .*$/s', '', $message) ?? $message;
         $message = preg_replace('/^SQLSTATE\[\w{5}\](:\s*[^:]+:)?\s*(\[\d+\]\s*)?(\d+\s+)?/', '', $message) ?? $message;
 
-        // PostgreSQL appends LINE/caret context on further lines; the position is reported separately.
-        return trim((string) strtok(trim($message), "\n"));
+        // PostgreSQL appends LINE/caret context on further lines; the position is reported separately. Its DETAIL and
+        // HINT lines ("Key (id)=(1) already exists.") are what makes many errors actionable, so they are kept.
+        $lines = preg_split('/\R/', trim($message)) ?: [];
+        $out = [trim((string) array_shift($lines))];
+        foreach ($lines as $line) {
+            if (preg_match('/^(DETAIL|HINT):\s*(.+)$/', trim($line), $m)) {
+                $out[] = $m[1].': '.trim($m[2]);
+            }
+        }
+
+        return implode("\n", $out);
     }
 
     /** @return array{line: int, column: ?int}|null */

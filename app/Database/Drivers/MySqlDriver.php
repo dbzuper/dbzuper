@@ -140,6 +140,11 @@ class MySqlDriver implements Driver
         return $quotedColumn;
     }
 
+    public function likeOperator(): string
+    {
+        return 'LIKE';
+    }
+
     public function sampleColumn(Connection $db, string $column, string $typeName, int $maxChars = CellValue::MAX_CHARS): Expression|string
     {
         $q = $this->quoteIdentifier($column);

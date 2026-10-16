@@ -201,39 +201,9 @@ function classifyTokens(t: SqlToken[]): Classification {
     if (first === 'PRAGMA') return pragma(t);
     if (first === 'UPDATE' || first === 'DELETE')
         return updateOrDelete(t, first);
-    if (first === 'DROP') {
-        return result(
-            'destructive',
-            'DROP',
-            nameAfter(t, 1, [
-                'TABLE',
-                'VIEW',
-                'INDEX',
-                'DATABASE',
-                'SCHEMA',
-                'SEQUENCE',
-                'FUNCTION',
-                'PROCEDURE',
-                'TRIGGER',
-                'TYPE',
-                'MATERIALIZED',
-                'TEMPORARY',
-                'TEMP',
-                'IF',
-                'EXISTS',
-                'CONCURRENTLY',
-                'EXTENSION',
-                'ROLE',
-                'USER',
-            ]),
-        );
-    }
+    if (first === 'DROP') return result('destructive', 'DROP', dropTarget(t));
     if (first === 'TRUNCATE')
-        return result(
-            'destructive',
-            'TRUNCATE',
-            nameAfter(t, 1, ['TABLE', 'ONLY']),
-        );
+        return result('destructive', 'TRUNCATE', truncateTarget(t));
     if (TRANSACTION.includes(first)) return transaction(t, first);
     if (SESSION.includes(first)) return result('session', first);
     if (DDL.includes(first)) return result('ddl', first);
@@ -432,6 +402,107 @@ function updateOrDelete(t: SqlToken[], first: string): Classification {
               ]
             : ['LOW_PRIORITY', 'QUICK', 'IGNORE', 'FROM', 'ONLY'];
     return result('destructive', first, nameAfter(t, 1, skip));
+}
+
+/** Object kinds after DROP (multi-word kinds first so they win over their first word). */
+const DROP_KINDS: string[][] = [
+    ['FOREIGN', 'DATA', 'WRAPPER'],
+    ['FOREIGN', 'TABLE'],
+    ['MATERIALIZED', 'VIEW'],
+    ['EVENT', 'TRIGGER'],
+    ['TEXT', 'SEARCH', 'CONFIGURATION'],
+    ['TEXT', 'SEARCH', 'DICTIONARY'],
+    ['TEXT', 'SEARCH', 'PARSER'],
+    ['TEXT', 'SEARCH', 'TEMPLATE'],
+    ['ACCESS', 'METHOD'],
+    ['TABLE'],
+    ['VIEW'],
+    ['INDEX'],
+    ['DATABASE'],
+    ['SCHEMA'],
+    ['SEQUENCE'],
+    ['FUNCTION'],
+    ['PROCEDURE'],
+    ['ROUTINE'],
+    ['AGGREGATE'],
+    ['TRIGGER'],
+    ['TYPE'],
+    ['DOMAIN'],
+    ['EXTENSION'],
+    ['ROLE'],
+    ['USER'],
+    ['GROUP'],
+    ['POLICY'],
+    ['EVENT'],
+    ['COLLATION'],
+    ['RULE'],
+    ['PUBLICATION'],
+    ['SUBSCRIPTION'],
+    ['SERVER'],
+    ['TABLESPACE'],
+    ['LANGUAGE'],
+    ['CONVERSION'],
+    ['OPERATOR'],
+];
+
+/** DROP [TEMPORARY] <kind> [CONCURRENTLY] [IF EXISTS] name [, name ...]: the comma-joined names. */
+function dropTarget(t: SqlToken[]): string | null {
+    let i = 1;
+    if (t[i]?.type === 'word' && ['TEMPORARY', 'TEMP'].includes(upper(t[i])))
+        i++;
+    for (const kind of DROP_KINDS) {
+        if (kind.every((word, o) => isWord(t[i + o], word))) {
+            i += kind.length;
+            break;
+        }
+    }
+    if (isWord(t[i], 'CONCURRENTLY')) i++;
+    if (isWord(t[i], 'IF') && isWord(t[i + 1], 'EXISTS')) i += 2;
+    return nameList(t, i);
+}
+
+function truncateTarget(t: SqlToken[]): string | null {
+    let i = 1;
+    if (isWord(t[i], 'TABLE')) i++;
+    return nameList(t, i);
+}
+
+/**
+ * Comma-separated (possibly dotted) object names starting at i, joined as "a, b".
+ * Tolerates ONLY before a name, "*" after one and a function argument list.
+ */
+function nameList(t: SqlToken[], i: number): string | null {
+    const names: string[] = [];
+    for (;;) {
+        if (
+            isWord(t[i], 'ONLY') &&
+            (t[i + 1]?.type === 'word' || t[i + 1]?.type === 'quoted')
+        )
+            i++;
+        const parts: string[] = [];
+        while (
+            i < t.length &&
+            (t[i].type === 'word' || t[i].type === 'quoted')
+        ) {
+            parts.push(identifierOf(t[i]));
+            i++;
+            if (t[i] && isPunct(t[i], '.')) {
+                i++;
+                continue;
+            }
+            break;
+        }
+        if (parts.length === 0) break;
+        names.push(parts.join('.'));
+        if (t[i] && isPunct(t[i], '(')) i = skipGroup(t, i);
+        if (t[i] && isPunct(t[i], '*')) i++;
+        if (t[i] && isPunct(t[i], ',')) {
+            i++;
+            continue;
+        }
+        break;
+    }
+    return names.length === 0 ? null : names.join(', ');
 }
 
 /** The (possibly dotted) object name starting at i after skipping the given keywords. */

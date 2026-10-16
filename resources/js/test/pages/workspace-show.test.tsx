@@ -27,7 +27,12 @@ vi.mock('@inertiajs/react', () => ({
     ),
 }));
 vi.mock('@/components/sql/sql-dock', () => ({
-    default: () => <section aria-label="SQL editor" />,
+    default: ({ snapshot }: { snapshot: unknown }) => (
+        <section
+            aria-label="SQL editor"
+            data-has-snapshot={String(snapshot !== null)}
+        />
+    ),
 }));
 vi.mock('@/components/records/records-view', () => ({
     default: () => <section aria-label="Record explorer" />,
@@ -195,6 +200,19 @@ describe('workspace page', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
         await waitFor(() => expect(api.schema).toHaveBeenCalledTimes(2));
     });
+
+    it('opens the SQL dock even when the schema could not be loaded', async () => {
+        api.schema.mockRejectedValueOnce(new Error('x'));
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByRole('alert');
+
+        fireEvent.keyDown(window, { key: 'j', ctrlKey: true });
+
+        expect(
+            await screen.findByRole('region', { name: 'SQL editor' }),
+        ).toHaveAttribute('data-has-snapshot', 'false');
+    });
+
     it('keeps the selection when inferred relationships are toggled', async () => {
         render(<WorkspaceShow connection={connection} />);
         await screen.findByText('orders');

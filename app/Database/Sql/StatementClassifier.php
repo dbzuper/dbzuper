@@ -10,6 +10,15 @@ final class StatementClassifier
 
     private const TRANSACTION = ['BEGIN', 'START', 'COMMIT', 'ROLLBACK', 'SAVEPOINT', 'RELEASE', 'END', 'ABORT', 'XA'];
 
+    /** Object kinds after DROP (multi-word kinds first so they win over their first word). */
+    private const DROP_KINDS = [
+        ['FOREIGN', 'DATA', 'WRAPPER'], ['FOREIGN', 'TABLE'], ['MATERIALIZED', 'VIEW'], ['EVENT', 'TRIGGER'],
+        ['TEXT', 'SEARCH', 'CONFIGURATION'], ['TEXT', 'SEARCH', 'DICTIONARY'], ['TEXT', 'SEARCH', 'PARSER'], ['TEXT', 'SEARCH', 'TEMPLATE'],
+        ['ACCESS', 'METHOD'], ['TABLE'], ['VIEW'], ['INDEX'], ['DATABASE'], ['SCHEMA'], ['SEQUENCE'], ['FUNCTION'], ['PROCEDURE'], ['ROUTINE'],
+        ['AGGREGATE'], ['TRIGGER'], ['TYPE'], ['DOMAIN'], ['EXTENSION'], ['ROLE'], ['USER'], ['GROUP'], ['POLICY'], ['EVENT'], ['COLLATION'],
+        ['RULE'], ['PUBLICATION'], ['SUBSCRIPTION'], ['SERVER'], ['TABLESPACE'], ['LANGUAGE'], ['CONVERSION'], ['OPERATOR'],
+    ];
+
     private const SESSION = ['SET', 'USE', 'RESET', 'DISCARD', 'LISTEN', 'NOTIFY', 'UNLISTEN'];
 
     /** EXPLAIN (...) options and values that cannot execute the statement; anything else counts as ANALYZE. */
@@ -81,8 +90,8 @@ final class StatementClassifier
             $first === 'VALUES', $first === 'TABLE' => self::select($t, $first),
             $first === 'PRAGMA' => self::pragma($t),
             $first === 'UPDATE', $first === 'DELETE' => self::updateOrDelete($t, $first),
-            $first === 'DROP' => new Classification('destructive', 'DROP', self::nameAfter($t, 1, ['TABLE', 'VIEW', 'INDEX', 'DATABASE', 'SCHEMA', 'SEQUENCE', 'FUNCTION', 'PROCEDURE', 'TRIGGER', 'TYPE', 'MATERIALIZED', 'TEMPORARY', 'TEMP', 'IF', 'EXISTS', 'CONCURRENTLY', 'EXTENSION', 'ROLE', 'USER'])),
-            $first === 'TRUNCATE' => new Classification('destructive', 'TRUNCATE', self::nameAfter($t, 1, ['TABLE', 'ONLY'])),
+            $first === 'DROP' => new Classification('destructive', 'DROP', self::dropTarget($t)),
+            $first === 'TRUNCATE' => new Classification('destructive', 'TRUNCATE', self::truncateTarget($t)),
             in_array($first, self::TRANSACTION, true) => self::transaction($t, $first),
             in_array($first, self::SESSION, true) => new Classification('session', $first),
             in_array($first, self::DDL, true) => new Classification('ddl', $first),
@@ -309,6 +318,93 @@ final class StatementClassifier
         $skip = $first === 'UPDATE' ? ['LOW_PRIORITY', 'IGNORE', 'ONLY', 'OR', 'ROLLBACK', 'ABORT', 'REPLACE', 'FAIL'] : ['LOW_PRIORITY', 'QUICK', 'IGNORE', 'FROM', 'ONLY'];
 
         return new Classification('destructive', $first, self::nameAfter($t, 1, $skip));
+    }
+
+    /**
+     * DROP [TEMPORARY] <kind> [CONCURRENTLY] [IF EXISTS] name [, name ...]: the comma-joined names.
+     *
+     * @param  list<Token>  $t
+     */
+    private static function dropTarget(array $t): ?string
+    {
+        $i = 1;
+        if (isset($t[$i]) && $t[$i]->type === 'word' && in_array($t[$i]->upper(), ['TEMPORARY', 'TEMP'], true)) {
+            $i++;
+        }
+        foreach (self::DROP_KINDS as $kind) {
+            foreach ($kind as $offset => $word) {
+                if (! isset($t[$i + $offset]) || $t[$i + $offset]->type !== 'word' || $t[$i + $offset]->upper() !== $word) {
+                    continue 2;
+                }
+            }
+            $i += count($kind);
+
+            break;
+        }
+        if (isset($t[$i]) && $t[$i]->type === 'word' && $t[$i]->upper() === 'CONCURRENTLY') {
+            $i++;
+        }
+        if (isset($t[$i + 1]) && $t[$i]->type === 'word' && $t[$i]->upper() === 'IF' && $t[$i + 1]->type === 'word' && $t[$i + 1]->upper() === 'EXISTS') {
+            $i += 2;
+        }
+
+        return self::nameList($t, $i);
+    }
+
+    /** @param list<Token> $t */
+    private static function truncateTarget(array $t): ?string
+    {
+        $i = 1;
+        if (isset($t[$i]) && $t[$i]->type === 'word' && $t[$i]->upper() === 'TABLE') {
+            $i++;
+        }
+
+        return self::nameList($t, $i);
+    }
+
+    /**
+     * Comma-separated (possibly dotted) object names starting at $i, joined as "a, b".
+     * Tolerates ONLY before a name, "*" after one and a function argument list.
+     *
+     * @param  list<Token>  $t
+     */
+    private static function nameList(array $t, int $i): ?string
+    {
+        $names = [];
+        while (true) {
+            if (isset($t[$i]) && $t[$i]->type === 'word' && $t[$i]->upper() === 'ONLY' && isset($t[$i + 1]) && in_array($t[$i + 1]->type, ['word', 'quoted'], true)) {
+                $i++;
+            }
+            $parts = [];
+            while (isset($t[$i]) && ($t[$i]->type === 'word' || $t[$i]->type === 'quoted')) {
+                $parts[] = $t[$i]->identifier();
+                $i++;
+                if (isset($t[$i]) && self::isPunct($t[$i], '.')) {
+                    $i++;
+
+                    continue;
+                }
+                break;
+            }
+            if ($parts === []) {
+                break;
+            }
+            $names[] = implode('.', $parts);
+            if (isset($t[$i]) && self::isPunct($t[$i], '(')) {
+                $i = self::skipGroup($t, $i);
+            }
+            if (isset($t[$i]) && self::isPunct($t[$i], '*')) {
+                $i++;
+            }
+            if (isset($t[$i]) && self::isPunct($t[$i], ',')) {
+                $i++;
+
+                continue;
+            }
+            break;
+        }
+
+        return $names === [] ? null : implode(', ', $names);
     }
 
     /**

@@ -101,6 +101,6 @@ final class TableRowsQuery
             'starts_with' => "{$escaped}%",
             'ends_with' => "%{$escaped}",
         };
-        $where($driver->likeColumn($column).' LIKE ', " ESCAPE '!'", $pattern);
+        $where($driver->likeColumn($column).' '.$driver->likeOperator().' ', " ESCAPE '!'", $pattern);
     }
 }

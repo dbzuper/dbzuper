@@ -36,7 +36,8 @@ class SqliteInspector extends LaravelSchemaInspector
 
     /**
      * Laravel's schema builder splits "schema.table" on every dot, which breaks table names
-     * containing dots; call the grammar with separate schema/table arguments instead.
+     * containing dots; call the grammar with separate schema/table arguments instead. The grammar wraps names in
+     * single quotes without escaping them, so a quote inside a name is doubled here.
      */
     protected function describe(Connection $db, string $schema, array $tableNames, array $viewNames): array
     {
@@ -44,15 +45,17 @@ class SqliteInspector extends LaravelSchemaInspector
         $processor = $db->getPostProcessor();
         $out = ['columns' => [], 'indexes' => [], 'foreignKeys' => []];
 
+        $literal = fn (string $name) => str_replace("'", "''", $name);
+
         foreach ([...$tableNames, ...$viewNames] as $name) {
             $out['columns'][$name] = $processor->processColumns(
-                $db->select($grammar->compileColumns($schema, $name)),
-                $db->scalar($grammar->compileSqlCreateStatement($schema, $name))
+                $db->select($grammar->compileColumns($schema, $literal($name))),
+                $db->scalar($grammar->compileSqlCreateStatement($schema, $literal($name)))
             );
         }
         foreach ($tableNames as $name) {
-            $out['indexes'][$name] = $processor->processIndexes($db->select($grammar->compileIndexes($schema, $name)));
-            $out['foreignKeys'][$name] = $processor->processForeignKeys($db->select($grammar->compileForeignKeys($schema, $name)));
+            $out['indexes'][$name] = $processor->processIndexes($db->select($grammar->compileIndexes($schema, $literal($name))));
+            $out['foreignKeys'][$name] = $processor->processForeignKeys($db->select($grammar->compileForeignKeys($schema, $literal($name))));
         }
 
         return $out;

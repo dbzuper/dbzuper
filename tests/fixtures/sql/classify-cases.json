@@ -277,5 +277,101 @@
     { "dialect": "mysql", "sql": "xa rollback 'x'", "kind": "write" },
     { "dialect": "mysql", "sql": "xa commit 'x' one phase", "kind": "write" },
     { "dialect": "mysql", "sql": "xa start 'x'", "kind": "transaction" },
-    { "dialect": "mysql", "sql": "xa end 'x'", "kind": "transaction" }
+    { "dialect": "mysql", "sql": "xa end 'x'", "kind": "transaction" },
+    {
+        "dialect": "pgsql",
+        "sql": "drop table a, b",
+        "kind": "destructive",
+        "target": "a, b"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop table if exists public.a, \"B c\" cascade",
+        "kind": "destructive",
+        "target": "public.a, B c"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "truncate a, b",
+        "kind": "destructive",
+        "target": "a, b"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "truncate table only a, only b restart identity",
+        "kind": "destructive",
+        "target": "a, b"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "truncate a *, b *",
+        "kind": "destructive",
+        "target": "a, b"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop foreign table ft",
+        "kind": "destructive",
+        "target": "ft"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop policy p on t",
+        "kind": "destructive",
+        "target": "p"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop domain if exists d1, d2",
+        "kind": "destructive",
+        "target": "d1, d2"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "drop event ev",
+        "kind": "destructive",
+        "target": "ev"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop materialized view if exists mv",
+        "kind": "destructive",
+        "target": "mv"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "drop temporary table tmp1, tmp2",
+        "kind": "destructive",
+        "target": "tmp1, tmp2"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop table data",
+        "kind": "destructive",
+        "target": "data"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop index concurrently idx",
+        "kind": "destructive",
+        "target": "idx"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop function f(int), g(text)",
+        "kind": "destructive",
+        "target": "f, g"
+    },
+    {
+        "dialect": "pgsql",
+        "sql": "drop foreign data wrapper w",
+        "kind": "destructive",
+        "target": "w"
+    },
+    {
+        "dialect": "mysql",
+        "sql": "drop user u1",
+        "kind": "destructive",
+        "target": "u1"
+    }
 ]

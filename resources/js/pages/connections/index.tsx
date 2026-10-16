@@ -1,12 +1,19 @@
 import { Button } from '@/components/ui/button';
+import { useSqlTabs } from '@/sql/tabs-store';
 import type { ConnectionSummary } from '@/types/connection';
 import { Head, Link, router } from '@inertiajs/react';
+import { useEffect } from 'react';
 
 export default function ConnectionsIndex({
     connections,
 }: {
     connections: ConnectionSummary[];
 }) {
+    // Drafts of connections that were removed (here or elsewhere) would otherwise stay in localStorage forever.
+    useEffect(() => {
+        useSqlTabs.getState().prune(connections.map((c) => c.id));
+    }, [connections]);
+
     const remove = (c: ConnectionSummary) => {
         if (
             window.confirm(

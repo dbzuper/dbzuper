@@ -40,12 +40,13 @@ Open the SQL editor with Ctrl/⌘+J or the rail. It autocompletes tables, column
 - Run the statement at the cursor (or the selection) with Ctrl/⌘+Enter; run every statement with Ctrl/⌘+Shift+Enter (one connection, so transactions work across the batch).
 - Each run uses a fresh connection, so a transaction only spans a single run: run `BEGIN … COMMIT` together. A transaction still open when a run ends is rolled back, and the results panel says so.
 - Explain shows the query plan. It refuses `EXPLAIN ANALYZE` of writes, which would execute them.
-- Writes, DDL and session statements need a confirm click. Destructive ones (`UPDATE`/`DELETE` without `WHERE`, `DROP`, `TRUNCATE`) need the target table (or the keyword, when there is no target) typed back.
+- Writes, DDL and session statements need a confirm click. Destructive ones (`UPDATE`/`DELETE` without `WHERE`, `DROP`, `TRUNCATE`) need the target table (or the keyword, when there is no target) typed back. A statement naming several objects (`DROP TABLE a, b`, `TRUNCATE a, b`) needs all of them typed back as listed, separated by a comma and a space (`a, b`).
 - Read-only connections refuse everything except reads and transactions, and re-assert read-only before every statement.
 - Limits: the row limit defaults to 1,000 and goes up to 10,000, cells are cut at 4,000 characters, a batch response is capped at 20 MB, and statements have a timeout (`DBSUPERB_QUERY_TIMEOUT`, default 15 seconds). The timeout covers every statement on MariaDB (`max_statement_time`) and PostgreSQL (`statement_timeout`), only `SELECT` statements on MySQL (`max_execution_time`), and nothing on SQLite, which runs in-process.
 - Cancel stops waiting for the response; the server may still finish the statement.
-- The Data tab in the inspector adds server-side filters, sorting (click a column header) and paging; "Open in SQL" opens the equivalent query in the editor.
-- History is kept per connection (rail > History) and across connections on `/history`, trimmed to `DBSUPERB_HISTORY_KEEP` entries per connection (default 5000). SQL is stored as typed, so avoid putting secrets in SQL on connections with history enabled.
+- The SQL editor also works when the schema could not be loaded; only autocompletion is off until the schema loads.
+- The Data tab in the inspector adds server-side filters, sorting (click a column header) and paging; "Open in SQL" opens the equivalent query in the editor. `contains`, `starts with` and `ends with` ignore case on every engine: PostgreSQL uses `ILIKE`, while MySQL, MariaDB and SQLite use `LIKE`, which is case-insensitive for ASCII with their default collations (a column with a case-sensitive or binary collation stays case-sensitive). Comparison operators (`=`, `≠`, `<`, `≤`, `>`, `≥`) need a value.
+- History is kept per connection (rail > History) and across connections on `/history`, trimmed to `DBSUPERB_HISTORY_KEEP` entries per connection (default 5000). SQL is stored as typed, except that the literal after `PASSWORD`, `IDENTIFIED BY` and `IDENTIFIED WITH … BY` (also `ENCRYPTED PASSWORD`) is replaced by `'***'`; still avoid putting other secrets in SQL on connections with history enabled.
 
 ## Record explorer
 

@@ -113,17 +113,30 @@ export const ResultPanel = memo(function ResultPanel({
     results,
     error,
     running,
+    cancelled = false,
     snapshot = null,
     openTransactionRolledBack = false,
 }: {
     results: StatementResultPayload[];
     error: DbErrorPayload | null;
+    /** Whether the statement of the tab this panel shows is in flight. */
     running: boolean;
+    cancelled?: boolean;
     snapshot?: SchemaSnapshot | null;
     openTransactionRolledBack?: boolean;
 }) {
     const [index, setIndex] = useState(0);
-    useEffect(() => setIndex(0), [results]);
+    // A batch stops at its first error, so show that statement's tab rather than the first one.
+    useEffect(
+        () =>
+            setIndex(
+                Math.max(
+                    0,
+                    results.findIndex((r) => r.error),
+                ),
+            ),
+        [results],
+    );
 
     if (error) return <ErrorView error={error} />;
     if (results.length === 0)
@@ -131,7 +144,9 @@ export const ResultPanel = memo(function ResultPanel({
             <p className="p-3 text-xs text-muted-foreground">
                 {running
                     ? 'Running…'
-                    : 'Run a statement to see its results here.'}
+                    : cancelled
+                      ? 'Cancelled.'
+                      : 'Run a statement to see its results here.'}
             </p>
         );
 

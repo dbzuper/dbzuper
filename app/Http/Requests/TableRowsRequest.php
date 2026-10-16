@@ -19,7 +19,8 @@ class TableRowsRequest extends FormRequest
             'filters' => ['sometimes', 'array', 'max:20'],
             'filters.*.column' => ['required', 'string', 'max:255'],
             'filters.*.op' => ['required', Rule::in(TableRowsQuery::OPS)],
-            'filters.*.value' => ['nullable', 'string', 'max:1000', 'not_regex:/\x00/'],
+            // Comparison operators need a value: an empty one would be bound as '' and fail on typed columns.
+            'filters.*.value' => ['required_if:filters.*.op,eq,neq,lt,lte,gt,gte', 'nullable', 'string', 'max:1000', 'not_regex:/\x00/'],
             'sort' => ['sometimes', 'nullable', 'array'],
             'sort.column' => ['required_with:sort', 'string', 'max:255'],
             'sort.direction' => ['required_with:sort', 'in:asc,desc'],

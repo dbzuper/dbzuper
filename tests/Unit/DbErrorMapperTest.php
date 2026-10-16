@@ -89,3 +89,20 @@ it('extracts error positions', function (string $message, ?array $errorInfo, ?ar
     'mysql at line' => ["SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual near 'form users' at line 3", ['42000', 1064, 'x'], ['line' => 3, 'column' => null]],
     'none' => ['SQLSTATE[HY000]: General error: 1 no such table: x', ['HY000', 1, 'x'], null],
 ]);
+
+it('keeps PostgreSQL DETAIL and HINT lines after the first line', function () {
+    $raw = "SQLSTATE[23505]: Unique violation: 7 ERROR:  duplicate key value violates unique constraint \"users_pkey\"\nDETAIL:  Key (id)=(1) already exists. (Connection: pgsql, Host: h, Port: 5432, Database: d, SQL: insert into users (id) values (1))";
+    $error = (new DbErrorMapper)->map(pdoError($raw, 0, ['23505', 7, 'x']));
+
+    expect($error->message)->toBe("ERROR:  duplicate key value violates unique constraint \"users_pkey\"\nDETAIL: Key (id)=(1) already exists.");
+
+    $withHint = "SQLSTATE[42703]: Undefined column: 7 ERROR:  column \"nme\" does not exist\nLINE 1: select nme from users\n               ^\nHINT:  Perhaps you meant to reference the column \"users.name\".";
+    expect((new DbErrorMapper)->map(pdoError($withHint, 0, ['42703', 7, 'x']))->message)
+        ->toBe("ERROR:  column \"nme\" does not exist\nHINT: Perhaps you meant to reference the column \"users.name\".");
+});
+
+it('does not classify by text quoted in DETAIL', function () {
+    $raw = "SQLSTATE[23505]: Unique violation: 7 ERROR:  duplicate key value violates unique constraint \"u\"\nDETAIL:  Key (name)=(password authentication failed) already exists.";
+
+    expect((new DbErrorMapper)->map(pdoError($raw, 0, ['23505', 7, 'x']))->kind)->toBe('unknown');
+});

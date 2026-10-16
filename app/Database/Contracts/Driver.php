@@ -43,6 +43,9 @@ interface Driver
     /** SQL expression usable on the left of LIKE for any column type. */
     public function likeColumn(string $quotedColumn): string;
 
+    /** Pattern operator for case-insensitive matching: LIKE where the default collation is already case-insensitive. */
+    public function likeOperator(): string;
+
     /** Quote one identifier as a single name (no splitting on dots). */
     public function quoteIdentifier(string $name): string;
 }

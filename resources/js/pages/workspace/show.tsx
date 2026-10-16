@@ -484,7 +484,7 @@ export default function WorkspaceShow({
                     {!snapshot && loading && (
                         <div className={centered}>Loading schema…</div>
                     )}
-                    {snapshot && dockOpen && (
+                    {dockOpen && (
                         <Suspense fallback={null}>
                             <SqlDock
                                 connection={connection}

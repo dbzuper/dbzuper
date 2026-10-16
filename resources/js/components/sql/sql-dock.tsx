@@ -36,7 +36,11 @@ type TabResults = {
     results: StatementResultPayload[];
     error: DbErrorPayload | null;
     rolledBack?: boolean;
+    cancelled?: boolean;
 };
+
+/** The dock leaves this much of the workspace visible above it. */
+const DOCK_HEADROOM = 80;
 
 /** Statement texts plus each one's start offset in the full model text. */
 type RunTarget = { statements: string[]; offsets: number[] };
@@ -46,10 +50,27 @@ export default function SqlDock({
     snapshot,
 }: {
     connection: ConnectionSummary;
-    snapshot: SchemaSnapshot;
+    /** Null when introspection failed: SQL still runs, only completions are off. */
+    snapshot: SchemaSnapshot | null;
 }) {
     const height = useWorkspace((s) => s.dockHeight);
+    const setHeight = useWorkspace((s) => s.setDockHeight);
     const setOpen = useWorkspace((s) => s.setDockOpen);
+    const section = useRef<HTMLElement>(null);
+
+    // The dock never covers the whole workspace: it is clamped to the space it sits in (minus a strip of
+    // headroom) when it opens, when it is resized and when the window is.
+    useEffect(() => {
+        const clamp = () => {
+            const room = section.current?.parentElement?.clientHeight ?? 0;
+            const max = room - DOCK_HEADROOM;
+            if (max > 0 && useWorkspace.getState().dockHeight > max)
+                setHeight(max);
+        };
+        clamp();
+        window.addEventListener('resize', clamp);
+        return () => window.removeEventListener('resize', clamp);
+    }, [height, setHeight]);
     const tabs = useSqlTabs((s) => s.byConnection[connection.id]);
     const ensure = useSqlTabs((s) => s.ensure);
     const setSql = useSqlTabs((s) => s.setSql);
@@ -79,7 +100,8 @@ export default function SqlDock({
     const controller = useRef<AbortController | null>(null);
     const pendingConfirm = useRef<((a: ConfirmAnswer) => void) | null>(null);
     const [maxRows, setMaxRows] = useState(DEFAULT_ROW_LIMIT);
-    const [running, setRunning] = useState(false);
+    // The tab whose statement is in flight (one run at a time, dock-wide).
+    const [runningTab, setRunningTab] = useState<string | null>(null);
     const runningRef = useRef(false);
     const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
         null,
@@ -118,7 +140,7 @@ export default function SqlDock({
     });
     useEffect(() => () => cancelRef.current(), []);
 
-    const dialect = snapshot.driver as Dialect;
+    const dialect: Dialect = connection.driver;
 
     /** The selected text split into statements, or the statement at the cursor. */
     const currentTarget = useCallback((): RunTarget | null => {
@@ -190,7 +212,7 @@ export default function SqlDock({
             const abort = new AbortController();
             controller.current = abort;
             runningRef.current = true;
-            setRunning(true);
+            setRunningTab(tabId);
             let outcome: RunOutcome;
             try {
                 outcome = await call(abort.signal);
@@ -199,9 +221,12 @@ export default function SqlDock({
             } finally {
                 if (controller.current === abort) controller.current = null;
                 runningRef.current = false;
-                setRunning(false);
+                setRunningTab(null);
             }
-            if ('cancelled' in outcome) return;
+            if ('cancelled' in outcome) {
+                show({ results: [], error: null, cancelled: true });
+                return;
+            }
             if ('error' in outcome) {
                 show({ results: [], error: outcome.error });
                 return;
@@ -308,6 +333,7 @@ export default function SqlDock({
     return (
         <section
             id={DOCK_ID}
+            ref={section}
             aria-label="SQL editor"
             className="absolute inset-x-0 bottom-0 z-20 flex flex-col border-t bg-background shadow-2xl"
             style={{ height }}
@@ -326,7 +352,7 @@ export default function SqlDock({
                 </Button>
             </div>
             <SqlToolbar
-                running={running}
+                running={runningTab !== null}
                 maxRows={maxRows}
                 onMaxRows={setMaxRows}
                 onRun={() => void run()}
@@ -339,7 +365,7 @@ export default function SqlDock({
                     <SqlEditor
                         path={active.id}
                         value={active.sql}
-                        dialect={snapshot.driver}
+                        dialect={dialect}
                         onChange={(sql) =>
                             setSql(connection.id, active.id, sql)
                         }
@@ -356,12 +382,17 @@ export default function SqlDock({
                                     monaco.KeyCode.Enter,
                                 () => void handlers.current.runAll(),
                             );
-                            registerSqlCompletion(monaco, () => ({
-                                snapshot: context.current.snapshot,
-                                dialect: context.current.snapshot
-                                    .driver as Dialect,
-                                focusedTable: useWorkspace.getState().selected,
-                            }));
+                            registerSqlCompletion(monaco, () => {
+                                const current = context.current.snapshot;
+                                return current
+                                    ? {
+                                          snapshot: current,
+                                          dialect: current.driver as Dialect,
+                                          focusedTable:
+                                              useWorkspace.getState().selected,
+                                      }
+                                    : null;
+                            });
                         }}
                     />
                 )}
@@ -370,7 +401,8 @@ export default function SqlDock({
                 <ResultPanel
                     results={tabResults?.results ?? NO_RESULTS}
                     error={tabResults?.error ?? null}
-                    running={running}
+                    running={!!active && runningTab === active.id}
+                    cancelled={tabResults?.cancelled ?? false}
                     snapshot={snapshot}
                     openTransactionRolledBack={tabResults?.rolledBack ?? false}
                 />

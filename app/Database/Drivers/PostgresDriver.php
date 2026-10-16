@@ -212,6 +212,11 @@ class PostgresDriver implements Driver
         return 'CAST('.$quotedColumn.' AS TEXT)';
     }
 
+    public function likeOperator(): string
+    {
+        return 'ILIKE'; // LIKE is case-sensitive on PostgreSQL
+    }
+
     public function sampleColumn(Connection $db, string $column, string $typeName, int $maxChars = CellValue::MAX_CHARS): Expression|string
     {
         $q = $this->quoteIdentifier($column);

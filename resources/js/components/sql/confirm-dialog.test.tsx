@@ -84,4 +84,38 @@ describe('ConfirmDialog', () => {
         );
         expect(screen.getByText(text)).toBeInTheDocument();
     });
+
+    it('asks for all targets of a multi-object statement exactly as listed', () => {
+        const onResolve = vi.fn();
+        render(
+            <ConfirmDialog
+                request={{
+                    confirmation: {
+                        statement_index: 0,
+                        mode: 'typed',
+                        kind: 'destructive',
+                        keyword: 'DROP',
+                        target: 'a, b',
+                    },
+                    sql: 'drop table a, b',
+                }}
+                onResolve={onResolve}
+            />,
+        );
+        expect(
+            screen.getByText(/separated by a comma and a space/),
+        ).toBeInTheDocument();
+        const input = screen.getByLabelText('Type a, b to confirm');
+        const run = screen.getByRole('button', { name: 'Run DROP' });
+        fireEvent.change(input, { target: { value: 'a' } });
+        expect(run).toBeDisabled();
+        fireEvent.change(input, { target: { value: 'a,b' } });
+        expect(run).toBeDisabled();
+        fireEvent.change(input, { target: { value: 'a, b' } });
+        fireEvent.click(run);
+        expect(onResolve).toHaveBeenCalledWith({
+            confirmed: true,
+            typed: 'a, b',
+        });
+    });
 });

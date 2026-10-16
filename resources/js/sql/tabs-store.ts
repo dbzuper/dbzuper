@@ -12,7 +12,19 @@ type State = {
     setActive: (connectionId: number, id: string) => void;
     setSql: (connectionId: number, id: string, sql: string) => void;
     rename: (connectionId: number, id: string, title: string) => void;
+    /** Drops the tabs of connections that no longer exist. */
+    prune: (existingIds: number[]) => void;
 };
+
+/** The next "Query N": one past the highest N in use, so a closed middle tab never causes a duplicate title. */
+function nextTitle(tabs: SqlTab[]): string {
+    let max = 0;
+    for (const t of tabs) {
+        const m = /^Query (\d+)$/.exec(t.title);
+        if (m) max = Math.max(max, Number(m[1]));
+    }
+    return `Query ${max + 1}`;
+}
 
 const newId = () =>
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -75,9 +87,23 @@ type Persisted = { byConnection: Record<number, ConnectionTabs> };
 /** The map as last read from or written to storage, to tell which connections this browser tab changed. */
 let lastSynced: Record<number, ConnectionTabs> = {};
 
+const PERSIST_DELAY_MS = 250;
+let pendingWrite: (() => void) | null = null;
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Writes any debounced draft changes now. */
+export function flushSqlTabs(): void {
+    if (pendingTimer) clearTimeout(pendingTimer);
+    pendingTimer = null;
+    const write = pendingWrite;
+    pendingWrite = null;
+    write?.();
+}
+
 /**
  * Another browser tab may have saved drafts since this one loaded, so a write replaces only the connections whose
- * tabs changed here and keeps the rest of what is stored.
+ * tabs changed here and keeps the rest of what is stored. Writes are debounced so typing does not serialise every
+ * keystroke; the latest state is what gets written.
  */
 const mergingStorage: PersistStorage<Persisted> = {
     getItem: (name) => {
@@ -90,6 +116,18 @@ const mergingStorage: PersistStorage<Persisted> = {
         }
     },
     setItem: (name, value) => {
+        pendingWrite = () => writeMerged(name, value);
+        if (pendingTimer) clearTimeout(pendingTimer);
+        pendingTimer = setTimeout(flushSqlTabs, PERSIST_DELAY_MS);
+    },
+    removeItem: (name) => safeStorage.removeItem(name),
+};
+
+function writeMerged(
+    name: string,
+    value: { state: Persisted; version?: number },
+) {
+    {
         const next = value.state.byConnection;
         const merged: Record<string, unknown> = {
             ...(
@@ -110,9 +148,8 @@ const mergingStorage: PersistStorage<Persisted> = {
             name,
             JSON.stringify({ ...value, state: { byConnection: merged } }),
         );
-    },
-    removeItem: (name) => safeStorage.removeItem(name),
-};
+    }
+}
 
 export const useSqlTabs = create<State>()(
     persist(
@@ -150,11 +187,7 @@ export const useSqlTabs = create<State>()(
                     update(connectionId, (c) => ({
                         tabs: [
                             ...c.tabs,
-                            {
-                                id,
-                                title: title ?? `Query ${c.tabs.length + 1}`,
-                                sql,
-                            },
+                            { id, title: title ?? nextTitle(c.tabs), sql },
                         ],
                         activeId: id,
                     }));
@@ -166,7 +199,7 @@ export const useSqlTabs = create<State>()(
                         if (tabs.length === 0) {
                             const fresh = {
                                 id: newId(),
-                                title: 'Query 1',
+                                title: nextTitle([]),
                                 sql: '',
                             };
                             return { tabs: [fresh], activeId: fresh.id };
@@ -188,6 +221,16 @@ export const useSqlTabs = create<State>()(
                             t.id === id ? { ...t, sql } : t,
                         ),
                     })),
+                prune: (existingIds) =>
+                    set((s) => {
+                        const keep = new Set(existingIds);
+                        const entries = Object.entries(s.byConnection);
+                        const kept = entries.filter(([k]) =>
+                            keep.has(Number(k)),
+                        );
+                        if (kept.length === entries.length) return s;
+                        return { byConnection: Object.fromEntries(kept) };
+                    }),
                 rename: (connectionId, id, title) =>
                     update(connectionId, (c) => ({
                         ...c,
@@ -212,15 +255,31 @@ export const useSqlTabs = create<State>()(
                     (persisted as { byConnection?: unknown } | null)
                         ?.byConnection,
                 );
-                return { ...current, byConnection: lastSynced };
+                // Another window may have switched its active tab; this window keeps the one it is looking at.
+                const byConnection = { ...lastSynced };
+                for (const [key, local] of Object.entries(
+                    current.byConnection,
+                )) {
+                    const incoming = byConnection[Number(key)];
+                    if (incoming?.tabs.some((t) => t.id === local.activeId))
+                        byConnection[Number(key)] = {
+                            ...incoming,
+                            activeId: local.activeId,
+                        };
+                }
+                return { ...current, byConnection };
             },
             partialize: (s) => ({ byConnection: s.byConnection }),
         },
     ),
 );
 
-// Drafts saved by another browser tab replace this tab's copy.
-if (typeof window !== 'undefined')
+if (typeof window !== 'undefined') {
+    // Drafts saved by another browser tab replace this tab's copy; ours are written first so they are not lost.
     window.addEventListener('storage', (e) => {
-        if (e.key === STORAGE_KEY) void useSqlTabs.persist.rehydrate();
+        if (e.key !== STORAGE_KEY) return;
+        flushSqlTabs();
+        void useSqlTabs.persist.rehydrate();
     });
+    window.addEventListener('pagehide', flushSqlTabs);
+}

@@ -192,4 +192,45 @@ describe('ResultPanel', () => {
         );
         expect(open).toHaveBeenCalledWith('orders', { id: 8 });
     });
+
+    it('selects the tab of the statement that failed', () => {
+        const failed: StatementResultPayload = {
+            ...result(0),
+            sql: 'select boom',
+            columns: [],
+            error: {
+                kind: 'unknown',
+                message: 'boom happened',
+                sqlstate: null,
+                reason: null,
+            },
+        };
+        render(
+            <ResultPanel
+                results={[result(1), result(1), failed]}
+                error={null}
+                running={false}
+            />,
+        );
+        expect(screen.getByRole('tab', { name: /#3/ })).toHaveAttribute(
+            'aria-selected',
+            'true',
+        );
+        expect(screen.getByRole('alert')).toHaveTextContent('boom happened');
+        fireEvent.click(screen.getByRole('tab', { name: /#1/ }));
+        expect(screen.getByRole('tab', { name: /#1/ })).toHaveAttribute(
+            'aria-selected',
+            'true',
+        );
+    });
+
+    it('says Cancelled. after a cancelled run, and Running… takes precedence while running', () => {
+        const { rerender } = render(
+            <ResultPanel results={[]} error={null} running={false} cancelled />,
+        );
+        expect(screen.getByText('Cancelled.')).toBeInTheDocument();
+        rerender(<ResultPanel results={[]} error={null} running cancelled />);
+        expect(screen.getByText('Running…')).toBeInTheDocument();
+        expect(screen.queryByText('Cancelled.')).toBeNull();
+    });
 });

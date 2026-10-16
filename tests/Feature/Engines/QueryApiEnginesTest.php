@@ -118,3 +118,34 @@ it('rolls back a transaction left open at the end of a run on server engines', f
     $this->actingAs($user)->postJson(route('api.query.run', $connection), ['statements' => [['sql' => 'begin'], ['sql' => 'commit']]])
         ->assertOk()->assertJsonPath('open_transaction_rolled_back', false);
 })->with(['mysql', 'mariadb', 'pgsql']);
+
+it('shows PostgreSQL DETAIL lines such as the duplicate key', function () {
+    Engines::skipUnlessAvailable('pgsql');
+    $user = User::factory()->create();
+    $connection = engineConnection('pgsql', $user, ['read_only' => false]);
+
+    $res = $this->actingAs($user)->postJson(route('api.query.run', $connection), ['statements' => [
+        ['sql' => 'create temp table m5_dup (id int primary key)', 'confirmed' => true],
+        ['sql' => 'insert into m5_dup values (1)', 'confirmed' => true],
+        ['sql' => 'insert into m5_dup values (1)', 'confirmed' => true],
+    ]])->assertOk();
+
+    expect($res->json('results.2.error.message'))->toContain('duplicate key')->toContain('DETAIL: Key (id)=(1) already exists.');
+});
+
+it('stores a PostgreSQL role password redacted in history', function () {
+    Engines::skipUnlessAvailable('pgsql');
+    $user = User::factory()->create();
+    $connection = engineConnection('pgsql', $user, ['read_only' => false]);
+    $run = fn (array $statement) => $this->actingAs($user)->postJson(route('api.query.run', $connection), ['statements' => [$statement]]);
+
+    try {
+        $run(['sql' => "create role m5_redact_probe login password 's3cretpw'", 'confirmed' => true])->assertOk()->assertJsonPath('results.0.error', null);
+    } finally {
+        $run(['sql' => 'drop role if exists m5_redact_probe', 'typed' => 'm5_redact_probe']);
+    }
+
+    $stored = $connection->history()->pluck('sql')->all();
+    expect($stored)->toContain("create role m5_redact_probe login password '***'")
+        ->and(json_encode($stored))->not->toContain('s3cretpw');
+});
