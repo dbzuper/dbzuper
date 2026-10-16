@@ -1,6 +1,6 @@
 import type * as Monaco from 'monaco-editor';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { disposeClosedModels, toHex } from './monaco-setup';
+import { defineThemes, disposeClosedModels, toHex } from './monaco-setup';
 
 /** A 2D context that accepts hex and oklch() colours, like a browser would, and reports the given pixel. */
 function stubCanvas(pixel: [number, number, number]) {
@@ -58,5 +58,32 @@ describe('disposeClosedModels', () => {
         disposeClosedModels(monaco, ['a', 'b', 'missing'], ['a', 'c']);
 
         expect(disposed).toEqual(['b']);
+    });
+});
+
+describe('defineThemes', () => {
+    it('themes the suggest widget and selection for both editor themes', () => {
+        const defined: Record<string, Record<string, string>> = {};
+        const monaco = {
+            editor: {
+                defineTheme: (
+                    name: string,
+                    data: { colors: Record<string, string> },
+                ) => {
+                    defined[name] = data.colors;
+                },
+            },
+        } as unknown as typeof Monaco;
+
+        defineThemes(monaco);
+
+        for (const name of ['dbsuperb-dark', 'dbsuperb-light']) {
+            expect(defined[name]).toMatchObject({
+                'editorSuggestWidget.background': expect.any(String),
+                'editorSuggestWidget.selectedBackground': expect.any(String),
+                'list.activeSelectionBackground': expect.any(String),
+                'editor.selectionBackground': expect.any(String),
+            });
+        }
     });
 });

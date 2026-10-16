@@ -42,17 +42,52 @@ export function defineThemes(monaco: typeof import('monaco-editor')): void {
             dark ? '#e2e8f0' : '#1a1a1a',
         ),
     };
+    const popover = token('--popover', dark ? '#161b26' : '#ffffff');
+    const accent = token('--accent', dark ? '#222a38' : '#ece9e1');
+    const muted = token('--muted', dark ? '#1c2230' : '#efece5');
+    const border = token('--border', dark ? '#2a3140' : '#e2dfd6');
+    const primary = token('--primary', dark ? '#2dd4bf' : '#0f766e');
+    const popoverText = token(
+        '--popover-foreground',
+        dark ? '#e2e8f0' : '#1a1a1a',
+    );
+    const palette = {
+        ...colors,
+        'editorWidget.background': popover,
+        'editorWidget.foreground': popoverText,
+        'editorWidget.border': border,
+        'editorSuggestWidget.background': popover,
+        'editorSuggestWidget.foreground': popoverText,
+        'editorSuggestWidget.border': border,
+        'editorSuggestWidget.selectedBackground': accent,
+        'editorSuggestWidget.highlightForeground': primary,
+        'list.hoverBackground': muted,
+        'list.activeSelectionBackground': accent,
+        'list.activeSelectionForeground': popoverText,
+        'list.focusBackground': accent,
+        'list.highlightForeground': primary,
+        'editor.selectionBackground': `${primary}${dark ? '40' : '33'}`,
+        'editor.inactiveSelectionBackground': `${primary}22`,
+        'editor.selectionHighlightBackground': `${primary}22`,
+        'editor.wordHighlightBackground': `${primary}22`,
+        'editor.lineHighlightBackground': muted,
+        'editorCursor.foreground': primary,
+        'editorLineNumber.foreground': token(
+            '--muted-foreground',
+            dark ? '#8a93a6' : '#6b6a63',
+        ),
+    };
     monaco.editor.defineTheme('dbsuperb-dark', {
         base: 'vs-dark',
         inherit: true,
         rules: [],
-        colors,
+        colors: palette,
     });
     monaco.editor.defineTheme('dbsuperb-light', {
         base: 'vs',
         inherit: true,
         rules: [],
-        colors,
+        colors: palette,
     });
 }
 

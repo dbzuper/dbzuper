@@ -1,5 +1,4 @@
 import { Button } from '@/components/ui/button';
-import AppLayout from '@/layouts/app-layout';
 import type { ConnectionSummary } from '@/types/connection';
 import { Head, Link, router } from '@inertiajs/react';
 
@@ -19,9 +18,7 @@ export default function ConnectionsIndex({
     };
 
     return (
-        <AppLayout
-            breadcrumbs={[{ title: 'Connections', href: '/connections' }]}
-        >
+        <>
             <Head title="Connections" />
             <div className="p-6">
                 <div className="mb-6 flex items-center justify-between">
@@ -48,7 +45,7 @@ export default function ConnectionsIndex({
                                     className="size-2.5 rounded-full"
                                     style={{
                                         background:
-                                            c.color ?? 'var(--color-teal-500)',
+                                            c.color ?? 'var(--universe-accent)',
                                     }}
                                     aria-hidden
                                 />
@@ -87,6 +84,10 @@ export default function ConnectionsIndex({
                     </ul>
                 )}
             </div>
-        </AppLayout>
+        </>
     );
 }
+
+ConnectionsIndex.layout = {
+    breadcrumbs: [{ title: 'Connections', href: '/connections' }],
+};

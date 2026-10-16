@@ -1,7 +1,6 @@
 import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { HistoryList } from '@/components/history/history-list';
-import AppLayout from '@/layouts/app-layout';
 import type { HistoryEntry } from '@/lib/history-api';
 
 const OPEN_FAILED = 'Could not open that entry in the workspace.';
@@ -25,7 +24,7 @@ export default function HistoryIndex({
     };
 
     return (
-        <AppLayout breadcrumbs={[{ title: 'History', href: '/history' }]}>
+        <>
             <Head title="History" />
             <div className="flex h-[calc(100dvh-8rem)] flex-col gap-2 p-4">
                 {problem && (
@@ -41,6 +40,10 @@ export default function HistoryIndex({
                     />
                 </div>
             </div>
-        </AppLayout>
+        </>
     );
 }
+
+HistoryIndex.layout = {
+    breadcrumbs: [{ title: 'History', href: '/history' }],
+};
