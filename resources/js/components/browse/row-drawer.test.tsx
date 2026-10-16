@@ -153,6 +153,25 @@ describe('RowDrawer', () => {
         await screen.findByText('Explore graph');
     });
 
+    it('toggles a JSON value between pretty-printed and compact', async () => {
+        setup({
+            columns: [col('orders', 'id'), col('orders', 'profile', 'json')],
+            row: [1, '{"a":1,"b":[2]}'],
+        });
+        const pre = () => document.querySelector('pre')?.textContent;
+        expect(pre()).toContain('"a": 1');
+        const toggle = screen.getByRole('button', {
+            name: 'Pretty-print profile',
+        });
+        expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(toggle);
+        expect(pre()).toBe('{"a":1,"b":[2]}');
+        expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        fireEvent.click(toggle);
+        expect(pre()).toContain('"a": 1');
+        await screen.findByText('Explore graph');
+    });
+
     it('moves focus to the heading on open', async () => {
         setup();
         expect(screen.getByRole('heading', { level: 3 })).toHaveFocus();
@@ -314,6 +333,61 @@ describe('RowDrawer', () => {
         expect(props.onOpenTable).toHaveBeenCalledWith('order_items', [
             { column: 'order_id', op: 'eq', value: '1' },
         ]);
+    });
+
+    it('converts referencing values like the grid and skips non-scalar ones', async () => {
+        const { props, unmount } = setup({ row: [true, 3, 'hi'] });
+        fireEvent.click(
+            await screen.findByRole('button', { name: 'order_items (12)' }),
+        );
+        expect(props.onOpenTable).toHaveBeenCalledWith('order_items', [
+            { column: 'order_id', op: 'eq', value: 'true' },
+        ]);
+        unmount();
+
+        // A relationship on a JSON column cannot be turned into a filter.
+        const withNotes = makeSnapshot(
+            [
+                ...snapshot.tables,
+                { name: 'order_notes', columns: [idColumn, plain('note')] },
+            ],
+            [
+                ...snapshot.relationships,
+                {
+                    id: 'r3',
+                    from_table: 'order_notes',
+                    from_columns: ['note'],
+                    to_table: 'orders',
+                    to_columns: ['note'],
+                },
+            ],
+        );
+        api.show.mockResolvedValue({
+            ...ordersPayload,
+            relationships: [
+                ...relationships,
+                {
+                    id: 'r3',
+                    direction: 'in',
+                    table: 'order_notes',
+                    columns: ['note'],
+                    other_columns: ['note'],
+                    inferred: false,
+                    available: true,
+                    count: null,
+                },
+            ],
+        });
+        setup({
+            snapshot: withNotes,
+            row: [1, 3, { x: 1 } as unknown as QueryCell],
+        });
+        expect(
+            await screen.findByRole('button', { name: 'order_notes' }),
+        ).toBeDisabled();
+        expect(
+            screen.getByRole('button', { name: 'order_items (12)' }),
+        ).toBeEnabled();
     });
 
     it('explores the graph from the current record', async () => {

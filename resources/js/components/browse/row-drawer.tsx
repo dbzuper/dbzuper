@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy, Network, X } from 'lucide-react';
+import { ArrowLeft, Braces, Copy, Network, X } from 'lucide-react';
 import {
     useCallback,
     useEffect,
@@ -83,10 +83,10 @@ export function RowDrawerLoading({ onClose }: { onClose: () => void }) {
     );
 }
 
-function prettyJson(value: CellValue): string {
+function formatJson(value: CellValue, pretty: boolean): string {
     try {
         const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-        return JSON.stringify(parsed, null, 2);
+        return JSON.stringify(parsed, null, pretty ? 2 : undefined);
     } catch {
         return cellText(value);
     }
@@ -102,10 +102,12 @@ function Field({
     value: CellValue;
 }) {
     const [expanded, setExpanded] = useState(false);
+    // JSON is pretty-printed by default; the toggle shows it compact, as the grid does.
+    const [pretty, setPretty] = useState(true);
     const kind = cellKind(value, type);
     const text =
         kind === 'json'
-            ? prettyJson(value)
+            ? formatJson(value, pretty)
             : kind === 'binary'
               ? blobLabel(value)
               : cellText(value);
@@ -125,6 +127,22 @@ function Field({
                         {type}
                     </span>
                 </span>
+                {kind === 'json' && (
+                    <button
+                        type="button"
+                        aria-label={`Pretty-print ${column}`}
+                        aria-pressed={pretty}
+                        title={
+                            pretty ? 'Show compact JSON' : 'Pretty-print JSON'
+                        }
+                        className={`ml-auto shrink-0 hover:text-foreground ${
+                            pretty ? 'text-foreground' : 'text-muted-foreground'
+                        }`}
+                        onClick={() => setPretty((p) => !p)}
+                    >
+                        <Braces className="size-3" />
+                    </button>
+                )}
                 {kind !== 'null' && (
                     <button
                         type="button"
@@ -290,10 +308,19 @@ export function RowDrawer({
     const referencingValues = (rel: RelationshipSummary) => {
         const found = snapshot.relationships.find((r) => r.id === rel.id);
         if (!found) return null;
-        const values = found.to_columns.map(valueOf);
-        return values.some((v) => v === null || v === undefined)
-            ? null
-            : { found, values };
+        const cells: CellValue[] = found.to_columns.map(valueOf);
+        // Filters take text: convert like the grid does, and skip values a filter cannot match (JSON, blobs).
+        if (
+            cells.some(
+                (v) =>
+                    v === null ||
+                    v === undefined ||
+                    typeof v === 'object' ||
+                    cellKind(v, null) === 'binary',
+            )
+        )
+            return null;
+        return { found, values: cells.map(cellText) };
     };
 
     const openReferencing = (rel: RelationshipSummary) => {
@@ -304,7 +331,7 @@ export function RowDrawer({
             resolved.found.from_columns.map((c, i) => ({
                 column: c,
                 op: 'eq' as const,
-                value: String(resolved.values[i]),
+                value: resolved.values[i],
             })),
         );
     };
