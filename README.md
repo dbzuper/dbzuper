@@ -10,10 +10,10 @@
 
 ## Quick start (Docker)
 
-    docker compose up -d --build
+    docker compose up -d --build --wait
     docker compose exec app php artisan dbsuperb:install --name=Admin --email=admin@example.com --password='Str0ng-passphrase' --no-interaction
 
-Then open <http://localhost:8080> (or skip the second command and use the setup screen). HTTPS, SQLite files, backups, upgrades and the full environment reference are in [docs/self-hosting.md](docs/self-hosting.md).
+`--wait` returns once the container's healthcheck passes. Then open <http://localhost:8080> (or skip the second command and use the setup screen). HTTPS, SQLite files, backups, upgrades and the full environment reference are in [docs/self-hosting.md](docs/self-hosting.md).
 
 ## Local development
 
@@ -48,6 +48,7 @@ Open a connection to see its schema as a graph: tables are nodes (sized by row c
 
 Open the SQL editor with Ctrl/⌘+J or the rail. It autocompletes tables, columns and foreign-key joins from the schema, and keeps tabs per connection.
 
+- Tab indents inside the editor. To move focus out of it with the keyboard, press Ctrl+M (⌃⇧M on a Mac) to make Tab move focus, and press it again to switch back; the toolbar shows the shortcut.
 - Run the statement at the cursor (or the selection) with Ctrl/⌘+Enter; run every statement with Ctrl/⌘+Shift+Enter (one connection, so transactions work across the batch).
 - Each run uses a fresh connection, so a transaction only spans a single run: run `BEGIN … COMMIT` together. A transaction still open when a run ends is rolled back, and the results panel says so.
 - Explain shows the query plan. It refuses `EXPLAIN ANALYZE` of writes, which would execute them.
@@ -84,11 +85,16 @@ Follow a single row through its relationships. The Records view (rail > Records)
 
 ## Performance
 
-- **Chunks.** Sigma, graphology, Monaco, react-data-grid and React Flow are loaded on demand: the app entry and every page chunk stay free of them. `npm run build` ends with `scripts/check-chunks.mjs`, which reads `public/build/manifest.json` and `public/build/chunk-modules.json` (written by a small plugin in `vite.config.ts`), follows only static imports from the app entry and each page, and fails the build if a banned package shows up.
+- **Chunks.** Sigma, graphology, Monaco, react-data-grid and React Flow are loaded on demand: the app entry and every page chunk stay free of them. `npm run build` ends with `scripts/check-chunks.mjs`, which reads `public/build/manifest.json` and `storage/build/chunk-modules.json` (written by a small plugin in `vite.config.ts`, outside `public/` so it is not served), follows only static imports from the app entry and each page, and fails the build if a banned package shows up.
 - **Prefetch.** Hovering or focusing a connection link in the connections list prefetches the workspace page, the universe model kit and (when WebGL2 is available) the universe canvas.
 - **Monaco** loads only when the SQL dock opens, and only registers the editor features and the SQL, MySQL and PostgreSQL languages the app uses.
 - **Budgets** (e2e, never loosened): universe ready < 2000 ms, record expansion < 300 ms, `/connections` first contentful paint < 1000 ms.
 - **Compression and caching.** Serve `/build/*` compressed (`encode zstd br gzip` in the Caddyfile that ships with the Docker image) and with `Cache-Control: public, max-age=31536000, immutable`: build filenames are content-hashed, so they never change. Do not long-cache HTML or `/build/manifest.json`.
+
+## Upgrading
+
+- **Dark by default.** New visitors now get the dark theme. If you had already chosen an appearance (including "system"), it is stored in your browser and kept. Switch any time with the theme button in the header or sidebar, "Toggle theme" in the command palette (Ctrl/⌘+K), or Settings > Appearance.
+- Docker installs: see [Upgrades](docs/self-hosting.md#upgrades) in the self-hosting guide.
 
 ## Testing
 

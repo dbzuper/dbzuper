@@ -11,9 +11,9 @@ DBSuperb ships as a single Docker image (FrankenPHP 1.13 on PHP 8.4, running as 
 ## Quick start
 
     git clone <repository-url> dbsuperb && cd dbsuperb
-    docker compose up -d --build
+    docker compose up -d --build --wait
 
-Wait for the container to become healthy (`docker compose ps`, or `curl http://localhost:8080/up` returns 200), then create the administrator (below) and open <http://localhost:8080>.
+`--wait` returns once the container is healthy (or check `docker compose ps`, or that `curl http://localhost:8080/up` returns 200). Then create the administrator (below) and open <http://localhost:8080>.
 
 On first start the entrypoint creates the storage directories and the application SQLite database, generates an `APP_KEY` (see [Backups](#backups-and-the-app_key)), runs the migrations and caches the configuration, routes and views. Every later start repeats the migrations and caching, so upgrades need no manual step.
 
@@ -36,7 +36,7 @@ Without options the command prompts for each value. In production the password m
 
 Compose reads an optional `.env.docker` next to `docker-compose.yml` (plain `KEY=value` lines) and passes it to the container. Set `APP_URL` there too (the image default is `http://localhost:8080`); nothing in `docker-compose.yml` overrides it, and variables from your shell or a project `.env` are not passed in. Environment changes apply on `docker compose up -d` or a restart: the configuration is cached from the environment at every start.
 
-The image defaults are `APP_ENV=production`, `APP_DEBUG=false`, `LOG_CHANNEL=stderr` (read logs with `docker compose logs app`), `DB_CONNECTION=sqlite`, `DB_DATABASE=/app/storage/database/database.sqlite` and `DBSUPERB_SQLITE_PATHS=/data/sqlite`.
+The image defaults are `APP_NAME=DBSuperb`, `APP_ENV=production`, `APP_DEBUG=false`, `LOG_CHANNEL=stderr` (read logs with `docker compose logs app`), `DB_CONNECTION=sqlite`, `DB_DATABASE=/app/storage/database/database.sqlite`, `DB_JOURNAL_MODE=WAL`, `DB_TRANSACTION_MODE=IMMEDIATE`, `DB_BUSY_TIMEOUT=5000` and `DBSUPERB_SQLITE_PATHS=/data/sqlite`. The three SQLite lock settings let the multi-threaded server share the application database without "database is locked" errors; keep them.
 
 ## Adding SQLite files
 
@@ -51,19 +51,19 @@ The same applies to a bind-mounted storage directory (`./storage:/app/storage`):
 
 ## HTTPS behind a reverse proxy
 
-Terminate TLS in a reverse proxy and forward to port 8080. Set, in `.env.docker`:
-
-    APP_URL=https://db.example.com
-    TRUSTED_PROXIES=*
-    SESSION_SECURE_COOKIE=true
-
-`TRUSTED_PROXIES` takes comma-separated IPs or CIDRs of your proxy, or `*` to trust whoever calls the container. Leave it unset when the container is reached directly: no `X-Forwarded-*` header is then trusted.
-
-With a published port (`8080:8080`), a proxy running on the Docker host does **not** reach the container from `127.0.0.1`: connections arrive from the Docker network gateway. Find the CIDR and trust exactly that:
+Terminate TLS in a reverse proxy and forward to port 8080. With a published port (`8080:8080`), a proxy running on the Docker host does **not** reach the container from `127.0.0.1`: connections arrive from the gateway of the container's Docker bridge network. Find that network's CIDR:
 
     docker network inspect $(docker compose ps -q app | xargs docker inspect -f '{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}') -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
 
-and set, for example, `TRUSTED_PROXIES=172.18.0.0/16`. Also bind the published port to loopback so only the host can reach it: `ports: ["127.0.0.1:8080:8080"]`. Use `*` only when the proxy is the sole possible caller (for example a proxy container on a private Docker network with no published port).
+and trust exactly that. Set, in `.env.docker` (with your CIDR):
+
+    APP_URL=https://db.example.com
+    TRUSTED_PROXIES=172.18.0.0/16
+    SESSION_SECURE_COOKIE=true
+
+Also bind the published port to loopback so only the host (and its proxy) can reach it: `ports: ["127.0.0.1:8080:8080"]` in `docker-compose.yml`.
+
+`TRUSTED_PROXIES` takes comma-separated IPs or CIDRs of your proxy. Leave it unset when the container is reached directly: no `X-Forwarded-*` header is then trusted. `TRUSTED_PROXIES=*` trusts whoever calls the container, so anyone who can reach port 8080 could fake their IP address and the HTTPS flag. Use `*` only when the proxy is the sole possible caller: the port is bound to loopback as above, or not published at all (a proxy container on a private Docker network).
 
 Caddy:
 
@@ -105,19 +105,34 @@ The `dbsuperb-storage` volume (`/app/storage`) holds the application database (u
 
 Back up `dbsuperb-sqlite` the same way if it holds your only copy of the SQLite files.
 
-**Saved connection passwords are encrypted with `APP_KEY`. If the key is lost, saved credentials cannot be decrypted** and each connection's password must be re-entered. To control the key yourself, set `APP_KEY=base64:...` in `.env.docker` (generate one with `docker compose run --rm --no-deps app php artisan key:generate --show`); a supplied key takes precedence over `storage/app.key`. Restoring a backup restores the key with it.
+**Saved connection passwords are encrypted with `APP_KEY`. If the key is lost or replaced, saved credentials cannot be decrypted** and each connection's password must be re-entered. Restoring a backup restores the key with it.
+
+- **Default:** leave `APP_KEY` unset. On first start the container generates a key, keeps it in `storage/app.key` in the storage volume and reuses it on every restart and upgrade. Back it up with the volume, or on its own: `docker compose exec app cat storage/app.key`.
+- **Pinning the key in `.env.docker` on an existing install:** adopt the key the container already uses, never a new one. Print it with
+
+      docker compose exec app cat storage/app.key
+
+    and put that value in `.env.docker` as `APP_KEY=base64:...`. A supplied key takes precedence over `storage/app.key`, so a **different** key makes every saved password unreadable.
+
+- **Pinning the key on a brand-new install:** generate it **before the first start**, so the container never creates its own:
+
+      docker compose build
+      docker run --rm --entrypoint php dbsuperb:local artisan key:generate --show
+
+    Do not use `docker compose run --rm app php artisan key:generate --show` for this: the one-off container goes through the entrypoint, which on a fresh volume first writes a **different** key to `storage/app.key`.
 
 ## Upgrades
 
     git pull
     docker compose up -d --build
 
-The volumes survive, the entrypoint runs `php artisan migrate --force` on start, and the key is reused. Take a backup first.
+The volumes survive, the entrypoint runs `php artisan migrate --force` on start, and the key is reused. Take a backup first. Changes users will notice (such as the dark default theme, which keeps an appearance already saved in the browser) are listed under "Upgrading" in the README.
 
 ## Environment reference
 
 | Variable                         | Default                     | Meaning                                                                                                  |
 | -------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `APP_NAME`                       | `DBSuperb` in the image     | Name in the page title, sidebar, session cookie and two-factor issuer.                                   |
 | `DBSUPERB_SQLITE_PATHS`          | `/data/sqlite` in the image | Comma-separated directories SQLite connection files must live in.                                        |
 | `DBSUPERB_CONNECT_TIMEOUT`       | `5`                         | Seconds to wait when opening a connection to a database server.                                          |
 | `DBSUPERB_INTROSPECTION_TIMEOUT` | `30`                        | Seconds allowed for loading a schema.                                                                    |
@@ -128,6 +143,17 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 | `APP_URL`                        | `http://localhost:8080`     | Public URL of the app (set in `.env.docker`).                                                            |
 | `APP_KEY`                        | generated into the volume   | Encryption key; see above.                                                                               |
 | `SESSION_SECURE_COOKIE`          | unset                       | Set `true` when served over HTTPS.                                                                       |
+| `DB_JOURNAL_MODE`                | `WAL` in the image          | SQLite journal mode of the application database (unset: SQLite's default).                               |
+| `DB_TRANSACTION_MODE`            | `IMMEDIATE` in the image    | How SQLite transactions on the application database start (`DEFERRED` outside the image).                |
+| `DB_BUSY_TIMEOUT`                | `5000`                      | Milliseconds a request waits for the SQLite lock before failing with "database is locked".               |
+
+## Troubleshooting
+
+- **`SQLSTATE[HY000]: General error: 5 database is locked`** in `docker compose logs app`: the application database is SQLite and the server handles requests in parallel. Check that `DB_JOURNAL_MODE`, `DB_TRANSACTION_MODE` and `DB_BUSY_TIMEOUT` are not overridden in `.env.docker` (`docker compose exec app env | grep ^DB_`) and that the storage volume is on a local disk (SQLite locking is unreliable over network file systems). To check a deployment, sign in, copy the session cookie (`dbsuperb-session`) from the browser and fire parallel requests, for example 64 schema reads, 16 at a time:
+
+      seq 64 | xargs -P16 -I{} curl -s -o /dev/null -w '%{http_code}\n' -b 'dbsuperb-session=<value>' http://localhost:8080/api/c/1/schema | sort | uniq -c
+
+    Every response should be `200`, and `docker compose logs app | grep -c "database is locked"` should print `0`.
 
 ## Security notes
 

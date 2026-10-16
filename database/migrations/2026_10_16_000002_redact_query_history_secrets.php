@@ -7,6 +7,10 @@ use Illuminate\Support\Facades\DB;
 /**
  * History written before redaction existed stored SQL verbatim, passwords included. Every stored row is redacted with
  * its own connection's dialect (rows always have one: they cascade with their connection).
+ *
+ * Depends on live application code: HistoryRecorder::redact (and the SqlRedactor behind it). Those must keep
+ * accepting (sql, error, driver) and returning [sql, error] for as long as this migration can run on an older
+ * install; if they ever change shape, inline a frozen copy of today's redaction here instead.
  */
 return new class extends Migration
 {

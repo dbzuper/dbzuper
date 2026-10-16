@@ -5,8 +5,9 @@ let started: Promise<void> | null = null;
 /**
  * Warms the browser cache with the chunks a workspace visit needs (the page, the universe model kit and,
  * where WebGL2 is available, the universe canvas), so opening a connection does not wait on them.
- * Called on hover or focus of a connection link; later calls are no-ops. Failures are ignored:
- * the real navigation fetches the chunks again and reports its own errors.
+ * Called on hover or focus of a connection link; once a prefetch succeeds, later calls are no-ops.
+ * A failed prefetch is retried on a later hover or focus. Failures are otherwise ignored: the real
+ * navigation fetches the chunks again and reports its own errors.
  */
 export function prefetchWorkspace(): void {
     if (started) return;
