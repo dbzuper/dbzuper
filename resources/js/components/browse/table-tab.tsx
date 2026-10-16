@@ -69,6 +69,12 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
         [actions],
     );
 
+    // Dropping the cached rows first means a Data view mounted later (after Structure) refetches too.
+    const refresh = () => {
+        rowsCache.delete(`${connectionId}:${tab.table}`);
+        setRefreshNonce((n) => n + 1);
+    };
+
     const setView = (view: TableView) =>
         useBrowse.getState().updateTable(connectionId, tab.id, { view });
 
@@ -168,7 +174,7 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => setRefreshNonce((n) => n + 1)}
+                        onClick={refresh}
                     >
                         <RefreshCw className="size-3.5" /> Refresh
                     </Button>

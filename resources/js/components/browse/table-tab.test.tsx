@@ -97,4 +97,32 @@ describe('TableTabView', () => {
         ).toBeInTheDocument();
         expect(api.rows).not.toHaveBeenCalled();
     });
+
+    it('refreshes the data even when Refresh is clicked in Structure', async () => {
+        useBrowse.getState().openTable(1, 'orders');
+        rowsCache.set('1:orders', {
+            requestKey: JSON.stringify({
+                filters: [],
+                sort: [],
+                page: 1,
+                perPage: 100,
+            }),
+            rows: {
+                columns: [{ name: 'id', type: 'int', table: 'orders' }],
+                rows: [[1]],
+                has_more: false,
+                page: 1,
+                per_page: 100,
+                sql: 'select 1',
+            },
+            total: { count: 1, exact: true },
+            scrollTop: 0,
+        });
+        render(<Harness />);
+        expect(api.rows).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('radio', { name: 'Structure' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+        fireEvent.click(screen.getByRole('radio', { name: 'Data' }));
+        expect(api.rows).toHaveBeenCalledTimes(1);
+    });
 });

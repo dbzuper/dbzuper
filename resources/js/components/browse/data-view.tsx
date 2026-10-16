@@ -153,8 +153,9 @@ function DataViewBody({
         filtersKey,
         base: cached ? cached.total : filters.length === 0 ? start.total : null,
         count: null,
-        failed: false,
+        failed: cached?.countFailed ?? false,
     }));
+    const [countPending, setCountPending] = useState(false);
     const [exactPending, setExactPending] = useState(false);
     const exactRequest = useRef<AbortController | null>(null);
 
@@ -209,7 +210,7 @@ function DataViewBody({
                     latestKey.current !== requestKey
                 )
                     return;
-                // The total is patched in once this view renders.
+                // Not counted yet; the total is patched in once this view renders.
                 rowsCache.set(cacheKey, {
                     requestKey,
                     rows,
@@ -232,7 +233,8 @@ function DataViewBody({
         return () => controller.abort();
     }, [connectionId, name, cacheKey, requestKey, refreshNonce, reload]);
 
-    // Counting runs beside the rows request and never holds it up. A cached view keeps its total.
+    // Counting runs beside the rows request and never holds it up. A view restored from the cache
+    // sends no count; if its count never finished, "Count exactly" offers to run one.
     const countedFor = useRef<string | null>(
         cached ? `${filtersKey}#${refreshNonce}` : null,
     );
@@ -253,6 +255,7 @@ function DataViewBody({
         if (unfiltered && !start.autoCount) return;
         const controller = new AbortController();
         let settled = false;
+        setCountPending(true);
         workspaceApi
             .count(
                 connectionId,
@@ -263,6 +266,7 @@ function DataViewBody({
             .then((res) => {
                 settled = true;
                 if (controller.signal.aborted) return;
+                setCountPending(false);
                 setCountState((s) =>
                     s.filtersKey === filtersKey ? { ...s, count: res } : s,
                 );
@@ -270,12 +274,14 @@ function DataViewBody({
             .catch(() => {
                 settled = true;
                 if (controller.signal.aborted) return;
+                setCountPending(false);
                 setCountState((s) =>
                     s.filtersKey === filtersKey ? { ...s, failed: true } : s,
                 );
             });
         return () => {
             controller.abort();
+            setCountPending(false);
             // An interrupted count is asked again if the same filters come back.
             if (!settled) countedFor.current = null;
         };
@@ -293,10 +299,19 @@ function DataViewBody({
             : countState.base;
     }, [countState, rowsSeen]);
 
+    // Only the entry for the request on screen takes the total, and only a total for its filters.
+    const countFailed = countState.failed;
+    const countFor = countState.filtersKey;
     useEffect(() => {
-        if (view && rowsCache.get(cacheKey)?.requestKey === view.key)
-            rowsCache.patch(cacheKey, { total });
-    }, [cacheKey, total, view]);
+        if (
+            !view ||
+            view.key !== requestKey ||
+            countFor !== filtersKey ||
+            rowsCache.get(cacheKey)?.requestKey !== view.key
+        )
+            return;
+        rowsCache.patch(cacheKey, { total, countFailed });
+    }, [cacheKey, total, countFailed, countFor, filtersKey, requestKey, view]);
 
     const countExactly = () => {
         exactRequest.current?.abort();
@@ -435,7 +450,11 @@ function DataViewBody({
 
     const currentError = error?.key === requestKey ? error.message : null;
     const loading = !currentError && view?.key !== requestKey;
-    const showExact = !!view && !!total && ('atLeast' in total || !total.exact);
+    // Offered for estimates and lower bounds, and when there is no total (not counted, or the capped count failed).
+    const showExact =
+        !!view &&
+        !countPending &&
+        (!total || 'atLeast' in total || !total.exact);
     const label = view
         ? rangeLabel(
               view.rows.page,
@@ -517,7 +536,7 @@ function DataViewBody({
                 perPage={perPage}
                 lastPage={lastPage(total, perPage)}
                 hasMore={view?.rows.has_more ?? false}
-                disabled={!view}
+                disabled={!view || loading}
                 label={label}
                 onPage={(p) => update({ page: p, drawerRow: null })}
                 onPerPage={(n) =>

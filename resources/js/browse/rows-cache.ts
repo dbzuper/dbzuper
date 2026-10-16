@@ -5,7 +5,10 @@ export type CacheEntry = {
     /** The request the rows answer; a tab whose filters/sort/page changed refetches. */
     requestKey: string;
     rows: RowsResponse;
+    /** null with `countFailed` unset means not counted yet (e.g. the count was interrupted). */
     total: Total;
+    /** The count failed for a reason other than its cap; the footer says "count unavailable". */
+    countFailed?: boolean;
     scrollTop: number;
 };
 

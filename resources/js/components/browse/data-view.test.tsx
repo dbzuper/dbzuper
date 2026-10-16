@@ -389,4 +389,70 @@ describe('DataView', () => {
         expect(api.rows).toHaveBeenCalledTimes(2);
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
+
+    it('lets an interrupted count be resumed from the cache', async () => {
+        const filters: RowFilter[] = [
+            { column: 'name', op: 'contains', value: 'a' },
+        ];
+        open('orders', filters);
+        api.count.mockReturnValue(new Promise(() => {}));
+        const first = render(<Harness />);
+        await screen.findByText('100 rows');
+        expect(
+            screen.queryByRole('button', { name: 'Count exactly' }),
+        ).not.toBeInTheDocument();
+        first.unmount();
+        api.rows.mockClear();
+        api.count.mockReset();
+        api.count.mockResolvedValue({ count: 250, kind: 'exact' });
+        render(<Harness />);
+        expect(await screen.findByText('Rows 1–100')).toBeVisible();
+        expect(api.rows).not.toHaveBeenCalled();
+        expect(api.count).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Count exactly' }));
+        expect(api.count).toHaveBeenCalledWith(
+            1,
+            'orders',
+            { filters, exact: true },
+            expect.any(AbortSignal),
+        );
+        expect(await screen.findByText('Rows 1–100 of 250')).toBeVisible();
+    });
+
+    it('keeps "count unavailable" across a cache round trip and offers an exact count', async () => {
+        open('orders', [{ column: 'name', op: 'contains', value: 'a' }]);
+        api.count.mockRejectedValue(new Error('nope'));
+        const first = render(<Harness />);
+        expect(await screen.findByText('count unavailable')).toBeVisible();
+        expect(
+            screen.getByRole('button', { name: 'Count exactly' }),
+        ).toBeVisible();
+        first.unmount();
+        api.count.mockClear();
+        render(<Harness />);
+        expect(await screen.findByText('count unavailable')).toBeVisible();
+        expect(api.count).not.toHaveBeenCalled();
+    });
+
+    it("never writes a new request's total into the previous entry", async () => {
+        open();
+        render(<Harness rowCount={{ count: 120, kind: 'estimate' }} />);
+        await screen.findByText('Rows 1–100 of 10');
+        api.rows.mockReturnValue(new Promise(() => {}));
+        api.count.mockResolvedValue({ count: 5, kind: 'exact' });
+        act(() =>
+            useBrowse.getState().updateTable(1, 't:orders', {
+                filters: [{ column: 'name', op: 'eq', value: 'z' }],
+            }),
+        );
+        await vi.waitFor(() => expect(api.count).toHaveBeenCalledTimes(2));
+        await act(async () => {});
+        expect(rowsCache.get('1:orders')?.total).toEqual({
+            count: 10,
+            exact: true,
+        });
+        expect(
+            screen.getByRole('button', { name: 'Next page' }),
+        ).toBeDisabled();
+    });
 });
