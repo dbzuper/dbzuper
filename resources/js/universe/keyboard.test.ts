@@ -19,6 +19,19 @@ describe('handleEscape', () => {
         expect(s().selected).toBeNull();
         expect(handleEscape(s())).toBe(false);
     });
+
+    it('off the Universe tab only closes the history panel', () => {
+        s().select('a');
+        s().setFocus('a');
+        s().startPath('a');
+        s().setHistoryOpen(true);
+        expect(handleEscape(s(), false)).toBe(true);
+        expect(s().historyOpen).toBe(false);
+        expect(handleEscape(s(), false)).toBe(false);
+        expect(s().pathFrom).toBe('a');
+        expect(s().focus).toEqual({ table: 'a', depth: 1 });
+        expect(s().selected).toBe('a');
+    });
 });
 
 describe('escapeHandledElsewhere', () => {

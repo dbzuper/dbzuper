@@ -1,6 +1,18 @@
 import type { WorkspaceState } from './store';
 
-export function handleEscape(s: WorkspaceState): boolean {
+/**
+ * Unwinds one layer of workspace state. Path, focus and selection belong to the Universe tab, so on
+ * another tab (`universeActive` false) only the history panel closes.
+ */
+export function handleEscape(
+    s: WorkspaceState,
+    universeActive = true,
+): boolean {
+    if (!universeActive) {
+        if (!s.historyOpen) return false;
+        s.setHistoryOpen(false);
+        return true;
+    }
     if (s.pathFrom || s.path) {
         s.clearPath();
         return true;

@@ -55,6 +55,8 @@ export function useBrowseUrl(
                 .getState()
                 .openTable(connectionId, name, { mode: 'permanent' });
         } else {
+            // A link to a missing table lands on the Universe tab, whatever was active before.
+            useBrowse.getState().activate(connectionId, 'universe');
             writeTab(null);
             toast.error(`Table not found: ${name}`);
         }

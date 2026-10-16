@@ -67,6 +67,20 @@ describe('useBrowseUrl', () => {
         expect(window.location.search).toBe('?keep=1');
     });
 
+    it('lands on the Universe tab for an unknown table even when a table tab was active', () => {
+        st().openTable(1, 'users', { mode: 'permanent' });
+        window.history.replaceState(null, '', '/c/1?tab=gone');
+        renderHook(() => useBrowseUrl(1, snapshot));
+        expect(toast.error).toHaveBeenCalledWith('Table not found: gone');
+        expect(st().get(1).activeId).toBe('universe');
+        expect(
+            st()
+                .get(1)
+                .tabs.some((t) => t.id === 't:users'),
+        ).toBe(true);
+        expect(window.location.search).toBe('');
+    });
+
     it('follows the active tab', () => {
         window.history.replaceState(null, '', '/c/1?r=x');
         renderHook(() => useBrowseUrl(1, snapshot));

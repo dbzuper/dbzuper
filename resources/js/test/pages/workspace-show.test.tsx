@@ -308,6 +308,32 @@ describe('workspace page', () => {
         window.history.replaceState(null, '', '/');
     });
 
+    it('keeps universe state and chips off table tabs: Escape there only closes history', async () => {
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByRole('treeitem', { name: /orders/ });
+        act(() => {
+            useWorkspace.getState().select('users');
+            useWorkspace.getState().setFocus('users');
+        });
+        expect(
+            screen.getByRole('button', { name: 'Exit focus' }),
+        ).toBeInTheDocument();
+        act(() => {
+            useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+            useWorkspace.getState().setHistoryOpen(true);
+        });
+        expect(screen.queryByRole('button', { name: 'Exit focus' })).toBeNull();
+        fireEvent.keyDown(window, { key: 'Escape' });
+        expect(useWorkspace.getState().historyOpen).toBe(false);
+        fireEvent.keyDown(window, { key: 'Escape' });
+        expect(useWorkspace.getState().focus).toEqual({
+            table: 'users',
+            depth: 1,
+        });
+        expect(useWorkspace.getState().selected).toBe('users');
+        window.history.replaceState(null, '', '/');
+    });
+
     it('shows the loading state before the schema arrives', () => {
         api.schema.mockReturnValue(new Promise(() => undefined));
         render(<WorkspaceShow connection={connection} />);

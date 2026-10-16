@@ -40,6 +40,7 @@ import type {
     LayoutPositionEntry,
     SchemaResponse,
 } from '@/types/schema';
+import { clearPendingFlyTo } from '@/universe/controller';
 import { escapeHandledElsewhere, handleEscape } from '@/universe/keyboard';
 import { createLayoutSaver, type LayoutSaver } from '@/universe/layout-save';
 import { useWorkspace } from '@/universe/store';
@@ -86,10 +87,14 @@ export default function WorkspaceShow({
     const [universeVisited, setUniverseVisited] = useState(false);
     if (active.kind === 'universe' && !universeVisited)
         setUniverseVisited(true);
+    // Read by the window Escape handler: path, focus and selection only unwind on the Universe tab.
+    const onUniverseRef = useRef(active.kind === 'universe');
+    onUniverseRef.current = active.kind === 'universe';
 
     // Keyed on the connection only: losing the universe must not wipe the selection or other state.
     useEffect(() => {
         useWorkspace.getState().reset();
+        clearPendingFlyTo();
     }, [connection.id]);
 
     // Keyed on the connection only: a universe render failure must not wipe the record trail.
@@ -268,7 +273,7 @@ export default function WorkspaceShow({
                 e.key === 'Escape' &&
                 !escapeHandledElsewhere(e) &&
                 !useWorkspace.getState().paletteOpen &&
-                handleEscape(useWorkspace.getState())
+                handleEscape(useWorkspace.getState(), onUniverseRef.current)
             )
                 e.preventDefault();
         };
@@ -539,8 +544,8 @@ export default function WorkspaceShow({
                             onRefresh={() => void load(true)}
                         />
                     )}
-                    <FocusChip />
-                    <PathPickChip />
+                    {onUniverse && <FocusChip />}
+                    {onUniverse && <PathPickChip />}
                 </main>
 
                 {historyOpen && (
