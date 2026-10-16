@@ -424,8 +424,18 @@ async function switchTheme(appearance: 'dark' | 'light') {
             (await toggle.getAttribute('aria-label'))?.startsWith(
                 `Theme: ${appearance} `,
             )
-        )
+        ) {
+            // The class and colour-scheme the toggle sets are the signal that the theme applied.
+            await page.waitForFunction(
+                (dark) =>
+                    document.documentElement.classList.contains('dark') ===
+                        dark &&
+                    document.documentElement.style.colorScheme ===
+                        (dark ? 'dark' : 'light'),
+                appearance === 'dark',
+            );
             return;
+        }
         await toggle.click();
     }
     throw new Error(`Could not switch to the ${appearance} theme`);
