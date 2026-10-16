@@ -1,5 +1,5 @@
 import { act, render, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LayoutPositionEntry, SchemaResponse } from '@/types/schema';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useWorkspace } from '@/universe/store';
@@ -154,7 +154,7 @@ describe('connection change', () => {
         );
     });
 
-    it('sends only changed positions, merged, from a drag', async () => {
+    it('sends only changed positions, merged, with keepalive when the page hides', async () => {
         await mount();
         act(() =>
             canvas.props!.onPositionsChanged([
@@ -168,5 +168,53 @@ describe('connection change', () => {
             [at('users', 99)],
             { keepalive: true, merge: true },
         );
+    });
+
+    it('sends a normal debounced drag save as a plain merge', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            await mount();
+            act(() =>
+                canvas.props!.onPositionsChanged([
+                    at('users', 99),
+                    at('orders', 10),
+                ]),
+            );
+            await act(async () => void vi.advanceTimersByTime(1000));
+            expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(
+                1,
+                [at('users', 99)],
+                { keepalive: false, merge: true },
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+describe('kept layout positions', () => {
+    afterEach(() => localStorage.clear());
+
+    it('are replayed as a merge before the layout is read, then cleared', async () => {
+        localStorage.setItem(
+            'dbsuperb.layout-pending.1',
+            JSON.stringify([at('users', 55)]),
+        );
+        const order: string[] = [];
+        api.saveLayout.mockImplementation(async () => {
+            order.push('save');
+            return { saved: true };
+        });
+        api.layout.mockImplementation(async () => {
+            order.push('layout');
+            return { positions: [at('users', 55), at('orders', 10)] };
+        });
+        await mount();
+        expect(api.saveLayout).toHaveBeenCalledWith(1, [at('users', 55)], {
+            keepalive: false,
+            merge: true,
+        });
+        expect(order.slice(0, 2)).toEqual(['save', 'layout']);
+        expect(localStorage.getItem('dbsuperb.layout-pending.1')).toBeNull();
     });
 });

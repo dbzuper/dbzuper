@@ -15,9 +15,9 @@ type Thresholds = {
 
 function thresholdsFor(nodeCount: number): Thresholds {
     if (nodeCount <= 25) return { closeup: 0.6, galaxy: null };
-    // Mid-size schemas stay at system zoom at the fitted view (ratio 1) so their labels show.
+    // Mid-size schemas stay at system zoom at their first view so their labels show.
     if (nodeCount <= LABELLED_FIRST_VIEW_ORDER)
-        return { closeup: 0.28, galaxy: 1.15 };
+        return { closeup: 0.28, galaxy: 1.5 };
     return { closeup: 0.28, galaxy: 0.65 };
 }
 
@@ -44,7 +44,10 @@ export function zoomLevelFor(
     return galaxy !== null && ratio >= galaxy ? 'galaxy' : 'system';
 }
 
-/** Camera ratio of the first view: the fitted graph (1), which is labelled for up to 100 tables. */
-export function firstViewRatio(_nodeCount: number): number {
-    return 1;
+/**
+ * Camera ratio of the first view. Sigma's ratio 1 fits the graph edge to edge, which clips labels of
+ * nodes at the border, so graphs that open labelled get 15% padding; larger ones open fitted.
+ */
+export function firstViewRatio(nodeCount: number): number {
+    return nodeCount <= LABELLED_FIRST_VIEW_ORDER ? 1.15 : 1;
 }

@@ -105,10 +105,11 @@ describe('generateDdl', () => {
         );
     });
 
-    it('uses INTEGER PRIMARY KEY AUTOINCREMENT inline for a SQLite rowid key', () => {
+    it('declares a SQLite integer key as INTEGER PRIMARY KEY and never emits AUTOINCREMENT', () => {
         const ddl = generateDdl(table, [], 'sqlite');
-        expect(ddl).toContain('"id" INTEGER PRIMARY KEY AUTOINCREMENT,');
+        expect(ddl).toContain('"id" INTEGER PRIMARY KEY,');
         expect(ddl).not.toContain('PRIMARY KEY ("id")');
+        expect(ddl).not.toMatch(/AUTOINCREMENT/i);
     });
 
     it('does not repeat a sequence default next to auto-increment', () => {

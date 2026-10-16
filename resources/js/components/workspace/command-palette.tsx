@@ -41,9 +41,6 @@ export function CommandPalette({
     );
 
     const close = () => {
-        // Dismissing the palette abandons a path whose end was never picked.
-        const st = useWorkspace.getState();
-        if (st.pathFrom && !st.pathTo) st.clearPath();
         setOpen(false);
         setQuery('');
     };

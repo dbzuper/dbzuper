@@ -4,6 +4,7 @@ import { initializeTheme } from '@/hooks/use-appearance';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useRecords } from '@/records/records-store';
 import { universe } from '@/universe/controller';
+import { pickPathTarget } from '@/universe/path-pick';
 import { useWorkspace } from '@/universe/store';
 import { CommandPalette } from './command-palette';
 
@@ -64,7 +65,7 @@ describe('CommandPalette', () => {
         expect(useWorkspace.getState().selected).toBeNull();
     });
 
-    it('clears a pending path start when the palette is dismissed', () => {
+    it('keeps a pending path start when the palette is dismissed, so the end can be picked elsewhere', () => {
         useWorkspace.getState().startPath('users');
         render(<CommandPalette snapshot={snap} onRefresh={() => {}} />);
         fireEvent.keyDown(
@@ -72,7 +73,15 @@ describe('CommandPalette', () => {
             { key: 'Escape' },
         );
         expect(useWorkspace.getState().paletteOpen).toBe(false);
-        expect(useWorkspace.getState().pathFrom).toBeNull();
+        expect(useWorkspace.getState().pathFrom).toBe('users');
+        // A canvas or card click then completes the path.
+        expect(pickPathTarget(snap, 'products')).toBe(true);
+        expect(useWorkspace.getState().path).toEqual([
+            'users',
+            'orders',
+            'order_items',
+            'products',
+        ]);
     });
 
     it('keeps a completed path (and its start) after picking the end table', () => {

@@ -127,6 +127,27 @@ export default function WorkspaceShow({
         if (universeAvailable) void loadCanvas().catch(() => undefined);
     }, [universeAvailable]);
 
+    // One saver per connection: it remembers what the server holds, so a drag save sends only the
+    // positions changed since the last save, and it drops saves made under an older layout generation.
+    const saver = useMemo(
+        () =>
+            createLayoutSaver(
+                connection.id,
+                (id, entries, opts) =>
+                    workspaceApi.saveLayout(id, entries, opts),
+                (problem) =>
+                    toast.error(
+                        problem === 'too_large'
+                            ? 'The layout is too large to save; some positions were not stored.'
+                            : 'Could not save the layout.',
+                    ),
+            ),
+        [connection.id],
+    );
+    useEffect(() => {
+        if (saved) saver.baseline(saved);
+    }, [saver, saved]);
+
     // Only the newest load may land: a slow response for a previous connection is ignored.
     const loadSeq = useRef(0);
     const load = useCallback(
@@ -136,6 +157,8 @@ export default function WorkspaceShow({
             setLoading(true);
             setError(null);
             try {
+                // Positions kept by an earlier unload are stored before the layout is read.
+                if (!refresh) await saver.replayStored();
                 const [schema, layout] = await Promise.all([
                     refresh
                         ? workspaceApi.refresh(connection.id)
@@ -154,7 +177,7 @@ export default function WorkspaceShow({
                 if (isCurrent()) setLoading(false);
             }
         },
-        [connection.id],
+        [connection.id, saver],
     );
 
     useEffect(() => {
@@ -166,22 +189,6 @@ export default function WorkspaceShow({
             loadSeq.current++;
         };
     }, [load]);
-
-    // One saver per connection: it remembers what the server holds, so a drag save sends only the
-    // positions changed since the last save, and it drops saves made under an older layout generation.
-    const saver = useMemo(
-        () =>
-            createLayoutSaver(
-                connection.id,
-                (id, entries, opts) =>
-                    workspaceApi.saveLayout(id, entries, opts),
-                () => toast.error('Could not save the layout.'),
-            ),
-        [connection.id],
-    );
-    useEffect(() => {
-        if (saved) saver.baseline(saved);
-    }, [saver, saved]);
 
     // Drag saves are debounced and carry their saver and generation, so one still pending when the
     // connection changes, the tab hides or the page unmounts is flushed to the right place (keepalive
@@ -198,9 +205,12 @@ export default function WorkspaceShow({
     );
 
     useEffect(() => {
-        const onHide = () => dragSave.flush();
+        const onHide = () => {
+            dragSave.flush();
+            saver.unload();
+        };
         const onVisibility = () => {
-            if (document.visibilityState === 'hidden') dragSave.flush();
+            if (document.visibilityState === 'hidden') onHide();
         };
         window.addEventListener('pagehide', onHide);
         document.addEventListener('visibilitychange', onVisibility);
@@ -208,10 +218,17 @@ export default function WorkspaceShow({
             window.removeEventListener('pagehide', onHide);
             document.removeEventListener('visibilitychange', onVisibility);
         };
-    }, [dragSave]);
+    }, [dragSave, saver]);
 
-    // Leaving a connection flushes its pending drag save (the pending call carries its own saver).
-    useEffect(() => () => dragSave.flush(), [dragSave, saver]);
+    // Leaving a connection (or the page) flushes its unsaved positions: the pending drag save carries
+    // its own saver, and this cleanup unloads the one it was created for.
+    useEffect(
+        () => () => {
+            dragSave.flush();
+            saver.unload();
+        },
+        [dragSave, saver],
+    );
 
     // A fresh layout (initial or re-layout) supersedes any drag save still waiting to be sent.
     const persistLaidOut = useCallback(

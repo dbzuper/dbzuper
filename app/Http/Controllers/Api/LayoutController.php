@@ -4,14 +4,18 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SavedConnection;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class LayoutController extends Controller
 {
     public const MAX_ENTRIES = 10000;
+
+    public const LOCK_WAIT_SECONDS = 5;
 
     /** Saved positions allowed per layout: at least MAX_ENTRIES, and never fewer than the schema object cap. */
     public static function maxEntries(): int
@@ -46,23 +50,48 @@ class LayoutController extends Controller
             'pinned' => (bool) $p['pinned'],
         ], $data['positions']);
 
-        // A partial save (positions changed since the last one) merges into what is stored, by table.
-        if ($request->boolean('merge')) {
-            $merged = [];
-            foreach ($connection->layout?->payload ?? [] as $stored) {
-                $merged[$stored['table']] = $stored;
-            }
-            foreach ($positions as $position) {
-                $merged[$position['table']] = $position;
-            }
-            if (count($merged) > self::maxEntries()) {
-                throw ValidationException::withMessages(['positions' => 'The layout would exceed '.self::maxEntries().' entries.']);
-            }
-            $positions = array_values($merged);
+        // Saves of one connection run one at a time, so a merge never reads a layout a concurrent
+        // save is about to replace.
+        try {
+            Cache::lock("layout:{$connection->id}", 10)->block(self::LOCK_WAIT_SECONDS, function () use ($request, $connection, $positions) {
+                if ($request->boolean('merge')) {
+                    $positions = $this->merged($connection, $positions);
+                }
+                $connection->layout()->updateOrCreate([], ['payload' => $positions]);
+            });
+        } catch (LockTimeoutException) {
+            return response()->json(['saved' => false, 'message' => 'The layout is being saved; try again.'], 409);
         }
 
-        $connection->layout()->updateOrCreate([], ['payload' => $positions]);
-
         return response()->json(['saved' => true]);
+    }
+
+    /**
+     * Stored positions with `$positions` merged in by table. Tables missing from the current snapshot
+     * are dropped, so stale entries do not accumulate.
+     *
+     * @param  list<array{table: string, x: float, y: float, pinned: bool}>  $positions
+     * @return list<array{table: string, x: float, y: float, pinned: bool}>
+     */
+    private function merged(SavedConnection $connection, array $positions): array
+    {
+        $merged = [];
+        foreach ($connection->layout?->payload ?? [] as $stored) {
+            $merged[$stored['table']] = $stored;
+        }
+        foreach ($positions as $position) {
+            $merged[$position['table']] = $position;
+        }
+
+        $tables = $connection->snapshots()->latest('id')->first()?->payload['tables'] ?? [];
+        if ($tables !== []) {
+            $merged = array_intersect_key($merged, array_flip(array_column($tables, 'name')));
+        }
+
+        if (count($merged) > self::maxEntries()) {
+            throw ValidationException::withMessages(['positions' => 'The layout would exceed '.self::maxEntries().' entries.']);
+        }
+
+        return array_values($merged);
     }
 }

@@ -21,7 +21,8 @@ export function generateDdl(
     if (table.kind === 'view')
         return `-- ${table.name} is a view; its definition is not available for this engine.`;
 
-    // SQLite only allows AUTOINCREMENT inline on an INTEGER PRIMARY KEY, so such a key is declared there.
+    // SQLite never gets AUTOINCREMENT: Laravel marks every integer primary key auto-increment there, but
+    // that is only the rowid alias, so a single-column key is declared `INTEGER PRIMARY KEY`.
     const inlineKey =
         dialect === 'sqlite' && table.primary_key.length === 1
             ? table.columns.find(
@@ -30,8 +31,7 @@ export function generateDdl(
             : undefined;
 
     const lines = table.columns.map((c) => {
-        if (c === inlineKey)
-            return `  ${q(c.name)} INTEGER PRIMARY KEY AUTOINCREMENT`;
+        if (c === inlineKey) return `  ${q(c.name)} INTEGER PRIMARY KEY`;
         const auto = c.auto_increment ? autoIncrementClause(dialect) : '';
         // A sequence default (nextval, ...) is what auto-increment already stands for.
         const dflt =

@@ -1,7 +1,9 @@
 <?php
 
 use App\Models\SavedConnection;
+use App\Models\StoredSnapshot;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -113,4 +115,36 @@ it('rejects a merge that would grow the layout past the entry cap', function () 
     $this->actingAs($this->user)->putJson($route, ['merge' => true, 'positions' => $batch('b')])
         ->assertUnprocessable()->assertJsonValidationErrors('positions');
     expect($this->actingAs($this->user)->getJson(route('api.layout.show', $this->connection))->json('positions'))->toHaveCount(6000);
+});
+
+it('drops merged entries for tables missing from the current snapshot', function () {
+    StoredSnapshot::create(['connection_id' => $this->connection->id, 'hash' => str_repeat('a', 40), 'payload' => ['tables' => [['name' => 'a'], ['name' => 'c']]]]);
+    $route = route('api.layout.update', $this->connection);
+    $this->actingAs($this->user)->putJson($route, ['positions' => [
+        ['table' => 'a', 'x' => 1, 'y' => 1, 'pinned' => false],
+        ['table' => 'gone', 'x' => 2, 'y' => 2, 'pinned' => false],
+    ]])->assertOk();
+
+    $this->actingAs($this->user)->putJson($route, ['merge' => true, 'positions' => [['table' => 'c', 'x' => 3, 'y' => 3, 'pinned' => false]]])->assertOk();
+
+    expect($this->actingAs($this->user)->getJson(route('api.layout.show', $this->connection))->json('positions.*.table'))->toBe(['a', 'c']);
+});
+
+it('applies consecutive merges under the layout lock without losing either', function () {
+    $route = route('api.layout.update', $this->connection);
+    $this->actingAs($this->user)->putJson($route, ['merge' => true, 'positions' => [['table' => 'a', 'x' => 1, 'y' => 1, 'pinned' => false]]])->assertOk();
+    $this->actingAs($this->user)->putJson($route, ['merge' => true, 'positions' => [['table' => 'b', 'x' => 2, 'y' => 2, 'pinned' => false]]])->assertOk();
+
+    expect($this->actingAs($this->user)->getJson(route('api.layout.show', $this->connection))->json('positions.*.table'))->toBe(['a', 'b']);
+});
+
+it('answers 409 and writes nothing while another save holds the layout lock', function () {
+    $lock = Cache::lock("layout:{$this->connection->id}", 30);
+    expect($lock->get())->toBeTrue();
+
+    $this->actingAs($this->user)->putJson(route('api.layout.update', $this->connection), ['positions' => [['table' => 'a', 'x' => 1, 'y' => 1, 'pinned' => false]]])
+        ->assertStatus(409)->assertJson(['saved' => false]);
+
+    $lock->release();
+    expect($this->actingAs($this->user)->getJson(route('api.layout.show', $this->connection))->json('positions'))->toBe([]);
 });

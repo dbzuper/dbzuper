@@ -122,7 +122,25 @@ export function UniverseCanvas({
         });
 
         const camera = instance.getCamera();
-        if (restored) camera.setState(restored);
+        // Only move the camera when it has to move: any change costs a re-render, which matters for
+        // large graphs that open at Sigma's own fit.
+        const initial =
+            restored ??
+            (firstViewRatio(graph.order) === camera.getState().ratio
+                ? null
+                : { ...camera.getState(), ratio: firstViewRatio(graph.order) });
+        if (initial) camera.setState(initial);
+        // The padded first view (see firstViewRatio), animated.
+        const resetView = (ms: number) =>
+            void camera.animate(
+                {
+                    x: 0.5,
+                    y: 0.5,
+                    angle: 0,
+                    ratio: firstViewRatio(graph.order),
+                },
+                { duration: motionMs(ms) },
+            );
         let gridSize = '';
         const onCamera = () => {
             const ratio = camera.getState().ratio;
@@ -255,7 +273,7 @@ export function UniverseCanvas({
                             st.showInferred,
                         ),
                     ]);
-                else void camera.reset({ duration: motionMs(400) });
+                else resetView(400);
             }
             if (st.path !== prev.path && st.path && st.path.length > 1)
                 fitNodes(st.path);
@@ -271,7 +289,7 @@ export function UniverseCanvas({
                     );
             },
             fitNodes,
-            fitAll: () => void camera.reset({ duration: motionMs(400) }),
+            fitAll: () => resetView(400),
             relayout: () => relayoutRef.current(),
         });
 
