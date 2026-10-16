@@ -39,3 +39,24 @@ describe('prefetchWorkspace', () => {
         expect(canvas).not.toHaveBeenCalled();
     });
 });
+
+describe('prefetchWorkspace after a failed chunk', () => {
+    it('tries again on the next call', async () => {
+        vi.resetModules();
+        let kitCalls = 0;
+        vi.doMock('@/pages/workspace/show', () => ({ default: () => null }));
+        vi.doMock('@/universe/model-kit', () => {
+            kitCalls++;
+            if (kitCalls === 1) throw new Error('chunk failed');
+            return {};
+        });
+        vi.doMock('@/components/universe/universe-canvas', () => ({}));
+        vi.doMock('@/universe/webgl', () => ({ hasWebGL: () => false }));
+        const { prefetchWorkspace } = await import('./prefetch-workspace');
+        prefetchWorkspace();
+        await vi.waitFor(() => expect(kitCalls).toBe(1));
+        await new Promise((r) => setTimeout(r, 20));
+        prefetchWorkspace();
+        await vi.waitFor(() => expect(kitCalls).toBe(2));
+    });
+});

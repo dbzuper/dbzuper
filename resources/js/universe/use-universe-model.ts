@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { retryable } from '@/lib/retry-once';
 import type { LayoutPositionEntry, SchemaSnapshot } from '@/types/schema';
 import type { ClusterInfo } from './clusters';
 import type { SchemaGraph } from './graph';
@@ -6,13 +7,11 @@ import { applyPositions, planLayout, savedMap, toLayoutEntries } from './plan';
 
 type ModelKit = typeof import('./model-kit');
 let kit: ModelKit | null = null;
-let kitLoad: Promise<ModelKit> | null = null;
 
-/** Loads graphology and the layout code once; the canvas chunk shares them, so it is usually warm. */
-function loadKit(): Promise<ModelKit> {
-    kitLoad ??= import('./model-kit').then((loaded) => (kit = loaded));
-    return kitLoad;
-}
+/** Loads graphology and the layout code once (a failed load is retried next time); the canvas chunk shares them, so it is usually warm. */
+export const loadKit = retryable(() =>
+    import('./model-kit').then((loaded) => (kit = loaded)),
+);
 
 export type UniverseModel = { graph: SchemaGraph; clusters: ClusterInfo[] };
 export type ModelStatus = 'idle' | 'layout' | 'ready' | 'error';
@@ -62,6 +61,8 @@ export function useUniverseModel(
         const id = ++requestId.current;
         pendingSnapshot.current = snapshot;
 
+        // A cold visit waits for the kit chunk: show the layout state, not an empty stage.
+        if (!kit) setStatus('layout');
         void loadKit()
             .then((k) => {
                 if (id !== requestId.current) return;

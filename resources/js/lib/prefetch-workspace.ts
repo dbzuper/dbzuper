@@ -1,6 +1,6 @@
 import { hasWebGL } from '@/universe/webgl';
 
-let started: Promise<unknown> | null = null;
+let started: Promise<void> | null = null;
 
 /**
  * Warms the browser cache with the chunks a workspace visit needs (the page, the universe model kit and,
@@ -9,10 +9,16 @@ let started: Promise<unknown> | null = null;
  * the real navigation fetches the chunks again and reports its own errors.
  */
 export function prefetchWorkspace(): void {
-    started ??= Promise.allSettled([
+    if (started) return;
+    const attempt = Promise.allSettled([
         import('@/pages/workspace/show'),
         import('@/universe/model-kit'),
         // Sigma touches the WebGL2 global at import time, so the canvas is only loaded when it is safe.
         hasWebGL() ? import('@/components/universe/universe-canvas') : null,
-    ]);
+    ]).then((results) => {
+        // A failed chunk must not disable prefetching for the rest of the session.
+        if (results.some((r) => r.status === 'rejected') && started === attempt)
+            started = null;
+    });
+    started = attempt;
 }
