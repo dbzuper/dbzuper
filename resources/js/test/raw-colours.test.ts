@@ -11,14 +11,15 @@ const EXCLUDED = [
     // Generated Wayfinder route helpers: no styling.
     `${ROOT}/actions`,
     `${ROOT}/routes`,
-    // shadcn primitives use black/white scrims and white-on-destructive by design.
-    `${ROOT}/components/ui`,
-    // Placeholder art for the starter-kit dashboard stub.
-    `${ROOT}/pages/dashboard.tsx`,
 ];
 
 /** Individual lines kept on purpose. */
 const ALLOWED = [
+    // shadcn primitives: modal scrims and white text on the destructive fill.
+    'ui/dialog.tsx:bg-black/80',
+    'ui/sheet.tsx:bg-black/80',
+    'ui/badge.tsx:bg-destructive text-white',
+    'ui/button.tsx:bg-destructive text-white',
     // A QR code needs a white quiet zone in either theme to stay scannable.
     'two-factor-setup-modal.tsx:bg-white',
     // Modal scrim: black at 40% is the conventional overlay in both themes.

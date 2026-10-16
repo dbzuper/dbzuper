@@ -26,7 +26,7 @@ export default function HistoryIndex({
     return (
         <>
             <Head title="History" />
-            <div className="flex h-[calc(100dvh-8rem)] flex-col gap-2 p-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 p-4">
                 {problem && (
                     <p role="alert" className="text-sm text-destructive">
                         {problem}

@@ -2,7 +2,7 @@ import { loader } from '@monaco-editor/react';
 
 let ready: Promise<typeof import('monaco-editor')> | null = null;
 
-/** Resolves any CSS colour (oklch included) to a hex string Monaco accepts. */
+/** Resolves any CSS colour (oklch included) to a hex string Monaco accepts; keeps alpha as #RRGGBBAA. */
 export function toHex(value: string, fallback: string): string {
     try {
         const ctx = document.createElement('canvas').getContext('2d');
@@ -18,8 +18,10 @@ export function toHex(value: string, fallback: string): string {
         }
         ctx.clearRect(0, 0, 1, 1);
         ctx.fillRect(0, 0, 1, 1);
-        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-        return `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+        const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+        // Keep translucency (e.g. the dark theme's 10% white border): Monaco accepts #RRGGBBAA.
+        const channels = a < 255 ? [r, g, b, a] : [r, g, b];
+        return `#${channels.map((n) => n.toString(16).padStart(2, '0')).join('')}`;
     } catch {
         return fallback;
     }

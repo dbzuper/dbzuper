@@ -3,12 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineThemes, disposeClosedModels, toHex } from './monaco-setup';
 
 /** A 2D context that accepts hex and oklch() colours, like a browser would, and reports the given pixel. */
-function stubCanvas(pixel: [number, number, number]) {
+function stubCanvas(pixel: [number, number, number], alpha = 255) {
     let fill = '#000000';
     const ctx = {
         clearRect: () => {},
         fillRect: () => {},
-        getImageData: () => ({ data: [...pixel, 255] }),
+        getImageData: () => ({ data: [...pixel, alpha] }),
         get fillStyle() {
             return fill;
         },
@@ -29,6 +29,11 @@ describe('toHex', () => {
     it('converts a colour the browser accepts', () => {
         stubCanvas([1, 2, 255]);
         expect(toHex('oklch(0.5 0.1 200)', '#abcdef')).toBe('#0102ff');
+    });
+
+    it('keeps the alpha of a translucent colour', () => {
+        stubCanvas([255, 255, 255], 26);
+        expect(toHex('oklch(1 0 0 / 10%)', '#abcdef')).toBe('#ffffff1a');
     });
 
     it('returns the fallback, not black, for a colour the browser rejects', () => {
