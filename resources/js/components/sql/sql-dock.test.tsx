@@ -6,6 +6,7 @@ import {
     waitFor,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/http';
 import type { ConnectionSummary } from '@/types/connection';
 import { useSqlTabs } from '@/sql/tabs-store';
 import { useWorkspace } from '@/universe/store';
@@ -21,6 +22,7 @@ vi.mock('@/sql/monaco-completion', () => ({
 vi.mock('@/sql/monaco-setup', () => ({ disposeClosedModels: vi.fn() }));
 
 const api = vi.hoisted(() => ({ run: vi.fn(), explain: vi.fn() }));
+const editorFocus = vi.hoisted(() => vi.fn());
 vi.mock('@/sql/query-api', () => ({ queryApi: api }));
 
 // Monaco cannot run in jsdom: the editor mounts a minimal fake that exposes the statement under the cursor.
@@ -44,6 +46,7 @@ vi.mock('./sql-editor', async () => {
                         getSelection: () => null,
                         getPosition: () => ({ lineNumber: 1, column: 1 }),
                         addCommand: vi.fn(),
+                        focus: editorFocus,
                     },
                     {
                         editor: {
@@ -202,5 +205,44 @@ describe('SqlDock', () => {
         await waitFor(() => expect(screen.queryByText('Running…')).toBeNull());
         act(() => useSqlTabs.getState().setActive(1, first));
         expect(screen.getByText('Cancelled.')).toBeInTheDocument();
+    });
+
+    describe('keyboard focus', () => {
+        it('focuses the editor when the dock opens', async () => {
+            render(<SqlDock connection={connection} snapshot={null} />);
+            await waitFor(() => expect(editorFocus).toHaveBeenCalled());
+        });
+
+        it.each(['Cancel', 'Run UPDATE'])(
+            'returns focus to the editor when the run confirmation closes via %s',
+            async (button) => {
+                api.run
+                    .mockRejectedValueOnce(
+                        new ApiError(409, {
+                            confirmation: {
+                                statement_index: 0,
+                                mode: 'confirm',
+                                kind: 'write',
+                                keyword: 'UPDATE',
+                                target: null,
+                            },
+                        }),
+                    )
+                    .mockResolvedValue(ok);
+                render(<SqlDock connection={connection} snapshot={null} />);
+                await waitFor(() => expect(editorFocus).toHaveBeenCalled());
+                editorFocus.mockClear();
+
+                fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+                fireEvent.click(
+                    await screen.findByRole('button', { name: button }),
+                );
+
+                await waitFor(() =>
+                    expect(editorFocus).toHaveBeenCalledTimes(1),
+                );
+                expect(screen.queryByRole('dialog')).toBeNull();
+            },
+        );
     });
 });

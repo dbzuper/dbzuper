@@ -23,7 +23,11 @@ describe('SqlTabsBar', () => {
             expect(tablist).toContainElement(tab);
         const hidden = tablist.querySelectorAll('button[aria-hidden="true"]');
         expect(hidden).toHaveLength(3);
-        for (const b of hidden) expect(b).toHaveAttribute('tabindex', '-1');
+        for (const b of hidden) {
+            expect(b).toHaveAttribute('tabindex', '-1');
+            // A tooltip for mouse users (and a name for voice control).
+            expect(b).toHaveAttribute('title', 'Close');
+        }
     });
 
     it('closes a focused tab with Delete or Backspace and focuses the tab that becomes active', async () => {

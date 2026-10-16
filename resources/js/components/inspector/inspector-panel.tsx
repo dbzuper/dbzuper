@@ -12,6 +12,9 @@ import { DdlTab } from './ddl-tab';
 import { IndexesTab } from './indexes-tab';
 import { RelationshipsTab } from './relationships-tab';
 
+/** The inspector's heading: the command palette moves focus here after picking a table. */
+export const INSPECTOR_HEADING_ID = 'inspector-heading';
+
 type Props = {
     connectionId: number;
     snapshot: SchemaSnapshot;
@@ -37,7 +40,11 @@ export function InspectorPanel({ connectionId, snapshot, table }: Props) {
         <div className="flex h-full min-h-0 flex-col">
             <div className="flex items-start gap-2 border-b px-4 py-3">
                 <div className="min-w-0">
-                    <h2 className="truncate font-mono text-sm font-semibold">
+                    <h2
+                        id={INSPECTOR_HEADING_ID}
+                        tabIndex={-1}
+                        className="truncate rounded-sm font-mono text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
                         {table.name}
                     </h2>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">

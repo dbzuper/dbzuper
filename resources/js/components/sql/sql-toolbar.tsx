@@ -7,6 +7,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { tabFocusShortcutHint } from '@/lib/platform';
 
 export const ROW_LIMITS = [100, 1000, 5000, 10000] as const;
 export const DEFAULT_ROW_LIMIT = 1000;
@@ -84,6 +85,10 @@ export function SqlToolbar({
                 </>
             )}
             <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                {/* Tab indents inside the editor; Monaco's toggle lets keyboard users Tab out of it. */}
+                <span className="mr-2 hidden sm:inline">
+                    {`${tabFocusShortcutHint()}: Tab moves focus`}
+                </span>
                 <span id="row-limit-label">Row limit</span>
                 <Select
                     value={String(maxRows)}

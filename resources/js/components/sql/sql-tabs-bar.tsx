@@ -82,6 +82,7 @@ export function SqlTabsBar({ connectionId }: { connectionId: number }) {
                                 type="button"
                                 aria-hidden="true"
                                 tabIndex={-1}
+                                title="Close"
                                 className="mr-1 rounded p-0.5 hover:bg-background"
                                 onClick={() => closeTab(connectionId, tab.id)}
                             >

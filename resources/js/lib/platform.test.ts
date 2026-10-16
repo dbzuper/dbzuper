@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { paletteShortcutHint } from './platform';
+import { paletteShortcutHint, tabFocusShortcutHint } from './platform';
 
 const stubNavigator = (value: object) =>
     vi.stubGlobal('navigator', { ...value });
@@ -27,5 +27,16 @@ describe('paletteShortcutHint', () => {
             platform: 'MacIntel',
         });
         expect(paletteShortcutHint()).toBe('Ctrl K');
+    });
+});
+
+describe('tabFocusShortcutHint', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("names Monaco's tab-focus toggle: Ctrl+M, or ⌃⇧M on a Mac", () => {
+        stubNavigator({ platform: 'Win32' });
+        expect(tabFocusShortcutHint()).toBe('Ctrl+M');
+        stubNavigator({ platform: 'MacIntel' });
+        expect(tabFocusShortcutHint()).toBe('⌃⇧M');
     });
 });

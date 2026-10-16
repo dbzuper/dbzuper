@@ -32,9 +32,12 @@ function effectOf(kind: string): string {
 export function ConfirmDialog({
     request,
     onResolve,
+    onCloseFocus,
 }: {
     request: ConfirmRequest | null;
     onResolve: (a: ConfirmAnswer) => void;
+    /** Moves focus back where typing continues (the SQL editor) when the dialog closes, however it closes. */
+    onCloseFocus?: () => void;
 }) {
     return (
         <Dialog
@@ -43,7 +46,13 @@ export function ConfirmDialog({
                 if (!open) onResolve(null);
             }}
         >
-            <DialogContent>
+            <DialogContent
+                onCloseAutoFocus={(e) => {
+                    if (!onCloseFocus) return;
+                    e.preventDefault();
+                    onCloseFocus();
+                }}
+            >
                 {request && (
                     <ConfirmBody request={request} onResolve={onResolve} />
                 )}

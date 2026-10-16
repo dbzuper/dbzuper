@@ -20,4 +20,21 @@ describe('SqlToolbar', () => {
             'Stops waiting — the server may still finish the statement',
         );
     });
+
+    it('tells keyboard users how to leave the editor with Tab', () => {
+        vi.stubGlobal('navigator', { platform: 'Win32' });
+        render(
+            <SqlToolbar
+                running={false}
+                maxRows={1000}
+                onMaxRows={vi.fn()}
+                onRun={vi.fn()}
+                onRunAll={vi.fn()}
+                onExplain={vi.fn()}
+                onCancel={vi.fn()}
+            />,
+        );
+        expect(screen.getByText('Ctrl+M: Tab moves focus')).toBeInTheDocument();
+        vi.unstubAllGlobals();
+    });
 });

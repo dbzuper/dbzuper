@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { initializeTheme } from '@/hooks/use-appearance';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
@@ -6,6 +6,7 @@ import { useRecords } from '@/records/records-store';
 import { universe } from '@/universe/controller';
 import { pickPathTarget } from '@/universe/path-pick';
 import { useWorkspace } from '@/universe/store';
+import { INSPECTOR_HEADING_ID } from '@/components/inspector/inspector-panel';
 import { CommandPalette } from './command-palette';
 
 const snap = makeSnapshot(
@@ -39,6 +40,58 @@ describe('CommandPalette', () => {
         expect(useWorkspace.getState().selected).toBe('users');
         expect(fly).toHaveBeenCalledWith('users');
         expect(useWorkspace.getState().paletteOpen).toBe(false);
+    });
+
+    it.each([
+        ['a table', 'users'],
+        ['a column', 'id'],
+    ])(
+        'moves focus to the inspector heading after picking %s with Enter',
+        async (_kind, query) => {
+            render(
+                <>
+                    <h2 id={INSPECTOR_HEADING_ID} tabIndex={-1}>
+                        users
+                    </h2>
+                    <CommandPalette snapshot={snap} onRefresh={() => {}} />
+                </>,
+            );
+            const input = screen.getByPlaceholderText(
+                'Search tables, columns and actions…',
+            );
+            fireEvent.change(input, { target: { value: query } });
+            fireEvent.keyDown(input, { key: 'Enter' });
+
+            expect(useWorkspace.getState().selected).not.toBeNull();
+            await waitFor(() =>
+                expect(screen.queryByRole('dialog')).toBeNull(),
+            );
+            // After the dialog's own focus restore, which would leave focus on the body.
+            await new Promise((r) => setTimeout(r, 10));
+            expect(
+                screen.getByRole('heading', { name: 'users' }),
+            ).toHaveFocus();
+        },
+    );
+
+    it('leaves focus alone when the palette is dismissed', async () => {
+        render(
+            <>
+                <h2 id={INSPECTOR_HEADING_ID} tabIndex={-1}>
+                    users
+                </h2>
+                <CommandPalette snapshot={snap} onRefresh={() => {}} />
+            </>,
+        );
+        fireEvent.keyDown(
+            screen.getByPlaceholderText('Search tables, columns and actions…'),
+            { key: 'Escape' },
+        );
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        await new Promise((r) => setTimeout(r, 10));
+        expect(
+            screen.getByRole('heading', { name: 'users' }),
+        ).not.toHaveFocus();
     });
 
     it('completes a pending path when a table is picked', () => {

@@ -1,5 +1,7 @@
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Command } from 'cmdk';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { INSPECTOR_HEADING_ID } from '@/components/inspector/inspector-panel';
 import { nextAppearance, useAppearance } from '@/hooks/use-appearance';
 import type { SchemaSnapshot } from '@/types/schema';
 import { universe } from '@/universe/controller';
@@ -40,17 +42,25 @@ export function CommandPalette({
         [snapshot, query],
     );
 
+    // Set when a pick opens the inspector: focus then lands on its heading instead of going back to
+    // whatever had it before the palette (often the body).
+    const focusInspector = useRef(false);
+
     const close = () => {
         setOpen(false);
         setQuery('');
     };
 
-    const pickTable = (table: string) => {
-        if (!pickPathTarget(snapshot, table)) {
-            useWorkspace.getState().select(table);
-            universe.flyTo(table);
-        }
+    const showInInspector = (table: string, tab?: 'columns') => {
+        useWorkspace.getState().select(table, tab);
+        universe.flyTo(table);
+        focusInspector.current = true;
         close();
+    };
+
+    const pickTable = (table: string) => {
+        if (pickPathTarget(snapshot, table)) close();
+        else showInInspector(table);
     };
 
     const action =
@@ -111,130 +121,159 @@ export function CommandPalette({
     ];
 
     return (
-        <Command.Dialog
+        // cmdk's Command.Dialog, spelled out so the content can take onCloseAutoFocus.
+        <DialogPrimitive.Root
             open={open}
             onOpenChange={(o) => (o ? setOpen(true) : close())}
-            label="Command palette"
-            shouldFilter={false}
-            overlayClassName="fixed inset-0 z-40 bg-black/40"
-            contentClassName="fixed top-[15%] left-1/2 z-50 w-[min(640px,92vw)] -translate-x-1/2 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl"
         >
-            {pathFrom && (
-                <div className="border-b px-3 py-2 text-xs text-muted-foreground">
-                    Find path from {pathFrom} to…
-                </div>
-            )}
-            <Command.Input
-                value={query}
-                onValueChange={setQuery}
-                placeholder="Search tables, columns and actions…"
-                className="w-full border-b bg-transparent px-3 py-3 text-sm outline-none"
-            />
-            <Command.List className="max-h-[50vh] overflow-auto p-1.5">
-                <Command.Empty className="px-2 py-3 text-sm text-muted-foreground">
-                    No matches.
-                </Command.Empty>
-                {!pathFrom && record && (
-                    <Command.Group
-                        heading="Records"
-                        className="text-[10px] tracking-wide text-muted-foreground uppercase"
-                    >
-                        <Command.Item
-                            value={`r:${record.table}:${keyDisplay(record.key)}`}
-                            onSelect={action(() => openRecord(record))}
-                            className={itemClass}
-                        >
-                            <span className="font-mono text-foreground normal-case">
-                                Open record {record.table} ·{' '}
-                                {keyDisplay(record.key)}
-                            </span>
-                        </Command.Item>
-                    </Command.Group>
-                )}
-                {results.tables.length > 0 && (
-                    <Command.Group
-                        heading="Tables"
-                        className="text-[10px] tracking-wide text-muted-foreground uppercase"
-                    >
-                        {results.tables.map((h) =>
-                            h.kind === 'table' ? (
-                                <Command.Item
-                                    key={`t:${h.table}`}
-                                    value={`t:${h.table}`}
-                                    onSelect={() => pickTable(h.table)}
-                                    className={itemClass}
+            <DialogPrimitive.Portal>
+                <DialogPrimitive.Overlay
+                    cmdk-overlay=""
+                    className="fixed inset-0 z-40 bg-black/40"
+                />
+                <DialogPrimitive.Content
+                    aria-label="Command palette"
+                    aria-describedby={undefined}
+                    cmdk-dialog=""
+                    className="fixed top-[15%] left-1/2 z-50 w-[min(640px,92vw)] -translate-x-1/2 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl"
+                    onCloseAutoFocus={(e) => {
+                        if (!focusInspector.current) return;
+                        focusInspector.current = false;
+                        const heading =
+                            document.getElementById(INSPECTOR_HEADING_ID);
+                        if (!heading) return;
+                        e.preventDefault();
+                        heading.focus();
+                    }}
+                >
+                    <Command label="Command palette" shouldFilter={false}>
+                        {pathFrom && (
+                            <div className="border-b px-3 py-2 text-xs text-muted-foreground">
+                                Find path from {pathFrom} to…
+                            </div>
+                        )}
+                        <Command.Input
+                            value={query}
+                            onValueChange={setQuery}
+                            placeholder="Search tables, columns and actions…"
+                            className="w-full border-b bg-transparent px-3 py-3 text-sm outline-none"
+                        />
+                        <Command.List className="max-h-[50vh] overflow-auto p-1.5">
+                            <Command.Empty className="px-2 py-3 text-sm text-muted-foreground">
+                                No matches.
+                            </Command.Empty>
+                            {!pathFrom && record && (
+                                <Command.Group
+                                    heading="Records"
+                                    className="text-[10px] tracking-wide text-muted-foreground uppercase"
                                 >
-                                    <span className="font-mono text-foreground normal-case">
-                                        {h.table}
-                                    </span>
-                                    {h.tableKind === 'view' && (
-                                        <span className="text-[10px] normal-case">
-                                            view
+                                    <Command.Item
+                                        value={`r:${record.table}:${keyDisplay(record.key)}`}
+                                        onSelect={action(() =>
+                                            openRecord(record),
+                                        )}
+                                        className={itemClass}
+                                    >
+                                        <span className="font-mono text-foreground normal-case">
+                                            Open record {record.table} ·{' '}
+                                            {keyDisplay(record.key)}
                                         </span>
+                                    </Command.Item>
+                                </Command.Group>
+                            )}
+                            {results.tables.length > 0 && (
+                                <Command.Group
+                                    heading="Tables"
+                                    className="text-[10px] tracking-wide text-muted-foreground uppercase"
+                                >
+                                    {results.tables.map((h) =>
+                                        h.kind === 'table' ? (
+                                            <Command.Item
+                                                key={`t:${h.table}`}
+                                                value={`t:${h.table}`}
+                                                onSelect={() =>
+                                                    pickTable(h.table)
+                                                }
+                                                className={itemClass}
+                                            >
+                                                <span className="font-mono text-foreground normal-case">
+                                                    {h.table}
+                                                </span>
+                                                {h.tableKind === 'view' && (
+                                                    <span className="text-[10px] normal-case">
+                                                        view
+                                                    </span>
+                                                )}
+                                            </Command.Item>
+                                        ) : null,
                                     )}
-                                </Command.Item>
-                            ) : null,
-                        )}
-                    </Command.Group>
-                )}
-                {!pathFrom && results.columns.length > 0 && (
-                    <Command.Group
-                        heading="Columns"
-                        className="text-[10px] tracking-wide text-muted-foreground uppercase"
-                    >
-                        {results.columns.map((h) =>
-                            h.kind === 'column' ? (
-                                <Command.Item
-                                    key={`c:${h.table}.${h.column}`}
-                                    value={`c:${h.table}.${h.column}`}
-                                    onSelect={() => {
-                                        useWorkspace
-                                            .getState()
-                                            .select(h.table, 'columns');
-                                        universe.flyTo(h.table);
-                                        close();
-                                    }}
-                                    className={itemClass}
+                                </Command.Group>
+                            )}
+                            {!pathFrom && results.columns.length > 0 && (
+                                <Command.Group
+                                    heading="Columns"
+                                    className="text-[10px] tracking-wide text-muted-foreground uppercase"
                                 >
-                                    <span className="font-mono text-foreground normal-case">
-                                        {h.table}.{h.column}
-                                    </span>
-                                    <span className="ml-auto font-mono text-[11px] normal-case">
-                                        {h.type}
-                                    </span>
-                                </Command.Item>
-                            ) : null,
-                        )}
-                    </Command.Group>
-                )}
-                {!pathFrom && (
-                    <Command.Group
-                        heading="Actions"
-                        className="text-[10px] tracking-wide text-muted-foreground uppercase"
-                    >
-                        {actions
-                            .filter(
-                                (a) =>
-                                    !query ||
-                                    a.label
-                                        .toLowerCase()
-                                        .includes(query.toLowerCase()),
-                            )
-                            .map((a) => (
-                                <Command.Item
-                                    key={a.label}
-                                    value={`a:${a.label}`}
-                                    onSelect={action(a.run, a.keepOpen)}
-                                    className={itemClass}
+                                    {results.columns.map((h) =>
+                                        h.kind === 'column' ? (
+                                            <Command.Item
+                                                key={`c:${h.table}.${h.column}`}
+                                                value={`c:${h.table}.${h.column}`}
+                                                onSelect={() =>
+                                                    showInInspector(
+                                                        h.table,
+                                                        'columns',
+                                                    )
+                                                }
+                                                className={itemClass}
+                                            >
+                                                <span className="font-mono text-foreground normal-case">
+                                                    {h.table}.{h.column}
+                                                </span>
+                                                <span className="ml-auto font-mono text-[11px] normal-case">
+                                                    {h.type}
+                                                </span>
+                                            </Command.Item>
+                                        ) : null,
+                                    )}
+                                </Command.Group>
+                            )}
+                            {!pathFrom && (
+                                <Command.Group
+                                    heading="Actions"
+                                    className="text-[10px] tracking-wide text-muted-foreground uppercase"
                                 >
-                                    <span className="text-foreground normal-case">
-                                        {a.label}
-                                    </span>
-                                </Command.Item>
-                            ))}
-                    </Command.Group>
-                )}
-            </Command.List>
-        </Command.Dialog>
+                                    {actions
+                                        .filter(
+                                            (a) =>
+                                                !query ||
+                                                a.label
+                                                    .toLowerCase()
+                                                    .includes(
+                                                        query.toLowerCase(),
+                                                    ),
+                                        )
+                                        .map((a) => (
+                                            <Command.Item
+                                                key={a.label}
+                                                value={`a:${a.label}`}
+                                                onSelect={action(
+                                                    a.run,
+                                                    a.keepOpen,
+                                                )}
+                                                className={itemClass}
+                                            >
+                                                <span className="text-foreground normal-case">
+                                                    {a.label}
+                                                </span>
+                                            </Command.Item>
+                                        ))}
+                                </Command.Group>
+                            )}
+                        </Command.List>
+                    </Command>
+                </DialogPrimitive.Content>
+            </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
     );
 }

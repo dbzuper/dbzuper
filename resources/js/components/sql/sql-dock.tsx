@@ -379,6 +379,8 @@ export default function SqlDock({
                         onMount={(editor, monaco) => {
                             editorRef.current = editor;
                             monacoRef.current = monaco;
+                            // Opening the dock (Ctrl/⌘+J or the rail) means "type SQL now".
+                            editor.focus();
                             editor.addCommand(
                                 monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
                                 () => void handlers.current.run(),
@@ -417,6 +419,7 @@ export default function SqlDock({
             <ConfirmDialog
                 request={confirmRequest}
                 onResolve={resolveConfirm}
+                onCloseFocus={() => editorRef.current?.focus()}
             />
         </section>
     );

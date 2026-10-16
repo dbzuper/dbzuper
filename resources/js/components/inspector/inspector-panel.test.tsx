@@ -26,7 +26,7 @@ vi.mock('@/lib/workspace-api', async (orig) => ({
     },
 }));
 
-import { InspectorPanel } from './inspector-panel';
+import { INSPECTOR_HEADING_ID, InspectorPanel } from './inspector-panel';
 
 const snapshot = makeSnapshot(
     [
@@ -128,6 +128,19 @@ beforeEach(() => {
 });
 
 describe('InspectorPanel', () => {
+    it('has a programmatically focusable heading for the command palette to land on', () => {
+        render(
+            <InspectorPanel
+                connectionId={1}
+                snapshot={snapshot}
+                table={orders}
+            />,
+        );
+        const heading = screen.getByRole('heading', { name: 'orders' });
+        expect(heading).toHaveAttribute('id', INSPECTOR_HEADING_ID);
+        expect(heading).toHaveAttribute('tabindex', '-1');
+    });
+
     it('lists columns with key markers', () => {
         render(
             <InspectorPanel

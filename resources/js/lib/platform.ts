@@ -14,3 +14,8 @@ function isApplePlatform(): boolean {
 export function paletteShortcutHint(): string {
     return isApplePlatform() ? '⌘K' : 'Ctrl K';
 }
+
+/** Monaco's "Tab moves focus" toggle as shown to this user: Ctrl+M, or ⌃⇧M on a Mac (where ⌘M minimises). */
+export function tabFocusShortcutHint(): string {
+    return isApplePlatform() ? '⌃⇧M' : 'Ctrl+M';
+}
