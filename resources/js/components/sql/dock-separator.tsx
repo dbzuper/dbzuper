@@ -5,6 +5,9 @@ import {
     useWorkspace,
 } from '@/universe/store';
 
+/** The id of the dock region the separator resizes. */
+export const DOCK_ID = 'sql-dock';
+
 /** One Arrow press moves the dock edge by this many px. */
 const KEY_STEP = 24;
 
@@ -30,10 +33,20 @@ export function DockSeparator() {
     };
     // The dock grows upwards, so Arrow Up moves the separator up (taller dock).
     const onKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-        e.preventDefault();
         const current = useWorkspace.getState().dockHeight;
-        setHeight(current + (e.key === 'ArrowUp' ? KEY_STEP : -KEY_STEP));
+        const next =
+            e.key === 'ArrowUp'
+                ? current + KEY_STEP
+                : e.key === 'ArrowDown'
+                  ? current - KEY_STEP
+                  : e.key === 'Home'
+                    ? DOCK_MIN_HEIGHT
+                    : e.key === 'End'
+                      ? DOCK_MAX_HEIGHT
+                      : null;
+        if (next === null) return;
+        e.preventDefault();
+        setHeight(next);
     };
 
     return (
@@ -41,6 +54,7 @@ export function DockSeparator() {
             role="separator"
             tabIndex={0}
             aria-orientation="horizontal"
+            aria-controls={DOCK_ID}
             aria-label="Resize SQL editor"
             aria-valuenow={height}
             aria-valuemin={DOCK_MIN_HEIGHT}

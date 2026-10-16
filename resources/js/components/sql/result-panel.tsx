@@ -147,7 +147,7 @@ export const ResultPanel = memo(function ResultPanel({
                     {notice}
                 </p>
             )}
-            <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b px-2">
+            <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b px-3 py-1">
                 <div
                     role="tablist"
                     aria-label="Statement results"

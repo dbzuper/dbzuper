@@ -309,7 +309,7 @@ export default function WorkspaceShow({
                     id="main"
                     tabIndex={-1}
                     data-testid="workspace-main"
-                    className="relative min-w-0 flex-1"
+                    className="relative min-w-0 flex-1 focus:outline-none"
                 >
                     {error && (
                         <div className="absolute inset-x-0 top-0 z-10 m-4 flex items-center gap-3 rounded-md border border-destructive/40 bg-background px-3 py-2 text-sm">

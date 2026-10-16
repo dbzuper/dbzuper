@@ -181,19 +181,19 @@ describe('RecordCard', () => {
         [
             { value: 2, capped: false },
             '2',
-            'Show order_items (order_id) 2 records',
+            'Show order_items (order_id), 2 records',
         ],
         [
             { value: 1, capped: false },
             '1',
-            'Show order_items (order_id) 1 record',
+            'Show order_items (order_id), 1 record',
         ],
         [
             { value: 10000, capped: true },
             '10,000+',
-            'Show order_items (order_id) 10,000+ records',
+            'Show order_items (order_id), 10,000+ records',
         ],
-        [null, '?', 'Show order_items (order_id) ? records'],
+        [null, '?', 'Show order_items (order_id), ? records'],
     ])('shows the incoming count %j', (count, text, label) => {
         const s = summary({
             id: 'in1',
@@ -223,7 +223,7 @@ describe('RecordCard', () => {
         );
         expect(
             screen.getByRole('button', {
-                name: 'Show order_items (order_id) 0 records',
+                name: 'Show order_items (order_id), 0 records',
             }),
         ).toBeDisabled();
     });

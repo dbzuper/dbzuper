@@ -22,7 +22,7 @@ import type {
     StatementResultPayload,
 } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
-import { DockSeparator } from './dock-separator';
+import { DOCK_ID, DockSeparator } from './dock-separator';
 import { ConfirmDialog, type ConfirmRequest } from './confirm-dialog';
 import { ResultPanel } from './result-panel';
 import { SqlEditor } from './sql-editor';
@@ -307,6 +307,7 @@ export default function SqlDock({
 
     return (
         <section
+            id={DOCK_ID}
             aria-label="SQL editor"
             className="absolute inset-x-0 bottom-0 z-20 flex flex-col border-t bg-background shadow-2xl"
             style={{ height }}

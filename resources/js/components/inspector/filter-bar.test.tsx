@@ -111,6 +111,33 @@ describe('FilterBar', () => {
             expect(screen.getByLabelText('Filter column')).toHaveFocus();
         });
 
+        it('does not move focus when the filters change without a removal', () => {
+            const { rerender } = render(
+                <FilterBar
+                    columns={columns}
+                    filters={chips.slice(0, 2)}
+                    onChange={vi.fn()}
+                />,
+            );
+            const remove = (n: string) =>
+                screen.getByRole('button', {
+                    name: new RegExp(`Remove filter ${n}`),
+                });
+            remove('a').focus();
+            // A removal that the parent did not apply (the list is unchanged) leaves a stale flag.
+            fireEvent.click(remove('a'));
+            const input = screen.getByLabelText('Filter operator');
+            input.focus();
+            rerender(
+                <FilterBar
+                    columns={columns}
+                    filters={chips}
+                    onChange={vi.fn()}
+                />,
+            );
+            expect(input).toHaveFocus();
+        });
+
         it('adds the filter on Enter in a select when no value is needed', () => {
             const onChange = vi.fn();
             render(

@@ -27,11 +27,16 @@ export function FilterBar({ columns, filters, onChange }: Props) {
     const columnSelect = useRef<HTMLSelectElement>(null);
     const removeButtons = useRef<(HTMLButtonElement | null)[]>([]);
     // After a chip is removed focus goes to its neighbour (or the column select), never to <body>.
-    const focusAfterRemoval = useRef<number | null>(null);
+    const focusAfterRemoval = useRef<{
+        index: number;
+        count: number;
+    } | null>(null);
     useEffect(() => {
-        const index = focusAfterRemoval.current;
-        if (index === null) return;
+        const pending = focusAfterRemoval.current;
         focusAfterRemoval.current = null;
+        // Only a removal moves focus; any other change to the filters leaves it alone.
+        if (pending === null || filters.length >= pending.count) return;
+        const index = pending.index;
         const next = removeButtons.current[Math.min(index, filters.length - 1)];
         (filters.length > 0 ? next : columnSelect.current)?.focus();
     }, [filters]);
@@ -126,7 +131,10 @@ export function FilterBar({ columns, filters, onChange }: Props) {
                                     aria-label={`Remove filter ${text}`}
                                     className="rounded-full text-muted-foreground hover:text-foreground"
                                     onClick={() => {
-                                        focusAfterRemoval.current = i;
+                                        focusAfterRemoval.current = {
+                                            index: i,
+                                            count: filters.length,
+                                        };
                                         onChange(
                                             filters.filter((_, j) => j !== i),
                                         );

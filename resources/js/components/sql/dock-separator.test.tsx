@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useWorkspace } from '@/universe/store';
-import { DockSeparator } from './dock-separator';
+import { DOCK_ID, DockSeparator } from './dock-separator';
 
 const separator = () => screen.getByRole('separator');
 
@@ -29,6 +29,19 @@ describe('DockSeparator', () => {
         fireEvent.keyDown(separator(), { key: 'ArrowDown' });
         expect(useWorkspace.getState().dockHeight).toBe(296);
         expect(separator()).toHaveAttribute('aria-valuenow', '296');
+    });
+
+    it('jumps to the minimum with Home and the maximum with End', () => {
+        render(<DockSeparator />);
+        fireEvent.keyDown(separator(), { key: 'Home' });
+        expect(useWorkspace.getState().dockHeight).toBe(160);
+        fireEvent.keyDown(separator(), { key: 'End' });
+        expect(useWorkspace.getState().dockHeight).toBe(900);
+    });
+
+    it('points at the dock region it resizes', () => {
+        render(<DockSeparator />);
+        expect(separator()).toHaveAttribute('aria-controls', DOCK_ID);
     });
 
     it('clamps to the minimum and maximum height', () => {

@@ -76,6 +76,24 @@ describe('RecordCard keyboard focus', () => {
         });
     });
 
+    it('does not pan for focus caused by a pointer press, but does for keyboard focus after it', () => {
+        vi.useFakeTimers();
+        try {
+            renderCard();
+            const port = screen.getByRole('button', { name: /^Open users/ });
+            fireEvent.pointerDown(port);
+            fireEvent.focus(port);
+            expect(flow.setCenter).not.toHaveBeenCalled();
+
+            // The pointerup never arrives; the flag still expires.
+            vi.runAllTimers();
+            fireEvent.focus(port);
+            expect(flow.setCenter).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('does nothing when the card is not measured yet', () => {
         flow.getInternalNode.mockReturnValue(undefined);
         renderCard();

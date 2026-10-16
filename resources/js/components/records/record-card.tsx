@@ -99,7 +99,7 @@ function Port({
         ? `Open ${summary.table} (${cols}) in Data tab`
         : out
           ? `Open ${summary.table} (${cols})`
-          : `Show ${summary.table} (${cols}) ${recordCountText(summary.count)}`;
+          : `Show ${summary.table} (${cols}), ${recordCountText(summary.count)}`;
     const title = !disabled
         ? dataTab
             ? `${summary.table} cannot be explored as records`
@@ -290,10 +290,12 @@ export function RecordCard({
             )}
             style={{ maxHeight: CARD_MAX_HEIGHT }}
             onPointerDownCapture={() => {
+                // Focus from a press lands synchronously; the flag must not outlive the press, even
+                // if the pointerup never arrives (drag away, lost capture).
                 pointerFocus.current = true;
-            }}
-            onPointerUpCapture={() => {
-                pointerFocus.current = false;
+                setTimeout(() => {
+                    pointerFocus.current = false;
+                }, 0);
             }}
             onFocus={panToCard}
         >

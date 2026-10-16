@@ -353,7 +353,7 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
         });
     });
     await explorer
-        .getByRole('button', { name: /^Show orders \(user_id\) 1 record/ })
+        .getByRole('button', { name: /^Show orders \(user_id\), 1 record/ })
         .click();
     await expect(cards).toHaveCount(2);
     const elapsed = await page.evaluate(
@@ -365,7 +365,7 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
     // 3. Hop 2: order 1 -> its two items.
     await explorer
         .getByRole('button', {
-            name: /^Show order_items \(order_id\) 2 records/,
+            name: /^Show order_items \(order_id\), 2 records/,
         })
         .click();
     await expect(cards).toHaveCount(4);
@@ -416,8 +416,19 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
     ).toBeVisible({ timeout: 15_000 });
 });
 
-async function settleTransitions() {
-    await page.waitForTimeout(600);
+/** Clicks the real theme toggle until the theme label reads `appearance` (dark -> light -> system). */
+async function switchTheme(appearance: 'dark' | 'light') {
+    const toggle = page.getByRole('button', { name: /^Theme: / }).first();
+    for (let i = 0; i < 3; i++) {
+        if (
+            (await toggle.getAttribute('aria-label'))?.startsWith(
+                `Theme: ${appearance} `,
+            )
+        )
+            return;
+        await toggle.click();
+    }
+    throw new Error(`Could not switch to the ${appearance} theme`);
 }
 
 const b64urlTrail = (text: string) =>
@@ -500,16 +511,14 @@ test('accessibility: no serious or critical axe violations on the main screens',
     await expectNoA11yViolations(page, { label: 'workspace: history panel' });
 
     // One light pass on the workspace (dark is the default theme).
-    await page.evaluate(() =>
-        document.documentElement.classList.remove('dark'),
-    );
-    // Colours transition for ~150 ms; axe would sample the in-between colours.
-    await settleTransitions();
+    // Reduced motion removes colour transitions, so axe never samples in-between colours.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await switchTheme('light');
     await expectNoA11yViolations(page, { label: 'workspace: light' });
     await page.getByRole('button', { name: 'Records' }).click();
-    await settleTransitions();
     await expectNoA11yViolations(page, { label: 'workspace: records, light' });
-    await page.evaluate(() => document.documentElement.classList.add('dark'));
+    await switchTheme('dark');
+    await page.emulateMedia({ reducedMotion: null });
 
     // The global history page.
     await page.goto('/history');
