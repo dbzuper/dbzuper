@@ -10,9 +10,11 @@
 	encode zstd br gzip
 
 	# Vite emits content-hashed files under /build, so existing ones never change
-	# (a missing file must not get the immutable header on its 404).
+	# (a missing file must not get the immutable header on its 404). manifest.json keeps its name across
+	# builds, so it is revalidated like any other file.
 	@build {
 		path /build/*
+		not path /build/*.json
 		file {
 			try_files {path}
 		}
