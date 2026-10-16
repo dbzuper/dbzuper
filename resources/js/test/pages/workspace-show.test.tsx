@@ -7,6 +7,7 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse } from '@/browse/browse-store';
+import { usePins } from '@/browse/pins-store';
 import { rowsCache } from '@/browse/rows-cache';
 import { useSidebarPrefs } from '@/browse/sidebar-prefs';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
@@ -96,6 +97,7 @@ vi.mock('@/records/records-api', () => ({
     },
 }));
 
+import { pinsApi } from '@/lib/pins-api';
 import WorkspaceShow from '@/pages/workspace/show';
 
 const connection = {
@@ -119,6 +121,7 @@ beforeEach(() => {
     useWorkspace.getState().reset();
     useSqlTabs.setState({ byConnection: {} });
     useBrowse.setState({ byConnection: {} });
+    usePins.setState({ byConnection: {} });
     useSidebarPrefs.setState({ collapsed: false });
     historyApi.list.mockResolvedValue({
         entries: [
@@ -203,6 +206,20 @@ describe('workspace page', () => {
         expect(
             await screen.findByRole('treeitem', { name: /orders/ }),
         ).toBeInTheDocument();
+    });
+
+    it('loads pins with the sidebar collapsed so a pinned table tab offers Unpin', async () => {
+        useSidebarPrefs.setState({ collapsed: true });
+        vi.mocked(pinsApi.list).mockResolvedValueOnce({
+            pins: [{ id: 3, table: 'orders', position: 1 }],
+        });
+        useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+        render(<WorkspaceShow connection={connection} />);
+        expect(
+            await screen.findByRole('button', { name: 'Unpin table' }),
+        ).toBeInTheDocument();
+        expect(pinsApi.list).toHaveBeenCalledWith(1);
+        window.history.replaceState(null, '', '/');
     });
 
     it('shows the WebGL message on the Universe tab and the tables in the sidebar', async () => {

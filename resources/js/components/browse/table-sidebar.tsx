@@ -260,10 +260,6 @@ export function TableSidebar({
     const typed = useRef<{ text: string; at: number }>({ text: '', at: 0 });
     const dragged = useRef<string | null>(null);
 
-    useEffect(() => {
-        void usePins.getState().load(connectionId);
-    }, [connectionId]);
-
     const byName = useMemo(
         () => new Map(snapshot.tables.map((t) => [t.name, t])),
         [snapshot],

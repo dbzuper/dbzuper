@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 import { useActiveTab, useBrowse } from '@/browse/browse-store';
+import { usePins } from '@/browse/pins-store';
 import { rowsCache } from '@/browse/rows-cache';
 import { dispatchBrowseKey } from '@/browse/key-dispatch';
 import { useSidebarPrefs } from '@/browse/sidebar-prefs';
@@ -102,6 +103,11 @@ export default function WorkspaceShow({
     useEffect(() => {
         useRecords.getState().reset();
         useRecords.getState().setConnection(connection.id);
+    }, [connection.id]);
+
+    // Pins are loaded here, not by the sidebar, so the table-tab star and tab menu are right while it is collapsed.
+    useEffect(() => {
+        void usePins.getState().load(connection.id);
     }, [connection.id]);
 
     // `?history=<id>` (from the global history page) opens that entry in a new tab once; it is never auto-run.
