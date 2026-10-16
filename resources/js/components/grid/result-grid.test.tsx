@@ -430,6 +430,9 @@ describe('table tab features', () => {
                 />,
             ),
         );
+        expect(
+            screen.getAllByRole('button', { name: 'Open row' })[1],
+        ).toHaveAttribute('data-row-index', '1');
         fireEvent.click(screen.getAllByRole('button', { name: 'Open row' })[1]);
         expect(onOpenRow).toHaveBeenCalledWith(1);
         expect(

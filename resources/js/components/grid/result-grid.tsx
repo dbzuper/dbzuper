@@ -296,6 +296,7 @@ export function ResultGrid({
                               type="button"
                               aria-label="Open row"
                               title="Open row"
+                              data-row-index={row.__i}
                               onClick={() => onOpenRow(row.__i)}
                               className="rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
                           >

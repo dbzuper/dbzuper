@@ -53,6 +53,15 @@ vi.mock('@/components/grid/result-grid', () => ({
             <button type="button" onClick={() => props.onOpenRow?.(2)}>
                 Open row 2
             </button>
+            {[0, 1, 2, 3].map((i) => (
+                <button
+                    key={i}
+                    type="button"
+                    aria-label="Open row"
+                    data-row-index={i}
+                    onClick={() => props.onOpenRow?.(i)}
+                />
+            ))}
             <button
                 type="button"
                 onClick={() => props.onOpenForeign?.('users', 'id', '3')}
@@ -421,6 +430,36 @@ describe('DataView', () => {
             key: 'Escape',
         });
         expect(tabState().drawerRow).toBeNull();
+    });
+
+    it('returns focus to the button of the row that was open', async () => {
+        useBrowse.getState().openTable(1, 'orders', {
+            mode: 'preview',
+            state: { drawerRow: 3 },
+        });
+        render(<Harness />);
+        await screen.findByRole('heading', { level: 3 });
+        fireEvent.click(
+            screen.getByRole('button', { name: 'Close row details' }),
+        );
+        await waitFor(() =>
+            expect(
+                document.querySelector('button[data-row-index="3"]'),
+            ).toHaveFocus(),
+        );
+    });
+
+    it('clears the drawer row when it is past a short page', async () => {
+        useBrowse.getState().openTable(1, 'orders', {
+            mode: 'preview',
+            state: { drawerRow: 50 },
+        });
+        api.rows.mockResolvedValue(
+            page(1, 1, { rows: [[1, 'x']], has_more: false }),
+        );
+        render(<Harness />);
+        await screen.findByText('1 rows');
+        await waitFor(() => expect(tabState().drawerRow).toBeNull());
     });
 
     it('retries after an error', async () => {

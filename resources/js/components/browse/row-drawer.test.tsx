@@ -254,6 +254,50 @@ describe('RowDrawer', () => {
         ).not.toBeInTheDocument();
     });
 
+    it('drops a hop that resolves after Back', async () => {
+        const hopped = {
+            table: 'users',
+            key: { id: 3 },
+            columns: [{ name: 'id', type: 'integer' }],
+            values: [3],
+            relationships: [{ ...relationships[0], id: 'r9', table: 'orders' }],
+        };
+        api.show.mockImplementation((_id, table) =>
+            Promise.resolve(table === 'users' ? hopped : ordersPayload),
+        );
+        api.related.mockResolvedValueOnce({
+            table: 'users',
+            columns: [],
+            primary_key: ['id'],
+            rows: [{ key: { id: 3 }, values: [3] }],
+            next_cursor: null,
+        });
+        setup();
+        fireEvent.click(
+            await screen.findByRole('button', { name: 'users · user_id' }),
+        );
+        await screen.findByRole('heading', { name: 'users · 3' });
+        let resolveLate!: (v: unknown) => void;
+        api.related.mockReturnValueOnce(
+            new Promise((res) => (resolveLate = res)),
+        );
+        fireEvent.click(
+            await screen.findByRole('button', { name: 'orders · user_id' }),
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+        resolveLate({
+            table: 'orders',
+            columns: [],
+            primary_key: ['id'],
+            rows: [{ key: { id: 9 }, values: [9] }],
+            next_cursor: null,
+        });
+        await new Promise((r) => setTimeout(r, 0));
+        expect(
+            screen.getByRole('heading', { name: 'orders · 1' }),
+        ).toBeInTheDocument();
+    });
+
     it('opens the referencing table filtered to this row', async () => {
         const { props } = setup();
         fireEvent.click(

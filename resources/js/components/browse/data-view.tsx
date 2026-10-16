@@ -443,12 +443,10 @@ function DataViewBody({
         update({ drawerRow: null });
         // Focus goes back to the row that was open, else the grid itself.
         requestAnimationFrame(() => {
-            const buttons = gridArea.current?.querySelectorAll<HTMLElement>(
-                'button[aria-label="Open row"]',
-            );
             const target =
-                buttons?.[lastOpened.current] ??
-                buttons?.[0] ??
+                gridArea.current?.querySelector<HTMLElement>(
+                    `button[data-row-index="${lastOpened.current}"]`,
+                ) ??
                 gridArea.current?.querySelector<HTMLElement>('[role="grid"]');
             target?.focus();
         });
@@ -496,6 +494,12 @@ function DataViewBody({
         !loading && drawerRow !== null
             ? (view?.rows.rows[drawerRow] ?? null)
             : null;
+    // A row beyond a short page no longer exists.
+    const rowsOnPage = view?.rows.rows.length ?? 0;
+    useEffect(() => {
+        if (!loading && drawerRow !== null && view && drawerRow >= rowsOnPage)
+            update({ drawerRow: null });
+    }, [loading, drawerRow, view, rowsOnPage, update]);
     const label = view
         ? rangeLabel(
               view.rows.page,
@@ -589,7 +593,7 @@ function DataViewBody({
                             onExplore={onExplore}
                         />
                     ) : loading ? (
-                        <RowDrawerLoading />
+                        <RowDrawerLoading onClose={closeDrawer} />
                     ) : null)}
             </div>
             <Pagination

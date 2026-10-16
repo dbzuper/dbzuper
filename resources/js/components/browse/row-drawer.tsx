@@ -52,17 +52,33 @@ const ASIDE =
     'flex h-full w-[420px] max-w-full shrink-0 flex-col border-l bg-background';
 
 /** Held in the drawer's place while the page holding the row loads. */
-export function RowDrawerLoading() {
+export function RowDrawerLoading({ onClose }: { onClose: () => void }) {
     return (
         <aside
             role="complementary"
             aria-label="Row details"
             aria-busy="true"
-            className={ASIDE}
+            className={`${ASIDE} relative`}
+            onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    onClose();
+                }
+            }}
         >
             <p className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
                 <Spinner className="size-3" /> Loading row…
             </p>
+            <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 right-2 size-7"
+                aria-label="Close row details"
+                onClick={onClose}
+            >
+                <X className="size-4" />
+            </Button>
         </aside>
     );
 }
@@ -269,15 +285,24 @@ export function RowDrawer({
             });
     };
 
-    const openReferencing = (rel: RelationshipSummary) => {
+    const referencingValues = (rel: RelationshipSummary) => {
         const found = snapshot.relationships.find((r) => r.id === rel.id);
-        if (!found) return;
+        if (!found) return null;
+        const values = found.to_columns.map(valueOf);
+        return values.some((v) => v === null || v === undefined)
+            ? null
+            : { found, values };
+    };
+
+    const openReferencing = (rel: RelationshipSummary) => {
+        const resolved = referencingValues(rel);
+        if (!resolved) return;
         onOpenTable(
             rel.table,
-            found.from_columns.map((c, i) => ({
+            resolved.found.from_columns.map((c, i) => ({
                 column: c,
                 op: 'eq' as const,
-                value: String(valueOf(found.to_columns[i])),
+                value: String(resolved.values[i]),
             })),
         );
     };
@@ -329,7 +354,11 @@ export function RowDrawer({
                         size="icon"
                         className="size-7"
                         aria-label="Back"
-                        onClick={() => setStack((s) => s.slice(0, -1))}
+                        onClick={() => {
+                            hopRequest.current?.abort();
+                            setHopError(null);
+                            setStack((s) => s.slice(0, -1));
+                        }}
                     >
                         <ArrowLeft className="size-4" />
                     </Button>
@@ -429,7 +458,8 @@ export function RowDrawer({
                                         <li key={r.id}>
                                             <button
                                                 type="button"
-                                                className="text-left underline hover:text-foreground"
+                                                disabled={!referencingValues(r)}
+                                                className="text-left underline hover:text-foreground disabled:no-underline disabled:opacity-60"
                                                 onClick={() =>
                                                     openReferencing(r)
                                                 }
