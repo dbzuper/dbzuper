@@ -12,8 +12,8 @@ import {
     dbErrorFrom,
     workspaceApi,
     type RowFilter,
-    type RowsRequest,
     type RowsResponse,
+    type SortKey,
 } from '@/lib/workspace-api';
 import { openRecord } from '@/records/open-record';
 import { useSqlTabs } from '@/sql/tabs-store';
@@ -23,7 +23,7 @@ import { FilterBar } from './filter-bar';
 
 const PER_PAGE = 100;
 
-type Sort = RowsRequest['sort'];
+type Sort = SortKey | null;
 
 const openForeign = (table: string, column: string, value: string) =>
     useWorkspace.getState().openDataFilter(table, [{ column, value }]);
@@ -86,7 +86,7 @@ export function DataTab({
             .rows(
                 connectionId,
                 table,
-                { filters, sort, page, per_page: PER_PAGE },
+                { filters, sort: sort ? [sort] : [], page, per_page: PER_PAGE },
                 controller.signal,
             )
             .then((d) => {

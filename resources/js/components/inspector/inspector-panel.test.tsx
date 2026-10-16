@@ -179,7 +179,7 @@ describe('InspectorPanel', () => {
         expect(api.rows).toHaveBeenCalledWith(
             1,
             'orders',
-            { filters: [], sort: null, page: 1, per_page: 100 },
+            { filters: [], sort: [], page: 1, per_page: 100 },
             expect.any(AbortSignal),
         );
     });
@@ -194,7 +194,7 @@ describe('InspectorPanel', () => {
         await waitFor(() =>
             expect(lastBody()).toEqual({
                 filters: [{ column: 'id', op: 'eq', value: '7' }],
-                sort: null,
+                sort: [],
                 page: 1,
                 per_page: 100,
             }),
@@ -206,10 +206,9 @@ describe('InspectorPanel', () => {
         await screen.findByText('NULL');
         fireEvent.click(screen.getByRole('columnheader', { name: 'user_id' }));
         await waitFor(() =>
-            expect(lastBody().sort).toEqual({
-                column: 'user_id',
-                direction: 'asc',
-            }),
+            expect(lastBody().sort).toEqual([
+                { column: 'user_id', direction: 'asc' },
+            ]),
         );
     });
 
@@ -363,7 +362,7 @@ describe('InspectorPanel', () => {
         await waitFor(() =>
             expect(lastBody()).toMatchObject({
                 page: 1,
-                sort: { column: 'user_id', direction: 'asc' },
+                sort: [{ column: 'user_id', direction: 'asc' }],
             }),
         );
     });

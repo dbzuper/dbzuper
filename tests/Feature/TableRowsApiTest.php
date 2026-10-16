@@ -164,3 +164,37 @@ it('appends the primary key as a sort tiebreaker', function () {
 it('forbids reading rows of another user\'s connection', function () {
     $this->actingAs(User::factory()->create())->postJson(route('api.tables.rows', [$this->connection, 'users']), [])->assertForbidden();
 });
+
+it('sorts by several keys in order', function () {
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'orders']), [
+        'sort' => [['column' => 'status', 'direction' => 'asc'], ['column' => 'id', 'direction' => 'desc']],
+    ])->assertOk();
+
+    $rows = $res->json('rows');
+    $pairs = array_map(fn ($r) => [$r[2], $r[0]], $rows);
+    $expected = $pairs;
+    usort($expected, fn ($a, $b) => [$a[0], -$a[1]] <=> [$b[0], -$b[1]]);
+    expect($pairs)->toBe($expected)
+        ->and($res->json('sql'))->toMatch('/ORDER BY "status" asc, "id" desc/i');
+});
+
+it('still accepts the single-object sort form', function () {
+    $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), [
+        'sort' => ['column' => 'id', 'direction' => 'desc'], 'per_page' => 1,
+    ])->assertOk()->assertJsonPath('rows.0.0', 3);
+});
+
+it('rejects more than three sort keys, duplicate keys and unknown columns', function (array $sort) {
+    $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['sort' => $sort])
+        ->assertUnprocessable();
+})->with([
+    'four keys' => [[['column' => 'id', 'direction' => 'asc'], ['column' => 'name', 'direction' => 'asc'], ['column' => 'email', 'direction' => 'asc'], ['column' => 'profile', 'direction' => 'asc']]],
+    'duplicate' => [[['column' => 'id', 'direction' => 'asc'], ['column' => 'id', 'direction' => 'desc']]],
+    'unknown' => [[['column' => 'nope', 'direction' => 'asc']]],
+    'bad direction' => [[['column' => 'id', 'direction' => 'up']]],
+]);
+
+it('accepts pages of up to 1000 rows', function () {
+    $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['per_page' => 1000])->assertOk();
+    $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['per_page' => 1001])->assertUnprocessable();
+});

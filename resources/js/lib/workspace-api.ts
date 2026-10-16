@@ -23,9 +23,12 @@ export type FilterOp =
     | 'is_null'
     | 'is_not_null';
 export type RowFilter = { column: string; op: FilterOp; value?: string };
+export type SortKey = { column: string; direction: 'asc' | 'desc' };
+export const PER_PAGE_OPTIONS = [50, 100, 500, 1000] as const;
+export type PerPage = (typeof PER_PAGE_OPTIONS)[number];
 export type RowsRequest = {
     filters: RowFilter[];
-    sort: { column: string; direction: 'asc' | 'desc' } | null;
+    sort: SortKey[];
     page: number;
     per_page: number;
 };
