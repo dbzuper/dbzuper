@@ -24,6 +24,7 @@ import { TableList } from '@/components/workspace/table-list';
 import { WorkspaceHeader } from '@/components/workspace/workspace-header';
 import { historyApi } from '@/lib/history-api';
 import { dbErrorFrom, workspaceApi } from '@/lib/workspace-api';
+import { toggleDock, togglePalette } from '@/lib/workspace-shortcuts';
 import { useRecords } from '@/records/records-store';
 import { useTrailUrl } from '@/records/use-trail-url';
 import { useSqlTabs } from '@/sql/tabs-store';
@@ -260,8 +261,7 @@ export default function WorkspaceShow({
         const onKey = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
-                const st = useWorkspace.getState();
-                st.setPaletteOpen(!st.paletteOpen);
+                togglePalette();
             }
         };
         window.addEventListener('keydown', onKey);
@@ -272,16 +272,7 @@ export default function WorkspaceShow({
         const onKey = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
                 e.preventDefault(); // browsers use Ctrl+J for downloads
-                const st = useWorkspace.getState();
-                if (
-                    e.repeat ||
-                    st.paletteOpen ||
-                    document.querySelector(
-                        '[role="dialog"]:not([aria-modal="false"])',
-                    )
-                )
-                    return;
-                st.setDockOpen(!st.dockOpen);
+                toggleDock(e.repeat);
             }
         };
         window.addEventListener('keydown', onKey);

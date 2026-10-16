@@ -25,7 +25,10 @@ const noMonacoCdn = {
 // storage/build (not public/build), so the web server never serves it.
 const chunkModules = {
     name: 'dbsuperb:chunk-modules',
-    apply: 'build' as const,
+    // Client build only: `build:ssr` runs a second, SSR build after the check, which must not
+    // overwrite the client's map.
+    apply: (_config: unknown, env: { command: string; isSsrBuild?: boolean }) =>
+        env.command === 'build' && !env.isSsrBuild,
     generateBundle(
         _options: unknown,
         bundle: Record<string, { type: string; moduleIds?: string[] }>,

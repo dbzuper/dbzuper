@@ -2,6 +2,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Command } from 'cmdk';
 import { useMemo, useRef, useState } from 'react';
 import { INSPECTOR_HEADING_ID } from '@/components/inspector/inspector-panel';
+import { takePaletteOpener } from '@/lib/workspace-shortcuts';
 import { nextAppearance, useAppearance } from '@/hooks/use-appearance';
 import type { SchemaSnapshot } from '@/types/schema';
 import { universe } from '@/universe/controller';
@@ -137,13 +138,15 @@ export function CommandPalette({
                     cmdk-dialog=""
                     className="fixed top-[15%] left-1/2 z-50 w-[min(640px,92vw)] -translate-x-1/2 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl"
                     onCloseAutoFocus={(e) => {
-                        if (!focusInspector.current) return;
+                        const opener = takePaletteOpener();
+                        const heading = focusInspector.current
+                            ? document.getElementById(INSPECTOR_HEADING_ID)
+                            : null;
                         focusInspector.current = false;
-                        const heading =
-                            document.getElementById(INSPECTOR_HEADING_ID);
-                        if (!heading) return;
+                        const target = heading ?? opener;
+                        if (!target) return;
                         e.preventDefault();
-                        heading.focus();
+                        target.focus();
                     }}
                 >
                     <Command label="Command palette" shouldFilter={false}>

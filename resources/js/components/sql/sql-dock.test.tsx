@@ -23,6 +23,8 @@ vi.mock('@/sql/monaco-setup', () => ({ disposeClosedModels: vi.fn() }));
 
 const api = vi.hoisted(() => ({ run: vi.fn(), explain: vi.fn() }));
 const editorFocus = vi.hoisted(() => vi.fn());
+/** Monaco commands the dock registered: keybinding -> handler. */
+const commands = vi.hoisted(() => new Map<number, () => void>());
 vi.mock('@/sql/query-api', () => ({ queryApi: api }));
 
 // Monaco cannot run in jsdom: the editor mounts a minimal fake that exposes the statement under the cursor.
@@ -45,7 +47,8 @@ vi.mock('./sql-editor', async () => {
                         getModel: () => model,
                         getSelection: () => null,
                         getPosition: () => ({ lineNumber: 1, column: 1 }),
-                        addCommand: vi.fn(),
+                        addCommand: (key: number, run: () => void) =>
+                            commands.set(key, run),
                         focus: editorFocus,
                     },
                     {
@@ -54,7 +57,7 @@ vi.mock('./sql-editor', async () => {
                             setModelMarkers: vi.fn(),
                         },
                         KeyMod: { CtrlCmd: 1, Shift: 2 },
-                        KeyCode: { Enter: 3 },
+                        KeyCode: { Enter: 4, KeyJ: 8, KeyK: 16 },
                         MarkerSeverity: { Error: 8 },
                     },
                 );
@@ -102,6 +105,7 @@ const hangingRun = () =>
 beforeEach(() => {
     vi.clearAllMocks();
     completion.getter = null;
+    commands.clear();
     useSqlTabs.setState({ byConnection: {} });
     useWorkspace.getState().reset();
 });
@@ -244,5 +248,25 @@ describe('SqlDock', () => {
                 expect(screen.queryByRole('dialog')).toBeNull();
             },
         );
+    });
+
+    describe('workspace shortcuts while the editor has focus', () => {
+        // Monaco swallows Ctrl/⌘+K (a chord prefix) and handled keys, so the dock registers them itself.
+        const CTRL_CMD = 1;
+
+        it('Ctrl/⌘+K opens the command palette', async () => {
+            render(<SqlDock connection={connection} snapshot={null} />);
+            await waitFor(() => expect(commands.has(CTRL_CMD | 16)).toBe(true));
+            act(() => commands.get(CTRL_CMD | 16)!());
+            expect(useWorkspace.getState().paletteOpen).toBe(true);
+        });
+
+        it('Ctrl/⌘+J closes the dock', async () => {
+            useWorkspace.getState().setDockOpen(true);
+            render(<SqlDock connection={connection} snapshot={null} />);
+            await waitFor(() => expect(commands.has(CTRL_CMD | 8)).toBe(true));
+            act(() => commands.get(CTRL_CMD | 8)!());
+            expect(useWorkspace.getState().dockOpen).toBe(false);
+        });
     });
 });

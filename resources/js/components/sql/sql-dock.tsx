@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import type * as Monaco from 'monaco-editor';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { toggleDock, togglePalette } from '@/lib/workspace-shortcuts';
 import { registerSqlCompletion } from '@/sql/monaco-completion';
 import { disposeClosedModels } from '@/sql/monaco-setup';
 import { queryApi } from '@/sql/query-api';
@@ -390,6 +391,16 @@ export default function SqlDock({
                                     monaco.KeyMod.Shift |
                                     monaco.KeyCode.Enter,
                                 () => void handlers.current.runAll(),
+                            );
+                            // The editor has focus while the dock is open and would swallow these
+                            // (Ctrl/⌘+K starts a Monaco chord), so they are editor commands too.
+                            editor.addCommand(
+                                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
+                                togglePalette,
+                            );
+                            editor.addCommand(
+                                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyJ,
+                                () => toggleDock(),
                             );
                             registerSqlCompletion(monaco, () => {
                                 const current = context.current.snapshot;

@@ -125,6 +125,22 @@ test('sql: write, run, confirm, inspect results and history', async () => {
     const dock = page.getByRole('region', { name: 'SQL editor' });
     await expect(dock.locator('.monaco-editor')).toBeVisible();
 
+    // The editor takes focus when the dock opens, and the workspace shortcuts still work from it:
+    // Ctrl+K opens the palette (not a Monaco chord), Esc returns to the editor, Ctrl+J closes the dock.
+    await expect(dock.locator('.monaco-editor')).toContainClass('focused');
+    await page.keyboard.press('Control+k');
+    const palette = page.getByPlaceholder(PALETTE_PLACEHOLDER);
+    await expect(palette).toBeFocused();
+    await page.keyboard.type('orders');
+    await expect(palette).toHaveValue('orders');
+    await page.keyboard.press('Escape');
+    await expect(palette).toBeHidden();
+    await expect(dock.locator('.monaco-editor')).toContainClass('focused');
+    await page.keyboard.press('Control+j');
+    await expect(dock).toBeHidden();
+    await page.keyboard.press('Control+j');
+    await expect(dock.locator('.monaco-editor')).toContainClass('focused');
+
     // A read runs straight away and the grid shows the demo order statuses.
     await dock.locator('.monaco-editor').click();
     await page.keyboard.type('select * from orders');
@@ -305,7 +321,7 @@ test('records: Back/Forward restore the trail without remounting or refetching',
     expect(seen.filter((p) => /\/schema|\/layout/.test(p))).toEqual([]);
     // Forward re-adds the group card, which Back had dropped from the cache: one record fetch for
     // it, never the users record that stayed loaded.
-    expect(seen.filter((p) => /\/records\/users/.test(p))).toEqual([]);
+    expect(seen.filter((p) => /\/records\/users/.test(p))).toEqual([]);
 });
 
 test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the expansion budget', async () => {

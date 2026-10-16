@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+    act,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { initializeTheme } from '@/hooks/use-appearance';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
@@ -7,6 +13,7 @@ import { universe } from '@/universe/controller';
 import { pickPathTarget } from '@/universe/path-pick';
 import { useWorkspace } from '@/universe/store';
 import { INSPECTOR_HEADING_ID } from '@/components/inspector/inspector-panel';
+import { togglePalette } from '@/lib/workspace-shortcuts';
 import { CommandPalette } from './command-palette';
 
 const snap = makeSnapshot(
@@ -73,6 +80,25 @@ describe('CommandPalette', () => {
             ).toHaveFocus();
         },
     );
+
+    it('returns focus to where the shortcut opened it from when dismissed', async () => {
+        useWorkspace.getState().setPaletteOpen(false);
+        render(
+            <>
+                <textarea aria-label="sql" />
+                <CommandPalette snapshot={snap} onRefresh={() => {}} />
+            </>,
+        );
+        screen.getByLabelText('sql').focus();
+        act(() => togglePalette());
+        const input = await screen.findByPlaceholderText(
+            'Search tables, columns and actions…',
+        );
+        fireEvent.keyDown(input, { key: 'Escape' });
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        await new Promise((r) => setTimeout(r, 10));
+        expect(screen.getByLabelText('sql')).toHaveFocus();
+    });
 
     it('leaves focus alone when the palette is dismissed', async () => {
         render(
