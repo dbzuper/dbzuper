@@ -143,6 +143,16 @@ export function TabBar({
             ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     }, [activeId]);
 
+    // Closing a tab unmounts the focused element; hand focus to the active tab.
+    const prevCount = useRef(tabs.length);
+    useEffect(() => {
+        const shrank = tabs.length < prevCount.current;
+        prevCount.current = tabs.length;
+        if (!shrank) return;
+        const a = document.activeElement;
+        if (!a || a === document.body) refs.current.get(activeId)?.focus();
+    }, [tabs, activeId]);
+
     const act = useBrowse.getState;
     const close = (tab: BrowseTab) => {
         if (tab.kind === 'universe') return;
@@ -226,6 +236,16 @@ export function TabBar({
                                     e.preventDefault();
                                     setOverId(tab.id);
                                 }}
+                                onDragLeave={(e) => {
+                                    if (
+                                        !e.currentTarget.contains(
+                                            e.relatedTarget as Node | null,
+                                        )
+                                    )
+                                        setOverId((o) =>
+                                            o === tab.id ? null : o,
+                                        );
+                                }}
                                 onDrop={(e) => onDrop(e, index)}
                             >
                                 <button
@@ -254,6 +274,9 @@ export function TabBar({
                                     onDoubleClick={() => {
                                         if (preview)
                                             act().promote(connectionId, tab.id);
+                                    }}
+                                    onMouseDown={(e) => {
+                                        if (e.button === 1) e.preventDefault();
                                     }}
                                     onAuxClick={(e: MouseEvent) => {
                                         if (e.button === 1) {

@@ -72,4 +72,15 @@ describe('TabBar', () => {
                 .tabs.map((t) => t.id),
         ).toEqual(['universe', tableTabId('orders')]);
     });
+
+    it('keeps focus in the tab bar after closing the focused tab', () => {
+        render(<TabBar connectionId={1} actions={actions} />);
+        const active = screen.getByRole('tab', { selected: true });
+        active.focus();
+        fireEvent.keyDown(active, { key: 'Delete' });
+        const now = document.activeElement as HTMLElement;
+        expect(now).toHaveAttribute('role', 'tab');
+        expect(now).toHaveAttribute('aria-selected', 'true');
+        expect(now).toHaveTextContent('users');
+    });
 });
