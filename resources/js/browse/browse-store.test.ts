@@ -278,8 +278,7 @@ describe('persistence', () => {
 
     const KEY = 'dbsuperb.browse';
     const stored = () =>
-        JSON.parse(localStorage.getItem(KEY) ?? '{}').state?.byConnection ??
-        {};
+        JSON.parse(localStorage.getItem(KEY) ?? '{}').state?.byConnection ?? {};
     const storedTables = (connectionId: number) =>
         (stored()[connectionId]?.tabs ?? [])
             .filter((t: { kind: string }) => t.kind === 'table')
