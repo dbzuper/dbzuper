@@ -135,10 +135,16 @@ test('browse: table opens within budget', async () => {
     const budget = Number(process.env.E2E_TABLE_OPEN_BUDGET_MS ?? 400);
     const t0 = Date.now();
     await sidebarRow('products').dblclick();
-    // locator.waitFor() re-checks every animation frame (expect() backs off to longer retries).
-    await panel()
-        .getByRole('gridcell', { name: 'Mechanical Keyboard' })
-        .waitFor();
+    // Checked on every animation frame in the page: locator.waitFor() and expect() retry with
+    // backoff, which would add polling delay to the measurement.
+    await page.waitForFunction(
+        () =>
+            Array.from(
+                document.querySelectorAll('#browse-panel [role="gridcell"]'),
+            ).some((c) => c.textContent === 'Mechanical Keyboard'),
+        null,
+        { polling: 'raf', timeout: 30_000 },
+    );
     const elapsed = Date.now() - t0;
     test.info().annotations.push({
         type: 'table-open-ms',

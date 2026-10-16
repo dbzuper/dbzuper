@@ -59,6 +59,9 @@ export default defineConfig({
             DB_DATABASE: appDb,
             DBSUPERB_SQLITE_PATHS: demoDir,
             APP_ENV: 'local',
+            // Inertia DevTools writes every request to storage/inertia-devtools, which slows the
+            // single-threaded `php -S` server; production has it off.
+            INERTIA_DEVTOOLS_ENABLED: 'false',
             PHP_INI_SCAN_DIR: phpIniScanDir(),
             // `php -S` can fork workers (so the schema and layout requests run in parallel) except
             // on Windows, where forking is not supported.
