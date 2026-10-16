@@ -142,10 +142,21 @@ test('browse: table opens within budget', async () => {
             Array.from(
                 document.querySelectorAll('#browse-panel [role="gridcell"]'),
             ).some(
-                // Rendered too, like waitFor({ state: 'visible' }).
-                (c) =>
-                    c.textContent === 'Mechanical Keyboard' &&
-                    (c.checkVisibility?.() ?? c.getClientRects().length > 0),
+                // Rendered too (not visibility: hidden or opacity 0) with a non-empty box: Playwright's
+                // 'visible' state plus the opacity check.
+                (c) => {
+                    if (c.textContent !== 'Mechanical Keyboard') return false;
+                    const rect = c.getBoundingClientRect();
+                    return (
+                        (c.checkVisibility?.({
+                            visibilityProperty: true,
+                            opacityProperty: true,
+                        }) ??
+                            c.getClientRects().length > 0) &&
+                        rect.width > 0 &&
+                        rect.height > 0
+                    );
+                },
             ),
         null,
         { polling: 'raf', timeout: 30_000 },

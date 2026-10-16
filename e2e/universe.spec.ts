@@ -144,11 +144,19 @@ test('universe: 2,000-table schema becomes interactive within budget (and the co
     // backoff (up to 500 ms and 1 s), which would add polling delay to the measurement.
     await page.waitForFunction(
         () => {
-            // Present and rendered (not inside a hidden tab), like waitFor({ state: 'visible' }).
+            // Present, rendered (not inside a hidden tab, not visibility: hidden or opacity 0) and with a
+            // non-empty box: Playwright's 'visible' state plus the opacity check.
             const el = document.querySelector('[data-universe-ready="true"]');
+            if (!el) return false;
+            const rect = el.getBoundingClientRect();
             return (
-                !!el &&
-                (el.checkVisibility?.() ?? el.getClientRects().length > 0)
+                (el.checkVisibility?.({
+                    visibilityProperty: true,
+                    opacityProperty: true,
+                }) ??
+                    el.getClientRects().length > 0) &&
+                rect.width > 0 &&
+                rect.height > 0
             );
         },
         null,
