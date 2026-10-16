@@ -33,7 +33,8 @@ describe('workspaceApi', () => {
         const [url, init] = fetchMock.mock.calls[0];
         expect(url).toBe('/api/c/3/layout');
         expect(init?.method).toBe('PUT');
-        expect(JSON.parse(String(init?.body))).toEqual({
+        expect(typeof init?.body).toBe('string');
+        expect(JSON.parse(init?.body as string)).toEqual({
             positions: [{ table: 'a', x: 1, y: 2, pinned: true }],
         });
     });

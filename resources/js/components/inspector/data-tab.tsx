@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    lazy,
+    Suspense,
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from 'react';
 import type { SortColumn } from 'react-data-grid';
-import { ResultGrid } from '@/components/grid/result-grid';
 import { Button } from '@/components/ui/button';
 import {
     dbErrorFrom,
@@ -37,6 +43,13 @@ const sameFilters = (a: RowFilter[], b: RowFilter[]) =>
             f.op === b[i].op &&
             f.value === b[i].value,
     );
+
+// react-data-grid stays out of the workspace chunk until the Data tab shows rows.
+const ResultGrid = lazy(() =>
+    import('@/components/grid/result-grid').then((m) => ({
+        default: m.ResultGrid,
+    })),
+);
 
 export function DataTab({
     connectionId,
@@ -173,14 +186,22 @@ export function DataTab({
             )}
             <div className="min-h-0 flex-1">
                 {data && data.columns.length > 0 ? (
-                    <ResultGrid
-                        columns={recordColumns}
-                        rows={data.rows}
-                        snapshot={snapshot}
-                        onOpenForeign={openForeign}
-                        onOpenRecord={openRecord}
-                        sort={gridSort}
-                    />
+                    <Suspense
+                        fallback={
+                            <p className="px-4 py-3 text-xs text-muted-foreground">
+                                Loading rows…
+                            </p>
+                        }
+                    >
+                        <ResultGrid
+                            columns={recordColumns}
+                            rows={data.rows}
+                            snapshot={snapshot}
+                            onOpenForeign={openForeign}
+                            onOpenRecord={openRecord}
+                            sort={gridSort}
+                        />
+                    </Suspense>
                 ) : (
                     !error && (
                         <p className="px-4 py-3 text-xs text-muted-foreground">

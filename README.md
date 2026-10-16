@@ -71,6 +71,14 @@ Follow a single row through its relationships. The Records view (rail > Records)
 - SQLite files are only opened inside directories listed in `DBSUPERB_SQLITE_PATHS`. The SQL editor therefore refuses `ATTACH`, `DETACH`, `VACUUM INTO` and the `temp_store_directory`/`data_store_directory` pragmas on SQLite connections, which would reach other files.
 - Connections marked read-only are enforced by the database session (MySQL/MariaDB `READ ONLY` transactions, PostgreSQL read-only session, SQLite read-only open mode).
 
+## Performance
+
+- **Chunks.** Sigma, graphology, Monaco, react-data-grid and React Flow are loaded on demand: the app entry and every page chunk stay free of them. `npm run build` ends with `scripts/check-chunks.mjs`, which reads `public/build/manifest.json` and `public/build/chunk-modules.json` (written by a small plugin in `vite.config.ts`), follows only static imports from the app entry and each page, and fails the build if a banned package shows up.
+- **Prefetch.** Hovering or focusing a connection link in the connections list prefetches the workspace page, the universe model kit and (when WebGL2 is available) the universe canvas.
+- **Monaco** loads only when the SQL dock opens, and only registers the editor features and the SQL, MySQL and PostgreSQL languages the app uses.
+- **Budgets** (e2e, never loosened): universe ready < 2000 ms, record expansion < 300 ms, `/connections` first contentful paint < 1000 ms.
+- **Compression and caching.** Serve `/build/*` compressed (`encode zstd br gzip` in the Caddyfile that ships with the Docker image) and with `Cache-Control: public, max-age=31536000, immutable`: build filenames are content-hashed, so they never change. Do not long-cache HTML or `/build/manifest.json`.
+
 ## Testing
 
     php artisan test     # Pest: unit, feature and engine integration tests

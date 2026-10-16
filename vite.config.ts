@@ -17,6 +17,35 @@ const noMonacoCdn = {
     },
 };
 
+// Lists the source modules inside every emitted chunk (chunk file -> module ids) so that
+// scripts/check-chunks.mjs can prove which libraries ship in which chunk. Written next to the manifest.
+const chunkModules = {
+    name: 'dbsuperb:chunk-modules',
+    apply: 'build' as const,
+    generateBundle(
+        _options: unknown,
+        bundle: Record<string, { type: string; moduleIds?: string[] }>,
+    ) {
+        const modules: Record<string, string[]> = {};
+        for (const [file, chunk] of Object.entries(bundle)) {
+            if (chunk.type === 'chunk') modules[file] = chunk.moduleIds ?? [];
+        }
+        (
+            this as unknown as {
+                emitFile(file: {
+                    type: 'asset';
+                    fileName: string;
+                    source: string;
+                }): void;
+            }
+        ).emitFile({
+            type: 'asset',
+            fileName: 'chunk-modules.json',
+            source: JSON.stringify(modules),
+        });
+    },
+};
+
 export default defineConfig({
     plugins: lazyPlugins(() => [
         laravel({
@@ -30,6 +59,7 @@ export default defineConfig({
         }),
         tailwindcss(),
         noMonacoCdn,
+        chunkModules,
         wayfinder({
             formVariants: true,
         }),

@@ -10,7 +10,13 @@ globalThis.ResizeObserver ??= class {
     unobserve() {}
     disconnect() {}
 };
-Element.prototype.scrollIntoView ??= () => {};
+if (!('scrollIntoView' in Element.prototype)) {
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        value: function scrollIntoView(this: void) {},
+        configurable: true,
+        writable: true,
+    });
+}
 // jsdom has no matchMedia; default to "no match" (tests override as needed).
 window.matchMedia ??= ((query: string) => ({
     matches: false,

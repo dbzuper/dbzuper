@@ -1,10 +1,39 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import path from 'node:path';
 import { addSqliteConnection, ensureSignedIn } from './support/auth';
 
 test.describe.configure({ mode: 'serial' });
 
+/** First contentful paint of the current page, in ms (waits for the paint entry if it is not there yet). */
+async function firstContentfulPaint(page: Page): Promise<number> {
+    const fcp = await page.evaluate(
+        () =>
+            new Promise<number>((resolve) => {
+                const read = () =>
+                    performance
+                        .getEntriesByType('paint')
+                        .find((e) => e.name === 'first-contentful-paint')
+                        ?.startTime;
+                const found = read();
+                if (found !== undefined) return resolve(found);
+                new PerformanceObserver((_list, observer) => {
+                    const value = read();
+                    if (value === undefined) return;
+                    observer.disconnect();
+                    resolve(value);
+                }).observe({ type: 'paint', buffered: true });
+            }),
+    );
+    return Math.round(fcp);
+}
+
 test('universe: explore, inspect and find a path', async ({ page }) => {
+    // Monaco belongs to the SQL dock: nothing of it may load while the dock stays closed.
+    const monacoRequests: string[] = [];
+    page.on('request', (request) => {
+        if (/monaco|editor\.api|editor\.worker|sql-dock/i.test(request.url()))
+            monacoRequests.push(request.url());
+    });
     await ensureSignedIn(page);
     await addSqliteConnection(
         page,
@@ -57,6 +86,7 @@ test('universe: explore, inspect and find a path', async ({ page }) => {
         'orders → order_items → products',
     );
     await expect(page.getByTestId('join-sql')).toContainText('JOIN');
+    expect(monacoRequests).toEqual([]);
 
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'List view' }).click();
@@ -65,7 +95,7 @@ test('universe: explore, inspect and find a path', async ({ page }) => {
     ).toBeVisible();
 });
 
-test('universe: 2,000-table schema becomes interactive within budget', async ({
+test('universe: 2,000-table schema becomes interactive within budget (and the connections list paints fast)', async ({
     page,
 }) => {
     test.setTimeout(240_000);
@@ -106,4 +136,19 @@ test('universe: 2,000-table schema becomes interactive within budget', async ({
     });
     console.log(`universe-ready-ms=${elapsed}`);
     expect(elapsed).toBeLessThan(budget);
+
+    // The connections list is the first screen after sign-in: its first contentful paint has its
+    // own budget (the same page, so no extra login).
+    const fcpBudget = Number(process.env.E2E_CONNECTIONS_FCP_BUDGET_MS ?? 1000);
+    await page.goto('/connections', { waitUntil: 'load' });
+    await expect(
+        page.getByRole('heading', { name: 'Connections' }),
+    ).toBeVisible();
+    const fcp = await firstContentfulPaint(page);
+    test.info().annotations.push({
+        type: 'connections-fcp-ms',
+        description: String(fcp),
+    });
+    console.log(`connections-fcp-ms=${fcp}`);
+    expect(fcp).toBeLessThan(fcpBudget);
 });

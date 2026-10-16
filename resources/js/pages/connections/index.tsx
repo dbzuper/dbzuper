@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { prefetchWorkspace } from '@/lib/prefetch-workspace';
 import { useSqlTabs } from '@/sql/tabs-store';
 import type { ConnectionSummary } from '@/types/connection';
 import { Head, Link, router } from '@inertiajs/react';
@@ -59,6 +60,8 @@ export default function ConnectionsIndex({
                                 <Link
                                     href={`/c/${c.id}`}
                                     className="min-w-0 flex-1"
+                                    onMouseEnter={prefetchWorkspace}
+                                    onFocus={prefetchWorkspace}
                                 >
                                     <div className="truncate font-medium">
                                         {c.name}

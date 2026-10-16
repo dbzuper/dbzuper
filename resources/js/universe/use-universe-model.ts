@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LayoutPositionEntry, SchemaSnapshot } from '@/types/schema';
-import { assignClusters, type ClusterInfo } from './clusters';
-import { buildSchemaGraph, type SchemaGraph } from './graph';
+import type { ClusterInfo } from './clusters';
+import type { SchemaGraph } from './graph';
 import { applyPositions, planLayout, savedMap, toLayoutEntries } from './plan';
-import { runLayout } from './run-layout';
+
+type ModelKit = typeof import('./model-kit');
+let kit: ModelKit | null = null;
+let kitLoad: Promise<ModelKit> | null = null;
+
+/** Loads graphology and the layout code once; the canvas chunk shares them, so it is usually warm. */
+function loadKit(): Promise<ModelKit> {
+    kitLoad ??= import('./model-kit').then((loaded) => (kit = loaded));
+    return kitLoad;
+}
 
 export type UniverseModel = { graph: SchemaGraph; clusters: ClusterInfo[] };
 export type ModelStatus = 'idle' | 'layout' | 'ready' | 'error';
@@ -53,31 +62,45 @@ export function useUniverseModel(
         const id = ++requestId.current;
         pendingSnapshot.current = snapshot;
 
-        const graph = buildSchemaGraph(snapshot);
-        const clusters = assignClusters(graph);
-        const plan = planLayout(graph, clusters, savedMap(savedEntries), false);
-
-        const finish = () => {
-            built.current = { snapshot, graph, clusters };
-            pendingSnapshot.current = null;
-            setModel({ graph, clusters });
-            setStatus('ready');
-        };
-
-        if (plan.complete) {
-            applyPositions(graph, plan.complete, plan.pinned);
-            finish();
-            return;
-        }
-
-        setStatus('layout');
-        runLayout(plan.input!)
-            .then((positions) => {
+        void loadKit()
+            .then((k) => {
                 if (id !== requestId.current) return;
-                applyPositions(graph, positions, plan.pinned);
-                finish();
-                if (graph.order > 0)
-                    onLaidOutRef.current(toLayoutEntries(graph));
+                const graph = k.buildSchemaGraph(snapshot);
+                const clusters = k.assignClusters(graph);
+                const plan = planLayout(
+                    graph,
+                    clusters,
+                    savedMap(savedEntries),
+                    false,
+                );
+
+                const finish = () => {
+                    built.current = { snapshot, graph, clusters };
+                    pendingSnapshot.current = null;
+                    setModel({ graph, clusters });
+                    setStatus('ready');
+                };
+
+                if (plan.complete) {
+                    applyPositions(graph, plan.complete, plan.pinned);
+                    finish();
+                    return;
+                }
+
+                setStatus('layout');
+                k.runLayout(plan.input!)
+                    .then((positions) => {
+                        if (id !== requestId.current) return;
+                        applyPositions(graph, positions, plan.pinned);
+                        finish();
+                        if (graph.order > 0)
+                            onLaidOutRef.current(toLayoutEntries(graph));
+                    })
+                    .catch(() => {
+                        if (id !== requestId.current) return;
+                        pendingSnapshot.current = null;
+                        setStatus('error');
+                    });
             })
             .catch(() => {
                 if (id !== requestId.current) return;
@@ -88,7 +111,7 @@ export function useUniverseModel(
 
     const relayout = useCallback(() => {
         const current = built.current;
-        if (!current) return;
+        if (!current || !kit) return;
 
         const id = ++requestId.current;
         const { graph, clusters } = current;
@@ -100,7 +123,7 @@ export function useUniverseModel(
         );
 
         setStatus('layout');
-        runLayout(plan.input!)
+        kit.runLayout(plan.input!)
             .then((positions) => {
                 if (id !== requestId.current) return;
                 applyPositions(graph, positions, plan.pinned);

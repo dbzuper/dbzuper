@@ -124,7 +124,10 @@ export default function WorkspaceShow({
     }, []);
 
     useEffect(() => {
-        if (universeAvailable) void loadCanvas().catch(() => undefined);
+        if (universeAvailable) {
+            void loadCanvas().catch(() => undefined);
+            void import('@/universe/model-kit').catch(() => undefined);
+        }
     }, [universeAvailable]);
 
     // One saver per connection: it remembers what the server holds, so a drag save sends only the
