@@ -30,7 +30,8 @@ export function browseKeyAction(
     if (mod && !e.altKey && !e.shiftKey) {
         if (k === 'p') return { type: 'quickOpen' };
         if (k === 'b') return { type: 'toggleSidebar' };
-        if (k === 'f' && ctx.tableTabActive) return { type: 'focusFilter' };
+        if (k === 'f' && ctx.tableTabActive && !ctx.typing)
+            return { type: 'focusFilter' };
         return null;
     }
     if (ctx.typing) return null;
@@ -74,6 +75,9 @@ export const SHORTCUTS: { keys: string; label: string }[] = (() => {
         { keys: `${m} F`, label: 'Filter the table' },
         { keys: `${a} W`, label: 'Close tab' },
         { keys: `${a} 1–9`, label: 'Jump to tab' },
+        { keys: 'Enter', label: 'Open row details (grid)' },
+        { keys: 'Esc', label: 'Close row details' },
+        { keys: 'Shift Enter', label: 'Palette: show table in Universe' },
         { keys: `${a} PgUp / PgDn`, label: 'Previous / next tab' },
     ];
 })();

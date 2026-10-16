@@ -11,16 +11,12 @@ import {
 import { toast } from 'sonner';
 import { useActiveTab, useBrowse } from '@/browse/browse-store';
 import { rowsCache } from '@/browse/rows-cache';
-import { browseKeyAction, isTypingTarget } from '@/browse/shortcuts';
+import { dispatchBrowseKey } from '@/browse/key-dispatch';
 import { useSidebarPrefs } from '@/browse/sidebar-prefs';
 import { makeTableActions } from '@/browse/table-actions';
 import { useBrowseUrl } from '@/browse/use-browse-url';
 import { panelDomId, TabBar, tabDomId } from '@/components/browse/tab-bar';
-import { TABLE_FILTER_ID } from '@/components/browse/data-view';
-import {
-    SIDEBAR_SEARCH_ID,
-    TableSidebar,
-} from '@/components/browse/table-sidebar';
+import { TableSidebar } from '@/components/browse/table-sidebar';
 import { TableTabView } from '@/components/browse/table-tab';
 import { HistoryList } from '@/components/history/history-list';
 import { InspectorPanel } from '@/components/inspector/inspector-panel';
@@ -35,11 +31,7 @@ import { LeftRail } from '@/components/workspace/left-rail';
 import { WorkspaceHeader } from '@/components/workspace/workspace-header';
 import { historyApi } from '@/lib/history-api';
 import { dbErrorFrom, workspaceApi } from '@/lib/workspace-api';
-import {
-    modalOpen,
-    toggleDock,
-    togglePalette,
-} from '@/lib/workspace-shortcuts';
+import { toggleDock, togglePalette } from '@/lib/workspace-shortcuts';
 import { useRecords } from '@/records/records-store';
 import { useTrailUrl } from '@/records/use-trail-url';
 import { useSqlTabs } from '@/sql/tabs-store';
@@ -317,49 +309,8 @@ export default function WorkspaceShow({
     tableTabActiveRef.current = tableTabActive;
     const connectionId = connection.id;
     useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            const action = browseKeyAction(e, {
-                typing: isTypingTarget(document.activeElement),
-                tableTabActive: tableTabActiveRef.current,
-            });
-            if (!action) return;
-            if (modalOpen()) return;
-            e.preventDefault();
-            const browse = useBrowse.getState();
-            switch (action.type) {
-                case 'quickOpen':
-                    togglePalette('tables');
-                    break;
-                case 'toggleSidebar':
-                    useSidebarPrefs.getState().toggle();
-                    break;
-                case 'focusSearch':
-                    if (useSidebarPrefs.getState().collapsed)
-                        useSidebarPrefs.getState().toggle();
-                    // The sidebar's input mounts on the next render when it was collapsed.
-                    requestAnimationFrame(() =>
-                        document.getElementById(SIDEBAR_SEARCH_ID)?.focus(),
-                    );
-                    break;
-                case 'focusFilter':
-                    document.getElementById(TABLE_FILTER_ID)?.focus();
-                    break;
-                case 'closeTab': {
-                    const current = browse.get(connectionId);
-                    if (current.activeId === 'records')
-                        browse.closeRecords(connectionId);
-                    else if (current.activeId !== 'universe')
-                        browse.closeTab(connectionId, current.activeId);
-                    break;
-                }
-                case 'jumpTab':
-                    browse.activateIndex(connectionId, action.index);
-                    break;
-                case 'cycleTab':
-                    browse.cycle(connectionId, action.dir);
-                    break;
-            }
-        };
+        const onKey = (e: KeyboardEvent) =>
+            dispatchBrowseKey(e, connectionId, tableTabActiveRef.current);
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [connectionId]);

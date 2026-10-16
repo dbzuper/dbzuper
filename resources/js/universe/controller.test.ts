@@ -9,13 +9,15 @@ import {
 /** A fake canvas; `flyTo` is returned separately so assertions use the mock itself. */
 const fake = () => {
     const flyTo = vi.fn<(table: string) => void>();
+    const fitAll = vi.fn<() => void>();
+    const relayout = vi.fn<() => void>();
     const handle: UniverseHandle = {
         flyTo,
         fitNodes: vi.fn(),
-        fitAll: vi.fn(),
-        relayout: vi.fn(),
+        fitAll,
+        relayout,
     };
-    return { handle, flyTo };
+    return { handle, flyTo, fitAll, relayout };
 };
 
 afterEach(() => {
@@ -50,5 +52,14 @@ describe('universe controller', () => {
         const h = fake();
         registerUniverse(h.handle);
         expect(h.flyTo).not.toHaveBeenCalled();
+    });
+
+    it('keeps a fit or re-layout asked before the canvas registered', () => {
+        universe.fitAll();
+        universe.relayout();
+        const h = fake();
+        registerUniverse(h.handle);
+        expect(h.relayout).toHaveBeenCalledTimes(1);
+        expect(h.fitAll).not.toHaveBeenCalled();
     });
 });

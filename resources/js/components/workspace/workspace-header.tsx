@@ -1,13 +1,9 @@
 import { Link } from '@inertiajs/react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Keyboard, RefreshCw, Search } from 'lucide-react';
 import { SHORTCUTS } from '@/browse/shortcuts';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { formatSnapshotAge } from '@/lib/format';
 import { paletteShortcutHint } from '@/lib/platform';
 import type { ConnectionSummary } from '@/types/connection';
@@ -101,36 +97,68 @@ export function WorkspaceHeader({
                     />
                     {loading ? 'Loading…' : 'Refresh schema'}
                 </Button>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Keyboard shortcuts"
-                        >
-                            <Keyboard className="size-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-72 p-2">
-                        <dl className="grid gap-1.5 text-xs">
-                            {SHORTCUTS.map((s) => (
-                                <div
-                                    key={s.label}
-                                    className="flex items-center justify-between gap-3"
-                                >
-                                    <dt>{s.label}</dt>
-                                    <dd>
-                                        <kbd className="rounded border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                                            {s.keys}
-                                        </kbd>
-                                    </dd>
-                                </div>
-                            ))}
-                        </dl>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                <ShortcutHelp />
                 <ThemeToggle />
             </div>
         </header>
+    );
+}
+
+/** A disclosure (not a menu: it holds no actions) listing the keyboard shortcuts. */
+function ShortcutHelp() {
+    const [open, setOpen] = useState(false);
+    const root = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!open) return;
+        const onDown = (e: MouseEvent) => {
+            if (!root.current?.contains(e.target as Node)) setOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setOpen(false);
+        };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [open]);
+    return (
+        <div ref={root} className="relative">
+            <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Keyboard shortcuts"
+                aria-expanded={open}
+                aria-controls="shortcut-help"
+                onClick={() => setOpen((o) => !o)}
+            >
+                <Keyboard className="size-4" />
+            </Button>
+            {open && (
+                <div
+                    id="shortcut-help"
+                    role="region"
+                    aria-label="Keyboard shortcuts"
+                    className="absolute right-0 z-50 mt-1 w-72 rounded-md border bg-popover p-2 text-popover-foreground shadow-md"
+                >
+                    <dl className="grid gap-1.5 text-xs">
+                        {SHORTCUTS.map((s) => (
+                            <div
+                                key={s.label}
+                                className="flex items-center justify-between gap-3"
+                            >
+                                <dt>{s.label}</dt>
+                                <dd>
+                                    <kbd className="rounded border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                        {s.keys}
+                                    </kbd>
+                                </dd>
+                            </div>
+                        ))}
+                    </dl>
+                </div>
+            )}
+        </div>
     );
 }

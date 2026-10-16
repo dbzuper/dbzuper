@@ -70,6 +70,9 @@ describe('browseKeyAction', () => {
             }),
         ).toBeNull();
     });
+    it('leaves Ctrl+F to the browser while typing', () => {
+        expect(browseKeyAction(key('f', { ctrlKey: true }), typing)).toBeNull();
+    });
     it('leaves other keys alone', () => {
         expect(browseKeyAction(key('a'), idle)).toBeNull();
         expect(
