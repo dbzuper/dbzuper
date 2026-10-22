@@ -11,12 +11,12 @@ use Tests\Support\Engines;
 
 afterEach(fn () => Engines::resetSqlite());
 
-const EDIT_METHOD_TABLES = ['em_pk', 'em_unique', 'em_bare', 'em_generated', 'em_norowid', 'em_partial'];
+const EDIT_METHOD_TABLES = ['em_inh_child', 'em_inh_parent', 'em_part', 'em_pk', 'em_unique', 'em_bare', 'em_generated', 'em_norowid', 'em_partial', 'em_expr', 'em_invalid', 'em_deferred'];
 
 function editMethodDrop(Connection $db): void
 {
     foreach (EDIT_METHOD_TABLES as $table) {
-        $db->statement('DROP TABLE IF EXISTS '.$table);
+        $db->statement('DROP TABLE IF EXISTS '.$table.($db->getDriverName() === 'pgsql' ? ' CASCADE' : ''));
     }
 }
 
@@ -153,3 +153,83 @@ it('does not mistake expression defaults for generated columns on mysql and mari
         $factory->release($db);
     }
 })->with(['mysql', 'mariadb']);
+
+it('skips a unique index mixing a column and an expression', function (string $engine) {
+    Engines::skipUnlessAvailable($engine);
+    $saved = Engines::savedConnection($engine);
+    $factory = app(ConnectionFactory::class);
+    $db = $factory->make($saved);
+
+    try {
+        editMethodDrop($db);
+        $db->statement('CREATE TABLE em_expr (a INT NOT NULL, b VARCHAR(20) NOT NULL)');
+        $db->statement($engine === 'mysql'
+            ? 'CREATE UNIQUE INDEX em_expr_u ON em_expr (a, (lower(b)))'
+            : 'CREATE UNIQUE INDEX em_expr_u ON em_expr (a, lower(b))');
+        $db->statement("INSERT INTO em_expr VALUES (1, 'x'), (1, 'y')");
+
+        expect(editPlans($saved, $db)['em_expr']->method)->toBe(match ($engine) {
+            'sqlite' => EditMethod::SqliteRowid,
+            'pgsql' => EditMethod::PgCtid,
+            default => EditMethod::MysqlAllValues,
+        });
+    } finally {
+        editMethodDrop($db);
+        $factory->release($db);
+    }
+})->with(['sqlite', 'mysql', 'pgsql']); // MariaDB has no functional key parts (it indexes virtual columns instead).
+
+it('skips invalid and deferrable unique indexes on pgsql', function () {
+    Engines::skipUnlessAvailable('pgsql');
+    $saved = Engines::savedConnection('pgsql');
+    $factory = app(ConnectionFactory::class);
+    $db = $factory->make($saved);
+
+    try {
+        editMethodDrop($db);
+        $db->statement('CREATE TABLE em_invalid (a INT NOT NULL)');
+        $db->statement('INSERT INTO em_invalid VALUES (1), (1)');
+        try {
+            // Fails on the duplicate and leaves an invalid index behind.
+            $db->statement('CREATE UNIQUE INDEX CONCURRENTLY em_invalid_a ON em_invalid (a)');
+        } catch (Throwable) {
+        }
+        expect($db->selectOne("select indisvalid from pg_index where indexrelid = 'em_invalid_a'::regclass")->indisvalid)->toBeFalse();
+        $db->statement('CREATE TABLE em_deferred (a INT NOT NULL, CONSTRAINT em_deferred_a UNIQUE (a) DEFERRABLE INITIALLY DEFERRED)');
+        $plans = editPlans($saved, $db);
+
+        expect($plans['em_invalid']->method)->toBe(EditMethod::PgCtid)
+            ->and($plans['em_deferred']->method)->toBe(EditMethod::PgCtid);
+    } finally {
+        editMethodDrop($db);
+        $factory->release($db);
+    }
+});
+
+it('flags partitioned and inherited pgsql tables as needing tableoid', function () {
+    Engines::skipUnlessAvailable('pgsql');
+    $saved = Engines::savedConnection('pgsql');
+    $factory = app(ConnectionFactory::class);
+    $db = $factory->make($saved);
+
+    try {
+        editMethodDrop($db);
+        $db->statement('DROP TABLE IF EXISTS em_part_1');
+        $db->statement('CREATE TABLE em_part (n INT, v TEXT) PARTITION BY RANGE (n)');
+        $db->statement('CREATE TABLE em_part_1 PARTITION OF em_part FOR VALUES FROM (0) TO (100)');
+        $db->statement('CREATE TABLE em_inh_parent (v TEXT)');
+        $db->statement('CREATE TABLE em_inh_child (w INT) INHERITS (em_inh_parent)');
+        $db->statement('CREATE TABLE em_bare (v TEXT)');
+        $plans = editPlans($saved, $db);
+
+        expect($plans['em_part']->method)->toBe(EditMethod::PgCtid)
+            ->and($plans['em_part']->needsTableoid)->toBeTrue()
+            ->and($plans['em_inh_parent']->needsTableoid)->toBeTrue()
+            ->and($plans['em_inh_child']->needsTableoid)->toBeFalse()
+            ->and($plans['em_bare']->needsTableoid)->toBeFalse()
+            ->and($plans['em_bare']->toArray()['needs_tableoid'])->toBeFalse();
+    } finally {
+        editMethodDrop($db);
+        $factory->release($db);
+    }
+});

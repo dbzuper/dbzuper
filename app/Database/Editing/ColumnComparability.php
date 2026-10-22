@@ -16,7 +16,10 @@ final class ColumnComparability
     /** PostgreSQL types without an `=` operator (or whose text form doesn't round-trip through `=`). */
     private const PG_NO_EQUALITY = ['json', 'xml', 'point', 'line', 'lseg', 'box', 'path', 'polygon', 'circle'];
 
-    /** MySQL/MariaDB types compared exactly: integer, decimal, date-time and text (text with a binary collation). */
+    /**
+     * MySQL/MariaDB types compared exactly: integer, decimal, date-time and text. Text is only exact when compared
+     * byte for byte through a BINARY/varbinary cast: even utf8mb4_bin is PAD SPACE ('a' = 'a ').
+     */
     private const MYSQL_EXACT = [
         'tinyint', 'smallint', 'mediumint', 'int', 'integer', 'bigint',
         'decimal', 'numeric', 'dec', 'fixed',

@@ -34,7 +34,7 @@ final class EditMethodResolver
             return $plan(EditMethod::PrimaryKey, $pk);
         }
 
-        $unique = $this->uniqueNotNullIndex($table, $this->partialIndexes($driver, $db, $connection, $name));
+        $unique = $this->uniqueNotNullIndex($table, $this->unusableIndexes($driver, $db, $connection, $name));
         if ($unique !== null) {
             return $plan(EditMethod::UniqueIndex, $unique);
         }
@@ -45,7 +45,7 @@ final class EditMethodResolver
                 ! $this->sqliteRowidReachable($table) => EditPlan::none('columns named rowid, _rowid_ and oid hide the SQLite row id'),
                 default => $plan(EditMethod::SqliteRowid),
             },
-            DriverName::Postgres => $plan(EditMethod::PgCtid),
+            DriverName::Postgres => new EditPlan(EditMethod::PgCtid, [], null, $readOnly, $this->pgNeedsTableoid($db, $connection, $name)),
             DriverName::MySql, DriverName::MariaDb => $plan(EditMethod::MysqlAllValues),
         };
     }
@@ -53,7 +53,7 @@ final class EditMethodResolver
     /**
      * The first unique index (by name) whose columns all exist and are NOT NULL.
      *
-     * @param  list<string>  $partial  index names that only cover some rows
+     * @param  list<string>  $partial  index names that can't pin a row (partial, expression, invalid, deferrable)
      * @return ?list<string>
      */
     private function uniqueNotNullIndex(array $table, array $partial): ?array
@@ -124,21 +124,56 @@ final class EditMethodResolver
         return array_map(fn (object $r) => (string) $r->name, $rows);
     }
 
-    /** @return list<string> unique indexes that only cover some rows or index expressions (PostgreSQL/SQLite) */
-    private function partialIndexes(DriverName $driver, Connection $db, SavedConnection $saved, string $table): array
+    /**
+     * Unique indexes that can't pin a row: partial (cover only some rows), with an expression key part (the
+     * snapshot drops those parts, so the plain columns alone would look unique), and on PostgreSQL invalid,
+     * not-ready or deferrable ones.
+     *
+     * @return list<string>
+     */
+    private function unusableIndexes(DriverName $driver, Connection $db, SavedConnection $saved, string $table): array
     {
+        if ($driver === DriverName::MySql || $driver === DriverName::MariaDb) {
+            // select * so servers without the EXPRESSION column (MariaDB, MySQL < 8.0.13) still work.
+            $out = [];
+            foreach ($db->select('select * from information_schema.statistics where table_schema = ? and table_name = ?', [$db->getDatabaseName(), $table]) as $row) {
+                $row = array_change_key_case((array) $row, CASE_UPPER);
+                if (($row['COLUMN_NAME'] ?? null) === null || ($row['EXPRESSION'] ?? null) !== null) {
+                    $out[] = (string) $row['INDEX_NAME'];
+                }
+            }
+
+            return array_values(array_unique($out));
+        }
+
         $rows = match ($driver) {
-            DriverName::Sqlite => $db->select('select name from pragma_index_list(?) where partial = 1', [$table]),
+            DriverName::Sqlite => $db->select(
+                'select il.name from pragma_index_list(?) il where il.partial = 1 '
+                .'or exists (select 1 from pragma_index_info(il.name) ii where ii.cid = -2 or ii.name is null)',
+                [$table],
+            ),
             DriverName::Postgres => $db->select(
                 'select ic.relname as name from pg_index i join pg_class tc on tc.oid = i.indrelid '
                 .'join pg_namespace n on n.oid = tc.relnamespace join pg_class ic on ic.oid = i.indexrelid '
-                .'where n.nspname = ? and tc.relname = ? and (i.indpred is not null or i.indexprs is not null)',
+                .'where n.nspname = ? and tc.relname = ? and (i.indpred is not null or i.indexprs is not null '
+                .'or not i.indisvalid or not i.indisready or not i.indimmediate)',
                 [$this->pgSchema($saved), $table],
             ),
-            default => [],
         };
 
         return array_map(fn (object $r) => (string) $r->name, $rows);
+    }
+
+    /** ctid is unique only per physical relation: a partitioned table or an inheritance parent also needs tableoid. */
+    private function pgNeedsTableoid(Connection $db, SavedConnection $saved, string $table): bool
+    {
+        $row = $db->select(
+            "select (c.relkind = 'p' or exists (select 1 from pg_inherits i where i.inhparent = c.oid)) as needs "
+            .'from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = ? and c.relname = ?',
+            [$this->pgSchema($saved), $table],
+        )[0] ?? null;
+
+        return (bool) ($row->needs ?? false);
     }
 
     private function sqliteWithoutRowid(Connection $db, string $table): bool

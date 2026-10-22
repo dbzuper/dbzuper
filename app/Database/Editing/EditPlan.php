@@ -8,12 +8,14 @@ final readonly class EditPlan
      * @param  list<string>  $keyColumns  key columns for PrimaryKey/UniqueIndex; empty for rowid, ctid, all-values and None
      * @param  ?string  $reason  why the table can't be edited (None)
      * @param  list<string>  $readOnlyColumns  generated, identity-always and binary columns
+     * @param  bool  $needsTableoid  PgCtid on a partitioned table or inheritance parent: ctid repeats across children
      */
     public function __construct(
         public EditMethod $method,
         public array $keyColumns = [],
         public ?string $reason = null,
         public array $readOnlyColumns = [],
+        public bool $needsTableoid = false,
     ) {}
 
     public static function none(string $reason): self
@@ -33,6 +35,7 @@ final readonly class EditPlan
             'key_columns' => $this->keyColumns,
             'reason' => $this->reason,
             'read_only_columns' => $this->readOnlyColumns,
+            'needs_tableoid' => $this->needsTableoid,
         ];
     }
 }

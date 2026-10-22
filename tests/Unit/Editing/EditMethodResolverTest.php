@@ -103,11 +103,35 @@ it('does not use a unique index on an expression or a missing column', function 
     expect($plan->method)->toBe(EditMethod::PgCtid);
 });
 
-it('does not use a partial unique index', function (string $driver, string $fragment) {
-    $plan = resolvedPlan($driver, editTable([editCol('a')], indexes: [uniqueIndex('partial_a', ['a'])]), [$fragment => [['name' => 'partial_a']]]);
+it('does not use a partial, expression, invalid or deferrable unique index', function (string $driver, string $fragment, array $row, string $method) {
+    $plan = resolvedPlan($driver, editTable([editCol('a')], indexes: [uniqueIndex('partial_a', ['a'])]), [$fragment => [$row]]);
 
-    expect($plan->method)->toBe($driver === 'pgsql' ? EditMethod::PgCtid : EditMethod::SqliteRowid);
-})->with([['pgsql', 'indpred'], ['sqlite', 'pragma_index_list']]);
+    expect($plan->method)->toBe(EditMethod::from($method));
+})->with([
+    ['pgsql', 'indisvalid', ['name' => 'partial_a'], 'pg_ctid'],
+    ['sqlite', 'pragma_index_list', ['name' => 'partial_a'], 'sqlite_rowid'],
+    ['mysql', 'information_schema.statistics', ['INDEX_NAME' => 'partial_a', 'COLUMN_NAME' => null], 'mysql_all_values'],
+    ['mysql', 'information_schema.statistics', ['INDEX_NAME' => 'partial_a', 'COLUMN_NAME' => 'a', 'EXPRESSION' => 'lower(`b`)'], 'mysql_all_values'],
+]);
+
+it('keeps a MySQL/MariaDB unique index whose key parts are all plain columns', function () {
+    $plan = resolvedPlan('mariadb', editTable([editCol('a')], indexes: [uniqueIndex('a', ['a'])]), ['information_schema.statistics' => [['INDEX_NAME' => 'a', 'COLUMN_NAME' => 'a']]]);
+
+    expect($plan->method)->toBe(EditMethod::UniqueIndex);
+});
+
+it('flags PostgreSQL ctid tables that need tableoid', function (array $rows, bool $needs) {
+    $plan = resolvedPlan('pgsql', editTable([editCol('a')]), ['pg_inherits' => $rows]);
+
+    expect($plan->method)->toBe(EditMethod::PgCtid)
+        ->and($plan->needsTableoid)->toBe($needs)
+        ->and($plan->toArray()['needs_tableoid'])->toBe($needs);
+})->with([[[['needs' => true]], true], [[['needs' => false]], false], [[], false]]);
+
+it('never flags tableoid for other methods', function () {
+    expect(resolvedPlan('pgsql', editTable([editCol('a')], ['a']), ['pg_inherits' => [['needs' => true]]])->needsTableoid)->toBeFalse()
+        ->and(resolvedPlan('mysql', editTable([editCol('a')]))->needsTableoid)->toBeFalse();
+});
 
 it('falls back to the SQLite rowid for ordinary rowid tables', function () {
     $plan = resolvedPlan('sqlite', editTable([editCol('a', 'text', true)]), ['sqlite_master' => [['sql' => 'CREATE TABLE things (a text)']]]);
