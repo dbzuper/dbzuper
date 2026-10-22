@@ -107,28 +107,46 @@ it('pins SQLite rows by the first rowid alias no column hides', function () {
         ->and($s->target)->toBe('rowid 12');
 });
 
-it('pins PostgreSQL rows by ctid plus every comparable original value', function () {
+it('pins PostgreSQL rows by ctid and xmin plus every comparable original value', function () {
     $table = csTable([csCol('note', 'text'), csCol('f', 'float8'), csCol('qty', 'int4'), csCol('j', 'json')]);
     [$s] = csBuild('pgsql', new EditPlan(EditMethod::PgCtid), $table, [
-        ['op' => 'update', 'id' => ['ctid' => '(0,3)'], 'original' => ['note' => 'a', 'f' => 1.5, 'qty' => null, 'j' => '{}'], 'values' => ['note' => 'b']],
+        ['op' => 'update', 'id' => ['ctid' => '(0,3)', 'xmin' => '7781'], 'original' => ['note' => 'a', 'f' => 1.5, 'qty' => null, 'j' => '{}'], 'values' => ['note' => 'b']],
     ]);
 
-    expect($s->sql)->toBe('UPDATE "things" SET "note" = ? WHERE ctid = ?::tid AND "note" = ? AND "qty" IS NULL')
-        ->and($s->bindings)->toBe(['b', '(0,3)', 'a'])
-        ->and($s->previewSql)->toBe("UPDATE \"things\" SET \"note\" = 'b' WHERE ctid = '(0,3)'::tid AND \"note\" = 'a' AND \"qty\" IS NULL")
+    expect($s->sql)->toBe('UPDATE "things" SET "note" = ? WHERE ctid = ?::tid AND xmin = ?::xid AND "note" = ? AND "qty" IS NULL')
+        ->and($s->bindings)->toBe(['b', '(0,3)', '7781', 'a'])
+        ->and($s->previewSql)->toBe("UPDATE \"things\" SET \"note\" = 'b' WHERE ctid = '(0,3)'::tid AND xmin = '7781'::xid AND \"note\" = 'a' AND \"qty\" IS NULL")
         ->and($s->target)->toBe('ctid (0,3)');
+});
+
+it('refuses ctid changes without xmin or without every comparable original', function (array $change, string $field) {
+    $table = csTable([csCol('note', 'text'), csCol('f', 'float8'), csCol('qty', 'int4'), csCol('photo', 'bytea')]);
+
+    expect(csRejected('pgsql', new EditPlan(EditMethod::PgCtid), $table, [$change])->field)->toBe($field);
+})->with([
+    'ctid only' => [['op' => 'delete', 'id' => ['ctid' => '(0,3)'], 'original' => ['note' => 'a', 'qty' => 1]], 'changes.0.id'],
+    'bad xmin' => [['op' => 'delete', 'id' => ['ctid' => '(0,3)', 'xmin' => '1 or 1=1'], 'original' => ['note' => 'a', 'qty' => 1]], 'changes.0.id'],
+    'no originals' => [['op' => 'delete', 'id' => ['ctid' => '(0,3)', 'xmin' => '5']], 'changes.0.original'],
+    'a comparable original missing' => [['op' => 'update', 'id' => ['ctid' => '(0,3)', 'xmin' => '5'], 'original' => ['note' => 'a'], 'values' => ['note' => 'b']], 'changes.0.original'],
+]);
+
+it('does not need originals of inexact or binary columns under ctid', function () {
+    $table = csTable([csCol('note', 'text'), csCol('f', 'float8'), csCol('photo', 'bytea')]);
+    [$s] = csBuild('pgsql', new EditPlan(EditMethod::PgCtid), $table, [['op' => 'delete', 'id' => ['ctid' => '(0,3)', 'xmin' => '5'], 'original' => ['note' => 'a']]]);
+
+    expect($s->sql)->toBe('DELETE FROM "things" WHERE ctid = ?::tid AND xmin = ?::xid AND "note" = ?');
 });
 
 it('adds tableoid to the ctid when the table has children', function () {
     $table = csTable([csCol('v', 'text')]);
     $plan = new EditPlan(EditMethod::PgCtid, needsTableoid: true);
-    [$s] = csBuild('pgsql', $plan, $table, [['op' => 'delete', 'id' => ['ctid' => '(0,1)', 'tableoid' => '16384'], 'original' => ['v' => 'a']]]);
+    [$s] = csBuild('pgsql', $plan, $table, [['op' => 'delete', 'id' => ['ctid' => '(0,1)', 'xmin' => '9', 'tableoid' => '16384'], 'original' => ['v' => 'a']]]);
 
-    expect($s->sql)->toBe('DELETE FROM "things" WHERE tableoid = ?::oid AND ctid = ?::tid AND "v" = ?')
-        ->and($s->bindings)->toBe(['16384', '(0,1)', 'a'])
+    expect($s->sql)->toBe('DELETE FROM "things" WHERE tableoid = ?::oid AND ctid = ?::tid AND xmin = ?::xid AND "v" = ?')
+        ->and($s->bindings)->toBe(['16384', '(0,1)', '9', 'a'])
         ->and($s->target)->toBe('ctid (0,1) in tableoid 16384');
 
-    expect(csRejected('pgsql', $plan, $table, [['op' => 'delete', 'id' => ['ctid' => '(0,1)']]])->field)->toBe('changes.0.id');
+    expect(csRejected('pgsql', $plan, $table, [['op' => 'delete', 'id' => ['ctid' => '(0,1)', 'xmin' => '9'], 'original' => ['v' => 'a']]])->field)->toBe('changes.0.id');
 });
 
 it('matches every MySQL/MariaDB column null-safely, text byte for byte, one row at most', function (string $driver) {
@@ -260,10 +278,42 @@ it('rejects bad rowid and ctid identities', function (string $driver, EditPlan $
 })->with([
     ['sqlite', new EditPlan(EditMethod::SqliteRowid), ['rowid' => '1; drop']],
     ['sqlite', new EditPlan(EditMethod::SqliteRowid), ['rowid' => null]],
-    ['pgsql', new EditPlan(EditMethod::PgCtid), ['ctid' => "(0,1)'"]],
-    ['pgsql', new EditPlan(EditMethod::PgCtid), ['ctid' => '(0,1)', 'tableoid' => '1']],
-    ['pgsql', new EditPlan(EditMethod::PgCtid, needsTableoid: true), ['ctid' => '(0,1)', 'tableoid' => 'x']],
+    'rowid above the 64-bit range' => ['sqlite', new EditPlan(EditMethod::SqliteRowid), ['rowid' => '9223372036854775808']],
+    'rowid below the 64-bit range' => ['sqlite', new EditPlan(EditMethod::SqliteRowid), ['rowid' => '-9223372036854775809']],
+    ['sqlite', new EditPlan(EditMethod::SqliteRowid), ['rowid' => '1.5']],
+    ['pgsql', new EditPlan(EditMethod::PgCtid), ['ctid' => "(0,1)'", 'xmin' => '1']],
+    ['pgsql', new EditPlan(EditMethod::PgCtid), ['ctid' => '(0,1)', 'xmin' => '1', 'tableoid' => '1']],
+    ['pgsql', new EditPlan(EditMethod::PgCtid, needsTableoid: true), ['ctid' => '(0,1)', 'xmin' => '1', 'tableoid' => 'x']],
 ]);
+
+it('keeps the 64-bit rowid limits exact', function () {
+    [$s] = csBuild('sqlite', new EditPlan(EditMethod::SqliteRowid), csTable([csCol('v', 'text')]), [['op' => 'delete', 'id' => ['rowid' => '-9223372036854775808']]]);
+
+    expect($s->bindings)->toBe([PHP_INT_MIN])->and($s->target)->toBe('rowid -9223372036854775808');
+});
+
+it('inserts into inexact columns of a key-less MySQL table: inserts match nothing', function () {
+    $table = csTable([csCol('f', 'float'), csCol('n', 'int')]);
+    [$s] = csBuild('mysql', new EditPlan(EditMethod::MysqlAllValues), $table, [['op' => 'insert', 'values' => ['f' => '1.5', 'n' => '1']]]);
+
+    expect($s->sql)->toBe('INSERT INTO `things` (`f`, `n`) VALUES (?, ?)');
+});
+
+it('binds SQLite numeric originals as numbers', function () {
+    $table = csTable([csCol('id', 'integer', false), csCol('r', 'real'), csCol('u', ''), csCol('note', 'text')]);
+    [$s] = csBuild('sqlite', pkPlan(), $table, [['op' => 'update', 'id' => ['key' => ['id' => 1]], 'original' => ['u' => 0.1, 'note' => 'a'], 'values' => ['u' => '2', 'note' => 'b']]]);
+
+    expect($s->bindings)->toBe(['2', 'b', 1, 0.1, 'a'])
+        ->and($s->previewSql)->toContain('"u" = 0.1');
+});
+
+it('caps the total size of a change set', function () {
+    $table = csTable([csCol('id', 'integer', false), csCol('name', 'text')]);
+    $big = ['op' => 'insert', 'values' => ['name' => str_repeat('x', 900_000)]];
+    $e = csRejected('sqlite', pkPlan(), $table, array_fill(0, 12, $big));
+
+    expect($e->field)->toBe('changes')->and($e->getMessage())->toContain('10,000,000');
+});
 
 it('refuses tables that cannot be edited and views', function () {
     $table = csTable([csCol('id')]);

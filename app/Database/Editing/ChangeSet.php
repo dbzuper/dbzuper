@@ -10,6 +10,9 @@ final class ChangeSet
     /** Longest value (characters) a change may write. */
     public const MAX_VALUE_CHARS = 1_000_000;
 
+    /** Cap on all text in one change set (values, originals, identities), for a low-memory host. */
+    public const MAX_TOTAL_CHARS = 10_000_000;
+
     /** Execution order (spec §5.2): deletes, then updates, then inserts, so a key can be deleted and re-added. */
     public const OPS = ['delete', 'update', 'insert'];
 

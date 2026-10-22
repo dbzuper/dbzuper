@@ -3,13 +3,13 @@
 namespace App\Database\Editing;
 
 /**
- * One statement of a change set, ready to run: `sql` has `?` placeholders for `bindings` (strings, SQLite integers or
- * null), `previewSql` is the same statement with the literals inlined by the connection, for the Review dialog.
+ * One statement of a change set, ready to run: `sql` has `?` placeholders for `bindings` (strings, SQLite integers and
+ * floats, or null), `previewSql` is the same statement with the literals inlined by the connection, for the Review dialog.
  * UPDATE and DELETE must match exactly one row; INSERT adds one.
  */
 final readonly class BuiltStatement
 {
-    /** @param list<string|int|null> $bindings */
+    /** @param list<string|int|float|null> $bindings */
     public function __construct(
         public int $index,
         public string $op,

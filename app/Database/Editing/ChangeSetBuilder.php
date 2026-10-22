@@ -47,6 +47,14 @@ final class ChangeSetBuilder
             throw new ChangeSetRejected('changes', "This table can't be edited: {$plan->reason}.");
         }
 
+        $chars = 0;
+        array_walk_recursive($changes, function ($v) use (&$chars) {
+            $chars += is_string($v) ? mb_strlen($v) : 0;
+        });
+        if ($chars > ChangeSet::MAX_TOTAL_CHARS) {
+            throw new ChangeSetRejected('changes', 'The change set is too large: its values add up to more than '.number_format(ChangeSet::MAX_TOTAL_CHARS).' characters.');
+        }
+
         $run = new self;
         $run->plan = $plan;
         $run->table = $table;
@@ -70,7 +78,7 @@ final class ChangeSetBuilder
 
     private function insert(int $i, array $change): BuiltStatement
     {
-        $values = $this->writes($i, $change, allowEmpty: true);
+        $values = $this->writes($i, $change, insert: true);
         $table = $this->q($this->table['name']);
 
         if ($values === []) {
@@ -91,7 +99,7 @@ final class ChangeSetBuilder
     private function update(int $i, array $change): BuiltStatement
     {
         [$where, $target] = $this->pin($i, $change);
-        $values = $this->writes($i, $change, allowEmpty: false);
+        $values = $this->writes($i, $change, insert: false);
         $original = $this->originals($i, $change);
         foreach (array_keys($values) as $column) {
             if (! array_key_exists($column, $original)) {
@@ -178,18 +186,21 @@ final class ChangeSetBuilder
             case EditMethod::SqliteRowid:
                 $shape(['rowid']);
                 $rowid = $id['rowid'];
-                if (! (is_int($rowid) || (is_string($rowid) && preg_match('/^-?\d{1,19}$/', $rowid)))) {
+                // FILTER_VALIDATE_INT refuses values outside the 64-bit range instead of saturating them.
+                $rowid = is_int($rowid) || is_string($rowid) ? filter_var($rowid, FILTER_VALIDATE_INT) : false;
+                if ($rowid === false) {
                     throw $mismatch();
                 }
                 $alias = EditMethodResolver::sqliteRowidAlias(array_keys($this->columns));
 
-                return [[$this->cat($this->raw("{$alias} = "), $this->param((int) $rowid))], 'rowid '.(int) $rowid];
+                return [[$this->cat($this->raw("{$alias} = "), $this->param($rowid))], 'rowid '.$rowid];
 
             case EditMethod::PgCtid:
-                $shape($this->plan->needsTableoid ? ['ctid', 'tableoid'] : ['ctid']);
+                $shape($this->plan->needsTableoid ? ['ctid', 'xmin', 'tableoid'] : ['ctid', 'xmin']);
                 $ctid = $id['ctid'];
+                $xmin = is_int($id['xmin']) || is_string($id['xmin']) ? (string) $id['xmin'] : '';
                 $tableoid = $id['tableoid'] ?? null;
-                if (! is_string($ctid) || ! preg_match('/^\(\d{1,10},\d{1,5}\)$/', $ctid)
+                if (! is_string($ctid) || ! preg_match('/^\(\d{1,10},\d{1,5}\)$/', $ctid) || ! preg_match('/^\d{1,10}$/', $xmin)
                     || ($this->plan->needsTableoid && ! preg_match('/^\d{1,10}$/', is_int($tableoid) || is_string($tableoid) ? (string) $tableoid : ''))) {
                     throw $mismatch();
                 }
@@ -197,12 +208,19 @@ final class ChangeSetBuilder
                 if ($this->plan->needsTableoid) {
                     $where[] = $this->cat($this->raw('tableoid = '), $this->param((string) $tableoid, '?::oid'));
                 }
+                // ctid plus xmin pin one row version: a reused ctid slot or a row changed since loading has another xmin.
                 $where[] = $this->cat($this->raw('ctid = '), $this->param($ctid, '?::tid'));
-                // Plus every comparable original value, so a row changed since loading matches nothing.
-                foreach ($this->originals($i, $change) as $column => $value) {
-                    if ($this->comparable($column)) {
-                        $where[] = $this->compare($column, $value);
+                $where[] = $this->cat($this->raw('xmin = '), $this->param($xmin, '?::xid'));
+                // Plus every comparable original value (defence in depth); each must be sent.
+                $original = $this->originals($i, $change);
+                foreach (array_keys($this->columns) as $column) {
+                    if (! $this->comparable($column)) {
+                        continue;
                     }
+                    if (! array_key_exists($column, $original)) {
+                        throw new ChangeSetRejected("changes.{$i}.original", "The original value of \"{$column}\" is missing.");
+                    }
+                    $where[] = $this->compare($column, $original[$column]);
                 }
 
                 return [$where, 'ctid '.$ctid.($this->plan->needsTableoid ? ' in tableoid '.$tableoid : '')];
@@ -238,14 +256,14 @@ final class ChangeSetBuilder
      *
      * @return array<string, ?string>
      */
-    private function writes(int $i, array $change, bool $allowEmpty): array
+    private function writes(int $i, array $change, bool $insert): array
     {
         $field = "changes.{$i}.values";
         $values = $change['values'] ?? [];
         if (! is_array($values)) {
             throw new ChangeSetRejected($field, 'The values must be an object of column values.');
         }
-        if ($values === [] && ! $allowEmpty) {
+        if ($values === [] && ! $insert) {
             throw new ChangeSetRejected($field, 'Nothing to update.');
         }
 
@@ -253,7 +271,7 @@ final class ChangeSetBuilder
         foreach ($values as $column => $value) {
             $column = (string) $column;
             $this->known($field, $column);
-            if (! $this->writable($column)) {
+            if (! $this->writable($column, $insert)) {
                 throw new ChangeSetRejected($field, "Column \"{$column}\" can't be edited.");
             }
             $out[$column] = match (true) {
@@ -270,7 +288,7 @@ final class ChangeSetBuilder
     /**
      * The change's original values, converted for matching. Every one must have been shown whole.
      *
-     * @return array<string, string|int|null>
+     * @return array<string, string|int|float|null>
      */
     private function originals(int $i, array $change): array
     {
@@ -294,19 +312,25 @@ final class ChangeSetBuilder
     }
 
     /** A value the row is matched against: as bound, with JSON numbers and booleans in the engine's text form. */
-    private function matchValue(mixed $value, string $field, string $column, int $maxChars): string|int|null
+    private function matchValue(mixed $value, string $field, string $column, int $maxChars): string|int|float|null
     {
         return match (true) {
             $value === null => null,
             is_bool($value) => $this->bool($value),
-            // SQLite only converts text to a number for columns with numeric affinity; elsewhere text is converted.
-            is_int($value) => $this->driver->name() === DriverName::Sqlite ? $value : (string) $value,
-            is_float($value) => (string) json_encode($value),
+            // SQLite only converts text to a number for columns with numeric affinity (an untyped or REAL column
+            // would never equal the text '7' or '1.5'); the other engines convert text to the column's type.
+            is_int($value), is_float($value) => $this->driver->name() === DriverName::Sqlite ? $value : $this->number($value),
             is_string($value) => $maxChars === CellValue::RESULT_CHARS && mb_strlen($value) > $maxChars
                 ? throw new ChangeSetRejected($field, "The original value of \"{$column}\" was shortened for display, so it can't be matched or replaced.")
                 : $this->text($value, $field, $column, $maxChars),
             default => throw new ChangeSetRejected($field, "The value of \"{$column}\" must be text or null."),
         };
+    }
+
+    /** A number's exact text: floats in their shortest round-trip form. */
+    private function number(int|float $value): string
+    {
+        return is_float($value) ? (string) json_encode($value) : (string) $value;
     }
 
     private function text(string $value, string $field, string $column, int $maxChars): string
@@ -334,12 +358,15 @@ final class ChangeSetBuilder
         }
     }
 
-    /** Mirrors the grid's static locks: generated/identity-always, binary, and (all-values) inexact columns. */
-    private function writable(string $column): bool
+    /**
+     * Mirrors the grid's static locks: generated/identity-always, binary, and (all-values) inexact columns. An insert
+     * matches no row, so comparability doesn't matter there.
+     */
+    private function writable(string $column, bool $insert): bool
     {
         return ! in_array($column, $this->plan->readOnlyColumns, true)
             && ColumnKind::classify($this->typeName($column)) !== ColumnKind::Binary
-            && ($this->plan->method !== EditMethod::MysqlAllValues || $this->comparable($column));
+            && ($insert || $this->plan->method !== EditMethod::MysqlAllValues || $this->comparable($column));
     }
 
     private function comparable(string $column): bool
@@ -352,7 +379,7 @@ final class ChangeSetBuilder
      * byte: converted to utf8mb4 (the connection's charset, so the bound text has the same bytes) and cast to binary.
      * Even utf8mb4_bin is PAD SPACE, so a collation alone would let 'a' match 'a '.
      */
-    private function compare(string $column, string|int|null $value, bool $nullSafe = false): array
+    private function compare(string $column, string|int|float|null $value, bool $nullSafe = false): array
     {
         $q = $this->q($column);
         if ($this->mysql()) {
@@ -418,9 +445,11 @@ final class ChangeSetBuilder
     }
 
     /** @param string $wrap the placeholder, possibly inside a cast; it holds exactly one `?` */
-    private function param(string|int|null $value, string $wrap = '?'): array
+    private function param(string|int|float|null $value, string $wrap = '?'): array
     {
-        return ['sql' => $wrap, 'preview' => str_replace('?', $this->db->escape($value), $wrap), 'bindings' => [$value]];
+        $literal = is_float($value) ? $this->number($value) : $this->db->escape($value);
+
+        return ['sql' => $wrap, 'preview' => str_replace('?', $literal, $wrap), 'bindings' => [$value]];
     }
 
     private function cat(array ...$parts): array

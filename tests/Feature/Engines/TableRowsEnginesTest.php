@@ -120,6 +120,15 @@ it('returns exact row identities and locked cells on every engine', function (st
         }
         $factory->release($db);
         $rows = fn (string $table) => $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, $table]), [])->assertOk();
+        // ctid identities carry the row version (xmin); it varies per run, so it is checked for shape and set aside.
+        $ids = fn ($res) => array_map(function (?array $id) {
+            if ($id !== null && isset($id['ctid'])) {
+                expect($id['xmin'])->toMatch('/^\d+$/');
+                unset($id['xmin']);
+            }
+
+            return $id;
+        }, $res->json('row_ids'));
 
         $res = $rows('ti_pk');
         expect($res->json('editing.method'))->toBe('primary_key')
@@ -132,7 +141,8 @@ it('returns exact row identities and locked cells on every engine', function (st
         $res = $rows('ti_bare');
         if ($pg) {
             expect($res->json('editing.method'))->toBe('pg_ctid')
-                ->and($res->json('row_ids'))->toBe([['ctid' => '(0,1)'], ['ctid' => '(0,2)']])
+                // The second row's text was shortened: its original can't be sent back, so it can't be pinned.
+                ->and($ids($res))->toBe([['ctid' => '(0,1)'], null])
                 ->and($res->json('locked'))->toBe([[], [0]]);
         } else {
             expect($res->json('editing.method'))->toBe('mysql_all_values')
@@ -142,20 +152,20 @@ it('returns exact row identities and locked cells on every engine', function (st
 
         // Floats can't be compared exactly: no all-values row can be pinned. The ctid method doesn't need them.
         $res = $rows('ti_float');
-        expect($res->json('row_ids.0'))->toBe($pg ? ['ctid' => '(0,1)'] : null)
+        expect($ids($res)[0])->toBe($pg ? ['ctid' => '(0,1)'] : null)
             ->and($res->json('locked.0'))->toBe($pg ? [] : [0]);
 
         // Generated columns are read-only, but their value still identifies an all-values row.
         $res = $rows('ti_gen');
         expect($res->json('editing.read_only_columns'))->toBe(['total'])
             ->and($res->json('locked.0'))->toBe([1])
-            ->and($res->json('row_ids.0'))->toBe($pg ? ['ctid' => '(0,1)'] : ['values' => ['qty' => 3, 'total' => 6]]);
+            ->and($ids($res)[0])->toBe($pg ? ['ctid' => '(0,1)'] : ['values' => ['qty' => 3, 'total' => 6]]);
 
         if ($pg) {
             $res = $rows('ti_part');
             $oids = $factory->using($saved, fn ($db) => array_map(fn ($r) => (string) $r->oid, $db->select("select 'ti_part_a'::regclass::oid as oid union all select 'ti_part_b'::regclass::oid")), 30);
             expect($res->json('editing.method'))->toBe('pg_ctid')
-                ->and($res->json('row_ids'))->toBe([['ctid' => '(0,1)', 'tableoid' => $oids[0]], ['ctid' => '(0,1)', 'tableoid' => $oids[1]]]);
+                ->and($ids($res))->toBe([['ctid' => '(0,1)', 'tableoid' => $oids[0]], ['ctid' => '(0,1)', 'tableoid' => $oids[1]]]);
         }
     } finally {
         $db = $factory->make($saved);

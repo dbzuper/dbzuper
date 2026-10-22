@@ -123,6 +123,9 @@ it('matches MySQL/MariaDB rows by all values byte for byte, CHAR included', func
             ['code' => 'ab', 'name' => 'a', 'qty' => 1, 'at' => null],
             ['code' => 'ab', 'name' => 'a ', 'qty' => 1, 'at' => null],
             ['code' => 'ab', 'name' => 'A', 'qty' => 1, 'at' => null],
+            // general_ci also makes 'é' equal 'e'; the emoji is a 4-byte character.
+            ['code' => 'é', 'name' => 'é😀', 'qty' => 1, 'at' => null],
+            ['code' => 'e', 'name' => 'e😀', 'qty' => 1, 'at' => null],
         ]);
         $db->statement('CREATE TABLE tc_ts (at TIMESTAMP NULL, n INT)');
         $db->table('tc_ts')->insert([['at' => '2026-10-01 12:00:00', 'n' => 1]]);
@@ -136,10 +139,18 @@ it('matches MySQL/MariaDB rows by all values byte for byte, CHAR included', func
         $run = runRolledBack($saved, builtChanges($saved, 'tc_bare', [
             ['op' => 'delete', 'id' => $ids['a ']],
             ['op' => 'update', 'id' => $ids['A'], 'original' => ['qty' => 1], 'values' => ['qty' => '5']],
+            ['op' => 'delete', 'id' => $ids['é😀']],
+            ['op' => 'update', 'id' => $ids['e😀'], 'original' => ['name' => 'e😀'], 'values' => ['name' => 'ü😀']],
         ]), $names);
-        expect($run['bound'])->toBe([1, 1])
-            ->and($run['preview'])->toBe([1, 1])
-            ->and($run['after'])->toBe(['A' => 5, 'a' => 1]);
+        expect($run['bound'])->toBe([1, 1, 1, 1])
+            ->and($run['preview'])->toBe([1, 1, 1, 1])
+            ->and($run['after'])->toBe(['A' => 5, 'a' => 1, 'ü😀' => 1]);
+
+        $preview = $this->actingAs($saved->user)->postJson(route('api.tables.changes', [$saved, 'tc_bare']), ['preview' => true, 'changes' => [
+            ['op' => 'delete', 'id' => $ids['é😀']],
+        ]])->assertOk();
+        expect($preview->json('statements.0.sql'))->toContain("CAST(CONVERT(`code` USING utf8mb4) AS BINARY) <=> CAST('é' AS BINARY)")
+            ->toContain("CAST('é😀' AS BINARY)");
 
         // TIMESTAMP is shown in the session time zone, ambiguous across a DST fall-back: such rows can't be pinned.
         $ts = $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, 'tc_ts']), [])->assertOk();
@@ -173,7 +184,7 @@ it('pins PostgreSQL rows by ctid, with tableoid on partitioned tables', function
         $original = array_combine(array_column($rows->json('columns'), 'name'), $rows->json('rows.1'));
         $change = ['op' => 'update', 'id' => $rows->json('row_ids.1'), 'original' => $original, 'values' => ['note' => 'b', 'flag' => false]];
         $built = builtChanges($saved, 'tc_bare', [$change]);
-        expect($built[0]->sql)->toContain('ctid = ?::tid AND "note" = ? AND "qty" = ? AND "flag" = ?')
+        expect($built[0]->sql)->toContain('ctid = ?::tid AND xmin = ?::xid AND "note" = ? AND "qty" = ? AND "flag" = ?')
             ->and($built[0]->sql)->not->toContain('"f" =')->not->toContain('"doc" =');
 
         $run = runRolledBack($saved, $built, fn (Connection $db) => $db->select('select note, flag from tc_bare order by ctid'));
@@ -184,9 +195,30 @@ it('pins PostgreSQL rows by ctid, with tableoid on partitioned tables', function
         $factory->using($saved, fn (Connection $db) => $db->update("update tc_bare set qty = 2 where doc::text = '{}'"));
         expect(runRolledBack($saved, $built)['bound'])->toBe([0]);
 
+        // A ctid slot reused by another row (delete, VACUUM, insert) has another xmin: the old identity matches nothing.
+        $rows = $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, 'tc_bare']), [])->assertOk();
+        $first = $rows->json('row_ids.0');
+        $values = array_combine(array_column($rows->json('columns'), 'name'), $rows->json('rows.0'));
+        $reuse = ['op' => 'delete', 'id' => $first, 'original' => $values];
+        $built = builtChanges($saved, 'tc_bare', [$reuse]);
+        expect(runRolledBack($saved, $built)['bound'])->toBe([1]);
+        $factory->using($saved, function (Connection $db) use ($first) {
+            $db->delete('delete from tc_bare where ctid = ?::tid', [$first['ctid']]);
+            $db->statement('VACUUM tc_bare');
+            $db->insert('insert into tc_bare (note, qty, flag, f, doc) values (?, ?, ?, ?, ?)', ['a', 1, true, 0.1, '{"a": 1}']);
+        });
+        $now = $factory->using($saved, fn (Connection $db) => $db->select("select ctid::text as ctid from tc_bare where doc::text = '{\"a\": 1}'")[0]->ctid);
+        expect($now)->toBe($first['ctid'])
+            ->and(runRolledBack($saved, $built)['bound'])->toBe([0]);
+
+        // Without xmin a ctid identity is refused.
+        $this->actingAs($saved->user)->postJson(route('api.tables.changes', [$saved, 'tc_bare']), ['preview' => true, 'changes' => [
+            ['op' => 'delete', 'id' => ['ctid' => $first['ctid']], 'original' => $values],
+        ]])->assertUnprocessable()->assertJsonValidationErrors('changes.0.id');
+
         $part = $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, 'tc_part']), [])->assertOk();
         $id = $part->json('row_ids.1');
-        expect($id)->toHaveKeys(['ctid', 'tableoid']);
+        expect($id)->toHaveKeys(['ctid', 'xmin', 'tableoid']);
         $res = $this->actingAs($saved->user)->postJson(route('api.tables.changes', [$saved, 'tc_part']), ['preview' => true, 'changes' => [
             ['op' => 'delete', 'id' => $id, 'original' => ['id' => 11, 'v' => 'b']],
         ]])->assertOk();
