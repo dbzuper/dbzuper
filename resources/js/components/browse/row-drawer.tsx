@@ -27,6 +27,9 @@ import type {
     TableSchema,
 } from '@/types/schema';
 
+/** How the drawer arrives: sliding in when it opens, or a header flash when it switches rows. */
+export type DrawerMotion = 'open' | 'change';
+
 type Props = {
     connectionId: number;
     snapshot: SchemaSnapshot;
@@ -35,6 +38,7 @@ type Props = {
     row: QueryCell[];
     /** 1-based position of the row in the table, shown for rows without a key. */
     rowNumber?: number;
+    motion?: DrawerMotion;
     onClose: () => void;
     onStep: (dir: 1 | -1) => void;
     onOpenTable: (table: string, filters: RowFilter[]) => void;
@@ -49,15 +53,22 @@ const LONG_TEXT = 300;
 const targetId = (t: RecordTarget) => `${t.table}:${JSON.stringify(t.key)}`;
 
 const ASIDE =
-    'flex h-full w-[420px] max-w-full shrink-0 flex-col border-l bg-background';
+    'row-drawer flex h-full w-[420px] max-w-full shrink-0 flex-col border-l bg-background';
 
 /** Held in the drawer's place while the page holding the row loads. */
-export function RowDrawerLoading({ onClose }: { onClose: () => void }) {
+export function RowDrawerLoading({
+    onClose,
+    motion = 'open',
+}: {
+    onClose: () => void;
+    motion?: DrawerMotion;
+}) {
     return (
         <aside
             role="complementary"
             aria-label="Row details"
             aria-busy="true"
+            data-motion={motion}
             className={`${ASIDE} relative`}
             onKeyDown={(e) => {
                 if (e.key === 'Escape') {
@@ -208,6 +219,7 @@ export function RowDrawer({
     columns,
     row,
     rowNumber,
+    motion = 'open',
     onClose,
     onStep,
     onOpenTable,
@@ -372,10 +384,11 @@ export function RowDrawer({
         <aside
             role="complementary"
             aria-label="Row details"
+            data-motion={motion}
             className={ASIDE}
             onKeyDown={onKeyDown}
         >
-            <header className="flex items-center gap-1 border-b px-2 py-2">
+            <header className="row-drawer-header flex items-center gap-1 border-b px-2 py-2">
                 {hopped && (
                     <Button
                         type="button"
@@ -422,7 +435,7 @@ export function RowDrawer({
                     <X className="size-4" />
                 </Button>
             </header>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="row-drawer-body min-h-0 flex-1 overflow-y-auto">
                 {hopped && !payload ? (
                     <p
                         role={loadError ? 'alert' : undefined}

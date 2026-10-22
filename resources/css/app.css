@@ -266,6 +266,45 @@
     );
 }
 
+/* Row drawer: it slides in once when opened; switching rows while it is open keeps it in place,
+   settles the new values and flashes the header, so a swap between similar rows is noticed
+   without slowing down stepping through rows. */
+@keyframes row-drawer-in {
+    from {
+        opacity: 0;
+        transform: translateX(12px);
+    }
+}
+@keyframes row-drawer-fade {
+    from {
+        opacity: 0.6;
+    }
+}
+@keyframes row-drawer-settle {
+    from {
+        opacity: 0.6;
+        transform: translateY(4px);
+    }
+}
+@keyframes row-drawer-flash {
+    from {
+        background-color: color-mix(
+            in oklab,
+            var(--universe-accent) 22%,
+            transparent
+        );
+    }
+}
+.row-drawer[data-motion='open'] {
+    animation: row-drawer-in 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.row-drawer[data-motion='change'] > .row-drawer-body {
+    animation: row-drawer-settle 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.row-drawer[data-motion='change'] > .row-drawer-header {
+    animation: row-drawer-flash 600ms ease-out;
+}
+
 /* Honour the OS "reduce motion" setting app-wide (tw-animate-css, Radix, transitions). */
 @media (prefers-reduced-motion: reduce) {
     *,
@@ -275,5 +314,19 @@
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
+    }
+
+    /* The row drawer keeps its fades and the header flash (no movement): they tell the user the
+       row changed. */
+    .row-drawer[data-motion='open'] {
+        animation-name: row-drawer-fade;
+        animation-duration: 200ms !important;
+    }
+    .row-drawer[data-motion='change'] > .row-drawer-body {
+        animation-name: row-drawer-fade;
+        animation-duration: 150ms !important;
+    }
+    .row-drawer[data-motion='change'] > .row-drawer-header {
+        animation-duration: 600ms !important;
     }
 }

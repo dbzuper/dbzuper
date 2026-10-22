@@ -57,7 +57,7 @@ import type {
     TableSchema,
 } from '@/types/schema';
 import { Pagination } from './pagination';
-import { RowDrawer, RowDrawerLoading } from './row-drawer';
+import { RowDrawer, RowDrawerLoading, type DrawerMotion } from './row-drawer';
 
 /** The filter bar's first control; Ctrl+F focuses it. */
 export const TABLE_FILTER_ID = 'table-filter-bar';
@@ -516,6 +516,19 @@ function DataViewBody({
         !loading && drawerRow !== null
             ? (view?.rows.rows[drawerRow] ?? null)
             : null;
+    // The drawer slides in when it opens; moving to another row while it is open only flashes its
+    // header, so stepping through rows stays quick but the swap is still noticed.
+    const drawerAt =
+        drawerRow === null ? null : (page - 1) * perPage + drawerRow;
+    const [drawerMotion, setDrawerMotion] = useState<{
+        at: number | null;
+        kind: DrawerMotion;
+    }>({ at: null, kind: 'open' });
+    if (drawerAt !== drawerMotion.at)
+        setDrawerMotion({
+            at: drawerAt,
+            kind: drawerMotion.at === null ? 'open' : 'change',
+        });
     // A row beyond a short page no longer exists.
     const rowsOnPage = view?.rows.rows.length ?? 0;
     useEffect(() => {
@@ -609,13 +622,17 @@ function DataViewBody({
                             columns={recordColumns}
                             row={drawerRowData}
                             rowNumber={(page - 1) * perPage + drawerRow + 1}
+                            motion={drawerMotion.kind}
                             onClose={closeDrawer}
                             onStep={onStep}
                             onOpenTable={onOpenTable}
                             onExplore={onExplore}
                         />
                     ) : loading ? (
-                        <RowDrawerLoading onClose={closeDrawer} />
+                        <RowDrawerLoading
+                            motion={drawerMotion.kind}
+                            onClose={closeDrawer}
+                        />
                     ) : null)}
             </div>
             <Pagination
