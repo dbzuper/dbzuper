@@ -1,19 +1,19 @@
-import { ApiError, apiFetch } from "@/lib/http";
-import { dbErrorFrom, type RowIdentity } from "@/lib/workspace-api";
-import type { QueryCell } from "@/types/schema";
+import { ApiError, apiFetch } from '@/lib/http';
+import { dbErrorFrom, type RowIdentity } from '@/lib/workspace-api';
+import type { QueryCell } from '@/types/schema';
 
 /** One change as POST /api/c/{connection}/tables/{table}/changes takes it (see TableChangesRequest). */
 export type ChangeRequest =
-    | { op: "insert"; values: Record<string, string | null> }
+    | { op: 'insert'; values: Record<string, string | null> }
     | {
-          op: "update";
+          op: 'update';
           id: RowIdentity;
           original: Record<string, QueryCell>;
           values: Record<string, string | null>;
           shortened?: string[];
       }
     | {
-          op: "delete";
+          op: 'delete';
           id: RowIdentity;
           original: Record<string, QueryCell>;
           shortened?: string[];
@@ -22,7 +22,7 @@ export type ChangeRequest =
 export type PreviewStatement = {
     /** The change's position in the request. */
     index: number;
-    op: "insert" | "update" | "delete";
+    op: 'insert' | 'update' | 'delete';
     sql: string;
     /** How the row is targeted, e.g. `id = 3`, `ctid (0,1)`, `matched by all values`, `new row`. */
     target: string;
@@ -46,7 +46,7 @@ export type ChangeSetErrorInfo = {
 export class ChangeSetError extends Error {
     constructor(public readonly info: ChangeSetErrorInfo) {
         super(info.message);
-        this.name = "ChangeSetError";
+        this.name = 'ChangeSetError';
     }
 }
 
@@ -56,10 +56,10 @@ const changesUrl = (connectionId: number, table: string) =>
 /** The index of the first `changes.N…` validation key, else null. */
 function validationIndex(body: unknown): number | null {
     const errors =
-        body && typeof body === "object"
+        body && typeof body === 'object'
             ? (body as { errors?: unknown }).errors
             : null;
-    if (!errors || typeof errors !== "object") return null;
+    if (!errors || typeof errors !== 'object') return null;
     for (const key of Object.keys(errors)) {
         const match = /^changes\.(\d+)(\.|$)/.exec(key);
         if (match) return Number(match[1]);
@@ -72,29 +72,29 @@ export function changeSetErrorFrom(e: unknown): ChangeSetErrorInfo {
     const body = e instanceof ApiError ? e.body : null;
     if (status === 403) {
         const message =
-            body && typeof body === "object" && "message" in body
+            body && typeof body === 'object' && 'message' in body
                 ? String((body as { message: unknown }).message)
-                : "";
+                : '';
         return {
-            kind: "read_only",
-            message: message || "This connection is read-only.",
+            kind: 'read_only',
+            message: message || 'This connection is read-only.',
             index: null,
             reason: null,
             sqlstate: null,
             status,
         };
     }
-    const db = dbErrorFrom(e, "Could not apply the changes.");
+    const db = dbErrorFrom(e, 'Could not apply the changes.');
     const outer =
-        body && typeof body === "object"
+        body && typeof body === 'object'
             ? (body as { index?: unknown; error?: { index?: unknown } })
             : {};
     // 409 row_mismatch carries the index inside `error`; 422 ChangeFailed beside it (null outside any statement).
     const raw = outer.error?.index ?? outer.index;
     const index =
-        typeof raw === "number"
+        typeof raw === 'number'
             ? raw
-            : status === 422 && db.kind === "validation"
+            : status === 422 && db.kind === 'validation'
               ? validationIndex(body)
               : null;
     return {
@@ -115,7 +115,7 @@ async function send<T>(
 ): Promise<T> {
     try {
         return await apiFetch<T>(changesUrl(connectionId, table), {
-            method: "POST",
+            method: 'POST',
             body: { preview, changes },
         });
     } catch (e) {

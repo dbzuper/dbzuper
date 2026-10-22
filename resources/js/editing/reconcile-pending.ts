@@ -1,6 +1,6 @@
-import { toast } from "sonner";
-import { pendingKey, usePending } from "./pending-store";
-import { useReview } from "./review-store";
+import { toast } from 'sonner';
+import { pendingKey, usePending } from './pending-store';
+import { useReview } from './review-store';
 
 /**
  * Fits the connection's staged changes to a refreshed schema (spec §4.4) and says what was dropped. A table whose
@@ -33,7 +33,7 @@ export function reconcilePending(
     }
     for (const d of dropped)
         toast(
-            d.reason === "table"
+            d.reason === 'table'
                 ? `Pending changes to ${d.table} were dropped: the table no longer exists.`
                 : `Pending changes to removed columns of ${d.table} were dropped.`,
         );

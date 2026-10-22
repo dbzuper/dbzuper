@@ -1,4 +1,4 @@
-import { Head } from "@inertiajs/react";
+import { Head } from '@inertiajs/react';
 import {
     lazy,
     Suspense,
@@ -7,67 +7,67 @@ import {
     useMemo,
     useRef,
     useState,
-} from "react";
-import { toast } from "sonner";
-import { useActiveTab, useBrowse } from "@/browse/browse-store";
-import { usePins } from "@/browse/pins-store";
-import { rowsCache } from "@/browse/rows-cache";
-import { dispatchBrowseKey } from "@/browse/key-dispatch";
-import { useSidebarPrefs } from "@/browse/sidebar-prefs";
-import { makeTableActions } from "@/browse/table-actions";
-import { useBrowseUrl } from "@/browse/use-browse-url";
-import { panelDomId, TabBar, tabDomId } from "@/components/browse/tab-bar";
-import { TableSidebar } from "@/components/browse/table-sidebar";
-import { TableTabView } from "@/components/browse/table-tab";
-import { PendingGuard } from "@/components/editing/pending-guard";
-import { HistoryList } from "@/components/history/history-list";
-import { InspectorPanel } from "@/components/inspector/inspector-panel";
-import { Button } from "@/components/ui/button";
-import { SkipLink } from "@/components/skip-link";
-import { UniverseBoundary } from "@/components/universe/universe-boundary";
-import { CommandPalette } from "@/components/workspace/command-palette";
-import { FocusChip } from "@/components/workspace/focus-chip";
-import { PathDialog } from "@/components/workspace/path-dialog";
-import { PathPickChip } from "@/components/workspace/path-pick-chip";
-import { LeftRail } from "@/components/workspace/left-rail";
-import { WorkspaceHeader } from "@/components/workspace/workspace-header";
-import { reconcilePending } from "@/editing/reconcile-pending";
-import { historyApi } from "@/lib/history-api";
-import { dbErrorFrom, workspaceApi } from "@/lib/workspace-api";
-import { toggleDock, togglePalette } from "@/lib/workspace-shortcuts";
-import { useRecords } from "@/records/records-store";
-import { useTrailUrl } from "@/records/use-trail-url";
-import { useSqlTabs } from "@/sql/tabs-store";
-import type { ConnectionSummary } from "@/types/connection";
+} from 'react';
+import { toast } from 'sonner';
+import { useActiveTab, useBrowse } from '@/browse/browse-store';
+import { usePins } from '@/browse/pins-store';
+import { rowsCache } from '@/browse/rows-cache';
+import { dispatchBrowseKey } from '@/browse/key-dispatch';
+import { useSidebarPrefs } from '@/browse/sidebar-prefs';
+import { makeTableActions } from '@/browse/table-actions';
+import { useBrowseUrl } from '@/browse/use-browse-url';
+import { panelDomId, TabBar, tabDomId } from '@/components/browse/tab-bar';
+import { TableSidebar } from '@/components/browse/table-sidebar';
+import { TableTabView } from '@/components/browse/table-tab';
+import { PendingGuard } from '@/components/editing/pending-guard';
+import { HistoryList } from '@/components/history/history-list';
+import { InspectorPanel } from '@/components/inspector/inspector-panel';
+import { Button } from '@/components/ui/button';
+import { SkipLink } from '@/components/skip-link';
+import { UniverseBoundary } from '@/components/universe/universe-boundary';
+import { CommandPalette } from '@/components/workspace/command-palette';
+import { FocusChip } from '@/components/workspace/focus-chip';
+import { PathDialog } from '@/components/workspace/path-dialog';
+import { PathPickChip } from '@/components/workspace/path-pick-chip';
+import { LeftRail } from '@/components/workspace/left-rail';
+import { WorkspaceHeader } from '@/components/workspace/workspace-header';
+import { reconcilePending } from '@/editing/reconcile-pending';
+import { historyApi } from '@/lib/history-api';
+import { dbErrorFrom, workspaceApi } from '@/lib/workspace-api';
+import { toggleDock, togglePalette } from '@/lib/workspace-shortcuts';
+import { useRecords } from '@/records/records-store';
+import { useTrailUrl } from '@/records/use-trail-url';
+import { useSqlTabs } from '@/sql/tabs-store';
+import type { ConnectionSummary } from '@/types/connection';
 import type {
     DbErrorPayload,
     LayoutPositionEntry,
     SchemaResponse,
-} from "@/types/schema";
-import { clearPendingFlyTo } from "@/universe/controller";
-import { escapeHandledElsewhere, handleEscape } from "@/universe/keyboard";
-import { createLayoutSaver, type LayoutSaver } from "@/universe/layout-save";
-import { useWorkspace } from "@/universe/store";
-import { useDebounced } from "@/universe/use-debounced";
-import { useUniverseModel } from "@/universe/use-universe-model";
-import { hasWebGL } from "@/universe/webgl";
+} from '@/types/schema';
+import { clearPendingFlyTo } from '@/universe/controller';
+import { escapeHandledElsewhere, handleEscape } from '@/universe/keyboard';
+import { createLayoutSaver, type LayoutSaver } from '@/universe/layout-save';
+import { useWorkspace } from '@/universe/store';
+import { useDebounced } from '@/universe/use-debounced';
+import { useUniverseModel } from '@/universe/use-universe-model';
+import { hasWebGL } from '@/universe/webgl';
 
 // Sigma touches the WebGL2RenderingContext global at import time, so the canvas
 // is only imported after hasWebGL() says it is safe (and stays out of the main
 // bundle). The chunk is prefetched while the schema loads so it is ready on first render.
-const loadCanvas = () => import("@/components/universe/universe-canvas");
+const loadCanvas = () => import('@/components/universe/universe-canvas');
 const UniverseCanvas = lazy(() =>
     loadCanvas().then((m) => ({
         default: m.UniverseCanvas,
     })),
 );
 
-const SqlDock = lazy(() => import("@/components/sql/sql-dock"));
+const SqlDock = lazy(() => import('@/components/sql/sql-dock'));
 // React Flow stays out of the main and workspace chunks until the records tab is opened.
-const RecordsView = lazy(() => import("@/components/records/records-view"));
+const RecordsView = lazy(() => import('@/components/records/records-view'));
 
 const centered =
-    "flex h-full items-center justify-center text-sm text-muted-foreground";
+    'flex h-full items-center justify-center text-sm text-muted-foreground';
 
 export default function WorkspaceShow({
     connection,
@@ -89,11 +89,11 @@ export default function WorkspaceShow({
     // The universe mounts the first time its tab is shown and then stays mounted (hidden behind
     // other tabs), so switching back keeps the camera and costs no rebuild.
     const [universeVisited, setUniverseVisited] = useState(false);
-    if (active.kind === "universe" && !universeVisited)
+    if (active.kind === 'universe' && !universeVisited)
         setUniverseVisited(true);
     // Read by the window Escape handler: path, focus and selection only unwind on the Universe tab.
-    const onUniverseRef = useRef(active.kind === "universe");
-    onUniverseRef.current = active.kind === "universe";
+    const onUniverseRef = useRef(active.kind === 'universe');
+    onUniverseRef.current = active.kind === 'universe';
 
     // Keyed on the connection only: losing the universe must not wipe the selection or other state.
     useEffect(() => {
@@ -116,12 +116,12 @@ export default function WorkspaceShow({
     const [historyNotice, setHistoryNotice] = useState<string | null>(null);
     useEffect(() => {
         const url = new URL(window.location.href);
-        const raw = url.searchParams.get("history");
+        const raw = url.searchParams.get('history');
         if (raw === null) return;
-        url.searchParams.delete("history");
+        url.searchParams.delete('history');
         window.history.replaceState(
             window.history.state,
-            "",
+            '',
             url.pathname + url.search + url.hash,
         );
         if (!/^[1-9]\d{0,14}$/.test(raw)) return;
@@ -130,11 +130,11 @@ export default function WorkspaceShow({
             .then((entry) => {
                 useSqlTabs
                     .getState()
-                    .openTab(connection.id, entry.sql, "History");
+                    .openTab(connection.id, entry.sql, 'History');
                 useWorkspace.getState().setDockOpen(true);
             })
             .catch(() =>
-                setHistoryNotice("That history entry is no longer available."),
+                setHistoryNotice('That history entry is no longer available.'),
             );
         // Read once on mount.
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,7 +143,7 @@ export default function WorkspaceShow({
     useEffect(() => {
         if (universeAvailable) {
             void loadCanvas().catch(() => undefined);
-            void import("@/universe/model-kit").catch(() => undefined);
+            void import('@/universe/model-kit').catch(() => undefined);
         }
     }, [universeAvailable]);
 
@@ -157,9 +157,9 @@ export default function WorkspaceShow({
                     workspaceApi.saveLayout(id, entries, opts),
                 (problem) =>
                     toast.error(
-                        problem === "too_large"
-                            ? "The layout is too large to save; some positions were not stored."
-                            : "Could not save the layout.",
+                        problem === 'too_large'
+                            ? 'The layout is too large to save; some positions were not stored.'
+                            : 'Could not save the layout.',
                     ),
             ),
         [connection.id],
@@ -210,7 +210,7 @@ export default function WorkspaceShow({
                 setSaved(layout.positions);
             } catch (e) {
                 if (!isCurrent()) return;
-                setError(dbErrorFrom(e, "Could not load the schema."));
+                setError(dbErrorFrom(e, 'Could not load the schema.'));
             } finally {
                 if (isCurrent()) setLoading(false);
             }
@@ -248,13 +248,13 @@ export default function WorkspaceShow({
             saver.unload();
         };
         const onVisibility = () => {
-            if (document.visibilityState === "hidden") onHide();
+            if (document.visibilityState === 'hidden') onHide();
         };
-        window.addEventListener("pagehide", onHide);
-        document.addEventListener("visibilitychange", onVisibility);
+        window.addEventListener('pagehide', onHide);
+        document.addEventListener('visibilitychange', onVisibility);
         return () => {
-            window.removeEventListener("pagehide", onHide);
-            document.removeEventListener("visibilitychange", onVisibility);
+            window.removeEventListener('pagehide', onHide);
+            document.removeEventListener('visibilitychange', onVisibility);
         };
     }, [dragSave, saver]);
 
@@ -280,48 +280,48 @@ export default function WorkspaceShow({
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (
-                e.key === "Escape" &&
+                e.key === 'Escape' &&
                 !escapeHandledElsewhere(e) &&
                 !useWorkspace.getState().paletteOpen &&
                 handleEscape(useWorkspace.getState(), onUniverseRef.current)
             )
                 e.preventDefault();
         };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
     }, []);
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 togglePalette();
             }
         };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
     }, []);
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
                 e.preventDefault(); // browsers use Ctrl+J for downloads
                 toggleDock(e.repeat);
             }
         };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
     }, []);
 
-    const tableTabActive = active.kind === "table";
+    const tableTabActive = active.kind === 'table';
     const tableTabActiveRef = useRef(tableTabActive);
     tableTabActiveRef.current = tableTabActive;
     const connectionId = connection.id;
     useEffect(() => {
         const onKey = (e: KeyboardEvent) =>
             dispatchBrowseKey(e, connectionId, tableTabActiveRef.current);
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
     }, [connectionId]);
 
     const dockOpen = useWorkspace((s) => s.dockOpen);
@@ -369,13 +369,13 @@ export default function WorkspaceShow({
         renderFailedRef.current = true;
         setRenderFailed(true);
         toast.error(
-            "The universe could not be rendered; browse tables from the sidebar instead.",
-            { id: "universe-render-failed" },
+            'The universe could not be rendered; browse tables from the sidebar instead.',
+            { id: 'universe-render-failed' },
         );
     }, []);
 
     const hasTables = snapshot !== null && snapshot.tables.length > 0;
-    const onUniverse = active.kind === "universe";
+    const onUniverse = active.kind === 'universe';
 
     return (
         <div className="flex h-dvh flex-col bg-background text-foreground">
@@ -394,10 +394,10 @@ export default function WorkspaceShow({
                     role="status"
                     className="border-b bg-warning/10 px-4 py-1.5 text-xs text-warning-foreground"
                 >
-                    Showing {snapshot.tables.length.toLocaleString("en")} of{" "}
+                    Showing {snapshot.tables.length.toLocaleString('en')} of{' '}
                     {(
                         snapshot.total_objects ?? snapshot.tables.length
-                    ).toLocaleString("en")}{" "}
+                    ).toLocaleString('en')}{' '}
                     tables and views (alphabetical). Raise
                     DBSUPERB_SCHEMA_MAX_OBJECTS to include more.
                 </div>
@@ -451,7 +451,7 @@ export default function WorkspaceShow({
                     )}
 
                     <div
-                        role={snapshot ? "tabpanel" : undefined}
+                        role={snapshot ? 'tabpanel' : undefined}
                         id={snapshot ? panelDomId : undefined}
                         aria-labelledby={
                             snapshot ? tabDomId(active.id) : undefined
@@ -471,14 +471,14 @@ export default function WorkspaceShow({
                         {hasTables && onUniverse && !universeAvailable && (
                             <div className={centered}>
                                 {webgl
-                                    ? "The universe could not be rendered. Browse tables from the sidebar."
-                                    : "WebGL is not available in this browser. Browse tables from the sidebar."}
+                                    ? 'The universe could not be rendered. Browse tables from the sidebar.'
+                                    : 'WebGL is not available in this browser. Browse tables from the sidebar.'}
                             </div>
                         )}
 
                         {hasTables && universeAvailable && universeVisited && (
                             <div hidden={!onUniverse} className="h-full">
-                                {model && status === "ready" && (
+                                {model && status === 'ready' && (
                                     <UniverseBoundary onError={onRenderError}>
                                         <Suspense
                                             fallback={
@@ -498,16 +498,16 @@ export default function WorkspaceShow({
                                         </Suspense>
                                     </UniverseBoundary>
                                 )}
-                                {status === "layout" && (
+                                {status === 'layout' && (
                                     <div className={centered}>
-                                        Laying out{" "}
+                                        Laying out{' '}
                                         {snapshot.tables.length.toLocaleString(
-                                            "en",
-                                        )}{" "}
+                                            'en',
+                                        )}{' '}
                                         tables…
                                     </div>
                                 )}
-                                {status === "error" && (
+                                {status === 'error' && (
                                     <div
                                         role="alert"
                                         className="flex h-full items-center justify-center text-sm text-destructive"
@@ -519,7 +519,7 @@ export default function WorkspaceShow({
                             </div>
                         )}
 
-                        {snapshot && active.kind === "records" && (
+                        {snapshot && active.kind === 'records' && (
                             <Suspense
                                 fallback={
                                     <div className={centered}>
@@ -534,7 +534,7 @@ export default function WorkspaceShow({
                             </Suspense>
                         )}
 
-                        {snapshot && actions && active.kind === "table" && (
+                        {snapshot && actions && active.kind === 'table' && (
                             <TableTabView
                                 key={active.id}
                                 connection={connection}
@@ -580,7 +580,7 @@ export default function WorkspaceShow({
                             onOpen={(e) => {
                                 useSqlTabs
                                     .getState()
-                                    .openTab(connection.id, e.sql, "History");
+                                    .openTab(connection.id, e.sql, 'History');
                                 useWorkspace.getState().setDockOpen(true);
                             }}
                         />

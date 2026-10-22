@@ -4,36 +4,36 @@ import {
     render,
     screen,
     waitFor,
-} from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { RecordPayload, RelationshipSummary } from "@/records/types";
-import type { QueryCell, QueryColumn } from "@/types/schema";
-import { makeSnapshot } from "@/universe/__fixtures__/snapshot";
+} from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { RecordPayload, RelationshipSummary } from '@/records/types';
+import type { QueryCell, QueryColumn } from '@/types/schema';
+import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 
 const api = vi.hoisted(() => ({ show: vi.fn(), related: vi.fn() }));
-vi.mock("@/records/records-api", () => ({ recordsApi: api }));
+vi.mock('@/records/records-api', () => ({ recordsApi: api }));
 
 const toast = vi.hoisted(() =>
     Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 );
-vi.mock("sonner", () => ({ toast }));
+vi.mock('sonner', () => ({ toast }));
 
-import { ResultGrid } from "@/components/grid/result-grid";
-import { flushOpenEdits } from "@/editing/flush-edits";
-import { refOf, usePending } from "@/editing/pending-store";
-import type { GridEditing } from "@/editing/row-edit";
-import { RowDrawer } from "./row-drawer";
+import { ResultGrid } from '@/components/grid/result-grid';
+import { flushOpenEdits } from '@/editing/flush-edits';
+import { refOf, usePending } from '@/editing/pending-store';
+import type { GridEditing } from '@/editing/row-edit';
+import { RowDrawer } from './row-drawer';
 
 const idColumn = {
-    name: "id",
-    type: "integer",
-    type_name: "integer",
+    name: 'id',
+    type: 'integer',
+    type_name: 'integer',
     nullable: false,
     default: null,
     auto_increment: true,
     comment: null,
 };
-const plain = (name: string, type = "text") => ({
+const plain = (name: string, type = 'text') => ({
     ...idColumn,
     name,
     type,
@@ -45,42 +45,42 @@ const plain = (name: string, type = "text") => ({
 const snapshot = makeSnapshot(
     [
         {
-            name: "orders",
-            columns: [idColumn, plain("user_id", "integer"), plain("note")],
+            name: 'orders',
+            columns: [idColumn, plain('user_id', 'integer'), plain('note')],
         },
-        { name: "users", columns: [idColumn, plain("name")] },
-        { name: "order_items", columns: [idColumn, plain("order_id")] },
+        { name: 'users', columns: [idColumn, plain('name')] },
+        { name: 'order_items', columns: [idColumn, plain('order_id')] },
         {
-            name: "recent_orders",
-            kind: "view",
+            name: 'recent_orders',
+            kind: 'view',
             primary_key: [],
-            columns: [idColumn, plain("note")],
+            columns: [idColumn, plain('note')],
         },
         {
-            name: "logs",
+            name: 'logs',
             primary_key: [],
-            columns: [plain("message")],
+            columns: [plain('message')],
         },
     ],
     [
         {
-            id: "r1",
-            from_table: "orders",
-            from_columns: ["user_id"],
-            to_table: "users",
-            to_columns: ["id"],
+            id: 'r1',
+            from_table: 'orders',
+            from_columns: ['user_id'],
+            to_table: 'users',
+            to_columns: ['id'],
         },
         {
-            id: "r2",
-            from_table: "order_items",
-            from_columns: ["order_id"],
-            to_table: "orders",
-            to_columns: ["id"],
+            id: 'r2',
+            from_table: 'order_items',
+            from_columns: ['order_id'],
+            to_table: 'orders',
+            to_columns: ['id'],
         },
     ],
 );
 
-const col = (table: string, name: string, type = "int"): QueryColumn => ({
+const col = (table: string, name: string, type = 'int'): QueryColumn => ({
     name,
     type,
     table,
@@ -88,21 +88,21 @@ const col = (table: string, name: string, type = "int"): QueryColumn => ({
 
 const relationships: RelationshipSummary[] = [
     {
-        id: "r1",
-        direction: "out",
-        table: "users",
-        columns: ["user_id"],
-        other_columns: ["id"],
+        id: 'r1',
+        direction: 'out',
+        table: 'users',
+        columns: ['user_id'],
+        other_columns: ['id'],
         inferred: false,
         available: true,
         count: null,
     },
     {
-        id: "r2",
-        direction: "in",
-        table: "order_items",
-        columns: ["id"],
-        other_columns: ["order_id"],
+        id: 'r2',
+        direction: 'in',
+        table: 'order_items',
+        columns: ['id'],
+        other_columns: ['order_id'],
         inferred: false,
         available: true,
         count: { value: 12, capped: false },
@@ -110,14 +110,14 @@ const relationships: RelationshipSummary[] = [
 ];
 
 const ordersPayload: RecordPayload = {
-    table: "orders",
+    table: 'orders',
     key: { id: 1 },
     columns: [
-        { name: "id", type: "integer" },
-        { name: "user_id", type: "integer" },
-        { name: "note", type: "text" },
+        { name: 'id', type: 'integer' },
+        { name: 'user_id', type: 'integer' },
+        { name: 'note', type: 'text' },
     ],
-    values: [1, 3, "hi"],
+    values: [1, 3, 'hi'],
     relationships,
 };
 
@@ -127,13 +127,13 @@ function setup(over: Over = {}) {
     const props = {
         connectionId: 1,
         snapshot,
-        table: snapshot.tables.find((t) => t.name === "orders")!,
+        table: snapshot.tables.find((t) => t.name === 'orders')!,
         columns: [
-            col("orders", "id"),
-            col("orders", "user_id"),
-            col("orders", "note", "text"),
+            col('orders', 'id'),
+            col('orders', 'user_id'),
+            col('orders', 'note', 'text'),
         ],
-        row: [1, 3, "hi"] as QueryCell[],
+        row: [1, 3, 'hi'] as QueryCell[],
         onClose: vi.fn(),
         onStep: vi.fn(),
         onOpenTable: vi.fn(),
@@ -149,82 +149,82 @@ beforeEach(() => {
     api.show.mockResolvedValue(ordersPayload);
 });
 
-describe("RowDrawer", () => {
-    it("shows field values with NULL and pretty JSON", async () => {
+describe('RowDrawer', () => {
+    it('shows field values with NULL and pretty JSON', async () => {
         setup({
-            table: snapshot.tables.find((t) => t.name === "orders")!,
+            table: snapshot.tables.find((t) => t.name === 'orders')!,
             columns: [
-                col("orders", "id"),
-                col("orders", "profile", "json"),
-                col("orders", "note", "text"),
+                col('orders', 'id'),
+                col('orders', 'profile', 'json'),
+                col('orders', 'note', 'text'),
             ],
             row: [1, '{"a":1}', null],
         });
-        expect(screen.getByText("NULL")).toBeInTheDocument();
-        expect(document.querySelector("pre")?.textContent).toContain('"a": 1');
+        expect(screen.getByText('NULL')).toBeInTheDocument();
+        expect(document.querySelector('pre')?.textContent).toContain('"a": 1');
         expect(
-            screen.getByRole("complementary", { name: "Row details" }),
+            screen.getByRole('complementary', { name: 'Row details' }),
         ).toBeInTheDocument();
-        await screen.findByText("Explore graph");
+        await screen.findByText('Explore graph');
     });
 
-    it("toggles a JSON value between pretty-printed and compact", async () => {
+    it('toggles a JSON value between pretty-printed and compact', async () => {
         setup({
-            columns: [col("orders", "id"), col("orders", "profile", "json")],
+            columns: [col('orders', 'id'), col('orders', 'profile', 'json')],
             row: [1, '{"a":1,"b":[2]}'],
         });
-        const pre = () => document.querySelector("pre")?.textContent;
+        const pre = () => document.querySelector('pre')?.textContent;
         expect(pre()).toContain('"a": 1');
-        const toggle = screen.getByRole("button", {
-            name: "Pretty-print profile",
+        const toggle = screen.getByRole('button', {
+            name: 'Pretty-print profile',
         });
-        expect(toggle).toHaveAttribute("aria-pressed", "true");
+        expect(toggle).toHaveAttribute('aria-pressed', 'true');
         fireEvent.click(toggle);
         expect(pre()).toBe('{"a":1,"b":[2]}');
-        expect(toggle).toHaveAttribute("aria-pressed", "false");
+        expect(toggle).toHaveAttribute('aria-pressed', 'false');
         fireEvent.click(toggle);
         expect(pre()).toContain('"a": 1');
-        await screen.findByText("Explore graph");
+        await screen.findByText('Explore graph');
     });
 
-    it("moves focus to the heading on open", async () => {
+    it('moves focus to the heading on open', async () => {
         setup();
-        expect(screen.getByRole("heading", { level: 3 })).toHaveFocus();
-        await screen.findByText("Explore graph");
+        expect(screen.getByRole('heading', { level: 3 })).toHaveFocus();
+        await screen.findByText('Explore graph');
     });
 
-    it("collapses long values behind Show all", async () => {
+    it('collapses long values behind Show all', async () => {
         const long = Array.from({ length: 12 }, (_, i) => `line ${i}`).join(
-            "\n",
+            '\n',
         );
         setup({ row: [1, 3, long] });
-        const pre = document.querySelector("pre")!;
-        expect(pre.className).toContain("overflow-hidden");
-        fireEvent.click(screen.getByRole("button", { name: "Show all" }));
-        expect(pre.className).not.toContain("overflow-hidden");
-        await screen.findByText("Explore graph");
+        const pre = document.querySelector('pre')!;
+        expect(pre.className).toContain('overflow-hidden');
+        fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
+        expect(pre.className).not.toContain('overflow-hidden');
+        await screen.findByText('Explore graph');
     });
 
-    it("lists references and referenced-by counts for an explorable row", async () => {
+    it('lists references and referenced-by counts for an explorable row', async () => {
         setup();
         expect(
-            await screen.findByRole("button", { name: "users · user_id" }),
+            await screen.findByRole('button', { name: 'users · user_id' }),
         ).toBeInTheDocument();
         expect(
-            screen.getByRole("button", { name: "order_items (12)" }),
+            screen.getByRole('button', { name: 'order_items (12)' }),
         ).toBeInTheDocument();
         expect(api.show).toHaveBeenCalledWith(
             1,
-            "orders",
+            'orders',
             { id: 1 },
             expect.any(AbortSignal),
         );
         expect(
-            screen.getByRole("heading", { name: "orders · 1" }),
+            screen.getByRole('heading', { name: 'orders · 1' }),
         ).toBeInTheDocument();
     });
 
-    it("appends + to a capped count", async () => {
+    it('appends + to a capped count', async () => {
         api.show.mockResolvedValue({
             ...ordersPayload,
             relationships: [
@@ -236,127 +236,127 @@ describe("RowDrawer", () => {
         });
         setup();
         expect(
-            await screen.findByRole("button", { name: "order_items (1000+)" }),
+            await screen.findByRole('button', { name: 'order_items (1000+)' }),
         ).toBeInTheDocument();
     });
 
-    it("hops to a referenced record and back", async () => {
+    it('hops to a referenced record and back', async () => {
         api.related.mockResolvedValue({
-            table: "users",
+            table: 'users',
             columns: [],
-            primary_key: ["id"],
-            rows: [{ key: { id: 3 }, values: [3, "Ann"] }],
+            primary_key: ['id'],
+            rows: [{ key: { id: 3 }, values: [3, 'Ann'] }],
             next_cursor: null,
         });
         api.show.mockImplementation((_id, table) =>
             Promise.resolve(
-                table === "users"
+                table === 'users'
                     ? {
-                          table: "users",
+                          table: 'users',
                           key: { id: 3 },
                           columns: [
-                              { name: "id", type: "integer" },
-                              { name: "name", type: "text" },
+                              { name: 'id', type: 'integer' },
+                              { name: 'name', type: 'text' },
                           ],
-                          values: [3, "Ann"],
+                          values: [3, 'Ann'],
                           relationships: [],
                       }
                     : ordersPayload,
             ),
         );
         setup();
-        const reference = await screen.findByRole("button", {
-            name: "users · user_id",
+        const reference = await screen.findByRole('button', {
+            name: 'users · user_id',
         });
         reference.focus();
         fireEvent.click(reference);
         expect(api.related).toHaveBeenCalledWith(
             1,
-            "orders",
+            'orders',
             { id: 1 },
-            { rel: "r1", dir: "out", limit: 1 },
+            { rel: 'r1', dir: 'out', limit: 1 },
             expect.any(AbortSignal),
         );
         expect(
-            await screen.findByRole("heading", { name: "users · 3" }),
+            await screen.findByRole('heading', { name: 'users · 3' }),
         ).toBeInTheDocument();
-        expect(await screen.findByText("Ann")).toBeInTheDocument();
+        expect(await screen.findByText('Ann')).toBeInTheDocument();
         // The clicked reference is gone: focus stays in the drawer (on its heading), so Escape still closes it.
-        expect(screen.getByRole("heading", { level: 3 })).toHaveFocus();
-        const back = screen.getByRole("button", { name: "Back" });
+        expect(screen.getByRole('heading', { level: 3 })).toHaveFocus();
+        const back = screen.getByRole('button', { name: 'Back' });
         back.focus();
         fireEvent.click(back);
         expect(
-            screen.getByRole("heading", { name: "orders · 1" }),
+            screen.getByRole('heading', { name: 'orders · 1' }),
         ).toBeInTheDocument();
         // Back unmounts itself; focus moves to the heading instead of falling to <body>.
-        expect(screen.getByRole("heading", { level: 3 })).toHaveFocus();
+        expect(screen.getByRole('heading', { level: 3 })).toHaveFocus();
         expect(
-            screen.queryByRole("button", { name: "Back" }),
+            screen.queryByRole('button', { name: 'Back' }),
         ).not.toBeInTheDocument();
     });
 
-    it("drops a hop that resolves after Back", async () => {
+    it('drops a hop that resolves after Back', async () => {
         const hopped = {
-            table: "users",
+            table: 'users',
             key: { id: 3 },
-            columns: [{ name: "id", type: "integer" }],
+            columns: [{ name: 'id', type: 'integer' }],
             values: [3],
-            relationships: [{ ...relationships[0], id: "r9", table: "orders" }],
+            relationships: [{ ...relationships[0], id: 'r9', table: 'orders' }],
         };
         api.show.mockImplementation((_id, table) =>
-            Promise.resolve(table === "users" ? hopped : ordersPayload),
+            Promise.resolve(table === 'users' ? hopped : ordersPayload),
         );
         api.related.mockResolvedValueOnce({
-            table: "users",
+            table: 'users',
             columns: [],
-            primary_key: ["id"],
+            primary_key: ['id'],
             rows: [{ key: { id: 3 }, values: [3] }],
             next_cursor: null,
         });
         setup();
         fireEvent.click(
-            await screen.findByRole("button", { name: "users · user_id" }),
+            await screen.findByRole('button', { name: 'users · user_id' }),
         );
-        await screen.findByRole("heading", { name: "users · 3" });
+        await screen.findByRole('heading', { name: 'users · 3' });
         let resolveLate!: (v: unknown) => void;
         api.related.mockReturnValueOnce(
             new Promise((res) => (resolveLate = res)),
         );
         fireEvent.click(
-            await screen.findByRole("button", { name: "orders · user_id" }),
+            await screen.findByRole('button', { name: 'orders · user_id' }),
         );
-        fireEvent.click(screen.getByRole("button", { name: "Back" }));
+        fireEvent.click(screen.getByRole('button', { name: 'Back' }));
         resolveLate({
-            table: "orders",
+            table: 'orders',
             columns: [],
-            primary_key: ["id"],
+            primary_key: ['id'],
             rows: [{ key: { id: 9 }, values: [9] }],
             next_cursor: null,
         });
         await new Promise((r) => setTimeout(r, 0));
         expect(
-            screen.getByRole("heading", { name: "orders · 1" }),
+            screen.getByRole('heading', { name: 'orders · 1' }),
         ).toBeInTheDocument();
     });
 
-    it("opens the referencing table filtered to this row", async () => {
+    it('opens the referencing table filtered to this row', async () => {
         const { props } = setup();
         fireEvent.click(
-            await screen.findByRole("button", { name: "order_items (12)" }),
+            await screen.findByRole('button', { name: 'order_items (12)' }),
         );
-        expect(props.onOpenTable).toHaveBeenCalledWith("order_items", [
-            { column: "order_id", op: "eq", value: "1" },
+        expect(props.onOpenTable).toHaveBeenCalledWith('order_items', [
+            { column: 'order_id', op: 'eq', value: '1' },
         ]);
     });
 
-    it("converts referencing values like the grid and skips non-scalar ones", async () => {
-        const { props, unmount } = setup({ row: [true, 3, "hi"] });
+    it('converts referencing values like the grid and skips non-scalar ones', async () => {
+        const { props, unmount } = setup({ row: [true, 3, 'hi'] });
         fireEvent.click(
-            await screen.findByRole("button", { name: "order_items (12)" }),
+            await screen.findByRole('button', { name: 'order_items (12)' }),
         );
-        expect(props.onOpenTable).toHaveBeenCalledWith("order_items", [
-            { column: "order_id", op: "eq", value: "true" },
+        expect(props.onOpenTable).toHaveBeenCalledWith('order_items', [
+            { column: 'order_id', op: 'eq', value: 'true' },
         ]);
         unmount();
 
@@ -364,16 +364,16 @@ describe("RowDrawer", () => {
         const withNotes = makeSnapshot(
             [
                 ...snapshot.tables,
-                { name: "order_notes", columns: [idColumn, plain("note")] },
+                { name: 'order_notes', columns: [idColumn, plain('note')] },
             ],
             [
                 ...snapshot.relationships,
                 {
-                    id: "r3",
-                    from_table: "order_notes",
-                    from_columns: ["note"],
-                    to_table: "orders",
-                    to_columns: ["note"],
+                    id: 'r3',
+                    from_table: 'order_notes',
+                    from_columns: ['note'],
+                    to_table: 'orders',
+                    to_columns: ['note'],
                 },
             ],
         );
@@ -382,11 +382,11 @@ describe("RowDrawer", () => {
             relationships: [
                 ...relationships,
                 {
-                    id: "r3",
-                    direction: "in",
-                    table: "order_notes",
-                    columns: ["note"],
-                    other_columns: ["note"],
+                    id: 'r3',
+                    direction: 'in',
+                    table: 'order_notes',
+                    columns: ['note'],
+                    other_columns: ['note'],
                     inferred: false,
                     available: true,
                     count: null,
@@ -398,82 +398,82 @@ describe("RowDrawer", () => {
             row: [1, 3, { x: 1 } as unknown as QueryCell],
         });
         expect(
-            await screen.findByRole("button", { name: "order_notes" }),
+            await screen.findByRole('button', { name: 'order_notes' }),
         ).toBeDisabled();
         expect(
-            screen.getByRole("button", { name: "order_items (12)" }),
+            screen.getByRole('button', { name: 'order_items (12)' }),
         ).toBeEnabled();
     });
 
-    it("explores the graph from the current record", async () => {
+    it('explores the graph from the current record', async () => {
         const { props } = setup();
         fireEvent.click(
-            await screen.findByRole("button", { name: "Explore graph" }),
+            await screen.findByRole('button', { name: 'Explore graph' }),
         );
         expect(props.onExplore).toHaveBeenCalledWith({
-            table: "orders",
+            table: 'orders',
             key: { id: 1 },
         });
     });
 
-    it("shows values only for a view", () => {
+    it('shows values only for a view', () => {
         setup({
-            table: snapshot.tables.find((t) => t.name === "recent_orders")!,
-            columns: [col("recent_orders", "id"), col("recent_orders", "note")],
-            row: [7, "seen"],
+            table: snapshot.tables.find((t) => t.name === 'recent_orders')!,
+            columns: [col('recent_orders', 'id'), col('recent_orders', 'note')],
+            row: [7, 'seen'],
             rowNumber: 4,
         });
         expect(api.show).not.toHaveBeenCalled();
         expect(
             screen.getByText(
-                "Relations are available for tables with a primary key.",
+                'Relations are available for tables with a primary key.',
             ),
         ).toBeInTheDocument();
-        expect(screen.getByText("seen")).toBeInTheDocument();
+        expect(screen.getByText('seen')).toBeInTheDocument();
         expect(
-            screen.getByRole("heading", { name: "recent_orders · row 4" }),
+            screen.getByRole('heading', { name: 'recent_orders · row 4' }),
         ).toBeInTheDocument();
         expect(
-            screen.queryByRole("button", { name: "Explore graph" }),
+            screen.queryByRole('button', { name: 'Explore graph' }),
         ).not.toBeInTheDocument();
     });
 
-    it("shows values only for a table without a primary key", () => {
+    it('shows values only for a table without a primary key', () => {
         setup({
-            table: snapshot.tables.find((t) => t.name === "logs")!,
-            columns: [col("logs", "message", "text")],
-            row: ["boot"],
+            table: snapshot.tables.find((t) => t.name === 'logs')!,
+            columns: [col('logs', 'message', 'text')],
+            row: ['boot'],
             rowNumber: 2,
         });
         expect(api.show).not.toHaveBeenCalled();
         expect(
             screen.getByText(
-                "Relations are available for tables with a primary key.",
+                'Relations are available for tables with a primary key.',
             ),
         ).toBeInTheDocument();
-        expect(screen.getByText("boot")).toBeInTheDocument();
+        expect(screen.getByText('boot')).toBeInTheDocument();
         expect(
-            screen.queryByRole("button", { name: "Explore graph" }),
+            screen.queryByRole('button', { name: 'Explore graph' }),
         ).not.toBeInTheDocument();
     });
 
-    it("steps with the arrow keys and closes with Escape", async () => {
+    it('steps with the arrow keys and closes with Escape', async () => {
         const { props } = setup();
-        const drawer = screen.getByRole("complementary");
-        fireEvent.keyDown(drawer, { key: "ArrowDown" });
+        const drawer = screen.getByRole('complementary');
+        fireEvent.keyDown(drawer, { key: 'ArrowDown' });
         expect(props.onStep).toHaveBeenCalledWith(1);
-        fireEvent.keyDown(drawer, { key: "ArrowUp" });
+        fireEvent.keyDown(drawer, { key: 'ArrowUp' });
         expect(props.onStep).toHaveBeenLastCalledWith(-1);
         const outer = vi.fn();
-        document.addEventListener("keydown", outer);
-        fireEvent.keyDown(drawer, { key: "Escape" });
-        document.removeEventListener("keydown", outer);
+        document.addEventListener('keydown', outer);
+        fireEvent.keyDown(drawer, { key: 'Escape' });
+        document.removeEventListener('keydown', outer);
         expect(props.onClose).toHaveBeenCalledTimes(1);
         expect(outer).not.toHaveBeenCalled();
-        await screen.findByText("Explore graph");
+        await screen.findByText('Explore graph');
     });
 
-    it("ignores a stale record response after the row changes", async () => {
+    it('ignores a stale record response after the row changes', async () => {
         let resolveFirst!: (p: RecordPayload) => void;
         api.show
             .mockReturnValueOnce(
@@ -485,38 +485,38 @@ describe("RowDrawer", () => {
                 relationships: [],
             });
         const first = setup();
-        first.rerender(<RowDrawer {...first.props} row={[2, 3, "hi"]} />);
-        await screen.findByRole("heading", { name: "orders · 2" });
+        first.rerender(<RowDrawer {...first.props} row={[2, 3, 'hi']} />);
+        await screen.findByRole('heading', { name: 'orders · 2' });
         resolveFirst(ordersPayload);
         await waitFor(() =>
             expect(
-                screen.queryByRole("button", { name: "users · user_id" }),
+                screen.queryByRole('button', { name: 'users · user_id' }),
             ).not.toBeInTheDocument(),
         );
     });
 });
 
-describe("RowDrawer editing", () => {
+describe('RowDrawer editing', () => {
     const editColumns: QueryColumn[] = [
-        col("orders", "id", "integer"),
-        col("orders", "user_id", "integer"),
-        col("orders", "note", "text"),
-        col("orders", "meta", "json"),
-        col("orders", "score", "float"),
-        col("orders", "flag", "boolean"),
+        col('orders', 'id', 'integer'),
+        col('orders', 'user_id', 'integer'),
+        col('orders', 'note', 'text'),
+        col('orders', 'meta', 'json'),
+        col('orders', 'score', 'float'),
+        col('orders', 'flag', 'boolean'),
     ];
     const editRow: QueryCell[] = [
         1,
         3,
-        "line one\r\nline two",
+        'line one\r\nline two',
         '{"a":1}',
         1.5,
         true,
     ];
     const editing = (over: Partial<GridEditing> = {}): GridEditing => ({
         connectionId: 1,
-        table: "orders",
-        dialect: "pgsql",
+        table: 'orders',
+        dialect: 'pgsql',
         rowIds: [{ key: { id: 1 } }],
         locked: [[4]],
         shortened: [[]],
@@ -526,7 +526,7 @@ describe("RowDrawer editing", () => {
         ...over,
     });
     const ref = refOf({ key: { id: 1 } });
-    const pending = () => usePending.getState().byTable["1:orders"] ?? {};
+    const pending = () => usePending.getState().byTable['1:orders'] ?? {};
     const setupEdit = (over: Over = {}) =>
         setup({
             columns: editColumns,
@@ -535,131 +535,131 @@ describe("RowDrawer editing", () => {
             rowIndex: 0,
             ...over,
         });
-    const field = (name: string) => screen.getByRole("textbox", { name });
+    const field = (name: string) => screen.getByRole('textbox', { name });
 
     beforeEach(() => usePending.setState({ byTable: {}, errors: {} }));
 
-    it("stages a field on blur, labels it edited with its original, and reverts it", () => {
+    it('stages a field on blur, labels it edited with its original, and reverts it', () => {
         setupEdit();
-        const userId = field("user_id");
-        expect(userId).toHaveValue("3");
-        fireEvent.change(userId, { target: { value: "4" } });
+        const userId = field('user_id');
+        expect(userId).toHaveValue('3');
+        fireEvent.change(userId, { target: { value: '4' } });
         // A draft is not staged until the field is left.
         expect(pending()).toEqual({});
         fireEvent.blur(userId);
         expect(pending()[ref]).toMatchObject({
-            kind: "update",
-            values: { user_id: "4" },
+            kind: 'update',
+            values: { user_id: '4' },
             original: { id: 1, user_id: 3 },
         });
-        expect(field("user_id")).toHaveValue("4");
-        expect(screen.getByText("Original: 3")).toBeInTheDocument();
-        expect(screen.getAllByText("edited").length).toBeGreaterThan(0);
-        fireEvent.click(screen.getByRole("button", { name: "Revert user_id" }));
+        expect(field('user_id')).toHaveValue('4');
+        expect(screen.getByText('Original: 3')).toBeInTheDocument();
+        expect(screen.getAllByText('edited').length).toBeGreaterThan(0);
+        fireEvent.click(screen.getByRole('button', { name: 'Revert user_id' }));
         expect(pending()).toEqual({});
     });
 
-    it("shows a drawer edit in the grid as an edited cell", () => {
+    it('shows a drawer edit in the grid as an edited cell', () => {
         // Only the first columns render in jsdom: the edited one comes first.
         const gridColumns = [
-            col("orders", "note", "text"),
-            col("orders", "id", "integer"),
+            col('orders', 'note', 'text'),
+            col('orders', 'id', 'integer'),
         ];
         const gridEditing = editing({ locked: [[]] });
         render(
             <div style={{ blockSize: 400 }}>
                 <ResultGrid
                     columns={gridColumns}
-                    rows={[["hi", 1]]}
+                    rows={[['hi', 1]]}
                     editing={gridEditing}
                 />
             </div>,
         );
         setup({
             columns: gridColumns,
-            row: ["hi", 1],
+            row: ['hi', 1],
             editing: gridEditing,
             rowIndex: 0,
         });
-        const note = field("note");
-        fireEvent.change(note, { target: { value: "hello" } });
-        fireEvent.keyDown(note, { key: "Enter", ctrlKey: true });
-        const cell = screen.getByRole("gridcell", { name: /hello/ });
-        expect(cell).toHaveClass("rdg-cell-edited");
+        const note = field('note');
+        fireEvent.change(note, { target: { value: 'hello' } });
+        fireEvent.keyDown(note, { key: 'Enter', ctrlKey: true });
+        const cell = screen.getByRole('gridcell', { name: /hello/ });
+        expect(cell).toHaveClass('rdg-cell-edited');
     });
 
-    it("edits multi-line text in a textarea and keeps its line ends", () => {
+    it('edits multi-line text in a textarea and keeps its line ends', () => {
         setupEdit();
-        const note = field("note");
-        expect(note.tagName).toBe("TEXTAREA");
+        const note = field('note');
+        expect(note.tagName).toBe('TEXTAREA');
         // Enter is a new line in a multi-line field, not a commit.
         fireEvent.change(note, {
-            target: { value: "line one\nline two\nline three" },
+            target: { value: 'line one\nline two\nline three' },
         });
-        fireEvent.keyDown(note, { key: "Enter" });
+        fireEvent.keyDown(note, { key: 'Enter' });
         expect(pending()).toEqual({});
-        fireEvent.keyDown(note, { key: "Enter", ctrlKey: true });
+        fireEvent.keyDown(note, { key: 'Enter', ctrlKey: true });
         expect(pending()[ref]).toMatchObject({
-            values: { note: "line one\r\nline two\r\nline three" },
+            values: { note: 'line one\r\nline two\r\nline three' },
         });
     });
 
-    it("stages a single-line field on Enter and cancels a draft with Escape before closing", () => {
+    it('stages a single-line field on Enter and cancels a draft with Escape before closing', () => {
         const { props } = setupEdit();
-        const id = field("id");
-        expect(id.tagName).toBe("INPUT");
-        fireEvent.change(id, { target: { value: "9" } });
-        fireEvent.keyDown(id, { key: "Escape" });
-        expect(id).toHaveValue("1");
+        const id = field('id');
+        expect(id.tagName).toBe('INPUT');
+        fireEvent.change(id, { target: { value: '9' } });
+        fireEvent.keyDown(id, { key: 'Escape' });
+        expect(id).toHaveValue('1');
         expect(props.onClose).not.toHaveBeenCalled();
-        fireEvent.keyDown(id, { key: "Escape" });
+        fireEvent.keyDown(id, { key: 'Escape' });
         expect(props.onClose).toHaveBeenCalledTimes(1);
-        fireEvent.change(id, { target: { value: "9" } });
-        fireEvent.keyDown(id, { key: "Enter" });
-        expect(pending()[ref]).toMatchObject({ values: { id: "9" } });
+        fireEvent.change(id, { target: { value: '9' } });
+        fireEvent.keyDown(id, { key: 'Enter' });
+        expect(pending()[ref]).toMatchObject({ values: { id: '9' } });
     });
 
-    it("validates JSON before staging and ties the error to the field", () => {
+    it('validates JSON before staging and ties the error to the field', () => {
         setupEdit();
-        const meta = field("meta");
-        expect(meta.tagName).toBe("TEXTAREA");
+        const meta = field('meta');
+        expect(meta.tagName).toBe('TEXTAREA');
         fireEvent.change(meta, { target: { value: '{"a":' } });
         fireEvent.blur(meta);
         expect(pending()).toEqual({});
-        expect(meta).toHaveAttribute("aria-invalid", "true");
-        const error = screen.getByRole("alert");
+        expect(meta).toHaveAttribute('aria-invalid', 'true');
+        const error = screen.getByRole('alert');
         expect(error).toHaveTextContent(/^Invalid JSON/);
-        expect(meta.getAttribute("aria-describedby")).toContain(error.id);
+        expect(meta.getAttribute('aria-describedby')).toContain(error.id);
         fireEvent.change(meta, { target: { value: '{"a":2}' } });
         fireEvent.blur(meta);
         expect(pending()[ref]).toMatchObject({ values: { meta: '{"a":2}' } });
-        expect(meta).not.toHaveAttribute("aria-invalid");
+        expect(meta).not.toHaveAttribute('aria-invalid');
     });
 
-    it("says an invalid JSON draft was not staged when the drawer leaves the row", () => {
+    it('says an invalid JSON draft was not staged when the drawer leaves the row', () => {
         toast.error.mockReset();
         const { unmount } = setupEdit();
-        fireEvent.change(field("meta"), { target: { value: '{"a":' } });
+        fireEvent.change(field('meta'), { target: { value: '{"a":' } });
         unmount();
         expect(pending()).toEqual({});
         expect(toast.error).toHaveBeenCalledWith(
-            "meta: invalid JSON, not staged",
+            'meta: invalid JSON, not staged',
         );
     });
 
-    it("says nothing when the drawer leaves with no draft or a valid one", () => {
+    it('says nothing when the drawer leaves with no draft or a valid one', () => {
         toast.error.mockReset();
         const { unmount } = setupEdit();
-        fireEvent.change(field("meta"), { target: { value: '{"a":3}' } });
+        fireEvent.change(field('meta'), { target: { value: '{"a":3}' } });
         unmount();
         expect(pending()[ref]).toMatchObject({ values: { meta: '{"a":3}' } });
         expect(toast.error).not.toHaveBeenCalled();
     });
 
-    it("keeps a locked field read-only and says why, like the grid", () => {
+    it('keeps a locked field read-only and says why, like the grid', () => {
         setupEdit();
         expect(
-            screen.queryByRole("textbox", { name: "score" }),
+            screen.queryByRole('textbox', { name: 'score' }),
         ).not.toBeInTheDocument();
         expect(
             screen.getByText(
@@ -668,92 +668,92 @@ describe("RowDrawer editing", () => {
         ).toBeInTheDocument();
     });
 
-    it("keeps a value with mixed line ends read-only", () => {
-        setupEdit({ row: [1, 3, "a\r\nb\nc", "{}", 1.5, true] });
+    it('keeps a value with mixed line ends read-only', () => {
+        setupEdit({ row: [1, 3, 'a\r\nb\nc', '{}', 1.5, true] });
         expect(
-            screen.queryByRole("textbox", { name: "note" }),
+            screen.queryByRole('textbox', { name: 'note' }),
         ).not.toBeInTheDocument();
         expect(
             screen.getByText(/Not editable: mixed line ends/),
         ).toBeInTheDocument();
     });
 
-    it("sets a field to NULL and toggles a boolean per engine", () => {
+    it('sets a field to NULL and toggles a boolean per engine', () => {
         setupEdit();
         fireEvent.click(
-            screen.getByRole("button", { name: "Set user_id to NULL" }),
+            screen.getByRole('button', { name: 'Set user_id to NULL' }),
         );
-        fireEvent.click(screen.getByRole("checkbox", { name: "flag" }));
+        fireEvent.click(screen.getByRole('checkbox', { name: 'flag' }));
         expect(pending()[ref]).toMatchObject({
-            values: { user_id: null, flag: "false" },
+            values: { user_id: null, flag: 'false' },
         });
     });
 
-    it("deletes, restores and reverts the row from the header", () => {
+    it('deletes, restores and reverts the row from the header', () => {
         setupEdit();
-        fireEvent.click(screen.getByRole("button", { name: "Delete row" }));
-        expect(pending()[ref]).toMatchObject({ kind: "delete" });
-        expect(screen.getByText("Deleted")).toBeInTheDocument();
-        expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole("button", { name: "Restore row" }));
+        fireEvent.click(screen.getByRole('button', { name: 'Delete row' }));
+        expect(pending()[ref]).toMatchObject({ kind: 'delete' });
+        expect(screen.getByText('Deleted')).toBeInTheDocument();
+        expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Restore row' }));
         expect(pending()).toEqual({});
-        fireEvent.change(field("user_id"), { target: { value: "7" } });
-        fireEvent.blur(field("user_id"));
-        expect(screen.getByText("Edited")).toBeInTheDocument();
-        fireEvent.click(screen.getByRole("button", { name: "Revert row" }));
+        fireEvent.change(field('user_id'), { target: { value: '7' } });
+        fireEvent.blur(field('user_id'));
+        expect(screen.getByText('Edited')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Revert row' }));
         expect(pending()).toEqual({});
         expect(
-            screen.queryByRole("button", { name: "Revert row" }),
+            screen.queryByRole('button', { name: 'Revert row' }),
         ).not.toBeInTheDocument();
     });
 
-    it("stages an open draft when Review flushes edits, and before stepping", () => {
+    it('stages an open draft when Review flushes edits, and before stepping', () => {
         const { props } = setupEdit();
-        fireEvent.change(field("user_id"), { target: { value: "5" } });
+        fireEvent.change(field('user_id'), { target: { value: '5' } });
         act(() => flushOpenEdits());
-        expect(pending()[ref]).toMatchObject({ values: { user_id: "5" } });
-        fireEvent.change(field("note"), { target: { value: "x" } });
-        fireEvent.keyDown(screen.getByRole("heading", { level: 3 }), {
-            key: "ArrowDown",
+        expect(pending()[ref]).toMatchObject({ values: { user_id: '5' } });
+        fireEvent.change(field('note'), { target: { value: 'x' } });
+        fireEvent.keyDown(screen.getByRole('heading', { level: 3 }), {
+            key: 'ArrowDown',
         });
         expect(pending()[ref]).toMatchObject({
-            values: { user_id: "5", note: "x" },
+            values: { user_id: '5', note: 'x' },
         });
         expect(props.onStep).toHaveBeenCalledWith(1);
     });
 
-    it("keeps a row that cannot be pinned read-only, with the reason", () => {
+    it('keeps a row that cannot be pinned read-only, with the reason', () => {
         setupEdit({
-            editing: editing({ rowIds: [null], rowReason: "no key here" }),
+            editing: editing({ rowIds: [null], rowReason: 'no key here' }),
         });
-        expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+        expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
         expect(
-            screen.getByText("Not editable: no key here"),
+            screen.getByText('Not editable: no key here'),
         ).toBeInTheDocument();
         expect(
-            screen.queryByRole("button", { name: "Delete row" }),
+            screen.queryByRole('button', { name: 'Delete row' }),
         ).not.toBeInTheDocument();
     });
 
-    it("shows a hopped record read-only with Open to edit, filtered on its key", async () => {
+    it('shows a hopped record read-only with Open to edit, filtered on its key', async () => {
         api.related.mockResolvedValue({
-            table: "users",
+            table: 'users',
             columns: [],
-            primary_key: ["id"],
-            rows: [{ key: { id: 3 }, values: [3, "Ann"] }],
+            primary_key: ['id'],
+            rows: [{ key: { id: 3 }, values: [3, 'Ann'] }],
             next_cursor: null,
         });
         api.show.mockImplementation((_id, table) =>
             Promise.resolve(
-                table === "users"
+                table === 'users'
                     ? {
-                          table: "users",
+                          table: 'users',
                           key: { id: 3 },
                           columns: [
-                              { name: "id", type: "integer" },
-                              { name: "name", type: "text" },
+                              { name: 'id', type: 'integer' },
+                              { name: 'name', type: 'text' },
                           ],
-                          values: [3, "Ann"],
+                          values: [3, 'Ann'],
                           relationships: [],
                       }
                     : ordersPayload,
@@ -761,34 +761,34 @@ describe("RowDrawer editing", () => {
         );
         const { props } = setupEdit();
         fireEvent.click(
-            await screen.findByRole("button", { name: "users · user_id" }),
+            await screen.findByRole('button', { name: 'users · user_id' }),
         );
-        await screen.findByText("Ann");
-        expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+        await screen.findByText('Ann');
+        expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
         expect(
-            screen.queryByRole("button", { name: "Delete row" }),
+            screen.queryByRole('button', { name: 'Delete row' }),
         ).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole("button", { name: "Open to edit" }));
-        expect(props.onOpenTable).toHaveBeenCalledWith("users", [
-            { column: "id", op: "eq", value: "3" },
+        fireEvent.click(screen.getByRole('button', { name: 'Open to edit' }));
+        expect(props.onOpenTable).toHaveBeenCalledWith('users', [
+            { column: 'id', op: 'eq', value: '3' },
         ]);
     });
 
-    it("offers no Open to edit on a read-only connection", async () => {
+    it('offers no Open to edit on a read-only connection', async () => {
         api.related.mockResolvedValue({
-            table: "users",
+            table: 'users',
             columns: [],
-            primary_key: ["id"],
-            rows: [{ key: { id: 3 }, values: [3, "Ann"] }],
+            primary_key: ['id'],
+            rows: [{ key: { id: 3 }, values: [3, 'Ann'] }],
             next_cursor: null,
         });
         setup({ readOnly: true });
         fireEvent.click(
-            await screen.findByRole("button", { name: "users · user_id" }),
+            await screen.findByRole('button', { name: 'users · user_id' }),
         );
-        await screen.findByRole("heading", { name: "users · 3" });
+        await screen.findByRole('heading', { name: 'users · 3' });
         expect(
-            screen.queryByRole("button", { name: "Open to edit" }),
+            screen.queryByRole('button', { name: 'Open to edit' }),
         ).not.toBeInTheDocument();
     });
 });

@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { pendingCounts, pendingKey, usePending } from "@/editing/pending-store";
-import { useReview } from "@/editing/review-store";
-import { DiscardDialog } from "./discard-dialog";
+import { useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { pendingCounts, pendingKey, usePending } from '@/editing/pending-store';
+import { useReview } from '@/editing/review-store';
+import { DiscardDialog } from './discard-dialog';
 
 /**
  * Above the pager while the table has pending changes (spec §4.1): the counts, Discard (asks first) and Review &
@@ -25,7 +25,7 @@ export function PendingBar({
     return (
         <div className="flex flex-wrap items-center gap-2 border-t bg-warning/10 px-3 py-1 text-xs">
             <span role="status" className="font-medium text-warning-foreground">
-                {`${total} pending change${total === 1 ? "" : "s"} · ${counts.inserted} new · ${counts.updated} edited · ${counts.deleted} deleted`}
+                {`${total} pending change${total === 1 ? '' : 's'} · ${counts.inserted} new · ${counts.updated} edited · ${counts.deleted} deleted`}
             </span>
             <div className="ml-auto flex items-center gap-1">
                 <Button

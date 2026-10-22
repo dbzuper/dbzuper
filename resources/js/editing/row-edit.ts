@@ -1,12 +1,12 @@
-import { binaryBytes, cellText } from "@/grid/cells";
-import type { RowIdentity } from "@/lib/workspace-api";
+import { binaryBytes, cellText } from '@/grid/cells';
+import type { RowIdentity } from '@/lib/workspace-api';
 import type {
     ColumnSchema,
     Dialect,
     QueryCell,
     QueryColumn,
-} from "@/types/schema";
-import { rowRefs, type PendingTarget } from "./pending-store";
+} from '@/types/schema';
+import { rowRefs, type PendingTarget } from './pending-store';
 
 /**
  * The editing rules shared by the grid and the row drawer (spec §4.1, §4.2, §6): which rows and cells can be edited,
@@ -34,10 +34,10 @@ export const UNPINNED_ROW =
 
 /** Column type tests for editing (type names as the snapshot reports them). */
 export const isBooleanType = (type: string | null) =>
-    /^bool(ean)?$/i.test((type ?? "").trim());
-export const isJsonType = (type: string | null) => /json/i.test(type ?? "");
+    /^bool(ean)?$/i.test((type ?? '').trim());
+export const isJsonType = (type: string | null) => /json/i.test(type ?? '');
 export const isBinaryType = (type: string | null) =>
-    /blob|binary|bytea|varbinary|image/i.test(type ?? "");
+    /blob|binary|bytea|varbinary|image/i.test(type ?? '');
 
 /** Why a JSON value can't be staged, or null when it parses. */
 export function jsonError(text: string): string | null {
@@ -45,7 +45,7 @@ export function jsonError(text: string): string | null {
         JSON.parse(text);
         return null;
     } catch (e) {
-        return `Invalid JSON: ${e instanceof Error ? e.message : "it does not parse"}`;
+        return `Invalid JSON: ${e instanceof Error ? e.message : 'it does not parse'}`;
     }
 }
 
@@ -98,32 +98,32 @@ export function lockedFor(
         isBinaryType(columnType(editing, columns[column])) ||
         binaryBytes(cells?.[column] ?? null) !== null
     )
-        return "binary";
-    if (editing.readOnlyColumns.includes(name)) return "generated column";
+        return 'binary';
+    if (editing.readOnlyColumns.includes(name)) return 'generated column';
     if ((editing.shortened[index] ?? []).includes(column))
-        return "shortened for display";
+        return 'shortened for display';
     return "its values can't be compared exactly";
 }
 
 /** A boolean as staged text: `true/false` on PostgreSQL, `1/0` elsewhere (spec §6). */
 export const boolValue = (dialect: Dialect, on: boolean) =>
-    dialect === "pgsql" ? String(on) : on ? "1" : "0";
+    dialect === 'pgsql' ? String(on) : on ? '1' : '0';
 
 export const truthy = (value: QueryCell | undefined) =>
     value === true ||
     value === 1 ||
-    (typeof value === "string" && /^(1|t|true)$/i.test(value));
+    (typeof value === 'string' && /^(1|t|true)$/i.test(value));
 
 /** The text an editor starts from (NULL edits as empty text; empty text stages an empty string). */
 export const editorText = (value: QueryCell | undefined) =>
-    value === null || value === undefined ? "" : cellText(value);
+    value === null || value === undefined ? '' : cellText(value);
 
 /** How a value is shown in a tooltip or an "Original" line. */
 export const shownText = (value: QueryCell | undefined) =>
     value === null || value === undefined
-        ? "NULL"
-        : value === ""
-          ? "(empty)"
+        ? 'NULL'
+        : value === ''
+          ? '(empty)'
           : cellText(value);
 
 /**
@@ -131,18 +131,18 @@ export const shownText = (value: QueryCell | undefined) =>
  * with every line end as \n, so a value whose line ends are mixed could not be kept exactly.
  */
 export function lineEndProblem(value: QueryCell | undefined): string | null {
-    if (typeof value !== "string") return null;
+    if (typeof value !== 'string') return null;
     const crlf = /\r\n/.test(value);
     const lf = /(^|[^\r])\n/.test(value);
     const cr = /\r(?!\n)/.test(value);
     return [crlf, lf, cr].filter(Boolean).length > 1
-        ? "mixed line ends (an editor would change them)"
+        ? 'mixed line ends (an editor would change them)'
         : null;
 }
 
 /** `edited` (line ends as \n, as a textarea gives them) with the line ends of `base`, the value it started from. */
 export function restoreLineEnds(base: string, edited: string): string {
-    if (/\r\n/.test(base)) return edited.replace(/\r?\n/g, "\r\n");
-    if (/\r/.test(base)) return edited.replace(/\n/g, "\r");
+    if (/\r\n/.test(base)) return edited.replace(/\r?\n/g, '\r\n');
+    if (/\r/.test(base)) return edited.replace(/\n/g, '\r');
     return edited;
 }

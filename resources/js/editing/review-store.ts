@@ -1,5 +1,5 @@
-import { create } from "zustand";
-import { flushOpenEdits } from "./flush-edits";
+import { create } from 'zustand';
+import { flushOpenEdits } from './flush-edits';
 
 /** Which table's Review & commit dialog is open (spec §4.3); one at a time. */
 type State = {

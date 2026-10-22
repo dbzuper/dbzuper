@@ -1,7 +1,7 @@
-import { Copy } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Copy } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 import {
     Dialog,
     DialogContent,
@@ -9,15 +9,15 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from "@/components/ui/dialog";
-import { Spinner } from "@/components/ui/spinner";
+} from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
 import {
     ChangeSetError,
     changeSetErrorFrom,
     editingApi,
     type ChangeSetErrorInfo,
     type PreviewStatement,
-} from "@/editing/editing-api";
+} from '@/editing/editing-api';
 import {
     changeRefs,
     pendingKey,
@@ -25,17 +25,17 @@ import {
     usePending,
     type PendingRow,
     type RowRef,
-} from "@/editing/pending-store";
-import { useReview } from "@/editing/review-store";
-import { writeClipboard } from "@/grid/copy";
-import { cn } from "@/lib/utils";
+} from '@/editing/pending-store';
+import { useReview } from '@/editing/review-store';
+import { writeClipboard } from '@/grid/copy';
+import { cn } from '@/lib/utils';
 
 const NO_ROWS: Record<RowRef, PendingRow> = {};
 
 export const TRANSACTION_NOTE =
-    "Runs as one transaction: all of them succeed, or nothing changes.";
+    'Runs as one transaction: all of them succeed, or nothing changes.';
 
-const plural = (n: number) => `${n} change${n === 1 ? "" : "s"}`;
+const plural = (n: number) => `${n} change${n === 1 ? '' : 's'}`;
 
 /**
  * The message for a failed change. A new row whose INSERT affected no row comes back as a row mismatch ("row
@@ -43,10 +43,10 @@ const plural = (n: number) => `${n} change${n === 1 ? "" : "s"}`;
  */
 export function changeErrorMessage(
     info: ChangeSetErrorInfo,
-    op: PendingRow["kind"] | undefined,
+    op: PendingRow['kind'] | undefined,
 ): string {
-    if (op === "insert" && info.kind === "row_mismatch")
-        return "the new row could not be added";
+    if (op === 'insert' && info.kind === 'row_mismatch')
+        return 'the new row could not be added';
     return info.message;
 }
 
@@ -57,10 +57,10 @@ type Failure = {
     unknown: boolean;
 };
 
-const OP_LABEL: Record<PreviewStatement["op"], string> = {
-    insert: "Insert",
-    update: "Update",
-    delete: "Delete",
+const OP_LABEL: Record<PreviewStatement['op'], string> = {
+    insert: 'Insert',
+    update: 'Update',
+    delete: 'Delete',
 };
 
 /**
@@ -96,10 +96,10 @@ export function ReviewDialog({
     } | null>(null);
     const statements = preview?.statements ?? null;
     const [failure, setFailure] = useState<Failure | null>(null);
-    const [busy, setBusy] = useState<"preview" | "commit" | null>(null);
+    const [busy, setBusy] = useState<'preview' | 'commit' | null>(null);
     /** The changes were staged again while the dialog was open: the preview is being built again. */
     const [again, setAgain] = useState(false);
-    const committing = busy === "commit";
+    const committing = busy === 'commit';
     /** A commit is on its way; a second click must not send it twice. */
     const inFlight = useRef(false);
     /** The open (nonce) and rows the last preview was asked for. */
@@ -124,7 +124,7 @@ export function ReviewDialog({
         setAgain(last?.nonce === nonce);
         setPreview(null);
         setFailure(null);
-        setBusy("preview");
+        setBusy('preview');
         editingApi
             .preview(connectionId, table, toChanges(rows))
             .then((res) => {
@@ -184,7 +184,7 @@ export function ReviewDialog({
         const changes = toChanges(reviewed);
         if (changes.length === 0) return;
         inFlight.current = true;
-        setBusy("commit");
+        setBusy('commit');
         setFailure(null);
         // A schema refresh meanwhile waits for the commit to end (reconcilePending).
         const key = pendingKey(connectionId, table);
@@ -210,9 +210,9 @@ export function ReviewDialog({
 
     const copy = async () => {
         if (!statements) return;
-        const sql = statements.map((s) => `${s.sql};`).join("\n");
-        if (await writeClipboard(sql)) toast.success("Copied SQL");
-        else toast.error("Could not copy");
+        const sql = statements.map((s) => `${s.sql};`).join('\n');
+        if (await writeClipboard(sql)) toast.success('Copied SQL');
+        else toast.error('Could not copy');
     };
 
     const close = () => {
@@ -237,17 +237,17 @@ export function ReviewDialog({
             >
                 <DialogHeader>
                     <DialogTitle>
-                        Review {plural(total)} to{" "}
+                        Review {plural(total)} to{' '}
                         <span className="font-mono">{table}</span>
                     </DialogTitle>
                     <DialogDescription>{TRANSACTION_NOTE}</DialogDescription>
                 </DialogHeader>
-                {busy === "preview" && (
+                {busy === 'preview' && (
                     <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Spinner className="size-3" />{" "}
+                        <Spinner className="size-3" />{' '}
                         {again
-                            ? "Changes were updated — reviewing again…"
-                            : "Building the statements…"}
+                            ? 'Changes were updated — reviewing again…'
+                            : 'Building the statements…'}
                     </p>
                 )}
                 {statements && (
@@ -260,13 +260,13 @@ export function ReviewDialog({
                                 <div className="flex items-center gap-2 text-xs">
                                     <span
                                         className={cn(
-                                            "rounded px-1.5 py-0.5 font-medium",
-                                            s.op === "insert" &&
-                                                "bg-success/15 text-success",
-                                            s.op === "update" &&
-                                                "bg-warning/20 text-warning-foreground",
-                                            s.op === "delete" &&
-                                                "bg-destructive/10 text-destructive",
+                                            'rounded px-1.5 py-0.5 font-medium',
+                                            s.op === 'insert' &&
+                                                'bg-success/15 text-success',
+                                            s.op === 'update' &&
+                                                'bg-warning/20 text-warning-foreground',
+                                            s.op === 'delete' &&
+                                                'bg-destructive/10 text-destructive',
                                         )}
                                     >
                                         {OP_LABEL[s.op]}
@@ -289,8 +289,8 @@ export function ReviewDialog({
                     >
                         <p className="font-medium text-destructive">
                             {failure.unknown
-                                ? "The result is unknown — refresh to check."
-                                : "Nothing was changed."}{" "}
+                                ? 'The result is unknown — refresh to check.'
+                                : 'Nothing was changed.'}{' '}
                             {failure.target && (
                                 <span>Row {failure.target}: </span>
                             )}
