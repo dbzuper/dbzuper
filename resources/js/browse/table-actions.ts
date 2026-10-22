@@ -5,7 +5,13 @@ import type { ConnectionSummary } from '@/types/connection';
 import type { SchemaSnapshot } from '@/types/schema';
 import { universe } from '@/universe/controller';
 import { useWorkspace } from '@/universe/store';
-import { useBrowse, type OpenMode, type TableTabState } from './browse-store';
+import { openTableTabInSql } from './sql-link';
+import {
+    latestTableTab,
+    useBrowse,
+    type OpenMode,
+    type TableTabState,
+} from './browse-store';
 
 /** Opens (or focuses) a table tab; the history panel closes so the tab is not hidden behind it. */
 export function openTableTab(
@@ -21,7 +27,21 @@ export function openTableTab(
     useWorkspace.getState().setHistoryOpen(false);
 }
 
-/** Opens a table filtered on `column = value` pairs (FK links from records and SQL results). */
+/**
+ * "Open in new tab": a further view of the table with default state when it is already open, else a
+ * background tab as before.
+ */
+export function openTableInNewTab(connectionId: number, table: string): void {
+    if (latestTableTab(connectionId, table)) {
+        useBrowse.getState().openNewView(connectionId, table);
+        useWorkspace.getState().setHistoryOpen(false);
+    } else openTableTab(connectionId, table, { mode: 'background' });
+}
+
+/**
+ * Opens a table filtered on `column = value` pairs (FK links from records and SQL results): the latest tab
+ * of the table gets these filters in place of its own, else a new tab opens.
+ */
 export function openTableFiltered(
     connectionId: number,
     table: string,
@@ -63,14 +83,18 @@ export function makeTableActions(
                 state: { view: 'structure' },
                 merge: true,
             }),
+        // On an open table, the editor tab linked to its latest tab; else an unlinked first-page SELECT.
         openInSql: (table) => {
-            useSqlTabs
-                .getState()
-                .openTab(
-                    c,
-                    `SELECT * FROM ${quoteIdent(connection.driver, table)} LIMIT 100`,
-                    table,
-                );
+            const latest = latestTableTab(c, table);
+            if (latest) openTableTabInSql(c, latest, connection.driver);
+            else
+                useSqlTabs
+                    .getState()
+                    .openTab(
+                        c,
+                        `SELECT * FROM ${quoteIdent(connection.driver, table)} LIMIT 100`,
+                        table,
+                    );
             useWorkspace.getState().setDockOpen(true);
         },
         showInUniverse: (table) => showInUniverse(c, table),

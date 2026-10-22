@@ -2,7 +2,27 @@ import { create } from 'zustand';
 import { persist, type PersistStorage } from 'zustand/middleware';
 import { safeStorage } from '@/browse/safe-storage';
 
-export type SqlTab = { id: string; title: string; sql: string };
+/**
+ * An editor tab opened from a table tab ("Open in SQL") follows that tab's query and can set it (spec 4).
+ * `syncedSql` is the text last exchanged with the table tab: the editor text still equals it when the user has not
+ * edited since. `stale`: the table changed while the text was edited. `closed`: the table tab was closed; the
+ * link is kept only to say so, and ends on the next edit.
+ */
+export type SqlLink = {
+    browseTabId: string;
+    table: string;
+    /** The table tab's title (`orders (2)`), kept for the chip even once the tab is closed. */
+    title: string;
+    syncedSql: string;
+    /**
+     * The table tab's rows request that `syncedSql` was last exchanged for (absent when the text was built
+     * locally). Saved, so a reload or another window does not take the same request for a new one.
+     */
+    requestKey?: string;
+    stale?: boolean;
+    closed?: boolean;
+};
+export type SqlTab = { id: string; title: string; sql: string; link?: SqlLink };
 type ConnectionTabs = { tabs: SqlTab[]; activeId: string };
 
 type State = {
@@ -13,6 +33,29 @@ type State = {
     setActive: (connectionId: number, id: string) => void;
     setSql: (connectionId: number, id: string, sql: string) => void;
     rename: (connectionId: number, id: string, title: string) => void;
+    /**
+     * Activates the editor tab linked to table tab `browseTabId`, or opens one titled `title` with `sql` linked to
+     * it (`requestKey`: the rows request `sql` answers, when it is the server's). Returns its id.
+     */
+    openLinkedTab: (
+        connectionId: number,
+        browseTabId: string,
+        table: string,
+        title: string,
+        sql: string,
+        requestKey?: string,
+    ) => string;
+    /** Replaces (or with undefined removes) an editor tab's link. */
+    setLink: (
+        connectionId: number,
+        id: string,
+        link: SqlLink | undefined,
+    ) => void;
+    /** The editor tab linked to table tab `browseTabId`, if any. */
+    findLinked: (
+        connectionId: number,
+        browseTabId: string,
+    ) => SqlTab | undefined;
     /** Drops the tabs of connections that no longer exist. */
     prune: (existingIds: number[]) => void;
 };
@@ -32,6 +75,35 @@ const newId = () =>
         ? crypto.randomUUID()
         : `t${Date.now()}${Math.random()}`;
 
+const isLink = (v: unknown): v is SqlLink => {
+    if (!v || typeof v !== 'object') return false;
+    const l = v as Record<string, unknown>;
+    return (
+        typeof l.browseTabId === 'string' &&
+        typeof l.table === 'string' &&
+        typeof l.syncedSql === 'string' &&
+        (l.title === undefined || typeof l.title === 'string') &&
+        (l.requestKey === undefined || typeof l.requestKey === 'string') &&
+        (l.stale === undefined || typeof l.stale === 'boolean') &&
+        (l.closed === undefined || typeof l.closed === 'boolean')
+    );
+};
+
+/** A well-formed link reduced to its known fields, else undefined. */
+function sanitizeLink(v: unknown): SqlLink | undefined {
+    if (!isLink(v)) return undefined;
+    const link: SqlLink = {
+        browseTabId: v.browseTabId,
+        table: v.table,
+        title: v.title ?? v.table,
+        syncedSql: v.syncedSql,
+    };
+    if (v.requestKey !== undefined) link.requestKey = v.requestKey;
+    if (v.stale) link.stale = true;
+    if (v.closed) link.closed = true;
+    return link;
+}
+
 /** Keeps only well-formed connections: tabs present and activeId pointing at one of them. */
 function sanitize(input: unknown): Record<number, ConnectionTabs> {
     const out: Record<number, ConnectionTabs> = {};
@@ -39,13 +111,25 @@ function sanitize(input: unknown): Record<number, ConnectionTabs> {
     for (const [key, value] of Object.entries(input)) {
         const c = value as Partial<ConnectionTabs> | null;
         if (!c || !Array.isArray(c.tabs)) continue;
-        const tabs = c.tabs.filter(
-            (t): t is SqlTab =>
-                !!t &&
-                typeof t.id === 'string' &&
-                typeof t.title === 'string' &&
-                typeof t.sql === 'string',
-        );
+        // One editor tab per table tab: a second link to the same table tab is dropped.
+        const linked = new Set<string>();
+        const tabs = c.tabs
+            .filter(
+                (t): t is SqlTab =>
+                    !!t &&
+                    typeof t.id === 'string' &&
+                    typeof t.title === 'string' &&
+                    typeof t.sql === 'string',
+            )
+            .map((t) => {
+                const tab: SqlTab = { id: t.id, title: t.title, sql: t.sql };
+                const link = sanitizeLink(t.link);
+                if (link && !linked.has(link.browseTabId)) {
+                    linked.add(link.browseTabId);
+                    tab.link = link;
+                }
+                return tab;
+            });
         if (tabs.length === 0) continue;
         out[Number(key)] = {
             tabs,
@@ -194,10 +278,97 @@ export const useSqlTabs = create<State>()(
                 setSql: (connectionId, id, sql) =>
                     update(connectionId, (c) => ({
                         ...c,
-                        tabs: c.tabs.map((t) =>
-                            t.id === id ? { ...t, sql } : t,
-                        ),
+                        tabs: c.tabs.map((t) => {
+                            if (t.id !== id) return t;
+                            // Editing after the table tab closed ends the link (and its "was closed" note).
+                            if (t.link?.closed && sql !== t.sql) {
+                                const { link: _ended, ...rest } = t;
+                                return { ...rest, sql };
+                            }
+                            return { ...t, sql };
+                        }),
                     })),
+                openLinkedTab: (
+                    connectionId,
+                    browseTabId,
+                    table,
+                    title,
+                    sql,
+                    requestKey,
+                ) => {
+                    const existing = get().findLinked(
+                        connectionId,
+                        browseTabId,
+                    );
+                    // A link whose table tab was closed (an id since reused by this live table tab) is never
+                    // revived or activated: its tab keeps its text, drops the link, and a fresh linked tab opens.
+                    if (existing?.link?.closed)
+                        update(connectionId, (c) => ({
+                            ...c,
+                            tabs: c.tabs.map((t) => {
+                                if (t.id !== existing.id) return t;
+                                const { link: _closed, ...rest } = t;
+                                return rest;
+                            }),
+                        }));
+                    else if (existing) {
+                        update(connectionId, (c) => ({
+                            tabs: c.tabs.map((t) =>
+                                t.id === existing.id &&
+                                t.link &&
+                                t.link.title !== title
+                                    ? { ...t, link: { ...t.link, title } }
+                                    : t,
+                            ),
+                            activeId: existing.id,
+                        }));
+                        return existing.id;
+                    }
+                    const link: SqlLink = {
+                        browseTabId,
+                        table,
+                        title,
+                        syncedSql: sql,
+                    };
+                    if (requestKey !== undefined) link.requestKey = requestKey;
+                    const id = newId();
+                    update(connectionId, (c) => ({
+                        tabs: [
+                            ...c.tabs,
+                            {
+                                id,
+                                title,
+                                sql,
+                                link,
+                            },
+                        ],
+                        activeId: id,
+                    }));
+                    return id;
+                },
+                setLink: (connectionId, id, link) =>
+                    update(connectionId, (c) =>
+                        // One editor tab per table tab: a link to a table tab another editor tab follows is refused.
+                        link &&
+                        c.tabs.some(
+                            (t) =>
+                                t.id !== id &&
+                                t.link?.browseTabId === link.browseTabId,
+                        )
+                            ? c
+                            : {
+                                  ...c,
+                                  tabs: c.tabs.map((t) => {
+                                      if (t.id !== id) return t;
+                                      const { link: _old, ...rest } = t;
+                                      return link ? { ...rest, link } : rest;
+                                  }),
+                              },
+                    ),
+                findLinked: (connectionId, browseTabId) =>
+                    get().byConnection[connectionId]?.tabs.find(
+                        (t) => t.link?.browseTabId === browseTabId,
+                    ),
                 prune: (existingIds) =>
                     set((s) => {
                         const keep = new Set(existingIds);

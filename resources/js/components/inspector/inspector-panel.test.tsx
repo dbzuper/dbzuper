@@ -17,6 +17,7 @@ vi.mock('@/lib/workspace-api', async (orig) => ({
 }));
 
 import { INSPECTOR_HEADING_ID, InspectorPanel } from './inspector-panel';
+import { tableTabOf } from '@/test/browse-tabs';
 
 const snapshot = makeSnapshot(
     [
@@ -173,8 +174,8 @@ describe('InspectorPanel', () => {
         expect(screen.queryByRole('tab', { name: 'Data' })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Open data' }));
         const browse = useBrowse.getState().get(1);
-        expect(browse.activeId).toBe('t:users');
-        expect(browse.tabs.find((t) => t.id === 't:users')).toMatchObject({
+        expect(browse.activeId).toBe(tableTabOf(1, 'users')?.id);
+        expect(tableTabOf(1, 'users')).toMatchObject({
             preview: false,
         });
     });

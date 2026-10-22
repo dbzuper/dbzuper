@@ -1,4 +1,5 @@
 import { ListTree, Loader2, Play, PlayCircle, Square } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
     Select,
@@ -20,6 +21,7 @@ export function SqlToolbar({
     onRunAll,
     onExplain,
     onCancel,
+    chip,
 }: {
     running: boolean;
     maxRows: number;
@@ -28,6 +30,8 @@ export function SqlToolbar({
     onRunAll: () => void;
     onExplain: () => void;
     onCancel: () => void;
+    /** The active editor tab's link state, after the run buttons. */
+    chip?: ReactNode;
 }) {
     return (
         <div className="flex items-center gap-1.5 border-b px-2 py-1">
@@ -84,6 +88,7 @@ export function SqlToolbar({
                     </span>
                 </>
             )}
+            {chip}
             <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
                 {/* Tab indents inside the editor; Monaco's toggle lets keyboard users Tab out of it. */}
                 <span className="mr-2 hidden sm:inline">

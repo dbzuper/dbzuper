@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { tableTabId, useBrowse } from '@/browse/browse-store';
+import { useBrowse } from '@/browse/browse-store';
+import { tableTabOf } from '@/test/browse-tabs';
 import { TabBar } from './tab-bar';
 
 const actions = {
@@ -10,6 +11,7 @@ const actions = {
     showInUniverse: vi.fn(),
 };
 const st = () => useBrowse.getState();
+const tableTabId = (table: string) => tableTabOf(1, table)?.id;
 
 beforeEach(() => {
     useBrowse.setState({ byConnection: {} });
@@ -69,6 +71,61 @@ describe('TabBar', () => {
                 .get(1)
                 .tabs.map((t) => t.id),
         ).toEqual(['universe', tableTabId('orders')]);
+    });
+
+    it('duplicates a table tab from its context menu, filters and all', () => {
+        const filters = [
+            { column: 'status', op: 'eq' as const, value: 'paid' },
+        ];
+        st().updateTable(1, tableTabId('orders')!, { filters });
+        render(<TabBar connectionId={1} actions={actions} />);
+        fireEvent.contextMenu(screen.getByRole('tab', { name: 'orders' }));
+        fireEvent.click(
+            screen.getByRole('menuitem', { name: 'Duplicate tab' }),
+        );
+        expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+            'Universe',
+            'users',
+            'orders',
+            'orders (2)',
+        ]);
+        expect(screen.getByRole('tab', { name: 'orders (2)' })).toHaveAttribute(
+            'aria-selected',
+            'true',
+        );
+        expect(tableTabOf(1, 'orders', 2)).toMatchObject({
+            preview: false,
+            state: { filters },
+        });
+        expect(screen.getByTitle('Close orders (2)')).toBeInTheDocument();
+    });
+
+    it('offers no Duplicate tab on the Universe tab', () => {
+        render(<TabBar connectionId={1} actions={actions} />);
+        fireEvent.contextMenu(screen.getByRole('tab', { name: 'Universe' }));
+        expect(
+            screen.getByRole('menuitem', { name: 'Close all' }),
+        ).toBeVisible();
+        expect(
+            screen.queryByRole('menuitem', { name: 'Duplicate tab' }),
+        ).toBeNull();
+    });
+
+    it("shows a tab's filters as its tooltip", () => {
+        st().updateTable(1, tableTabId('orders')!, {
+            filters: [
+                { column: 'status', op: 'eq', value: 'paid' },
+                { column: 'total', op: 'gt', value: '100' },
+            ],
+        });
+        render(<TabBar connectionId={1} actions={actions} />);
+        expect(screen.getByRole('tab', { name: 'orders' })).toHaveAttribute(
+            'title',
+            'status = paid · total > 100',
+        );
+        expect(screen.getByRole('tab', { name: 'users' })).not.toHaveAttribute(
+            'title',
+        );
     });
 
     it('keeps focus in the tab bar after closing the focused tab', () => {

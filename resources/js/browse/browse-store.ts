@@ -1,11 +1,17 @@
 import { create } from 'zustand';
-import { persist, type PersistStorage } from 'zustand/middleware';
 import {
+    persist,
+    type PersistStorage,
+    type StorageValue,
+} from 'zustand/middleware';
+import {
+    FILTER_OPS,
     PER_PAGE_OPTIONS,
     type PerPage,
     type RowFilter,
     type SortKey,
 } from '@/lib/workspace-api';
+import { rowsCache } from './rows-cache';
 import { safeStorage } from './safe-storage';
 
 export type TableView = 'data' | 'structure';
@@ -25,6 +31,10 @@ export type BrowseTab =
           id: string;
           kind: 'table';
           table: string;
+          /** 1 for the first tab of a table, then the lowest free number from 2 (`orders (2)`). */
+          ordinal: number;
+          /** When this tab was last active, on a per-connection clock: the latest tab of a table has the highest. */
+          activatedAt: number;
           preview: boolean;
           state: TableTabState;
       };
@@ -39,7 +49,100 @@ export type OpenMode = 'preview' | 'permanent' | 'background';
 
 export const UNIVERSE_TAB: BrowseTab = { id: 'universe', kind: 'universe' };
 export const MAX_RECENTS = 10;
-export const tableTabId = (table: string) => `t:${table}`;
+
+/** A table tab id, stable for the life of the tab and across reloads. */
+export const newTabId = (): string =>
+    `t:${
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+    }`;
+const TAB_ID = /^t:[A-Za-z0-9-]{1,64}$/;
+
+/** `orders` for the first view of a table, `orders (2)` for the next. */
+export function tabTitle(tab: TableTab): string {
+    return tab.ordinal === 1 ? tab.table : `${tab.table} (${tab.ordinal})`;
+}
+
+const OP_SYMBOLS: Partial<Record<RowFilter['op'], string>> = {
+    eq: '=',
+    neq: '≠',
+};
+
+/** The filters of a tab in one line, e.g. `status = paid · total > 100`; empty when there are none. */
+export function filterSummary(state: TableTabState): string {
+    return state.filters
+        .map((f) => {
+            const op =
+                OP_SYMBOLS[f.op] ??
+                FILTER_OPS.find((o) => o.value === f.op)?.label ??
+                f.op;
+            return f.value === undefined
+                ? `${f.column} ${op}`
+                : `${f.column} ${op} ${f.value}`;
+        })
+        .join(' · ');
+}
+
+const isTable = (t: BrowseTab): t is TableTab => t.kind === 'table';
+
+/** The open tab of `table` that was active most recently, or null. */
+function latestOf(tabs: BrowseTab[], table: string): TableTab | null {
+    let latest: TableTab | null = null;
+    for (const t of tabs)
+        if (
+            isTable(t) &&
+            t.table === table &&
+            (!latest || t.activatedAt > latest.activatedAt)
+        )
+            latest = t;
+    return latest;
+}
+
+/** 1 when no tab shows `table`, else the lowest number from 2 that none of its tabs uses. */
+function nextOrdinal(tabs: BrowseTab[], table: string): number {
+    const used = new Set(
+        tabs
+            .filter(isTable)
+            .flatMap((t) => (t.table === table ? [t.ordinal] : [])),
+    );
+    if (used.size === 0) return 1;
+    let n = 2;
+    while (used.has(n)) n++;
+    return n;
+}
+
+/** The next value of a connection's activation clock. */
+const nextStamp = (tabs: BrowseTab[]) =>
+    tabs.reduce(
+        (max, t) => (isTable(t) ? Math.max(max, t.activatedAt) : max),
+        0,
+    ) + 1;
+
+/** Makes `id` the active tab, stamping it as the latest of its table. */
+function focus(c: ConnectionBrowse, id: string): ConnectionBrowse {
+    const tab = c.tabs.find((t) => t.id === id);
+    if (!tab) return c;
+    if (!isTable(tab)) return c.activeId === id ? c : { ...c, activeId: id };
+    const stamp = nextStamp(c.tabs);
+    if (tab.activatedAt === stamp - 1 && c.activeId === id) return c;
+    return {
+        ...c,
+        activeId: id,
+        tabs: c.tabs.map((t) =>
+            t.id === id && isTable(t) ? { ...t, activatedAt: stamp } : t,
+        ),
+    };
+}
+
+/** The latest tab of `table` on a connection (the one opening it focuses), or null. */
+export function latestTableTab(
+    connectionId: number,
+    table: string,
+): TableTab | null {
+    const c = useBrowse.getState().byConnection[connectionId];
+    return c ? latestOf(c.tabs, table) : null;
+}
 
 const DEFAULT_PER_PAGE: PerPage = 100;
 const PROMOTING: (keyof TableTabState)[] = [
@@ -77,6 +180,10 @@ type Actions = {
             merge?: boolean;
         },
     ) => string;
+    /** A copy of a table tab (drawer closed, never a preview) right after it, activated; '' when `id` is no table tab. */
+    duplicateTab: (connectionId: number, id: string) => string;
+    /** A further tab of `table` with default state, permanent, after the active tab, activated. */
+    openNewView: (connectionId: number, table: string) => string;
     promote: (connectionId: number, id: string) => void;
     activate: (connectionId: number, id: string) => void;
     activateIndex: (connectionId: number, n: number) => void;
@@ -134,13 +241,28 @@ function sanitizeTab(t: unknown, perPage: PerPage): BrowseTab | null {
     if (!isObj(t)) return null;
     if (t.kind === 'records' && typeof t.title === 'string')
         return { id: 'records', kind: 'records', title: t.title };
-    if (t.kind !== 'table' || typeof t.table !== 'string' || t.table === '')
+    if (
+        t.kind !== 'table' ||
+        typeof t.table !== 'string' ||
+        t.table === '' ||
+        typeof t.id !== 'string' ||
+        !TAB_ID.test(t.id)
+    )
         return null;
     const s = isObj(t.state) ? t.state : {};
     return {
-        id: tableTabId(t.table),
+        id: t.id,
         kind: 'table',
         table: t.table,
+        // Checked against the other tabs of the table by sanitize().
+        ordinal:
+            Number.isInteger(t.ordinal) && (t.ordinal as number) >= 1
+                ? (t.ordinal as number)
+                : 0,
+        activatedAt:
+            Number.isFinite(t.activatedAt) && (t.activatedAt as number) >= 0
+                ? (t.activatedAt as number)
+                : 0,
         preview: t.preview === true,
         state: {
             filters: Array.isArray(s.filters)
@@ -174,10 +296,20 @@ function sanitize(input: unknown): Record<number, ConnectionBrowse> {
             ? value.tabs.slice(0, 50)
             : []) {
             const tab = sanitizeTab(raw, perPage);
-            if (tab && !seen.has(tab.id)) {
-                seen.add(tab.id);
-                tabs.push(tab);
-            }
+            if (!tab || seen.has(tab.id)) continue;
+            seen.add(tab.id);
+            if (
+                tab.kind === 'table' &&
+                (tab.ordinal === 0 ||
+                    tabs.some(
+                        (t) =>
+                            isTable(t) &&
+                            t.table === tab.table &&
+                            t.ordinal === tab.ordinal,
+                    ))
+            )
+                tab.ordinal = nextOrdinal(tabs, tab.table);
+            tabs.push(tab);
         }
         const recents = Array.isArray(value.recents)
             ? value.recents
@@ -192,7 +324,62 @@ function sanitize(input: unknown): Record<number, ConnectionBrowse> {
     return out;
 }
 
+/**
+ * Version 1 had one tab per table, id `t:<table>`. Each becomes a view: a fresh id, ordinal 1, activation in tab
+ * order (the active tab latest), and the active id follows. Anything malformed is passed on for sanitize() to drop.
+ *
+ * A blob labelled version 1 may still hold version-2 connections: a window running older code copies the other
+ * connections verbatim when it saves its own. Tabs that are already views (a non-legacy id and an ordinal) pass
+ * through untouched, and only a legacy active id is remapped. Two windows running this code that migrate the same
+ * legacy blob mint different ids; the later write wins and the other window takes it over on its storage-event
+ * rehydrate, so they converge.
+ */
+function migrateConnections(input: unknown): unknown {
+    if (!isObj(input)) return input;
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input)) {
+        if (!isObj(value) || !Array.isArray(value.tabs)) {
+            out[key] = value;
+            continue;
+        }
+        const ids = new Map<unknown, string>();
+        const tables = new Set<string>();
+        const raw: unknown[] = value.tabs;
+        const tabs = raw.flatMap((t, i) => {
+            if (!isObj(t) || t.kind !== 'table') return [t];
+            if (typeof t.table !== 'string') return [];
+            const isView =
+                typeof t.id === 'string' &&
+                TAB_ID.test(t.id) &&
+                t.id !== `t:${t.table}` &&
+                Number.isInteger(t.ordinal);
+            if (isView) return [t];
+            if (tables.has(t.table)) return [];
+            tables.add(t.table);
+            const id = newTabId();
+            // Version 1 always named a table tab `t:<table>`, whatever id was stored.
+            const old = `t:${t.table}`;
+            ids.set(old, id);
+            return [
+                {
+                    ...t,
+                    id,
+                    ordinal: 1,
+                    activatedAt: old === value.activeId ? raw.length : i,
+                },
+            ];
+        });
+        out[key] = {
+            ...value,
+            tabs,
+            activeId: ids.get(value.activeId) ?? value.activeId,
+        };
+    }
+    return out;
+}
+
 const STORAGE_KEY = 'dbsuperb.browse';
+const VERSION = 2;
 const PERSIST_DELAY_MS = 250;
 
 type Persisted = { byConnection: Record<number, ConnectionBrowse> };
@@ -222,7 +409,12 @@ const browseStorage: PersistStorage<Persisted> = {
         const raw = safeStorage.getItem(name);
         if (!raw) return null;
         try {
-            return JSON.parse(raw);
+            const parsed: unknown = JSON.parse(raw);
+            if (!isObj(parsed)) return null;
+            // zustand migrates only numbered versions; an unversioned blob is as old as they come.
+            return typeof parsed.version === 'number'
+                ? (parsed as StorageValue<Persisted>)
+                : ({ ...parsed, version: 0 } as StorageValue<Persisted>);
         } catch {
             return null;
         }
@@ -240,17 +432,20 @@ function writeMerged(
     value: { state: Persisted; version?: number },
 ) {
     const next = value.state.byConnection;
-    const merged: Record<string, unknown> = {
-        ...(
-            browseStorage.getItem(name) as {
-                state?: { byConnection?: Record<string, unknown> };
-            } | null
-        )?.state?.byConnection,
-    };
+    const stored = browseStorage.getItem(name) as {
+        state?: { byConnection?: unknown };
+        version?: number;
+    } | null;
+    // Saved by an older version: what this window holds is already migrated, so all of it is written.
+    const outdated = !!stored && (stored.version ?? 0) < VERSION;
+    const base = outdated
+        ? migrateConnections(stored.state?.byConnection)
+        : stored?.state?.byConnection;
+    const merged: Record<string, unknown> = { ...(isObj(base) ? base : {}) };
     const ids = new Set([...Object.keys(next), ...Object.keys(lastSynced)]);
     for (const key of ids) {
         const id = Number(key);
-        if (next[id] === lastSynced[id]) continue;
+        if (next[id] === lastSynced[id] && !outdated) continue;
         if (next[id]) merged[key] = next[id];
         else delete merged[key];
     }
@@ -290,27 +485,47 @@ export const useBrowse = create<State>()(
                     const tabs = c.tabs.filter(
                         (t, i) => t.kind === 'universe' || keep(t, i),
                     );
-                    return {
-                        ...c,
-                        tabs,
-                        activeId: afterRemoval(c.tabs, tabs, c.activeId),
-                    };
+                    // Closed tabs' rows would only hold LRU slots.
+                    for (const t of c.tabs)
+                        if (isTable(t) && !tabs.includes(t))
+                            rowsCache.delete(`${connectionId}:${t.id}`);
+                    return focus(
+                        { ...c, tabs },
+                        afterRemoval(c.tabs, tabs, c.activeId),
+                    );
                 });
+            /** Puts a new table tab after the tab at index `at(c)` and activates it. */
+            const insertAfter = (
+                connectionId: number,
+                at: (c: ConnectionBrowse) => number,
+                make: (c: ConnectionBrowse) => TableTab,
+            ) => {
+                let id = '';
+                update(connectionId, (c) => {
+                    const tab = make(c);
+                    id = tab.id;
+                    const tabs = [...c.tabs];
+                    tabs.splice(at(c) + 1, 0, tab);
+                    return focus({ ...c, tabs }, tab.id);
+                });
+                return id;
+            };
 
             return {
                 byConnection: {},
                 get: current,
                 openTable: (connectionId, table, opts = {}) => {
                     const mode = opts.mode ?? 'preview';
-                    const id = tableTabId(table);
+                    let id = '';
                     update(connectionId, (c) => {
                         const recents = [
                             table,
                             ...c.recents.filter((r) => r !== table),
                         ].slice(0, MAX_RECENTS);
-                        const existing = c.tabs.find((t) => t.id === id);
+                        const existing = latestOf(c.tabs, table);
+                        id = existing?.id ?? newTabId();
                         let tabs: BrowseTab[];
-                        if (existing && existing.kind === 'table') {
+                        if (existing) {
                             tabs = c.tabs.map((t) =>
                                 t.id === id && t.kind === 'table'
                                     ? {
@@ -335,6 +550,8 @@ export const useBrowse = create<State>()(
                                 id,
                                 kind: 'table',
                                 table,
+                                ordinal: nextOrdinal(c.tabs, table),
+                                activatedAt: nextStamp(c.tabs),
                                 preview: mode === 'preview',
                                 state: {
                                     ...defaultState(c.perPage),
@@ -349,6 +566,10 @@ export const useBrowse = create<State>()(
                                       )
                                     : -1;
                             if (previewIndex >= 0) {
+                                // The replaced preview is gone, like a closed tab: its rows would only hold an LRU slot.
+                                rowsCache.delete(
+                                    `${connectionId}:${c.tabs[previewIndex].id}`,
+                                );
                                 tabs = c.tabs.map((t, i) =>
                                     i === previewIndex ? tab : t,
                                 );
@@ -360,15 +581,49 @@ export const useBrowse = create<State>()(
                                 tabs.splice(activeIndex + 1, 0, tab);
                             }
                         }
-                        return {
-                            ...c,
-                            tabs,
-                            recents,
-                            activeId: mode === 'background' ? c.activeId : id,
-                        };
+                        const next = { ...c, tabs, recents };
+                        return mode === 'background' ? next : focus(next, id);
                     });
                     return id;
                 },
+                duplicateTab: (connectionId, id) => {
+                    const source = current(connectionId).tabs.find(
+                        (t) => t.id === id,
+                    );
+                    if (!source || !isTable(source)) return '';
+                    return insertAfter(
+                        connectionId,
+                        (c) => c.tabs.findIndex((t) => t.id === id),
+                        (c) => ({
+                            id: newTabId(),
+                            kind: 'table',
+                            table: source.table,
+                            ordinal: nextOrdinal(c.tabs, source.table),
+                            activatedAt: 0,
+                            preview: false,
+                            state: { ...source.state, drawerRow: null },
+                        }),
+                    );
+                },
+                openNewView: (connectionId, table) =>
+                    insertAfter(
+                        connectionId,
+                        // Never before the Universe tab, even when the active id is stale.
+                        (c) =>
+                            Math.max(
+                                0,
+                                c.tabs.findIndex((t) => t.id === c.activeId),
+                            ),
+                        (c) => ({
+                            id: newTabId(),
+                            kind: 'table',
+                            table,
+                            ordinal: nextOrdinal(c.tabs, table),
+                            activatedAt: 0,
+                            preview: false,
+                            state: defaultState(c.perPage),
+                        }),
+                    ),
                 promote: (connectionId, id) => {
                     const tab = current(connectionId).tabs.find(
                         (t) => t.id === id,
@@ -384,25 +639,19 @@ export const useBrowse = create<State>()(
                     }));
                 },
                 activate: (connectionId, id) =>
-                    update(connectionId, (c) =>
-                        c.tabs.some((t) => t.id === id)
-                            ? { ...c, activeId: id }
-                            : c,
-                    ),
+                    update(connectionId, (c) => focus(c, id)),
                 activateIndex: (connectionId, n) =>
                     update(connectionId, (c) =>
-                        c.tabs[n] ? { ...c, activeId: c.tabs[n].id } : c,
+                        c.tabs[n] ? focus(c, c.tabs[n].id) : c,
                     ),
                 cycle: (connectionId, dir) =>
                     update(connectionId, (c) => {
                         const i = c.tabs.findIndex((t) => t.id === c.activeId);
-                        return {
-                            ...c,
-                            activeId:
-                                c.tabs[
-                                    (i + dir + c.tabs.length) % c.tabs.length
-                                ].id,
-                        };
+                        return focus(
+                            c,
+                            c.tabs[(i + dir + c.tabs.length) % c.tabs.length]
+                                .id,
+                        );
                     }),
                 closeTab: (connectionId, id) =>
                     remove(connectionId, (t) => t.id !== id),
@@ -516,8 +765,21 @@ export const useBrowse = create<State>()(
         },
         {
             name: STORAGE_KEY,
-            version: 1,
+            version: VERSION,
             storage: browseStorage,
+            migrate: (persisted, version) => {
+                const state = isObj(persisted) ? persisted : {};
+                return (
+                    (version ?? 0) < 2
+                        ? {
+                              ...state,
+                              byConnection: migrateConnections(
+                                  state.byConnection,
+                              ),
+                          }
+                        : state
+                ) as Persisted;
+            },
             partialize: (s) => ({ byConnection: s.byConnection }),
             merge: (persisted, current) => {
                 const incoming = sanitize(

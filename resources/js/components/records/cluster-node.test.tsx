@@ -7,6 +7,7 @@ import type { RelationshipSummary } from '@/records/types';
 import { useBrowse } from '@/browse/browse-store';
 import { useWorkspace } from '@/universe/store';
 import { ClusterNode } from './cluster-node';
+import { tableTabOf } from '@/test/browse-tabs';
 
 const summary: RelationshipSummary = {
     id: 'fk',
@@ -101,17 +102,15 @@ describe('ClusterNode', () => {
             screen.getByRole('button', { name: 'Open in table tab' }),
         );
         const browse = useBrowse.getState().get(1);
-        expect(browse.activeId).toBe('t:order_items');
-        expect(browse.tabs.find((t) => t.id === 't:order_items')).toMatchObject(
-            {
-                preview: false,
-                state: {
-                    filters: [
-                        { column: 'order_id', op: 'eq', value: '1' },
-                        { column: 'shop_id', op: 'eq', value: '2' },
-                    ],
-                },
+        expect(browse.activeId).toBe(tableTabOf(1, 'order_items')?.id);
+        expect(tableTabOf(1, 'order_items')).toMatchObject({
+            preview: false,
+            state: {
+                filters: [
+                    { column: 'order_id', op: 'eq', value: '1' },
+                    { column: 'shop_id', op: 'eq', value: '2' },
+                ],
             },
-        );
+        });
     });
 });

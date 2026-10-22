@@ -21,6 +21,7 @@ vi.mock('@/components/grid/result-grid', () => ({
 }));
 
 import { TableTabView, tableHeadingId } from './table-tab';
+import { tableTabOf } from '@/test/browse-tabs';
 
 const connection = { id: 1, driver: 'mysql' } as ConnectionSummary;
 const snapshot = makeSnapshot([{ name: 'orders' }], [], 'mysql');
@@ -31,14 +32,13 @@ const actions = {
     showInUniverse: vi.fn(),
 };
 
-const tabOf = (table: string) =>
-    useBrowse
-        .getState()
-        .byConnection[1].tabs.find((t) => t.id === `t:${table}`) as TableTab;
+const tabOf = (table: string) => tableTabOf(1, table) as TableTab;
 
 function Harness({ table = 'orders' }: { table?: string }) {
     const tab = useBrowse((s) =>
-        s.byConnection[1]?.tabs.find((t) => t.id === `t:${table}`),
+        s.byConnection[1]?.tabs.find(
+            (t) => t.kind === 'table' && t.table === table && t.ordinal === 1,
+        ),
     ) as TableTab;
     return (
         <TableTabView
@@ -66,7 +66,7 @@ describe('TableTabView', () => {
         render(<Harness />);
         expect(
             screen.getByRole('heading', { level: 2, name: 'orders' }),
-        ).toHaveAttribute('id', tableHeadingId('t:orders'));
+        ).toHaveAttribute('id', tableHeadingId(tabOf('orders').id));
         expect(screen.getByRole('radio', { name: 'Data' })).toHaveAttribute(
             'aria-checked',
             'true',
@@ -89,8 +89,24 @@ describe('TableTabView', () => {
         expect(useWorkspace.getState().dockOpen).toBe(true);
     });
 
+    it('opens one linked editor tab however often Open in SQL is pressed', () => {
+        useBrowse.getState().openTable(1, 'orders');
+        render(<Harness />);
+        fireEvent.click(screen.getByRole('button', { name: 'Open in SQL' }));
+        useSqlTabs.getState().openTab(1, 'other');
+        fireEvent.click(screen.getByRole('button', { name: 'Open in SQL' }));
+        const sql = useSqlTabs.getState().byConnection[1];
+        const linked = sql.tabs.filter((t) => t.link);
+        expect(linked).toHaveLength(1);
+        expect(linked[0]).toMatchObject({
+            title: 'orders',
+            link: { browseTabId: tabOf('orders').id, table: 'orders' },
+        });
+        expect(sql.activeId).toBe(linked[0].id);
+    });
+
     const cacheWith = (page: number, sql: string) =>
-        rowsCache.set('1:orders', {
+        rowsCache.set(`1:${tabOf('orders').id}`, {
             requestKey: JSON.stringify({
                 filters: [],
                 sort: [],
@@ -139,7 +155,7 @@ describe('TableTabView', () => {
 
     it('refreshes the data even when Refresh is clicked in Structure', async () => {
         useBrowse.getState().openTable(1, 'orders');
-        rowsCache.set('1:orders', {
+        rowsCache.set(`1:${tabOf('orders').id}`, {
             requestKey: JSON.stringify({
                 filters: [],
                 sort: [],
