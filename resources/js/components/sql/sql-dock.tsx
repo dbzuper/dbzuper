@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import type * as Monaco from 'monaco-editor';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { registerEditorModel } from '@/browse/sql-link';
 import { Button } from '@/components/ui/button';
 import {
     toggleDock,
@@ -126,6 +127,14 @@ export default function SqlDock({
     // Markers describe the previous tab's statement, so they go when the tab changes.
     const activeId = active?.id;
     useEffect(() => clearMarkers(), [activeId, clearMarkers]);
+
+    // The model now in the editor is the active tab's (the editor switches models before this runs); a linked tab
+    // that follows its table tab edits it, so the change is undoable. It stays registered until disposed.
+    const [editorMounts, setEditorMounts] = useState(0);
+    useEffect(() => {
+        const model = editorRef.current?.getModel();
+        if (activeId && model) registerEditorModel(activeId, model);
+    }, [activeId, editorMounts]);
 
     const resolveConfirm = useCallback((answer: ConfirmAnswer) => {
         pendingConfirm.current?.(answer);
@@ -386,6 +395,7 @@ export default function SqlDock({
                         onMount={(editor, monaco) => {
                             editorRef.current = editor;
                             monacoRef.current = monaco;
+                            setEditorMounts((n) => n + 1);
                             // Opening the dock (Ctrl/⌘+J or the rail) means "type SQL now".
                             editor.focus();
                             editor.addCommand(

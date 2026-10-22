@@ -137,6 +137,23 @@ describe('makeTableActions', () => {
         expect(useWorkspace.getState().dockOpen).toBe(true);
     });
 
+    it('opens the editor tab linked to the latest tab of an open table', () => {
+        openTableTab(1, 'users', { mode: 'permanent' });
+        const first = tableTabOf(1, 'users')!.id;
+        const second = useBrowse.getState().duplicateTab(1, first);
+        actions.openInSql('users');
+        actions.openInSql('users');
+        const sql = useSqlTabs.getState().byConnection[1];
+        const linked = sql.tabs.filter((t) => t.link);
+        expect(linked).toHaveLength(1);
+        expect(linked[0]).toMatchObject({
+            title: 'users (2)',
+            link: { browseTabId: second },
+        });
+        expect(sql.activeId).toBe(linked[0].id);
+        expect(useWorkspace.getState().dockOpen).toBe(true);
+    });
+
     it('shows a table in the universe', () => {
         actions.open('users', 'permanent');
         actions.showInUniverse('users');

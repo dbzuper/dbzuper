@@ -5,6 +5,7 @@ import type { ConnectionSummary } from '@/types/connection';
 import type { SchemaSnapshot } from '@/types/schema';
 import { universe } from '@/universe/controller';
 import { useWorkspace } from '@/universe/store';
+import { openTableTabInSql } from './sql-link';
 import {
     latestTableTab,
     useBrowse,
@@ -82,14 +83,18 @@ export function makeTableActions(
                 state: { view: 'structure' },
                 merge: true,
             }),
+        // On an open table, the editor tab linked to its latest tab; else an unlinked first-page SELECT.
         openInSql: (table) => {
-            useSqlTabs
-                .getState()
-                .openTab(
-                    c,
-                    `SELECT * FROM ${quoteIdent(connection.driver, table)} LIMIT 100`,
-                    table,
-                );
+            const latest = latestTableTab(c, table);
+            if (latest) openTableTabInSql(c, latest, connection.driver);
+            else
+                useSqlTabs
+                    .getState()
+                    .openTab(
+                        c,
+                        `SELECT * FROM ${quoteIdent(connection.driver, table)} LIMIT 100`,
+                        table,
+                    );
             useWorkspace.getState().setDockOpen(true);
         },
         showInUniverse: (table) => showInUniverse(c, table),

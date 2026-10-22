@@ -89,6 +89,22 @@ describe('TableTabView', () => {
         expect(useWorkspace.getState().dockOpen).toBe(true);
     });
 
+    it('opens one linked editor tab however often Open in SQL is pressed', () => {
+        useBrowse.getState().openTable(1, 'orders');
+        render(<Harness />);
+        fireEvent.click(screen.getByRole('button', { name: 'Open in SQL' }));
+        useSqlTabs.getState().openTab(1, 'other');
+        fireEvent.click(screen.getByRole('button', { name: 'Open in SQL' }));
+        const sql = useSqlTabs.getState().byConnection[1];
+        const linked = sql.tabs.filter((t) => t.link);
+        expect(linked).toHaveLength(1);
+        expect(linked[0]).toMatchObject({
+            title: 'orders',
+            link: { browseTabId: tabOf('orders').id, table: 'orders' },
+        });
+        expect(sql.activeId).toBe(linked[0].id);
+    });
+
     const cacheWith = (page: number, sql: string) =>
         rowsCache.set(`1:${tabOf('orders').id}`, {
             requestKey: JSON.stringify({

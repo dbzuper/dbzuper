@@ -13,15 +13,15 @@ import {
     type TableView,
 } from '@/browse/browse-store';
 import { usePins } from '@/browse/pins-store';
-import { rowsCache, rowsRequestKey } from '@/browse/rows-cache';
+import { rowsCache } from '@/browse/rows-cache';
+import { openTableTabInSql, tableTabSql } from '@/browse/sql-link';
 import { openTableTab } from '@/browse/table-actions';
 import { tabDomId } from '@/components/browse/tab-bar';
 import type { TableActions } from '@/components/browse/table-context-menu';
 import { Button } from '@/components/ui/button';
-import { quoteIdent, writeClipboard } from '@/grid/copy';
+import { writeClipboard } from '@/grid/copy';
 import type { RowFilter } from '@/lib/workspace-api';
 import { cn } from '@/lib/utils';
-import { useSqlTabs } from '@/sql/tabs-store';
 import type { ConnectionSummary } from '@/types/connection';
 import type { SchemaSnapshot } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
@@ -79,16 +79,11 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
     const setView = (view: TableView) =>
         useBrowse.getState().updateTable(connectionId, tab.id, { view });
 
-    /** The SQL of the cached rows when they answer the tab's current request, else a plain first-page SELECT. */
-    const selectSql = () => {
-        const hit = rowsCache.get(`${connectionId}:${tab.id}`);
-        return hit && hit.requestKey === rowsRequestKey(tab.state)
-            ? hit.rows.sql
-            : `SELECT * FROM ${quoteIdent(connection.driver, tab.table)} LIMIT 100`;
-    };
+    const selectSql = () => tableTabSql(connectionId, tab, connection.driver);
 
+    // The editor tab stays linked to this tab: it follows the tab's query, and a fitting Run sets the tab.
     const openInSql = () => {
-        useSqlTabs.getState().openTab(connectionId, selectSql(), tab.table);
+        openTableTabInSql(connectionId, tab, connection.driver);
         useWorkspace.getState().setDockOpen(true);
     };
 

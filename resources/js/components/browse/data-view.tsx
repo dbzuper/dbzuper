@@ -29,6 +29,7 @@ import {
     type GridLayout,
 } from '@/browse/local-prefs';
 import { rowsCache, rowsRequestKey } from '@/browse/rows-cache';
+import { reportTableRows } from '@/browse/sql-link';
 import { FilterBar } from '@/components/inspector/filter-bar';
 import { Button } from '@/components/ui/button';
 import {
@@ -234,6 +235,8 @@ function DataViewBody({
                     scrollTop: 0,
                 });
                 setView({ key: requestKey, rows, scrollTop: 0 });
+                // A linked editor tab follows the query; a refetch of the same request is not a new one.
+                reportTableRows(connectionId, tab.id, requestKey, rows.sql);
             })
             .catch((e) => {
                 if (
@@ -247,7 +250,15 @@ function DataViewBody({
                 });
             });
         return () => controller.abort();
-    }, [connectionId, name, cacheKey, requestKey, refreshNonce, reload]);
+    }, [
+        connectionId,
+        name,
+        cacheKey,
+        requestKey,
+        refreshNonce,
+        reload,
+        tab.id,
+    ]);
 
     // Counting runs beside the rows request and never holds it up. A view restored from the cache
     // sends no count; if its count never finished, "Count exactly" offers to run one.

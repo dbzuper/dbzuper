@@ -182,4 +182,122 @@ describe('sql tabs store', () => {
         );
         expect(local).not.toBe('other');
     });
+
+    describe('links to table tabs', () => {
+        const link = (tabId: string) =>
+            s().byConnection[1].tabs.find((t) => t.id === tabId)?.link;
+
+        it('opens one linked editor tab per table tab and reuses it', () => {
+            s().ensure(1);
+            const id = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q1');
+            const other = s().openTab(1, 'x');
+            expect(s().byConnection[1].activeId).toBe(other);
+
+            const again = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q2');
+
+            expect(again).toBe(id);
+            expect(s().byConnection[1].activeId).toBe(id);
+            const tab = s().byConnection[1].tabs.find((t) => t.id === id);
+            expect(tab).toMatchObject({
+                title: 'orders',
+                sql: 'q1',
+                link: { browseTabId: 't:a', table: 'orders', syncedSql: 'q1' },
+            });
+            expect(s().findLinked(1, 't:a')?.id).toBe(id);
+            expect(s().findLinked(2, 't:a')).toBeUndefined();
+        });
+
+        it('links two views of a table to two editor tabs', () => {
+            const a = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q');
+            const b = s().openLinkedTab(1, 't:b', 'orders', 'orders (2)', 'q');
+            expect(a).not.toBe(b);
+            expect(s().findLinked(1, 't:b')?.title).toBe('orders (2)');
+        });
+
+        it('sets and removes a link', () => {
+            const id = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q');
+            s().setLink(1, id, {
+                browseTabId: 't:a',
+                table: 'orders',
+                syncedSql: 'q',
+                stale: true,
+            });
+            expect(link(id)?.stale).toBe(true);
+            s().setLink(1, id, undefined);
+            expect(link(id)).toBeUndefined();
+            expect(s().findLinked(1, 't:a')).toBeUndefined();
+        });
+
+        it('ends a closed link once the user edits the text', () => {
+            const id = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q');
+            s().setLink(1, id, { ...link(id)!, closed: true });
+            s().setSql(1, id, 'q');
+            expect(link(id)?.closed).toBe(true);
+            s().setSql(1, id, 'q edited');
+            expect(link(id)).toBeUndefined();
+        });
+
+        it('keeps a live link when the text is edited', () => {
+            const id = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q');
+            s().setSql(1, id, 'q edited');
+            expect(link(id)?.syncedSql).toBe('q');
+        });
+
+        it('saves well-formed links and drops malformed or duplicate ones on restore', async () => {
+            localStorage.setItem(
+                KEY,
+                JSON.stringify({
+                    state: {
+                        byConnection: {
+                            1: {
+                                tabs: [
+                                    {
+                                        id: 'a',
+                                        title: 'orders',
+                                        sql: 'q',
+                                        link: {
+                                            browseTabId: 't:a',
+                                            table: 'orders',
+                                            syncedSql: 'q',
+                                            stale: true,
+                                            extra: 1,
+                                        },
+                                    },
+                                    {
+                                        id: 'b',
+                                        title: 'dup',
+                                        sql: 'q',
+                                        link: {
+                                            browseTabId: 't:a',
+                                            table: 'orders',
+                                            syncedSql: 'q',
+                                        },
+                                    },
+                                    {
+                                        id: 'c',
+                                        title: 'bad',
+                                        sql: 'q',
+                                        link: { browseTabId: 7 },
+                                    },
+                                ],
+                                activeId: 'a',
+                            },
+                        },
+                    },
+                    version: 1,
+                }),
+            );
+            await useSqlTabs.persist.rehydrate();
+            const tabs = s().byConnection[1].tabs;
+            expect(tabs.map((t) => t.id)).toEqual(['a', 'b', 'c']);
+            expect(tabs[0].link).toEqual({
+                browseTabId: 't:a',
+                table: 'orders',
+                syncedSql: 'q',
+                stale: true,
+            });
+            expect(tabs[1].link).toBeUndefined();
+            expect(tabs[2].link).toBeUndefined();
+        });
+    });
 });

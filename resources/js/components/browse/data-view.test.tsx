@@ -90,6 +90,9 @@ vi.mock('@/components/grid/result-grid', () => ({
     ),
 }));
 
+const reportTableRows = vi.hoisted(() => vi.fn());
+vi.mock('@/browse/sql-link', () => ({ reportTableRows }));
+
 import { DataView } from './data-view';
 import { tableTabOf } from '@/test/browse-tabs';
 
@@ -166,7 +169,9 @@ function Harness({
     table = 'orders',
     id,
     onOpenTable = vi.fn(),
+    refreshNonce,
 }: {
+    refreshNonce?: number;
     rowCount?: RowCountSchema;
     table?: string;
     /** A particular tab of the table; its first tab when not given. */
@@ -188,6 +193,7 @@ function Harness({
             table={snapshot.tables.find((t) => t.name === table)!}
             tab={tab}
             onOpenTable={onOpenTable}
+            refreshNonce={refreshNonce}
         />
     );
 }
@@ -210,6 +216,7 @@ beforeEach(() => {
     api.rows.mockReset();
     api.count.mockReset();
     toastError.mockReset();
+    reportTableRows.mockReset();
     api.rows.mockResolvedValue(page(1, 1));
     api.count.mockResolvedValue({ count: 10, kind: 'exact' });
 });
@@ -219,6 +226,35 @@ afterEach(() => {
 });
 
 describe('DataView', () => {
+    it('reports each rows response with its request key and SQL, for a linked editor tab to follow', async () => {
+        open();
+        api.rows.mockResolvedValue(page(1, 1, { sql: 'select one' }));
+        const { rerender } = render(<Harness refreshNonce={0} />);
+        await waitFor(() =>
+            expect(reportTableRows).toHaveBeenCalledWith(
+                1,
+                tabId(),
+                requestKey([]),
+                'select one',
+            ),
+        );
+        api.rows.mockResolvedValue(page(2, 2, { sql: 'select two' }));
+        act(() => useBrowse.getState().updateTable(1, tabId(), { page: 2 }));
+        await waitFor(() =>
+            expect(reportTableRows).toHaveBeenLastCalledWith(
+                1,
+                tabId(),
+                requestKey([], 2),
+                'select two',
+            ),
+        );
+        rerender(<Harness refreshNonce={1} />);
+        await waitFor(() => expect(api.rows).toHaveBeenCalledTimes(3));
+        await waitFor(() => expect(reportTableRows).toHaveBeenCalledTimes(3));
+        // The refetch reports the same request key, which sql-link ignores.
+        expect(reportTableRows.mock.calls[2][2]).toBe(requestKey([], 2));
+    });
+
     it('renders cached rows for an unchanged request without fetching', async () => {
         open();
         rowsCache.set(`1:${tabId('orders')}`, {

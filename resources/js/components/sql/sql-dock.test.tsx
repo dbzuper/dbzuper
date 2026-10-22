@@ -25,6 +25,8 @@ const api = vi.hoisted(() => ({ run: vi.fn(), explain: vi.fn() }));
 const editorFocus = vi.hoisted(() => vi.fn());
 /** Monaco commands the dock registered: keybinding -> handler. */
 const commands = vi.hoisted(() => new Map<number, () => void>());
+/** Edits the sync pushed into the editor's model. */
+const pushEdits = vi.hoisted(() => vi.fn());
 vi.mock('@/sql/query-api', () => ({ queryApi: api }));
 
 // Monaco cannot run in jsdom: the editor mounts a minimal fake that exposes the statement under the cursor.
@@ -41,6 +43,10 @@ vi.mock('./sql-editor', async () => {
                     getValue: () => 'select 1',
                     getOffsetAt: () => 0,
                     isDisposed: () => false,
+                    getFullModelRange: () => ({}),
+                    pushStackElement: () => {},
+                    pushEditOperations: pushEdits,
+                    onWillDispose: () => ({ dispose: () => {} }),
                 };
                 onMount(
                     {
@@ -68,6 +74,7 @@ vi.mock('./sql-editor', async () => {
     };
 });
 
+import { onTableQuery } from '@/browse/sql-link';
 import SqlDock from './sql-dock';
 
 const connection = {
@@ -111,6 +118,26 @@ beforeEach(() => {
 });
 
 describe('SqlDock', () => {
+    it('lets a linked tab follow its table tab through the editor model, so the change is undoable', async () => {
+        const id = useSqlTabs
+            .getState()
+            .openLinkedTab(1, 't:a', 'orders', 'orders', 'select 1');
+        render(<SqlDock connection={connection} snapshot={null} />);
+        await screen.findByTestId('editor');
+
+        act(() => onTableQuery(1, 't:a', 'select 2'));
+
+        expect(pushEdits).toHaveBeenCalledWith(
+            [],
+            [{ range: {}, text: 'select 2' }],
+            expect.any(Function),
+        );
+        expect(
+            useSqlTabs.getState().byConnection[1].tabs.find((t) => t.id === id)
+                ?.sql,
+        ).toBe('select 2');
+    });
+
     it('runs statements and shows results without a schema snapshot, with completions off', async () => {
         api.run.mockResolvedValue(ok);
         render(<SqlDock connection={connection} snapshot={null} />);
