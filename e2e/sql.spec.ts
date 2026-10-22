@@ -6,7 +6,7 @@ import {
     type Request,
 } from '@playwright/test';
 import path from 'node:path';
-import { expectNoA11yViolations } from './support/axe';
+import { expectNoA11yViolations, settleStyles } from './support/axe';
 import { addSqliteConnection, ensureSignedIn } from './support/auth';
 
 const DEMO = path.resolve('storage/app/demo/commerce.sqlite');
@@ -450,6 +450,18 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
 /** Clicks the real theme toggle until the theme label reads `appearance` (dark -> light -> system). */
 async function switchTheme(appearance: 'dark' | 'light') {
     const toggle = page.getByRole('button', { name: /^Theme: / }).first();
+    // The foreground colour of the theme being left: once the switch has fully repainted, no element
+    // may still be drawn in it (axe sampling a half-restyled page reported dark text on light).
+    const foreground = () =>
+        page.evaluate(() => {
+            const probe = document.createElement('span');
+            probe.className = 'text-foreground';
+            document.body.append(probe);
+            const colour = getComputedStyle(probe).color;
+            probe.remove();
+            return colour;
+        });
+    const previous = await foreground();
     for (let i = 0; i < 3; i++) {
         if (
             (await toggle.getAttribute('aria-label'))?.startsWith(
@@ -465,6 +477,19 @@ async function switchTheme(appearance: 'dark' | 'light') {
                         (dark ? 'dark' : 'light'),
                 appearance === 'dark',
             );
+            if ((await foreground()) !== previous) {
+                await settleStyles(page);
+                await page.waitForFunction(
+                    (stale) =>
+                        ![...document.querySelectorAll('body *')].some(
+                            (el) =>
+                                el.getClientRects().length > 0 &&
+                                getComputedStyle(el).color === stale,
+                        ),
+                    previous,
+                    { polling: 'raf', timeout: 5_000 },
+                );
+            }
             return;
         }
         await toggle.click();
