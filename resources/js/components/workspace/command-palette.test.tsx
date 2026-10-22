@@ -16,6 +16,7 @@ import { useWorkspace } from '@/universe/store';
 import { INSPECTOR_HEADING_ID } from '@/components/inspector/inspector-panel';
 import { togglePalette } from '@/lib/workspace-shortcuts';
 import { CommandPalette } from './command-palette';
+import { tableTabOf } from '@/test/browse-tabs';
 
 const snap = makeSnapshot(
     [
@@ -52,9 +53,11 @@ describe('CommandPalette', () => {
         );
         fireEvent.change(searchBox(), { target: { value: 'orders' } });
         fireEvent.keyDown(searchBox(), { key: 'Enter' });
-        expect(useBrowse.getState().get(1).activeId).toBe('t:orders');
+        expect(useBrowse.getState().get(1).activeId).toBe(
+            tableTabOf(1, 'orders')?.id,
+        );
         expect(useBrowse.getState().get(1).tabs[1]).toMatchObject({
-            id: 't:orders',
+            table: 'orders',
             preview: false,
         });
         expect(useWorkspace.getState().paletteOpen).toBe(false);
@@ -72,7 +75,9 @@ describe('CommandPalette', () => {
         fireEvent.click(
             screen.getAllByRole('option', { name: /users\.id/ })[0],
         );
-        expect(useBrowse.getState().get(1).activeId).toBe('t:users');
+        expect(useBrowse.getState().get(1).activeId).toBe(
+            tableTabOf(1, 'users')?.id,
+        );
     });
 
     it('keeps the filters and page of an already-open tab when a column is picked', () => {
@@ -81,7 +86,9 @@ describe('CommandPalette', () => {
             mode: 'permanent',
             state: { filters, view: 'structure' },
         });
-        useBrowse.getState().updateTable(1, 't:users', { page: 2 });
+        useBrowse
+            .getState()
+            .updateTable(1, tableTabOf(1, 'users')!.id, { page: 2 });
         render(
             <CommandPalette
                 connectionId={1}
@@ -133,7 +140,9 @@ describe('CommandPalette', () => {
         expect(screen.queryByText(/Open record/)).toBeNull();
         fireEvent.change(input, { target: { value: 'users' } });
         fireEvent.keyDown(input, { key: 'Enter' });
-        expect(useBrowse.getState().get(1).activeId).toBe('t:users');
+        expect(useBrowse.getState().get(1).activeId).toBe(
+            tableTabOf(1, 'users')?.id,
+        );
         expect(useWorkspace.getState().paletteOpen).toBe(false);
     });
 

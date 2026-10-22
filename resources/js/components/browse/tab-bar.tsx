@@ -7,7 +7,13 @@ import {
     type KeyboardEvent,
     type MouseEvent,
 } from 'react';
-import { UNIVERSE_TAB, useBrowse, type BrowseTab } from '@/browse/browse-store';
+import {
+    filterSummary,
+    tabTitle,
+    UNIVERSE_TAB,
+    useBrowse,
+    type BrowseTab,
+} from '@/browse/browse-store';
 import { usePins } from '@/browse/pins-store';
 import type { TableActions } from '@/components/browse/table-context-menu';
 import {
@@ -39,7 +45,7 @@ const titleOf = (tab: BrowseTab) =>
         ? 'Universe'
         : tab.kind === 'records'
           ? tab.title
-          : tab.table;
+          : tabTitle(tab);
 
 function TabIcon({ tab }: { tab: BrowseTab }) {
     const cls = 'size-3.5 shrink-0';
@@ -102,6 +108,13 @@ function TabMenu({
                 {tab.kind === 'table' && (
                     <>
                         <ContextMenuSeparator />
+                        <ContextMenuItem
+                            onSelect={() =>
+                                store().duplicateTab(connectionId, tab.id)
+                            }
+                        >
+                            Duplicate tab
+                        </ContextMenuItem>
                         <ContextMenuItem
                             onSelect={() =>
                                 void usePins
@@ -214,6 +227,8 @@ export function TabBar({
                     const active = tab.id === activeId;
                     const preview = tab.kind === 'table' && tab.preview;
                     const title = titleOf(tab);
+                    const summary =
+                        tab.kind === 'table' ? filterSummary(tab.state) : '';
                     const draggable = tab.kind !== 'universe';
                     return (
                         <TabMenu
@@ -254,6 +269,7 @@ export function TabBar({
                                     id={tabDomId(tab.id)}
                                     aria-selected={active}
                                     aria-controls={panelDomId}
+                                    title={summary || undefined}
                                     tabIndex={active ? 0 : -1}
                                     data-preview={preview ? 'true' : undefined}
                                     aria-keyshortcuts={

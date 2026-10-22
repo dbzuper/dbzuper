@@ -199,7 +199,8 @@ export default function WorkspaceShow({
                             ]),
                         ),
                     );
-                for (const t of cleaned)
+                // Once per table, however many of its tabs were cleaned.
+                for (const t of new Set(cleaned))
                     toast(`Filters on removed columns of ${t} were cleared.`);
                 // Cached pages may predate the refreshed schema.
                 if (refresh) rowsCache.clear();

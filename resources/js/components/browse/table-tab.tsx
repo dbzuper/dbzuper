@@ -72,7 +72,7 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
 
     // Dropping the cached rows first means a Data view mounted later (after Structure) refetches too.
     const refresh = () => {
-        rowsCache.delete(`${connectionId}:${tab.table}`);
+        rowsCache.delete(`${connectionId}:${tab.id}`);
         setRefreshNonce((n) => n + 1);
     };
 
@@ -81,7 +81,7 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
 
     /** The SQL of the cached rows when they answer the tab's current request, else a plain first-page SELECT. */
     const selectSql = () => {
-        const hit = rowsCache.get(`${connectionId}:${tab.table}`);
+        const hit = rowsCache.get(`${connectionId}:${tab.id}`);
         return hit && hit.requestKey === rowsRequestKey(tab.state)
             ? hit.rows.sql
             : `SELECT * FROM ${quoteIdent(connection.driver, tab.table)} LIMIT 100`;

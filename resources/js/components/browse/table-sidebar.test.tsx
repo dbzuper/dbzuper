@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse } from '@/browse/browse-store';
 import { usePins } from '@/browse/pins-store';
 import type { SchemaSnapshot } from '@/types/schema';
+import { tableTabOf } from '@/test/browse-tabs';
 import { TableSidebar } from './table-sidebar';
 
 vi.mock('@tanstack/react-virtual', () => ({
@@ -133,6 +134,38 @@ describe('TableSidebar', () => {
             ['orders', 'permanent'],
             ['orders', 'background'],
         ]);
+    });
+
+    it('opens a new default view from Open in new tab when the table is already open', () => {
+        const filters = [{ column: 'id', op: 'eq' as const, value: '1' }];
+        const first = useBrowse
+            .getState()
+            .openTable(1, 'orders', { mode: 'permanent', state: { filters } });
+        renderSidebar();
+        fireEvent.contextMenu(
+            screen.getAllByRole('treeitem', { name: /^orders/ })[0],
+        );
+        fireEvent.click(
+            screen.getByRole('menuitem', { name: 'Open in new tab' }),
+        );
+        const view = tableTabOf(1, 'orders', 2);
+        expect(view).toMatchObject({
+            preview: false,
+            state: { filters: [], page: 1 },
+        });
+        expect(useBrowse.getState().get(1).activeId).toBe(view?.id);
+        expect(tableTabOf(1, 'orders')?.id).toBe(first);
+        expect(tableTabOf(1, 'orders')?.state.filters).toEqual(filters);
+    });
+
+    it('opens a background tab from Open in new tab when the table is not open', () => {
+        renderSidebar();
+        fireEvent.contextMenu(screen.getByRole('treeitem', { name: /^users/ }));
+        fireEvent.click(
+            screen.getByRole('menuitem', { name: 'Open in new tab' }),
+        );
+        expect(tableTabOf(1, 'users')).toMatchObject({ preview: false });
+        expect(useBrowse.getState().get(1).activeId).toBe('universe');
     });
 
     it('keeps the recent rows still under the pointer, so a double-click lands on one table', () => {

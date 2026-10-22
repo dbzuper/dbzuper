@@ -115,10 +115,10 @@ type CountState = {
 };
 
 export function DataView(props: Props) {
-    // A different table is a different view: nothing (rows, layout, counts) carries over.
+    // A different tab is a different view: nothing (rows, layout, counts) carries over.
     return (
         <DataViewBody
-            key={`${props.connectionId}:${props.table.name}`}
+            key={`${props.connectionId}:${props.tab.id}:${props.table.name}`}
             {...props}
         />
     );
@@ -133,7 +133,8 @@ function DataViewBody({
     refreshNonce = 0,
 }: Props) {
     const name = table.name;
-    const cacheKey = `${connectionId}:${name}`;
+    // Per tab: two views of one table keep their own rows.
+    const cacheKey = `${connectionId}:${tab.id}`;
     const { filters, sort, page, perPage, drawerRow } = tab.state;
     const requestKey = rowsRequestKey(tab.state);
     const filtersKey = JSON.stringify(filters);

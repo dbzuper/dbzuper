@@ -91,6 +91,7 @@ vi.mock('@/components/grid/result-grid', () => ({
 }));
 
 import { DataView } from './data-view';
+import { tableTabOf } from '@/test/browse-tabs';
 
 const nameColumn = {
     name: 'name',
@@ -154,20 +155,30 @@ const deferred = <T,>() => {
     return { promise, resolve, reject };
 };
 
+/** The id of the (first) tab of `table`. */
+const tabId = (table = 'orders') => tableTabOf(1, table)?.id ?? `none:${table}`;
+
 const requestKey = (filters: RowFilter[], p = 1) =>
     JSON.stringify({ filters, sort: [], page: p, perPage: 100 });
 
 function Harness({
     rowCount = { count: 10, kind: 'exact' },
     table = 'orders',
+    id,
     onOpenTable = vi.fn(),
 }: {
     rowCount?: RowCountSchema;
     table?: string;
+    /** A particular tab of the table; its first tab when not given. */
+    id?: string;
     onOpenTable?: (table: string, filters: RowFilter[]) => void;
 }) {
     const tab = useBrowse((s) =>
-        s.byConnection[1]?.tabs.find((t) => t.id === `t:${table}`),
+        s.byConnection[1]?.tabs.find((t) =>
+            id !== undefined
+                ? t.id === id
+                : t.kind === 'table' && t.table === table && t.ordinal === 1,
+        ),
     ) as TableTab;
     const snapshot = snapshotWith(rowCount);
     return (
@@ -190,7 +201,7 @@ const tabState = (table = 'orders') =>
     (
         useBrowse
             .getState()
-            .byConnection[1].tabs.find((t) => t.id === `t:${table}`) as TableTab
+            .byConnection[1].tabs.find((t) => t.id === tabId(table)) as TableTab
     ).state;
 
 beforeEach(() => {
@@ -210,7 +221,7 @@ afterEach(() => {
 describe('DataView', () => {
     it('renders cached rows for an unchanged request without fetching', async () => {
         open();
-        rowsCache.set('1:orders', {
+        rowsCache.set(`1:${tabId('orders')}`, {
             requestKey: requestKey([]),
             rows: page(1, 'cached', { rows: [['cached', 'a']] }),
             total: { count: 1, exact: true },
@@ -224,6 +235,38 @@ describe('DataView', () => {
         expect(api.count).not.toHaveBeenCalled();
     });
 
+    it('keeps separate cached rows for two views of one table', async () => {
+        open();
+        const first = tabId();
+        const second = useBrowse.getState().duplicateTab(1, first);
+        useBrowse.getState().updateTable(1, second, { page: 2 });
+        rowsCache.set(`1:${first}`, {
+            requestKey: requestKey([]),
+            rows: page(1, 'one', { rows: [['one', 'a']] }),
+            total: { count: 150, exact: true },
+            scrollTop: 0,
+        });
+        rowsCache.set(`1:${second}`, {
+            requestKey: requestKey([], 2),
+            rows: page(2, 'two', { rows: [['two', 'b']] }),
+            total: { count: 150, exact: true },
+            scrollTop: 0,
+        });
+        const { rerender } = render(<Harness id={first} />);
+        expect(await screen.findByTestId('first-cell')).toHaveTextContent(
+            'one',
+        );
+        rerender(<Harness id={second} />);
+        expect(await screen.findByTestId('first-cell')).toHaveTextContent(
+            'two',
+        );
+        rerender(<Harness id={first} />);
+        expect(await screen.findByTestId('first-cell')).toHaveTextContent(
+            'one',
+        );
+        expect(api.rows).not.toHaveBeenCalled();
+    });
+
     it('fetches the first page and stores it in the cache', async () => {
         open();
         render(<Harness />);
@@ -234,7 +277,9 @@ describe('DataView', () => {
             { filters: [], sort: [], page: 1, per_page: 100 },
             expect.any(AbortSignal),
         );
-        expect(rowsCache.get('1:orders')?.requestKey).toBe(requestKey([]));
+        expect(rowsCache.get(`1:${tabId('orders')}`)?.requestKey).toBe(
+            requestKey([]),
+        );
         // An exact catalogue count needs no count request.
         expect(api.count).not.toHaveBeenCalled();
         expect(screen.getByText('Rows 1–100 of 10')).toBeInTheDocument();
@@ -312,13 +357,17 @@ describe('DataView', () => {
         render(<Harness />);
         expect(api.rows).toHaveBeenCalledTimes(1);
         // The user moves to page 2 before page 1 has answered.
-        act(() => useBrowse.getState().updateTable(1, 't:orders', { page: 2 }));
+        act(() =>
+            useBrowse.getState().updateTable(1, tabId('orders'), { page: 2 }),
+        );
         expect(await screen.findByText('Rows 101–200 of 10')).toBeVisible();
         expect(screen.getByTestId('first-cell')).toHaveTextContent('B');
         await act(async () => slow.resolve(page(1, 'A')));
         expect(screen.getByTestId('first-cell')).toHaveTextContent('B');
         expect(screen.getByText('Rows 101–200 of 10')).toBeVisible();
-        expect(rowsCache.get('1:orders')?.requestKey).toBe(requestKey([], 2));
+        expect(rowsCache.get(`1:${tabId('orders')}`)?.requestKey).toBe(
+            requestKey([], 2),
+        );
     });
 
     it('ignores a slow response for a previous table', async () => {
@@ -334,7 +383,7 @@ describe('DataView', () => {
         expect(screen.getByTestId('first-cell')).toHaveTextContent('U');
         await act(async () => slow.resolve(page(1, 'A')));
         expect(screen.getByTestId('first-cell')).toHaveTextContent('U');
-        expect(rowsCache.get('1:orders')).toBeUndefined();
+        expect(rowsCache.get(`1:${tabId('orders')}`)).toBeUndefined();
     });
 
     it('moves between pages from the footer', async () => {
@@ -364,7 +413,9 @@ describe('DataView', () => {
         await screen.findByText('100 rows');
         const tabBefore = useBrowse
             .getState()
-            .byConnection[1].tabs.find((t) => t.id === 't:orders') as TableTab;
+            .byConnection[1].tabs.find(
+                (t) => t.id === tabId('orders'),
+            ) as TableTab;
         expect(tabBefore.preview).toBe(true);
         fireEvent.change(screen.getByLabelText('Filter value'), {
             target: { value: '7' },
@@ -372,7 +423,9 @@ describe('DataView', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Add filter' }));
         const tab = useBrowse
             .getState()
-            .byConnection[1].tabs.find((t) => t.id === 't:orders') as TableTab;
+            .byConnection[1].tabs.find(
+                (t) => t.id === tabId('orders'),
+            ) as TableTab;
         expect(tab.state.page).toBe(1);
         expect(tab.state.filters).toEqual([
             { column: 'id', op: 'eq', value: '7' },
@@ -387,7 +440,9 @@ describe('DataView', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Resize id' }));
         const tab = useBrowse
             .getState()
-            .byConnection[1].tabs.find((t) => t.id === 't:orders') as TableTab;
+            .byConnection[1].tabs.find(
+                (t) => t.id === tabId('orders'),
+            ) as TableTab;
         expect(tab.preview).toBe(false);
     });
 
@@ -398,7 +453,9 @@ describe('DataView', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Open row 2' }));
         const tab = useBrowse
             .getState()
-            .byConnection[1].tabs.find((t) => t.id === 't:orders') as TableTab;
+            .byConnection[1].tabs.find(
+                (t) => t.id === tabId('orders'),
+            ) as TableTab;
         expect(tab.preview).toBe(false);
         expect(tab.state.drawerRow).toBe(2);
     });
@@ -596,13 +653,13 @@ describe('DataView', () => {
         api.rows.mockReturnValue(new Promise(() => {}));
         api.count.mockResolvedValue({ count: 5, kind: 'exact' });
         act(() =>
-            useBrowse.getState().updateTable(1, 't:orders', {
+            useBrowse.getState().updateTable(1, tabId('orders'), {
                 filters: [{ column: 'name', op: 'eq', value: 'z' }],
             }),
         );
         await vi.waitFor(() => expect(api.count).toHaveBeenCalledTimes(2));
         await act(async () => {});
-        expect(rowsCache.get('1:orders')?.total).toEqual({
+        expect(rowsCache.get(`1:${tabId('orders')}`)?.total).toEqual({
             count: 10,
             exact: true,
         });

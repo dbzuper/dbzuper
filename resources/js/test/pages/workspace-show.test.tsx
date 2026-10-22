@@ -99,6 +99,7 @@ vi.mock('@/records/records-api', () => ({
 
 import { pinsApi } from '@/lib/pins-api';
 import WorkspaceShow from '@/pages/workspace/show';
+import { tableTabOf } from '@/test/browse-tabs';
 
 const connection = {
     id: 1,
@@ -244,7 +245,9 @@ describe('workspace page', () => {
         fireEvent.click(
             await screen.findByRole('treeitem', { name: /orders/ }),
         );
-        expect(useBrowse.getState().get(1).activeId).toBe('t:orders');
+        expect(useBrowse.getState().get(1).activeId).toBe(
+            tableTabOf(1, 'orders')?.id,
+        );
         expect(
             screen.getByRole('heading', { name: 'orders' }),
         ).toBeInTheDocument();
@@ -270,7 +273,9 @@ describe('workspace page', () => {
         });
         const { unmount } = render(<WorkspaceShow connection={connection} />);
         await waitFor(() =>
-            expect(useBrowse.getState().get(1).activeId).toBe('t:order items'),
+            expect(useBrowse.getState().get(1).activeId).toBe(
+                tableTabOf(1, 'order items')?.id,
+            ),
         );
         unmount();
 

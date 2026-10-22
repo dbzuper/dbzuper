@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { OpenMode } from '@/browse/browse-store';
 import { usePins } from '@/browse/pins-store';
+import { openTableInNewTab } from '@/browse/table-actions';
 import {
     ContextMenu,
     ContextMenuContent,
@@ -41,7 +42,7 @@ export function TableContextMenu({
                     Open
                 </ContextMenuItem>
                 <ContextMenuItem
-                    onSelect={() => actions.open(table, 'background')}
+                    onSelect={() => openTableInNewTab(connectionId, table)}
                 >
                     Open in new tab
                 </ContextMenuItem>

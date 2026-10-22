@@ -7,6 +7,7 @@ import type { SchemaSnapshot } from '@/types/schema';
 import { useBrowse } from '@/browse/browse-store';
 import { useWorkspace } from '@/universe/store';
 import RecordsView, { dragPositions, flowId } from './records-view';
+import { tableTabOf } from '@/test/browse-tabs';
 
 const api = vi.hoisted(() => ({ show: vi.fn(), related: vi.fn() }));
 vi.mock('@/records/records-api', () => ({ recordsApi: api }));
@@ -84,8 +85,8 @@ describe('RecordsView', () => {
             screen.getByRole('button', { name: 'Open logs in table tab' }),
         );
         const browse = useBrowse.getState().get(connection.id);
-        expect(browse.activeId).toBe('t:logs');
-        expect(browse.tabs.find((t) => t.id === 't:logs')).toMatchObject({
+        expect(browse.activeId).toBe(tableTabOf(connection.id, 'logs')?.id);
+        expect(tableTabOf(connection.id, 'logs')).toMatchObject({
             preview: false,
             state: { filters: [] },
         });
@@ -166,8 +167,8 @@ describe('RecordsView', () => {
         fireEvent.click(await button('Open items (order_id) in table tab'));
         expect(api.related).not.toHaveBeenCalled();
         const browse = useBrowse.getState().get(connection.id);
-        expect(browse.activeId).toBe('t:items');
-        expect(browse.tabs.find((t) => t.id === 't:items')).toMatchObject({
+        expect(browse.activeId).toBe(tableTabOf(connection.id, 'items')?.id);
+        expect(tableTabOf(connection.id, 'items')).toMatchObject({
             state: { filters: [{ column: 'order_id', op: 'eq', value: '5' }] },
         });
     });

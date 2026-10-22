@@ -6,6 +6,7 @@ import { buildSchemaGraph } from '@/universe/graph';
 import { useBrowse } from '@/browse/browse-store';
 import { useWorkspace } from '@/universe/store';
 import { UniverseCanvas } from './universe-canvas';
+import { tableTabOf } from '@/test/browse-tabs';
 
 const sigmaCalls = vi.hoisted(() => ({
     constructed: 0,
@@ -254,7 +255,7 @@ describe('UniverseCanvas resize', () => {
         );
         expect(preventSigmaDefault).toHaveBeenCalled();
         const browse = useBrowse.getState().get(7);
-        expect(browse.activeId).toBe(`t:${node}`);
+        expect(browse.activeId).toBe(tableTabOf(7, node)?.id);
         expect(browse.tabs[1]).toMatchObject({ preview: false });
     });
 });
