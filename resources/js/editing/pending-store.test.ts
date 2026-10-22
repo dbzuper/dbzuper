@@ -86,6 +86,18 @@ describe('usePending', () => {
         expect(pending()).toEqual({});
     });
 
+    it('reverts a whole edited row, and leaves a deleted one to Restore', () => {
+        const s = usePending.getState();
+        s.setCell(C, T, row(1), 'status', 'paid');
+        s.setCell(C, T, row(1), 'note', 'x');
+        s.revertRow(C, T, row(1).ref);
+        expect(pending()).toEqual({});
+        s.markDelete(C, T, row(2));
+        const before = pending();
+        s.revertRow(C, T, row(2).ref);
+        expect(pending()).toBe(before);
+    });
+
     it('adds new rows and removes one that is deleted', () => {
         const s = usePending.getState();
         const a = s.addRow(C, T);

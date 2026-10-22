@@ -19,7 +19,6 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 import {
-    binaryBytes,
     blobLabel,
     cellKind,
     cellText,
@@ -46,24 +45,27 @@ import {
     type RowRef,
 } from '@/editing/pending-store';
 import { registerEditFlush } from '@/editing/flush-edits';
+import {
+    boolValue as boolValue_,
+    isBinaryType,
+    isBooleanType,
+    isJsonType,
+    jsonError,
+    lockedFor as lockedFor_,
+    rowTarget,
+    shownText,
+    truthy,
+    type GridEditing,
+} from '@/editing/row-edit';
 import { cn } from '@/lib/utils';
-import type { RowIdentity } from '@/lib/workspace-api';
 import type {
-    ColumnSchema,
     Dialect,
     QueryCell,
     QueryColumn,
     SchemaSnapshot,
 } from '@/types/schema';
 import { CellDrawer, type DrawerState } from './cell-drawer';
-import {
-    BoolCellEditor,
-    isBinaryType,
-    isBooleanType,
-    isJsonType,
-    jsonError,
-    TextCellEditor,
-} from './cell-editors';
+import { BoolCellEditor, TextCellEditor } from './cell-editors';
 import { RowMenu } from './row-menu';
 
 /**
@@ -77,21 +79,7 @@ type Row = {
     draft?: { column: string; value: string | null };
 };
 
-/** Staged editing of a table tab's rows (spec §4.1). Only given for an editable table on a writable connection. */
-export type GridEditing = {
-    connectionId: number;
-    table: string;
-    dialect: Dialect;
-    /** From the rows response, parallel to `rows`. */
-    rowIds: (RowIdentity | null)[];
-    locked: number[][];
-    shortened: number[][];
-    readOnlyColumns: string[];
-    /** Why a row without an identity can't be edited; a generic reason when null. */
-    rowReason: string | null;
-    /** The table's columns: defaults and NOT NULL for new rows, type names for editors. */
-    tableColumns: ColumnSchema[];
-};
+export type { GridEditing } from '@/editing/row-edit';
 
 /** Keeps an open inline editor flushable: Review & commit stages its draft before previewing. */
 function EditFlush({
@@ -111,8 +99,6 @@ function EditFlush({
 
 const NO_PENDING: Record<RowRef, PendingRow> = {};
 const NO_ERRORS: Record<RowRef, string> = {};
-const UNPINNED_ROW =
-    "this row can't be pinned to exactly one row (some of its values were shortened or can't be compared exactly)";
 
 type Props = {
     columns: QueryColumn[];
@@ -243,18 +229,6 @@ export function CellView({
 const initialOrder = (columns: QueryColumn[]) =>
     columns.map((_, i) => String(i));
 
-const truthy = (value: QueryCell | undefined) =>
-    value === true ||
-    value === 1 ||
-    (typeof value === 'string' && /^(1|t|true)$/i.test(value));
-
-const shownText = (value: QueryCell | undefined) =>
-    value === null || value === undefined
-        ? 'NULL'
-        : value === ''
-          ? '(empty)'
-          : cellText(value);
-
 /** What the grid needs to stage edits: per-row targets, staged values and why a cell is locked. */
 function editModel(
     editing: GridEditing,
@@ -272,18 +246,10 @@ function editModel(
     const target = (row: Row): PendingTarget | null => {
         if (!row.ref) return null;
         if (row.__i < 0) return { ref: row.ref, id: null, original: {} };
-        const id = editing.rowIds[row.__i];
         const cells = rows[row.__i];
         // The editor's copy of a row may predate the rows on screen: never stage it on another row.
-        if (!id || !cells || refs[row.__i] !== row.ref) return null;
-        const cut = new Set(editing.shortened[row.__i] ?? []);
-        const original: Record<string, QueryCell> = {};
-        const shortened: string[] = [];
-        columns.forEach((c, i) => {
-            if (cut.has(i)) shortened.push(c.name);
-            else original[c.name] = cells[i];
-        });
-        return { ref: row.ref, id, original, shortened };
+        if (!cells || refs[row.__i] !== row.ref) return null;
+        return rowTarget(editing, columns, row.__i, cells);
     };
 
     /** The value the cell shows: staged, else loaded. */
@@ -306,23 +272,10 @@ function editModel(
     };
 
     const lockedFor = (row: Row, index: number): string | null => {
-        const name = columns[index].name;
-        const binary =
-            isBinaryType(typeOf(index)) ||
-            binaryBytes(rows[row.__i]?.[index] ?? null) !== null;
-        if (row.__i < 0)
-            return readOnly.has(name)
-                ? 'generated column'
-                : binary
-                  ? 'binary'
-                  : null;
-        if (!editing.rowIds[row.__i]) return editing.rowReason ?? UNPINNED_ROW;
-        if (!(editing.locked[row.__i] ?? []).includes(index)) return null;
-        if (readOnly.has(name)) return 'generated column';
-        if (binary) return 'binary';
-        if ((editing.shortened[row.__i] ?? []).includes(index))
-            return 'shortened for display';
-        return "its values can't be compared exactly";
+        if (row.__i >= 0)
+            return lockedFor_(editing, columns, row.__i, rows[row.__i], index);
+        if (readOnly.has(columns[index].name)) return 'generated column';
+        return isBinaryType(typeOf(index)) ? 'binary' : null;
     };
 
     const editable = (row: Row, index: number) =>
@@ -358,8 +311,7 @@ function editModel(
             : rows[row.__i]?.[index];
     };
 
-    const boolValue = (on: boolean) =>
-        editing.dialect === 'pgsql' ? String(on) : on ? '1' : '0';
+    const boolValue = (on: boolean) => boolValue_(editing.dialect, on);
 
     return {
         refs,

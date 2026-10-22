@@ -30,7 +30,7 @@ import {
 } from '@/browse/local-prefs';
 import { rowsCache, rowsRequestKey } from '@/browse/rows-cache';
 import { reportTableRows } from '@/browse/sql-link';
-import type { GridEditing } from '@/components/grid/result-grid';
+import type { GridEditing } from '@/editing/row-edit';
 import { PendingBar } from '@/components/editing/pending-bar';
 import { FilterBar } from '@/components/inspector/filter-bar';
 import { Button } from '@/components/ui/button';
@@ -670,6 +670,9 @@ function DataViewBody({
                             onStep={onStep}
                             onOpenTable={onOpenTable}
                             onExplore={onExplore}
+                            editing={editing}
+                            rowIndex={drawerRow}
+                            readOnly={readOnly}
                         />
                     ) : loading ? (
                         <RowDrawerLoading

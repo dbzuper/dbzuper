@@ -287,6 +287,34 @@ describe('DataView editing', () => {
         );
     });
 
+    it('edits the open row in the drawer, staged by its identity', async () => {
+        open();
+        render(<Harness />);
+        await screen.findByText('100 rows');
+        fireEvent.click(screen.getByRole('button', { name: 'Open row 2' }));
+        const name = await screen.findByRole('textbox', { name: 'name' });
+        fireEvent.change(name, { target: { value: 'y' } });
+        fireEvent.blur(name);
+        const id = { key: { id: 3 } };
+        expect(
+            usePending.getState().byTable['1:orders']?.[refOf(id)],
+        ).toMatchObject({ kind: 'update', values: { name: 'y' } });
+        expect(screen.getByRole('status')).toHaveTextContent(
+            '1 pending change',
+        );
+    });
+
+    it('keeps the drawer read-only on a read-only connection', async () => {
+        open();
+        render(<Harness readOnly />);
+        await screen.findByText('100 rows');
+        fireEvent.click(screen.getByRole('button', { name: 'Open row 2' }));
+        await screen.findByRole('complementary', { name: 'Row details' });
+        expect(
+            screen.queryByRole('textbox', { name: 'name' }),
+        ).not.toBeInTheDocument();
+    });
+
     it('counts pending changes on other pages too', async () => {
         open();
         render(<Harness />);

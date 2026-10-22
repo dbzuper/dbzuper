@@ -71,6 +71,8 @@ type State = {
         ref: RowRef,
         column: string,
     ): void;
+    /** Drops a loaded row's pending update (every staged cell); a deleted row is restored with unmarkDelete. */
+    revertRow(connectionId: number, table: string, ref: RowRef): void;
     /** Adds an empty new row (every column at its default) and returns its ref. */
     addRow(connectionId: number, table: string): RowRef;
     /** Marks a loaded row for deletion; a new row is simply removed. */
@@ -207,6 +209,10 @@ export const usePending = create<State>()((set, get) => {
                     return without(rows, ref);
                 return { ...rows, [ref]: { ...current, values } };
             }),
+        revertRow: (connectionId, table, ref) =>
+            patch(connectionId, table, (rows) =>
+                rows[ref]?.kind === 'update' ? without(rows, ref) : rows,
+            ),
         addRow: (connectionId, table) => {
             const ref = newRef();
             patch(connectionId, table, (rows) => ({

@@ -1,21 +1,14 @@
 import { useState, type KeyboardEvent } from 'react';
 
-/** Column type tests for editing (type names as the snapshot reports them). */
-export const isBooleanType = (type: string | null) =>
-    /^bool(ean)?$/i.test((type ?? '').trim());
-export const isJsonType = (type: string | null) => /json/i.test(type ?? '');
-export const isBinaryType = (type: string | null) =>
-    /blob|binary|bytea|varbinary|image/i.test(type ?? '');
+import { jsonError } from '@/editing/row-edit';
 
-/** Why a JSON value can't be staged, or null when it parses. */
-export function jsonError(text: string): string | null {
-    try {
-        JSON.parse(text);
-        return null;
-    } catch (e) {
-        return `Invalid JSON: ${e instanceof Error ? e.message : 'it does not parse'}`;
-    }
-}
+// The editing rules live with the pending store, shared with the row drawer.
+export {
+    isBinaryType,
+    isBooleanType,
+    isJsonType,
+    jsonError,
+} from '@/editing/row-edit';
 
 type EditorProps = {
     label: string;
