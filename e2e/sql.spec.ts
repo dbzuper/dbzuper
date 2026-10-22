@@ -94,11 +94,9 @@ test('records: entry points (result row, table tab row) and tables without a pri
             .getByRole('button', { name: 'orders · 1', exact: true }),
     ).toBeVisible();
 
-    // The dock overlays the bottom of the tab panel (and so of the row drawer): close it first.
-    await page.keyboard.press('Control+j');
-    await expect(dock).toBeHidden();
-
     // A table tab row opens its record (row drawer -> Explore graph): users row 3 is Grace Hopper.
+    // The dock stays open: it takes its own space below the tab panel instead of covering it.
+    await expect(dock).toBeVisible();
     await openTableFromPalette('users');
     const panel = browsePanel();
     await expect(
@@ -113,6 +111,11 @@ test('records: entry points (result row, table tab row) and tables without a pri
     await expect(
         drawer.getByRole('heading', { name: 'users · 3' }),
     ).toBeVisible();
+    const dockTop = (await dock.boundingBox())!.y;
+    for (const control of [drawer, page.getByLabel('Rows per page')]) {
+        const box = (await control.boundingBox())!;
+        expect(box.y + box.height).toBeLessThanOrEqual(dockTop);
+    }
     await drawer.getByRole('button', { name: 'Explore graph' }).click();
     await expect(explorer.getByText('Grace Hopper').first()).toBeVisible();
 

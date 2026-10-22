@@ -347,7 +347,9 @@ export default function SqlDock({
             id={DOCK_ID}
             ref={section}
             aria-label="SQL editor"
-            className="absolute inset-x-0 bottom-0 z-20 flex flex-col border-t bg-background shadow-2xl"
+            // Part of the workspace layout, not an overlay: the tab panel above shrinks by the dock's
+            // height, so table footers and the row drawer stay reachable. At least 6rem stays above it.
+            className="relative z-20 flex max-h-[calc(100%-6rem)] shrink-0 flex-col border-t bg-background"
             style={{ height }}
         >
             <DockSeparator />
