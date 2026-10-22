@@ -419,3 +419,47 @@ describe('fix round 1', () => {
         expect(orders().preview).toBe(false);
     });
 });
+
+describe('task 6', () => {
+    const editor = (browseTabId: string) => linkedTo(browseTabId)!;
+
+    it('a built query edited before the first response adopts its request key and is not stale', () => {
+        useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+        const id = openTableTabInSql(1, orders(), 'mysql');
+        expect(editor(orders().id).link?.requestKey).toBeUndefined();
+        useSqlTabs.getState().setSql(1, id, 'my edit');
+
+        reportTableRows(1, orders().id, keyOf(orders()), 'server sql');
+
+        expect(editor(orders().id).sql).toBe('my edit');
+        expect(editor(orders().id).link?.stale).toBeFalsy();
+        expect(editor(orders().id).link?.requestKey).toBe(keyOf(orders()));
+        // A later new request does make it stale.
+        useBrowse.getState().updateTable(1, orders().id, { page: 2 });
+        reportTableRows(1, orders().id, keyOf(orders()), 'q2');
+        expect(editor(orders().id).link?.stale).toBe(true);
+    });
+
+    it('a response to another request than the built query still marks edited text stale', () => {
+        useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+        const id = openTableTabInSql(1, orders(), 'mysql');
+        useSqlTabs.getState().setSql(1, id, 'my edit');
+        reportTableRows(1, orders().id, 'another key', 'q2');
+        expect(editor(orders().id).link?.stale).toBe(true);
+    });
+
+    it('Update SQL rebuilds the query from the tab state when no query is known', () => {
+        const { table, editorId } = linked('q1');
+        useSqlTabs.getState().setSql(1, editorId, 'my edit');
+        rowsCache.clear();
+        useBrowse.getState().updateTable(1, table.id, {
+            filters: [{ column: 'status', op: 'eq', value: 'paid' }],
+        });
+        expect(updateSqlFromTable(1, table.id)).toBe(false);
+        expect(updateSqlFromTable(1, table.id, 'mysql')).toBe(true);
+        expect(editor(table.id).sql).toBe(
+            "SELECT * FROM `orders` WHERE `status` = 'paid' LIMIT 100",
+        );
+        expect(editor(table.id).link?.syncedSql).toBe(editor(table.id).sql);
+    });
+});

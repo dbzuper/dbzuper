@@ -27,6 +27,8 @@ const editorFocus = vi.hoisted(() => vi.fn());
 const commands = vi.hoisted(() => new Map<number, () => void>());
 /** Edits the sync pushed into the editor's model. */
 const pushEdits = vi.hoisted(() => vi.fn());
+/** The fake editor's text (the statement at the cursor is its first one). */
+const editorText = vi.hoisted(() => ({ value: 'select 1' }));
 vi.mock('@/sql/query-api', () => ({ queryApi: api }));
 
 // Monaco cannot run in jsdom: the editor mounts a minimal fake that exposes the statement under the cursor.
@@ -40,7 +42,7 @@ vi.mock('./sql-editor', async () => {
         }) => {
             useEffect(() => {
                 const model = {
-                    getValue: () => 'select 1',
+                    getValue: () => editorText.value,
                     getOffsetAt: () => 0,
                     isDisposed: () => false,
                     getFullModelRange: () => ({}),
@@ -74,7 +76,11 @@ vi.mock('./sql-editor', async () => {
     };
 });
 
-import { onTableQuery } from '@/browse/sql-link';
+import { useBrowse, type TableTab } from '@/browse/browse-store';
+import { rowsCache } from '@/browse/rows-cache';
+import { onTableQuery, openTableTabInSql } from '@/browse/sql-link';
+import { tableTabOf } from '@/test/browse-tabs';
+import type { SchemaSnapshot, TableSchema } from '@/types/schema';
 import SqlDock from './sql-dock';
 
 const connection = {
@@ -113,7 +119,10 @@ beforeEach(() => {
     vi.clearAllMocks();
     completion.getter = null;
     commands.clear();
+    editorText.value = 'select 1';
     useSqlTabs.setState({ byConnection: {} });
+    useBrowse.setState({ byConnection: {} });
+    rowsCache.clear();
     useWorkspace.getState().reset();
 });
 
@@ -294,6 +303,210 @@ describe('SqlDock', () => {
             await waitFor(() => expect(commands.has(CTRL_CMD | 8)).toBe(true));
             act(() => commands.get(CTRL_CMD | 8)!());
             expect(useWorkspace.getState().dockOpen).toBe(false);
+        });
+    });
+});
+
+const ordersTable: TableSchema = {
+    name: 'orders',
+    kind: 'table',
+    row_count: { count: null, kind: 'unknown' },
+    size_bytes: null,
+    primary_key: ['id'],
+    columns: ['id', 'status'].map((name) => ({
+        name,
+        type: name === 'id' ? 'integer' : 'text',
+        type_name: name === 'id' ? 'integer' : 'text',
+        nullable: false,
+        default: null,
+        auto_increment: name === 'id',
+        comment: null,
+    })),
+    indexes: [
+        { name: 'primary', columns: ['id'], unique: true, primary: true },
+    ],
+};
+const snapshotWith = (tables: TableSchema[]): SchemaSnapshot => ({
+    driver: 'sqlite',
+    database: 'shop',
+    schema: null,
+    generated_at: '',
+    hash: '',
+    tables,
+    relationships: [],
+});
+
+describe('linked editor tabs', () => {
+    const orders = () => tableTabOf(1, 'orders') as TableTab;
+    const browse = () => useBrowse.getState().get(1);
+    const editorTab = (id: string) =>
+        useSqlTabs.getState().byConnection[1].tabs.find((t) => t.id === id);
+    const renderDock = (tables: TableSchema[] | null = [ordersTable]) =>
+        render(
+            <SqlDock
+                connection={connection}
+                snapshot={tables && snapshotWith(tables)}
+            />,
+        );
+
+    /** `orders` open in a table tab, its linked editor tab active, and another table tab active in the browser. */
+    function setup(text: string) {
+        useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+        const id = openTableTabInSql(1, orders(), 'sqlite');
+        useSqlTabs.getState().setSql(1, id, text);
+        editorText.value = text;
+        useBrowse.getState().openTable(1, 'users', { mode: 'permanent' });
+        return id;
+    }
+
+    describe('Run', () => {
+        it('applies a fitting statement to the table tab without the query API or history', async () => {
+            const id = setup("select * from orders where status = 'paid'");
+            const runs = useWorkspace.getState().runCount;
+            renderDock();
+
+            fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+
+            expect(await screen.findByText(/Applied to/)).toHaveTextContent(
+                'Applied to orders',
+            );
+            expect(api.run).not.toHaveBeenCalled();
+            expect(useWorkspace.getState().runCount).toBe(runs);
+            expect(orders().state.filters).toEqual([
+                { column: 'status', op: 'eq', value: 'paid' },
+            ]);
+            expect(browse().activeId).toBe(orders().id);
+            expect(editorTab(id)?.link?.browseTabId).toBe(orders().id);
+            expect(screen.queryByRole('tab', { name: /#1 SELECT/ })).toBeNull();
+        });
+
+        it('Run all with exactly one statement applies too', async () => {
+            setup("select * from orders where status = 'paid';");
+            renderDock();
+            fireEvent.click(screen.getByRole('button', { name: /^Run all/ }));
+            expect(await screen.findByText(/Applied to/)).toBeInTheDocument();
+            expect(api.run).not.toHaveBeenCalled();
+        });
+
+        it('Run all with several statements runs them as today', async () => {
+            api.run.mockResolvedValue(ok);
+            setup("select * from orders where status = 'paid'; select 1");
+            renderDock();
+            fireEvent.click(screen.getByRole('button', { name: /^Run all/ }));
+            await waitFor(() => expect(api.run).toHaveBeenCalled());
+            await screen.findByRole('tab', { name: /#1 SELECT/ });
+            expect(screen.queryByText(/Shown here/)).toBeNull();
+            expect(orders().state.filters).toEqual([]);
+        });
+
+        it('runs a statement that does not fit in the editor, says why, and leaves the table tab alone', async () => {
+            api.run.mockResolvedValue(ok);
+            const id = setup(
+                'select status, count(*) from orders group by status',
+            );
+            renderDock();
+
+            fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+
+            await waitFor(() => expect(api.run).toHaveBeenCalled());
+            expect(
+                await screen.findByText(/^Shown here: /),
+            ).toBeInTheDocument();
+            expect(
+                screen.getByRole('tab', { name: /#1 SELECT/ }),
+            ).toBeInTheDocument();
+            expect(orders().state.filters).toEqual([]);
+            expect(browse().activeId).not.toBe(orders().id);
+            expect(editorTab(id)?.link?.browseTabId).toBe(orders().id);
+        });
+
+        it('runs in the editor when the linked table is gone from the schema', async () => {
+            api.run.mockResolvedValue(ok);
+            setup('select * from orders');
+            renderDock([]);
+            fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+            await waitFor(() => expect(api.run).toHaveBeenCalled());
+            expect(
+                await screen.findByText(
+                    'Shown here: `orders` no longer exists',
+                ),
+            ).toBeInTheDocument();
+        });
+
+        it('an unlinked tab runs as today, with no chip', async () => {
+            api.run.mockResolvedValue(ok);
+            editorText.value = 'select * from orders';
+            renderDock();
+            fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+            await waitFor(() => expect(api.run).toHaveBeenCalled());
+            await screen.findByRole('tab', { name: /#1 SELECT/ });
+            expect(screen.queryByText(/Shown here/)).toBeNull();
+            expect(screen.queryByText(/Linked to/)).toBeNull();
+        });
+
+        it('a closed link never applies, and the chip says the table tab was closed', async () => {
+            api.run.mockResolvedValue(ok);
+            setup('select * from orders');
+            act(() => useBrowse.getState().closeTab(1, orders().id));
+            renderDock();
+            expect(screen.getByText(/^Unlinked:/)).toHaveTextContent(
+                'Unlinked: orders was closed',
+            );
+            fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+            await waitFor(() => expect(api.run).toHaveBeenCalled());
+            await screen.findByRole('tab', { name: /#1 SELECT/ });
+            expect(screen.queryByText(/Shown here/)).toBeNull();
+        });
+    });
+
+    describe('chip', () => {
+        it('Copy to new tab opens an unlinked tab with the same text', async () => {
+            const id = setup('select * from orders -- mine');
+            renderDock();
+            fireEvent.keyDown(
+                screen.getByRole('button', { name: /Linked to orders/ }),
+                { key: 'Enter' },
+            );
+            fireEvent.click(
+                await screen.findByRole('menuitem', {
+                    name: 'Copy to new tab',
+                }),
+            );
+            const state = useSqlTabs.getState().byConnection[1];
+            const copy = state.tabs.find((t) => t.id === state.activeId)!;
+            expect(copy.id).not.toBe(id);
+            expect(copy.sql).toBe('select * from orders -- mine');
+            expect(copy.link).toBeUndefined();
+            expect(editorTab(id)?.link).toBeDefined();
+        });
+
+        it('Unlink removes the link', async () => {
+            const id = setup('select * from orders');
+            renderDock();
+            fireEvent.keyDown(
+                screen.getByRole('button', { name: /Linked to orders/ }),
+                { key: 'Enter' },
+            );
+            fireEvent.click(
+                await screen.findByRole('menuitem', { name: 'Unlink' }),
+            );
+            expect(editorTab(id)?.link).toBeUndefined();
+            expect(screen.queryByText(/Linked to/)).toBeNull();
+        });
+
+        it('when stale, Update SQL replaces the text with the table query', async () => {
+            const id = setup('my edit');
+            act(() => onTableQuery(1, orders().id, 'select 2'));
+            renderDock();
+            expect(screen.getByText(/changed/)).toHaveTextContent(
+                'orders changed',
+            );
+            fireEvent.click(screen.getByRole('button', { name: 'Update SQL' }));
+            expect(editorTab(id)?.sql).toBe('select 2');
+            expect(editorTab(id)?.link?.stale).toBeFalsy();
+            expect(
+                screen.getByRole('button', { name: /Linked to orders/ }),
+            ).toBeInTheDocument();
         });
     });
 });

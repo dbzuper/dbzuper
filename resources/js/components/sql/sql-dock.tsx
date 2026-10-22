@@ -1,7 +1,8 @@
 import { X } from 'lucide-react';
 import type * as Monaco from 'monaco-editor';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { registerEditorModel } from '@/browse/sql-link';
+import { MATCH_REASONS, matchTableQuery } from '@/browse/match-table-query';
+import { applyToTable, registerEditorModel } from '@/browse/sql-link';
 import { Button } from '@/components/ui/button';
 import {
     toggleDock,
@@ -29,6 +30,7 @@ import type {
 } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
 import { DOCK_ID, DockSeparator } from './dock-separator';
+import { LinkChip } from './link-chip';
 import { ConfirmDialog, type ConfirmRequest } from './confirm-dialog';
 import { ResultPanel } from './result-panel';
 import { SqlEditor } from './sql-editor';
@@ -43,6 +45,10 @@ type TabResults = {
     error: DbErrorPayload | null;
     rolledBack?: boolean;
     cancelled?: boolean;
+    /** A linked tab's statement that did not fit its table: why it ran here instead. */
+    reason?: string;
+    /** A linked tab's statement was applied to this table tab (its title) instead of run. */
+    applied?: string;
 };
 
 /** The dock leaves this much of the workspace visible above it. */
@@ -199,6 +205,7 @@ export default function SqlDock({
             target: RunTarget | null,
             call: (signal: AbortSignal) => Promise<RunOutcome>,
             markErrors: boolean,
+            reason?: string,
         ) => {
             const editor = editorRef.current;
             const monaco = monacoRef.current;
@@ -209,7 +216,11 @@ export default function SqlDock({
                 return;
             clearMarkers();
             const show = (value: TabResults) =>
-                setResultsByTab((prev) => ({ ...prev, [tabId]: value }));
+                setResultsByTab((prev) => ({
+                    ...prev,
+                    [tabId]:
+                        reason === undefined ? value : { ...value, reason },
+                }));
             if (target && target.statements.length === 0) {
                 show({
                     results: [],
@@ -243,6 +254,7 @@ export default function SqlDock({
                     ...prev,
                     [tabId]: {
                         ...(prev[tabId] ?? { results: [], error: null }),
+                        applied: undefined,
                         cancelled: true,
                     },
                 }));
@@ -300,8 +312,62 @@ export default function SqlDock({
         [],
     );
 
+    /**
+     * Run on a linked tab (spec 4.3): a lone statement that fits the linked table is applied to its table tab instead
+     * (nothing is sent to the server or added to history). Otherwise it runs here, with the reason it did not fit.
+     */
+    const applyLinked = useCallback(
+        (target: RunTarget | null): { applied: boolean; reason?: string } => {
+            const state = useSqlTabs.getState().byConnection[connection.id];
+            const tab = state?.tabs.find((t) => t.id === state.activeId);
+            const link = tab?.link;
+            if (
+                !tab ||
+                !link ||
+                link.closed ||
+                target?.statements.length !== 1 ||
+                runningRef.current
+            )
+                return { applied: false };
+            // Without a schema there is nothing to match against; the statement simply runs here.
+            if (!snapshot) return { applied: false };
+            const table = snapshot.tables.find((t) => t.name === link.table);
+            if (!table)
+                return {
+                    applied: false,
+                    reason: MATCH_REASONS.missingTable(link.table),
+                };
+            const statement = target.statements[0];
+            const match = matchTableQuery(
+                statement,
+                dialect,
+                table,
+                snapshot.schema,
+            );
+            if (!match.ok) return { applied: false, reason: match.reason };
+            // The tab's whole text is what the table tab now shows, unless it holds other statements too: then
+            // only this one is, and a later table change marks the link stale instead of replacing them all.
+            const whole = splitStatements(tab.sql, dialect).length === 1;
+            applyToTable(
+                connection.id,
+                link,
+                match.state,
+                whole ? undefined : statement,
+            );
+            clearMarkers();
+            setResultsByTab((prev) => ({
+                ...prev,
+                [tab.id]: { results: [], error: null, applied: link.title },
+            }));
+            return { applied: true };
+        },
+        [clearMarkers, connection.id, dialect, snapshot],
+    );
+
     const runTarget = useCallback(
         async (target: RunTarget | null) => {
+            const linked = applyLinked(target);
+            if (linked.applied) return;
             await execute(
                 target,
                 (signal) =>
@@ -313,11 +379,12 @@ export default function SqlDock({
                         confirm,
                     }),
                 true,
+                linked.reason,
             );
             // The run may have added history entries.
             useWorkspace.getState().bumpRuns();
         },
-        [confirm, connection.id, execute, maxRows],
+        [applyLinked, confirm, connection.id, execute, maxRows],
     );
 
     const run = useCallback(
@@ -350,6 +417,7 @@ export default function SqlDock({
         handlers.current = { run, runAll };
     });
     const tabResults = active ? resultsByTab[active.id] : undefined;
+    const running = !!active && runningTab === active.id;
 
     return (
         <section
@@ -382,6 +450,15 @@ export default function SqlDock({
                 onRunAll={() => void runAll()}
                 onExplain={() => void explain()}
                 onCancel={cancel}
+                chip={
+                    active?.link && (
+                        <LinkChip
+                            connectionId={connection.id}
+                            tab={active}
+                            dialect={dialect}
+                        />
+                    )
+                }
             />
             <div className="min-h-0 flex-[45] border-b">
                 {active && (
@@ -441,15 +518,38 @@ export default function SqlDock({
                     />
                 )}
             </div>
-            <div className="min-h-0 flex-[55]">
-                <ResultPanel
-                    results={tabResults?.results ?? NO_RESULTS}
-                    error={tabResults?.error ?? null}
-                    running={!!active && runningTab === active.id}
-                    cancelled={tabResults?.cancelled ?? false}
-                    snapshot={snapshot}
-                    openTransactionRolledBack={tabResults?.rolledBack ?? false}
-                />
+            <div className="flex min-h-0 flex-[55] flex-col">
+                {tabResults?.applied !== undefined && !running ? (
+                    <p
+                        role="status"
+                        className="p-3 text-sm text-muted-foreground"
+                    >
+                        Applied to{' '}
+                        <span className="font-mono text-foreground">
+                            {tabResults.applied}
+                        </span>
+                    </p>
+                ) : (
+                    <>
+                        {tabResults?.reason && !running && (
+                            <p className="shrink-0 border-b px-3 py-1 text-xs text-muted-foreground">
+                                {`Shown here: ${tabResults.reason}`}
+                            </p>
+                        )}
+                        <div className="min-h-0 flex-1">
+                            <ResultPanel
+                                results={tabResults?.results ?? NO_RESULTS}
+                                error={tabResults?.error ?? null}
+                                running={running}
+                                cancelled={tabResults?.cancelled ?? false}
+                                snapshot={snapshot}
+                                openTransactionRolledBack={
+                                    tabResults?.rolledBack ?? false
+                                }
+                            />
+                        </div>
+                    </>
+                )}
             </div>
             <ConfirmDialog
                 request={confirmRequest}

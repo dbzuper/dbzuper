@@ -202,6 +202,23 @@ export function reportTableRows(
         lastSql.set(tabKey(connectionId, browseTabId), { requestKey, sql });
         return;
     }
+    // A link opened from a built query has no request yet. The first response to the state it was built from is
+    // that same query: edited text is not stale for it, the link just takes its request key.
+    const table = tableTab(connectionId, browseTabId);
+    const editor = useSqlTabs.getState().findLinked(connectionId, browseTabId);
+    if (
+        editor &&
+        link &&
+        !link.closed &&
+        link.requestKey === undefined &&
+        editor.sql !== link.syncedSql &&
+        table &&
+        rowsRequestKey(table.state) === requestKey
+    ) {
+        lastSql.set(tabKey(connectionId, browseTabId), { requestKey, sql });
+        saveLink(connectionId, editor.id, { ...link, requestKey });
+        return;
+    }
     onTableQuery(connectionId, browseTabId, sql, requestKey);
 }
 
@@ -220,13 +237,22 @@ export function onBrowseTabClosed(
     });
 }
 
-/** Stale ("Update SQL"): the editor takes the table tab's latest query. False when it is not known. */
+/**
+ * Stale ("Update SQL"): the editor takes the table tab's latest query, or with `dialect` one built from its state
+ * when no query is known. False when there is none.
+ */
 export function updateSqlFromTable(
     connectionId: number,
     browseTabId: string,
+    dialect?: Dialect,
 ): boolean {
     const tab = useSqlTabs.getState().findLinked(connectionId, browseTabId);
-    const sql = latestTableSql(connectionId, browseTabId);
+    const table = tableTab(connectionId, browseTabId);
+    const sql =
+        latestTableSql(connectionId, browseTabId) ??
+        (dialect && table
+            ? currentQuery(connectionId, table, dialect).sql
+            : undefined);
     if (!tab?.link || tab.link.closed || sql === undefined) return false;
     if (tab.sql !== sql) replaceText(connectionId, tab.id, sql);
     saveLink(connectionId, tab.id, {
