@@ -274,8 +274,8 @@ function editModel(
     const lockedFor = (row: Row, index: number): string | null => {
         if (row.__i >= 0)
             return lockedFor_(editing, columns, row.__i, rows[row.__i], index);
-        if (readOnly.has(columns[index].name)) return 'generated column';
-        return isBinaryType(typeOf(index)) ? 'binary' : null;
+        if (isBinaryType(typeOf(index))) return 'binary';
+        return readOnly.has(columns[index].name) ? 'generated column' : null;
     };
 
     const editable = (row: Row, index: number) =>

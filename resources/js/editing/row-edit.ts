@@ -93,12 +93,13 @@ export function lockedFor(
     const name = columns[column].name;
     if (!editing.rowIds[index]) return editing.rowReason ?? UNPINNED_ROW;
     if (!(editing.locked[index] ?? []).includes(column)) return null;
-    if (editing.readOnlyColumns.includes(name)) return 'generated column';
+    // Binary first: the server lists binary columns as read-only along with generated ones.
     if (
         isBinaryType(columnType(editing, columns[column])) ||
         binaryBytes(cells?.[column] ?? null) !== null
     )
         return 'binary';
+    if (editing.readOnlyColumns.includes(name)) return 'generated column';
     if ((editing.shortened[index] ?? []).includes(column))
         return 'shortened for display';
     return "its values can't be compared exactly";

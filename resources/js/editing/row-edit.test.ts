@@ -79,6 +79,15 @@ describe('lockedFor', () => {
         ).toBe('shortened for display');
     });
 
+    it('calls a binary column binary, though the server lists it read-only too', () => {
+        // The rows response puts binary columns in read_only_columns along with generated ones.
+        const e = editing({ readOnlyColumns: ['avatar', 'slug'] });
+        expect(lockedFor(e, columns, 0, [1, 'Ada', null, 'ada'], 2)).toBe(
+            'binary',
+        );
+        expect(lockedFor(e, columns, 0, cells, 3)).toBe('generated column');
+    });
+
     it('locks every cell of a row that cannot be pinned', () => {
         expect(lockedFor(editing(), columns, 1, cells, 1)).toBe(UNPINNED_ROW);
         expect(
