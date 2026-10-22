@@ -32,6 +32,24 @@ export type RowsRequest = {
     page: number;
     per_page: number;
 };
+export type EditMethod =
+    | 'primary_key'
+    | 'unique_index'
+    | 'sqlite_rowid'
+    | 'pg_ctid'
+    | 'mysql_all_values'
+    | 'none';
+/** How the server pins one loaded row for UPDATE/DELETE; every value is exact (never shortened for display). */
+export type RowIdentity =
+    | { key: Record<string, string | number | null> }
+    | { rowid: string }
+    | { ctid: string; tableoid?: string }
+    | { values: Record<string, string | number | null> };
+export type RowsEditing = {
+    method: EditMethod;
+    reason: string | null;
+    read_only_columns: string[];
+};
 export type RowsResponse = {
     columns: QueryColumn[];
     rows: QueryCell[][];
@@ -39,6 +57,11 @@ export type RowsResponse = {
     page: number;
     per_page: number;
     sql: string;
+    editing: RowsEditing;
+    /** Parallel to rows; null when the row can't be pinned. */
+    row_ids: (RowIdentity | null)[];
+    /** Parallel to rows: column indexes whose shown value isn't exact or that can't be edited. */
+    locked: number[][];
 };
 export type CountResponse = { count: number | null; kind: 'exact' | 'timeout' };
 

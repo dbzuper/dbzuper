@@ -4,7 +4,9 @@ use App\Enums\DriverName;
 use App\Models\SavedConnection;
 use App\Models\User;
 use App\Support\Demo\CommerceSchema;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Tests\Support\Engines;
 
 beforeEach(function () {
@@ -209,4 +211,116 @@ it('trims filter values and nulls whitespace-only ones before building the query
         ->and($post('eq', ' x'))->toContain("= 'x'")->not->toContain("' x'")
         ->and($post('eq', "x\u{200B}"))->toContain("= 'x'")
         ->and($post('contains', "\u{FEFF}a b\u{180E}"))->toContain("'%a b%'");
+});
+
+it('keeps the user-facing sql and columns byte-identical with identities added', function () {
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'orders']), [
+        'filters' => [['column' => 'status', 'op' => 'eq', 'value' => "pa'id"]],
+        'sort' => ['column' => 'id', 'direction' => 'desc'],
+        'per_page' => 10, 'page' => 3,
+    ])->assertOk();
+    expect($res->json('sql'))->toBe(<<<'SQL'
+        select "id", "user_id", "status", "created_at" from "orders" where "status" = 'pa''id' order by "id" desc limit 10 offset 20
+        SQL)
+        ->and(json_encode($res->json('columns')))->toBe('[{"name":"id","type":"integer","table":"orders"},{"name":"user_id","type":"integer","table":"orders"},{"name":"status","type":"varchar","table":"orders"},{"name":"created_at","type":"datetime","table":"orders"}]');
+
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']))->assertOk();
+    expect($res->json('sql'))->toBe('select "id", "group_id", "name", "email", "profile", "avatar", "created_at" from "users" order by "id" asc limit 100 offset 0')
+        ->and($res->json('rows'))->toBe([
+            [1, 1, 'Ada Lovelace', 'ada@example.com', '{"plan":"pro"}', null, '2026-10-01 12:00:00'],
+            [2, 2, 'Alan Turing', 'alan@example.com', null, null, '2026-10-01 12:00:00'],
+            [3, 2, 'Grace Hopper', 'grace@example.com', '{"plan":"free"}', null, '2026-10-01 12:00:00'],
+        ]);
+});
+
+it('pins primary-key rows by their key and locks binary columns', function () {
+    $pdo = new PDO('sqlite:'.Engines::sqlitePath());
+    $pdo->exec("UPDATE users SET avatar = X'00FF10' WHERE id = 2");
+
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']))->assertOk();
+
+    expect($res->json('editing'))->toBe(['method' => 'primary_key', 'reason' => null, 'read_only_columns' => ['avatar']])
+        ->and($res->json('row_ids'))->toBe([['key' => ['id' => 1]], ['key' => ['id' => 2]], ['key' => ['id' => 3]]])
+        ->and($res->json('locked'))->toBe([[5], [5], [5]])
+        ->and($res->json('rows.1.5'))->toBe('[binary 3 bytes]')
+        ->and($res->json('columns'))->toHaveCount(7)
+        ->and($res->json('rows.0'))->toHaveCount(7);
+});
+
+it('returns exact key values even when the shown value is shortened', function () {
+    $pdo = new PDO('sqlite:'.Engines::sqlitePath());
+    $long = str_repeat('k', 4999).'é';
+    $pdo->exec('CREATE TABLE "longkey" ("code" text primary key, "big" integer, "note" text)');
+    $pdo->prepare('INSERT INTO "longkey" VALUES (?, 1, ?), (?, 2, ?)')->execute([$long, str_repeat('n', 5000), 'short', 'fine']);
+    $pdo->exec('CREATE TABLE "bigkey" ("id" integer primary key, "note" text)');
+    $pdo->exec("INSERT INTO \"bigkey\" VALUES (9007199254740993, 'x'), (-9007199254740993, 'y'), (7, 'z')");
+
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'longkey']))->assertOk();
+    expect($res->json('editing.method'))->toBe('primary_key')
+        ->and($res->json('row_ids.0.key.code'))->toBe($long)
+        ->and($res->json('rows.0.0'))->toBe(str_repeat('k', 4000).'…')
+        ->and($res->json('locked'))->toBe([[0, 2], []])
+        ->and($res->json('row_ids.1'))->toBe(['key' => ['code' => 'short']]);
+
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'bigkey']))->assertOk();
+    expect($res->json('row_ids'))->toBe([
+        ['key' => ['id' => '-9007199254740993']],
+        ['key' => ['id' => 7]],
+        ['key' => ['id' => '9007199254740993']],
+    ]);
+});
+
+it('pins rows of a table without a key by SQLite rowid and locks shortened text', function () {
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'audit_log']))->assertOk();
+
+    expect($res->json('editing'))->toBe(['method' => 'sqlite_rowid', 'reason' => null, 'read_only_columns' => []])
+        ->and($res->json('row_ids.0'))->toBe(['rowid' => '1'])
+        ->and($res->json('locked.0'))->toBe([1])
+        ->and($res->json('rows.0'))->toHaveCount(count($res->json('columns')));
+});
+
+it('uses a rowid alias that no column shadows', function () {
+    $pdo = new PDO('sqlite:'.Engines::sqlitePath());
+    $pdo->exec('CREATE TABLE "shadow" ("rowid" text, "__dbsuperb_rowid" text)');
+    $pdo->exec("INSERT INTO \"shadow\" VALUES ('user value', 'mine')");
+
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'shadow']))->assertOk();
+
+    expect($res->json('editing.method'))->toBe('sqlite_rowid')
+        ->and($res->json('row_ids'))->toBe([['rowid' => '1']])
+        ->and($res->json('rows'))->toBe([['user value', 'mine']])
+        ->and($res->json('columns.*.name'))->toBe(['rowid', '__dbsuperb_rowid']);
+});
+
+it('marks views as not editable with a reason', function () {
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'order_totals']))->assertOk();
+
+    expect($res->json('editing'))->toBe(['method' => 'none', 'reason' => "views can't be edited", 'read_only_columns' => []])
+        ->and($res->json('row_ids'))->toBe(array_fill(0, count($res->json('rows')), null))
+        ->and($res->json('locked'))->toHaveCount(count($res->json('rows')));
+});
+
+it('marks rows of a read-only connection as not editable', function () {
+    $this->connection->update(['read_only' => true]);
+
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']))->assertOk();
+
+    expect($res->json('editing.method'))->toBe('none')
+        ->and($res->json('editing.reason'))->toBe('this connection is read-only')
+        ->and($res->json('row_ids'))->toBe([null, null, null]);
+});
+
+it('resolves the edit plan once per snapshot and follows read-only changes', function () {
+    $lookups = 0;
+    Event::listen(QueryExecuted::class, function (QueryExecuted $e) use (&$lookups) {
+        $lookups += (int) str_contains($e->sql, 'where hidden in (2, 3)');
+    });
+    $post = fn () => $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']))->assertOk();
+
+    $post()->assertJsonPath('editing.method', 'primary_key');
+    $post()->assertJsonPath('editing.method', 'primary_key');
+    expect($lookups)->toBe(1);
+
+    $this->connection->update(['read_only' => true]);
+    $post()->assertJsonPath('editing.method', 'none');
 });

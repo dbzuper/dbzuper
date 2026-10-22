@@ -28,6 +28,18 @@ final readonly class EditPlan
         return $this->method !== EditMethod::None;
     }
 
+    /** @param array{method: string, key_columns?: list<string>, reason?: ?string, read_only_columns?: list<string>, needs_tableoid?: bool} $data */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            EditMethod::from($data['method']),
+            $data['key_columns'] ?? [],
+            $data['reason'] ?? null,
+            $data['read_only_columns'] ?? [],
+            (bool) ($data['needs_tableoid'] ?? false),
+        );
+    }
+
     public function toArray(): array
     {
         return [

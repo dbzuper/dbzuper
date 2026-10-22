@@ -145,6 +145,9 @@ const page = (
     page: n,
     per_page: 100,
     sql: 'select * from `orders` limit 100',
+    editing: { method: 'primary_key', reason: null, read_only_columns: [] },
+    row_ids: Array.from({ length: 100 }, (_, i) => ({ key: { id: i + 1 } })),
+    locked: Array.from({ length: 100 }, () => []),
     ...over,
 });
 
