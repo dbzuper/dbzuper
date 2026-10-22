@@ -9,6 +9,7 @@ use App\Database\Editing\ColumnComparability;
 use App\Database\Editing\EditMethod;
 use App\Database\Editing\EditMethodResolver;
 use App\Database\Editing\EditPlan;
+use App\Enums\DriverName;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder;
 
@@ -67,11 +68,14 @@ final class TableRowsQuery
         $width = count($table['columns']);
         $static = self::staticLocks($driver, $table, $plan);
         $binary = array_keys(array_filter($table['columns'], fn ($c) => ColumnKind::classify((string) ($c['type_name'] ?? $c['type'] ?? '')) === ColumnKind::Binary));
+        $blobFlags = self::sqliteBlobFlags($driver, $table) !== null;
         $rows = $rowIds = $locked = $shortened = [];
         foreach (array_slice($fetched, 0, $perPage) as $row) {
             $values = array_values((array) $row);
+            // SQLite stores a BLOB in any column: such a cell shows as text it doesn't hold, so it is never editable.
+            $blobs = $blobFlags ? array_keys(array_filter(str_split((string) array_pop($values)), fn ($f) => $f === '1')) : [];
             $cells = array_map(fn ($v) => is_resource($v) ? stream_get_contents($v) : $v, array_slice($values, 0, $width));
-            $inexact = array_keys(array_filter($cells, fn ($v) => ! self::shownWhole($v)));
+            $inexact = array_values(array_unique(array_merge(array_keys(array_filter($cells, fn ($v) => ! self::shownWhole($v))), $blobs)));
             $rows[] = array_map(fn ($v) => CellValue::present($v, CellValue::RESULT_CHARS), $cells);
             $cellLocks = array_values(array_unique(array_merge($inexact, $static['locked'])));
             sort($cellLocks);
@@ -80,7 +84,7 @@ final class TableRowsQuery
             $cut = array_values(array_unique(array_merge($inexact, array_filter($binary, fn (int $i) => $cells[$i] !== null))));
             sort($cut);
             $shortened[] = $cut;
-            $rowIds[] = self::rowId($plan, $table, $cells, array_slice($values, $width), $inexact !== [] || $static['unmatchable']);
+            $rowIds[] = self::rowId($plan, $table, $cells, array_slice($values, $width), $inexact !== [] || $static['unmatchable'], $blobs);
         }
 
         return [
@@ -97,7 +101,8 @@ final class TableRowsQuery
 
     /**
      * Raw select expressions, appended after the shown columns, that carry each row's identity. They never go
-     * through sampleColumn: identity values must be exact, not shortened for display.
+     * through sampleColumn: identity values must be exact, not shortened for display. On SQLite the BLOB flags (see
+     * sqliteBlobFlags) come last.
      *
      * @return list<string>
      */
@@ -111,7 +116,9 @@ final class TableRowsQuery
         }
         $as = fn (string $expr, string $alias) => $expr.' AS '.$driver->quoteIdentifier($prefix.$alias);
 
-        return match ($plan->method) {
+        $flags = self::sqliteBlobFlags($driver, $table);
+
+        return [...match ($plan->method) {
             EditMethod::PrimaryKey, EditMethod::UniqueIndex => array_map(
                 fn (string $column, int $i) => $as($driver->quoteIdentifier($column), 'k'.$i),
                 $plan->keyColumns,
@@ -127,7 +134,23 @@ final class TableRowsQuery
                 ...($plan->needsTableoid ? [$as('tableoid::text', 'tableoid')] : []),
             ],
             EditMethod::MysqlAllValues, EditMethod::None => [],
-        };
+        }, ...($flags !== null ? [$as($flags, 'blobs')] : [])];
+    }
+
+    /**
+     * SQLite only: one select expression yielding a '0'/'1' flag per column, '1' where the cell holds a BLOB. It is
+     * the last identity expression, so run() reads it as the row's last value.
+     */
+    private static function sqliteBlobFlags(Driver $driver, array $table): ?string
+    {
+        if ($driver->name() !== DriverName::Sqlite || $table['columns'] === []) {
+            return null;
+        }
+
+        return '('.implode(' || ', array_map(
+            fn ($c) => "(typeof({$driver->quoteIdentifier((string) $c['name'])}) = 'blob')",
+            $table['columns'],
+        )).')';
     }
 
     /**
@@ -162,8 +185,9 @@ final class TableRowsQuery
      * @param  list<mixed>  $cells  the fetched (sampled) cell values
      * @param  list<mixed>  $raw  the raw identity columns, in identitySelect order
      * @param  bool  $unmatchable  some value of this row is shortened, binary or not exactly comparable
+     * @param  list<int>  $blobs  indexes of SQLite cells holding a BLOB
      */
-    private static function rowId(EditPlan $plan, array $table, array $cells, array $raw, bool $unmatchable): ?array
+    private static function rowId(EditPlan $plan, array $table, array $cells, array $raw, bool $unmatchable, array $blobs = []): ?array
     {
         $raw = array_map(fn ($v) => is_resource($v) ? stream_get_contents($v) : $v, $raw);
 
@@ -172,8 +196,12 @@ final class TableRowsQuery
             case EditMethod::UniqueIndex:
                 $types = array_column($table['columns'], 'type_name', 'name');
                 $key = [];
+                $positions = array_flip(array_column($table['columns'], 'name'));
                 foreach ($plan->keyColumns as $i => $column) {
                     $value = $raw[$i] ?? null;
+                    if (in_array($positions[$column] ?? -1, $blobs, true)) {
+                        return null; // a BLOB key would travel as text it doesn't equal
+                    }
                     // A binary key can't travel through JSON exactly, so the row can't be pinned.
                     if (ColumnKind::classify((string) ($types[$column] ?? '')) === ColumnKind::Binary
                         || (is_string($value) && ! mb_check_encoding($value, 'UTF-8'))) {

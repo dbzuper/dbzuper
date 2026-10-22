@@ -282,6 +282,24 @@ it('pins rows of a table without a key by SQLite rowid and locks shortened text'
         ->and($res->json('rows.0'))->toHaveCount(count($res->json('columns')));
 });
 
+it('locks SQLite cells holding a BLOB in a text column, and never pins a row by one', function () {
+    $pdo = new PDO('sqlite:'.Engines::sqlitePath());
+    $pdo->exec('CREATE TABLE "mixed" ("id" integer primary key, "note" text, "other" text)');
+    $pdo->exec("INSERT INTO \"mixed\" VALUES (1, x'616263', 'ok'), (2, 'abc', x'00ff'), (3, 'plain', NULL)");
+    $pdo->exec('CREATE TABLE "blobkey" ("code" text primary key, "note" text)');
+    $pdo->exec("INSERT INTO \"blobkey\" VALUES (x'6b31', 'a'), ('k2', 'b')");
+
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'mixed']))->assertOk();
+    expect($res->json('locked'))->toBe([[1], [2], []])
+        ->and($res->json('shortened'))->toBe([[1], [2], []])
+        ->and($res->json('row_ids.0'))->toBe(['key' => ['id' => 1]]);
+
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'blobkey']))->assertOk();
+    // SQLite sorts BLOBs after text.
+    expect($res->json('row_ids'))->toBe([['key' => ['code' => 'k2']], null])
+        ->and($res->json('locked.1'))->toBe([0]);
+});
+
 it('uses a rowid alias that no column shadows', function () {
     $pdo = new PDO('sqlite:'.Engines::sqlitePath());
     $pdo->exec('CREATE TABLE "shadow" ("rowid" text, "__dbsuperb_rowid" text)');
