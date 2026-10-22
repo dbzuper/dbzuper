@@ -143,7 +143,12 @@ export const usePending = create<State>()((set, get) => {
                     };
                 if (!row.id) return rows;
                 const values = { ...current?.values };
-                if (sameValue(row.original[column], value))
+                if (
+                    sameValue(
+                        (current?.original ?? row.original)[column],
+                        value,
+                    )
+                )
                     delete values[column];
                 else values[column] = value;
                 if (Object.keys(values).length === 0)

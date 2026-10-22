@@ -249,7 +249,8 @@ function editModel(
         if (row.__i < 0) return { ref: row.ref, id: null, original: {} };
         const id = editing.rowIds[row.__i];
         const cells = rows[row.__i];
-        if (!id || !cells) return null;
+        // The editor's copy of a row may predate the rows on screen: never stage it on another row.
+        if (!id || !cells || refs[row.__i] !== row.ref) return null;
         const cut = new Set(editing.shortened[row.__i] ?? []);
         const original: Record<string, QueryCell> = {};
         const shortened: string[] = [];
@@ -260,8 +261,26 @@ function editModel(
         return { ref: row.ref, id, original, shortened };
     };
 
-    /** Why the cell can't be edited, or null when it can. */
+    /** The value the cell shows: staged, else loaded. */
+    const shown = (row: Row, index: number): QueryCell | undefined => {
+        const p = pendingOf(row);
+        const name = columns[index].name;
+        if (p && p.kind !== 'delete' && name in p.values) return p.values[name];
+        return row.__i < 0 ? undefined : rows[row.__i]?.[index];
+    };
+
+    /** Why the cell can't be edited inline (the tooltip text), or null when it can. */
     const lockReason = (row: Row, index: number): string | null => {
+        const reason = lockedFor(row, index);
+        if (reason) return `Not editable: ${reason}`;
+        const value = shown(row, index);
+        // An <input> drops line breaks: editing would silently join the lines.
+        if (typeof value === 'string' && /[\r\n]/.test(value))
+            return 'Multi-line value: edit it in the row drawer';
+        return null;
+    };
+
+    const lockedFor = (row: Row, index: number): string | null => {
         const name = columns[index].name;
         const binary =
             isBinaryType(typeOf(index)) ||
@@ -305,6 +324,15 @@ function editModel(
         );
     };
 
+    /** The value a staged edit replaced: the original stored with the change. */
+    const originalOf = (row: Row, index: number): QueryCell | undefined => {
+        const p = pendingOf(row);
+        const name = columns[index].name;
+        return p && p.kind !== 'insert' && name in p.original
+            ? p.original[name]
+            : rows[row.__i]?.[index];
+    };
+
     const boolValue = (on: boolean) =>
         editing.dialect === 'pgsql' ? String(on) : on ? '1' : '0';
 
@@ -314,6 +342,7 @@ function editModel(
         pendingOf,
         target,
         lockReason,
+        originalOf,
         editable,
         staged,
         required,
@@ -428,6 +457,23 @@ export function ResultGrid({
         [editing, columns, rows, pending],
     );
 
+    // Stable negative keys for new rows, newest most negative; given once per ref, never reused.
+    const [keyState, setKeyState] = useState<{
+        keys: Record<RowRef, number>;
+        next: number;
+    }>({ keys: {}, next: -1 });
+    let newKeys = keyState;
+    const unkeyed = Object.values(pending).filter(
+        (p) => p.kind === 'insert' && !(p.ref in keyState.keys),
+    );
+    if (unkeyed.length > 0) {
+        const keys = { ...keyState.keys };
+        let next = keyState.next;
+        for (const p of unkeyed) keys[p.ref] = next--;
+        newKeys = { keys, next };
+        setKeyState(newKeys);
+    }
+
     const sortColumns = sort?.columns ?? localSort;
     const data: Row[] = useMemo(() => {
         // Editable rows are indexed by their position in `rows`, so they are never sorted here.
@@ -452,18 +498,30 @@ export function ResultGrid({
             };
         });
         if (!model) return loaded;
-        // New rows first, newest on top; each keeps its index (-1 for the oldest) while others come and go.
-        const inserts = Object.values(pending).filter(
-            (p): p is Extract<PendingRow, { kind: 'insert' }> =>
-                p.kind === 'insert',
-        );
-        const added = inserts.map((p, k): Row => ({
-            __i: -(k + 1),
-            ref: p.ref,
-            cells: columns.map((c) => p.values[c.name] ?? null),
-        }));
-        return [...added.reverse(), ...loaded];
-    }, [rows, localSort, sort, model, pending, columns]);
+        // New rows first, newest on top. Each keeps the key it was given while others come and go, so a
+        // selection never moves to another new row.
+        const added = Object.values(pending)
+            .filter(
+                (p): p is Extract<PendingRow, { kind: 'insert' }> =>
+                    p.kind === 'insert',
+            )
+            .flatMap((p): Row[] => {
+                const key = newKeys.keys[p.ref];
+                return key === undefined
+                    ? []
+                    : [
+                          {
+                              __i: key,
+                              ref: p.ref,
+                              cells: columns.map(
+                                  (c) => p.values[c.name] ?? null,
+                              ),
+                          },
+                      ];
+            })
+            .sort((a, b) => a.__i - b.__i);
+        return [...added, ...loaded];
+    }, [rows, localSort, sort, model, pending, columns, newKeys]);
     const rowByIndex = useMemo(
         () => new Map(data.map((r) => [r.__i, r])),
         [data],
@@ -776,10 +834,8 @@ export function ResultGrid({
                                 model.pendingOf(row)?.kind === 'update' &&
                                 model.staged(row, index);
                             const hint = edited
-                                ? `Original: ${shownText(rows[row.__i]?.[index])}`
-                                : lock
-                                  ? `Not editable: ${lock}`
-                                  : undefined;
+                                ? `Original: ${shownText(model.originalOf(row, index))}`
+                                : (lock ?? undefined);
                             const view = (
                                 <CellView
                                     value={value}
@@ -816,6 +872,7 @@ export function ResultGrid({
                                         className="block h-full"
                                     >
                                         {view}
+                                        <span className="sr-only">{`. ${hint}`}</span>
                                     </span>
                                 );
                             return view;

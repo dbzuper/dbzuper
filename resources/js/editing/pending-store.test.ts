@@ -53,6 +53,23 @@ describe('usePending', () => {
         expect(pending()).toEqual({});
     });
 
+    it('compares with the original stored with the change, not a later load', () => {
+        const s = usePending.getState();
+        s.setCell(C, T, row(1), 'status', 'paid');
+        // A refetch shows another value; the change still belongs to what was loaded first.
+        const reloaded = {
+            ...row(1),
+            original: { ...row(1).original, status: 'shipped' },
+        };
+        s.setCell(C, T, reloaded, 'note', 'x');
+        expect(pending()[row(1).ref]).toMatchObject({
+            original: { status: 'open' },
+        });
+        s.setCell(C, T, reloaded, 'status', 'open');
+        expect(pending()[row(1).ref]).toMatchObject({ values: { note: 'x' } });
+        expect(pending()[row(1).ref]).not.toHaveProperty('values.status');
+    });
+
     it('keeps an empty string distinct from NULL', () => {
         const s = usePending.getState();
         s.setCell(C, T, { ...row(1), original: { note: null } }, 'note', '');
