@@ -1,4 +1,11 @@
-import { expect, type Page } from '@playwright/test';
+import {
+    expect,
+    type Browser,
+    type BrowserContext,
+    type Page,
+} from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
 
 export const ADMIN = {
     name: 'Admin',
@@ -32,6 +39,27 @@ export async function ensureSignedIn(
         await page.getByRole('button', { name: 'Log in' }).click();
     }
     await expect(page).toHaveURL(/\/connections$/);
+}
+
+/** The signed-in session specs share; global-setup removes it, since it starts a fresh app database. */
+export const AUTH_STATE = path.resolve(
+    'storage/framework/testing/e2e-auth.json',
+);
+
+/**
+ * A context and page signed in as the admin, reusing the session an earlier spec saved: Fortify allows five logins a
+ * minute and every spec signs in as the same user. Signs in (and saves the session) when there is none or it expired.
+ */
+export async function newSignedInContext(
+    browser: Browser,
+): Promise<{ context: BrowserContext; page: Page }> {
+    const context = await browser.newContext(
+        fs.existsSync(AUTH_STATE) ? { storageState: AUTH_STATE } : {},
+    );
+    const page = await context.newPage();
+    await ensureSignedIn(page);
+    await context.storageState({ path: AUTH_STATE });
+    return { context, page };
 }
 
 export async function addSqliteConnection(

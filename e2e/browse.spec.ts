@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import path from 'node:path';
 import { expectNoA11yViolations } from './support/axe';
-import { addSqliteConnection, ensureSignedIn } from './support/auth';
+import { addSqliteConnection, newSignedInContext } from './support/auth';
 
 // One shared, signed-in page: Fortify throttles logins to 5 per minute.
 test.describe.configure({ mode: 'serial' });
@@ -11,9 +11,7 @@ let page: Page;
 
 test.beforeAll(async ({ browser }) => {
     // A context (not browser.newPage()) so that axe can open its own page in it.
-    context = await browser.newContext();
-    page = await context.newPage();
-    await ensureSignedIn(page);
+    ({ context, page } = await newSignedInContext(browser));
     await addSqliteConnection(
         page,
         'Browse demo',

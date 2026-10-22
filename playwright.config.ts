@@ -62,6 +62,8 @@ export default defineConfig({
             // Inertia DevTools writes every request to storage/inertia-devtools, which slows the
             // single-threaded `php -S` server; production has it off.
             INERTIA_DEVTOOLS_ENABLED: 'false',
+            // Every spec uses the API as the same user, back to back; the default 120 a minute is for one person.
+            DBSUPERB_API_PER_MINUTE: '1000',
             PHP_INI_SCAN_DIR: phpIniScanDir(),
             // `php -S` can fork workers (so the schema and layout requests run in parallel) except
             // on Windows, where forking is not supported.
