@@ -432,6 +432,34 @@ describe('DataView', () => {
         expect(screen.getByTestId('active-row')).toHaveTextContent('2');
     });
 
+    it('slides the drawer in on open and marks later rows as a change', async () => {
+        open();
+        render(<Harness />);
+        await screen.findByText('100 rows');
+        fireEvent.click(screen.getByRole('button', { name: 'Open row 2' }));
+        expect(await screen.findByRole('complementary')).toHaveAttribute(
+            'data-motion',
+            'open',
+        );
+        fireEvent.keyDown(screen.getByRole('complementary'), {
+            key: 'ArrowDown',
+        });
+        await waitFor(() => expect(tabState().drawerRow).toBe(3));
+        expect(screen.getByRole('complementary')).toHaveAttribute(
+            'data-motion',
+            'change',
+        );
+        // Closing and opening again is a fresh open, not a change.
+        fireEvent.keyDown(screen.getByRole('complementary'), {
+            key: 'Escape',
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Open row 2' }));
+        expect(await screen.findByRole('complementary')).toHaveAttribute(
+            'data-motion',
+            'open',
+        );
+    });
+
     it('steps past the end of a page into the next one', async () => {
         useBrowse.getState().openTable(1, 'orders', {
             mode: 'preview',
