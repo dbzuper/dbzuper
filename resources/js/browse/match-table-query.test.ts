@@ -1048,3 +1048,92 @@ describe('numbers where the server would compare differently', () => {
         ).toEqual([{ column: 'id', op: 'eq', value: '1.5' }]);
     });
 });
+
+describe('values the server request would change before filtering', () => {
+    // Laravel's TrimStrings + ConvertEmptyStringsToNull run on the rows request:
+    // a padded value would be applied trimmed (or as NULL), not as typed.
+    const TRIMMED = 'a value with leading or trailing spaces';
+
+    it('refuses LIKE patterns whose value has leading or trailing whitespace', () => {
+        for (const d of DIALECTS) {
+            const like = d === 'pgsql' ? 'ILIKE' : 'LIKE';
+            for (const pattern of [
+                '% %',
+                '%  %',
+                '%x %',
+                '% x%',
+                ' x%',
+                '%x ',
+                '%​x%',
+                '%x\u{FEFF}%',
+                '%᠎x%',
+                '% x%',
+                '%x\t%',
+                '%x　%',
+                '%x\u{1D159}%',
+            ]) {
+                expect(
+                    reason(
+                        `SELECT * FROM orders WHERE note ${like} '${pattern}'`,
+                        d,
+                    ),
+                ).toBe(TRIMMED);
+            }
+        }
+    });
+
+    it('refuses comparison values with leading or trailing whitespace', () => {
+        for (const value of [' x', 'x ', ' ', '​x', 'x⁠', 'ㅤx']) {
+            expect(
+                reason(`SELECT * FROM orders WHERE status = '${value}'`),
+            ).toBe(TRIMMED);
+            expect(
+                reason(`SELECT * FROM orders WHERE status <> '${value}'`),
+            ).toBe(TRIMMED);
+        }
+    });
+
+    it('inner whitespace and an empty LIKE value still fit', () => {
+        expect(
+            ok("SELECT * FROM orders WHERE note LIKE '%a b%'").filters,
+        ).toEqual([{ column: 'note', op: 'contains', value: 'a b' }]);
+        expect(
+            ok("SELECT * FROM orders WHERE status = 'a​b'").filters,
+        ).toEqual([{ column: 'status', op: 'eq', value: 'a​b' }]);
+        expect(ok("SELECT * FROM orders WHERE note LIKE '%%'").filters).toEqual(
+            [{ column: 'note', op: 'contains', value: '' }],
+        );
+    });
+});
+
+describe('quoted special table names', () => {
+    it('matches doubled quotes inside quoted identifiers', () => {
+        const pg = typed('pgsql', 'o"rders', [['id', 'int']]);
+        expect(ok('SELECT * FROM "o""rders"', 'pgsql', pg).page).toBe(1);
+        expect(reason('SELECT * FROM "o""rder"', 'pgsql', pg)).toBe(
+            'reads a different table: `o"rder`',
+        );
+        const sq = typed('sqlite', 'o"rders', [['id', 'int']]);
+        expect(ok('SELECT * FROM "o""rders"', 'sqlite', sq).page).toBe(1);
+        for (const d of ['mysql', 'mariadb'] as Dialect[]) {
+            const my = typed(d, 'o`rders', [['id', 'int']]);
+            expect(ok('SELECT * FROM `o``rders`', d, my).page).toBe(1);
+            expect(reason('SELECT * FROM `o``rder`', d, my)).toBe(
+                'reads a different table: `o`rder`',
+            );
+        }
+    });
+
+    it('matches non-ASCII table names', () => {
+        for (const d of DIALECTS) {
+            const t = typed(d, 'bestellüngen', [['id', 'int']]);
+            const q = d === 'mysql' || d === 'mariadb' ? '`' : '"';
+            expect(ok(`SELECT * FROM ${q}bestellüngen${q}`, d, t).page).toBe(
+                1,
+            );
+            expect(reason(`SELECT * FROM ${q}bestellungen${q}`, d, t)).toBe(
+                'reads a different table: `bestellungen`',
+            );
+        }
+    });
+});

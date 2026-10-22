@@ -198,3 +198,15 @@ it('accepts pages of up to 1000 rows', function () {
     $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['per_page' => 1000])->assertOk();
     $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), ['per_page' => 1001])->assertUnprocessable();
 });
+
+// The SQL editor's matcher (match-table-query.ts) refuses padded values because of this.
+it('trims filter values and nulls whitespace-only ones before building the query', function () {
+    $post = fn (string $op, string $value) => $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'users']), [
+        'filters' => [['column' => 'name', 'op' => $op, 'value' => $value]],
+    ])->assertOk()->json('sql');
+
+    expect($post('contains', ' '))->toContain("'%%'")->not->toContain("'% %'")
+        ->and($post('eq', ' x'))->toContain("= 'x'")->not->toContain("' x'")
+        ->and($post('eq', "x\u{200B}"))->toContain("= 'x'")
+        ->and($post('contains', "\u{FEFF}a b\u{180E}"))->toContain("'%a b%'");
+});

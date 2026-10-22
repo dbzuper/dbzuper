@@ -68,6 +68,7 @@ export const MATCH_REASONS = {
     emptyValue: 'compares with an empty string',
     longValue: `a value longer than ${MAX_VALUE_CHARS} characters`,
     nulValue: 'a value with a NUL character',
+    trimmedValue: 'a value with leading or trailing spaces',
     keyword: (keyword: string) => `\`${keyword}\``,
     fn: (name: string) => `uses a function: \`${name}(…)\``,
     differentTable: (name: string) => `reads a different table: \`${name}\``,
@@ -970,9 +971,23 @@ class Matcher {
     }
 }
 
-/** Values the server's request validation would refuse don't fit. */
+/**
+ * What Laravel's TrimStrings middleware strips from both ends of every request string
+ * (Str::trim: PCRE `\s` in UCP mode, " \n\r\t\v\0" and Str::INVISIBLE_CHARACTERS).
+ * A padded value would reach the rows query trimmed, or as NULL once
+ * ConvertEmptyStringsToNull sees the empty result, so it would filter differently
+ * from the SQL as typed.
+ */
+const TRIM_CHARS =
+    '\\s\\0\\v\\u0085\\u00A0\\u00AD\\u034F\\u061C\\u115F\\u1160\\u17B4\\u17B5\\u180E' +
+    '\\u2000-\\u200F\\u2028\\u2029\\u202F\\u205F-\\u2065\\u206A-\\u206F\\u2800\\u3000' +
+    '\\u3164\\uFEFF\\uFFA0\\u{1D159}\\u{1D173}-\\u{1D17A}\\u{E0020}';
+const PADDED = new RegExp(`^[${TRIM_CHARS}]|[${TRIM_CHARS}]$`, 'u');
+
+/** Values the server's request validation would refuse, or its middleware would change, don't fit. */
 function checkValue(value: string): void {
     if (value.includes('\0')) throw new NoFit(MATCH_REASONS.nulValue);
+    if (PADDED.test(value)) throw new NoFit(MATCH_REASONS.trimmedValue);
     if (Array.from(value).length > MAX_VALUE_CHARS)
         throw new NoFit(MATCH_REASONS.longValue);
 }
