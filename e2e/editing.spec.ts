@@ -36,6 +36,14 @@ test.beforeAll(async ({ browser }) => {
 
 test.afterAll(async () => {
     await context.close();
+    // The copy is this spec's own: leave nothing behind (a file still held open is skipped, not an error).
+    for (const suffix of ['', '-wal', '-shm', '-journal']) {
+        try {
+            fs.rmSync(COPY + suffix, { force: true, maxRetries: 3 });
+        } catch {
+            // Still held open by the server: the next run's copy replaces it.
+        }
+    }
 });
 
 async function openWorkspace(name: string) {
