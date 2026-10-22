@@ -219,6 +219,7 @@ describe('sql tabs store', () => {
             s().setLink(1, id, {
                 browseTabId: 't:a',
                 table: 'orders',
+                title: 'orders',
                 syncedSql: 'q',
                 stale: true,
             });
@@ -259,6 +260,7 @@ describe('sql tabs store', () => {
                                             browseTabId: 't:a',
                                             table: 'orders',
                                             syncedSql: 'q',
+                                            requestKey: 'k',
                                             stale: true,
                                             extra: 1,
                                         },
@@ -293,7 +295,10 @@ describe('sql tabs store', () => {
             expect(tabs[0].link).toEqual({
                 browseTabId: 't:a',
                 table: 'orders',
+                // Saved before titles were kept: the table name stands in.
+                title: 'orders',
                 syncedSql: 'q',
+                requestKey: 'k',
                 stale: true,
             });
             expect(tabs[1].link).toBeUndefined();

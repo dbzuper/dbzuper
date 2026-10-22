@@ -11,7 +11,14 @@ import { safeStorage } from '@/browse/safe-storage';
 export type SqlLink = {
     browseTabId: string;
     table: string;
+    /** The table tab's title (`orders (2)`), kept for the chip even once the tab is closed. */
+    title: string;
     syncedSql: string;
+    /**
+     * The table tab's rows request that `syncedSql` was last exchanged for (absent when the text was built
+     * locally). Saved, so a reload or another window does not take the same request for a new one.
+     */
+    requestKey?: string;
     stale?: boolean;
     closed?: boolean;
 };
@@ -28,7 +35,7 @@ type State = {
     rename: (connectionId: number, id: string, title: string) => void;
     /**
      * Activates the editor tab linked to table tab `browseTabId`, or opens one titled `title` with `sql` linked to
-     * it. Returns its id.
+     * it (`requestKey`: the rows request `sql` answers, when it is the server's). Returns its id.
      */
     openLinkedTab: (
         connectionId: number,
@@ -36,6 +43,7 @@ type State = {
         table: string,
         title: string,
         sql: string,
+        requestKey?: string,
     ) => string;
     /** Replaces (or with undefined removes) an editor tab's link. */
     setLink: (
@@ -74,6 +82,8 @@ const isLink = (v: unknown): v is SqlLink => {
         typeof l.browseTabId === 'string' &&
         typeof l.table === 'string' &&
         typeof l.syncedSql === 'string' &&
+        (l.title === undefined || typeof l.title === 'string') &&
+        (l.requestKey === undefined || typeof l.requestKey === 'string') &&
         (l.stale === undefined || typeof l.stale === 'boolean') &&
         (l.closed === undefined || typeof l.closed === 'boolean')
     );
@@ -85,8 +95,10 @@ function sanitizeLink(v: unknown): SqlLink | undefined {
     const link: SqlLink = {
         browseTabId: v.browseTabId,
         table: v.table,
+        title: v.title ?? v.table,
         syncedSql: v.syncedSql,
     };
+    if (v.requestKey !== undefined) link.requestKey = v.requestKey;
     if (v.stale) link.stale = true;
     if (v.closed) link.closed = true;
     return link;
@@ -282,6 +294,7 @@ export const useSqlTabs = create<State>()(
                     table,
                     title,
                     sql,
+                    requestKey,
                 ) => {
                     const existing = get().findLinked(
                         connectionId,
@@ -289,11 +302,24 @@ export const useSqlTabs = create<State>()(
                     );
                     if (existing) {
                         update(connectionId, (c) => ({
-                            ...c,
+                            tabs: c.tabs.map((t) =>
+                                t.id === existing.id &&
+                                t.link &&
+                                t.link.title !== title
+                                    ? { ...t, link: { ...t.link, title } }
+                                    : t,
+                            ),
                             activeId: existing.id,
                         }));
                         return existing.id;
                     }
+                    const link: SqlLink = {
+                        browseTabId,
+                        table,
+                        title,
+                        syncedSql: sql,
+                    };
+                    if (requestKey !== undefined) link.requestKey = requestKey;
                     const id = newId();
                     update(connectionId, (c) => ({
                         tabs: [
@@ -302,7 +328,7 @@ export const useSqlTabs = create<State>()(
                                 id,
                                 title,
                                 sql,
-                                link: { browseTabId, table, syncedSql: sql },
+                                link,
                             },
                         ],
                         activeId: id,
@@ -310,14 +336,24 @@ export const useSqlTabs = create<State>()(
                     return id;
                 },
                 setLink: (connectionId, id, link) =>
-                    update(connectionId, (c) => ({
-                        ...c,
-                        tabs: c.tabs.map((t) => {
-                            if (t.id !== id) return t;
-                            const { link: _old, ...rest } = t;
-                            return link ? { ...rest, link } : rest;
-                        }),
-                    })),
+                    update(connectionId, (c) =>
+                        // One editor tab per table tab: a link to a table tab another editor tab follows is refused.
+                        link &&
+                        c.tabs.some(
+                            (t) =>
+                                t.id !== id &&
+                                t.link?.browseTabId === link.browseTabId,
+                        )
+                            ? c
+                            : {
+                                  ...c,
+                                  tabs: c.tabs.map((t) => {
+                                      if (t.id !== id) return t;
+                                      const { link: _old, ...rest } = t;
+                                      return link ? { ...rest, link } : rest;
+                                  }),
+                              },
+                    ),
                 findLinked: (connectionId, browseTabId) =>
                     get().byConnection[connectionId]?.tabs.find(
                         (t) => t.link?.browseTabId === browseTabId,

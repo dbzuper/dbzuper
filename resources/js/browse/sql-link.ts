@@ -1,10 +1,10 @@
 import type * as Monaco from 'monaco-editor';
-import { quoteIdent } from '@/grid/copy';
 import { useSqlTabs, type SqlLink } from '@/sql/tabs-store';
 import type { Dialect } from '@/types/schema';
 import { tabTitle, useBrowse, type TableTab } from './browse-store';
 import type { MatchedState } from './match-table-query';
 import { rowsCache, rowsRequestKey } from './rows-cache';
+import { buildTableSql } from './table-query-sql';
 
 /**
  * Editor tabs linked to table tabs (spec 4): the table tab's query flows into the editor, and a fitting statement
@@ -63,9 +63,11 @@ function replaceText(connectionId: number, tabId: string, sql: string): void {
 
 const tabKey = (connectionId: number, browseTabId: string) =>
     `${connectionId}:${browseTabId}`;
-/** Per table tab: the request key of the last rows response, and the query it carried. */
-const lastKey = new Map<string, string>();
-const lastSql = new Map<string, string>();
+/**
+ * Per table tab, in this window only: the last query its rows carried and the request they answered, for
+ * "Update SQL". Whether a response is new is decided by the request key saved on the link, never by this.
+ */
+const lastSql = new Map<string, { requestKey?: string; sql: string }>();
 
 function tableTab(connectionId: number, id: string): TableTab | undefined {
     const tab = useBrowse
@@ -74,24 +76,54 @@ function tableTab(connectionId: number, id: string): TableTab | undefined {
     return tab?.kind === 'table' ? tab : undefined;
 }
 
-/** The SQL of the cached rows when they answer the tab's current request, else a plain first-page SELECT. */
+/** Replaces an editor tab's link with `link` minus its unset fields. */
+function saveLink(connectionId: number, tabId: string, link: SqlLink): void {
+    const next = { ...link };
+    if (!next.stale) delete next.stale;
+    if (!next.closed) delete next.closed;
+    if (next.requestKey === undefined) delete next.requestKey;
+    useSqlTabs.getState().setLink(connectionId, tabId, next);
+}
+
+/**
+ * The tab's current query: the server's SQL when it is known for the tab's current request (`requestKey` set),
+ * else one built from its filters, sort and page that maps back to the same state.
+ */
+function currentQuery(
+    connectionId: number,
+    tab: TableTab,
+    dialect: Dialect,
+): { sql: string; requestKey?: string } {
+    const requestKey = rowsRequestKey(tab.state);
+    const hit = rowsCache.get(tabKey(connectionId, tab.id));
+    if (hit && hit.requestKey === requestKey)
+        return { sql: hit.rows.sql, requestKey };
+    const known = lastSql.get(tabKey(connectionId, tab.id));
+    if (known && known.requestKey === requestKey)
+        return { sql: known.sql, requestKey };
+    return { sql: buildTableSql(dialect, tab.table, tab.state) };
+}
+
+/** The tab's current query (Copy SELECT, Open in SQL). */
 export function tableTabSql(
     connectionId: number,
     tab: TableTab,
     dialect: Dialect,
 ): string {
-    const hit = rowsCache.get(`${connectionId}:${tab.id}`);
-    return hit && hit.requestKey === rowsRequestKey(tab.state)
-        ? hit.rows.sql
-        : `SELECT * FROM ${quoteIdent(dialect, tab.table)} LIMIT 100`;
+    return currentQuery(connectionId, tab, dialect).sql;
 }
 
-/** "Open in SQL" on a table tab: its linked editor tab, activated, or a new one with the tab's query. */
+/**
+ * "Open in SQL" on a table tab: its linked editor tab, activated, or a new one with the tab's query. The table tab
+ * becomes permanent, so the next preview does not replace it and end the link.
+ */
 export function openTableTabInSql(
     connectionId: number,
     tab: TableTab,
     dialect: Dialect,
 ): string {
+    useBrowse.getState().promote(connectionId, tab.id);
+    const { sql, requestKey } = currentQuery(connectionId, tab, dialect);
     return useSqlTabs
         .getState()
         .openLinkedTab(
@@ -99,7 +131,8 @@ export function openTableTabInSql(
             tab.id,
             tab.table,
             tabTitle(tab),
-            tableTabSql(connectionId, tab, dialect),
+            sql,
+            requestKey,
         );
 }
 
@@ -108,46 +141,53 @@ export function latestTableSql(
     connectionId: number,
     browseTabId: string,
 ): string | undefined {
-    const known = lastSql.get(tabKey(connectionId, browseTabId));
-    if (known !== undefined) return known;
     const tab = tableTab(connectionId, browseTabId);
+    const current = tab ? rowsRequestKey(tab.state) : undefined;
+    const known = lastSql.get(tabKey(connectionId, browseTabId));
+    if (
+        known &&
+        (known.requestKey === undefined || known.requestKey === current)
+    )
+        return known.sql;
     const hit = rowsCache.get(tabKey(connectionId, browseTabId));
-    return tab && hit && hit.requestKey === rowsRequestKey(tab.state)
-        ? hit.rows.sql
-        : undefined;
+    return hit && hit.requestKey === current ? hit.rows.sql : undefined;
 }
 
 /**
- * The table tab's query is now `sql`. Its linked editor tab follows when its text is unedited (still `syncedSql`);
- * edited text is never touched, the link goes stale instead.
+ * The table tab's query is now `sql` (answering `requestKey`, when given). Its linked editor tab follows when its
+ * text is unedited (still `syncedSql`); edited text is never touched, the link goes stale instead. A query back at
+ * `syncedSql` is in step again.
  */
 export function onTableQuery(
     connectionId: number,
     browseTabId: string,
     sql: string,
+    requestKey?: string,
 ): void {
-    lastSql.set(tabKey(connectionId, browseTabId), sql);
+    lastSql.set(tabKey(connectionId, browseTabId), { requestKey, sql });
     const tab = useSqlTabs.getState().findLinked(connectionId, browseTabId);
     const link = tab?.link;
     if (!tab || !link || link.closed) return;
-    const set = (next: SqlLink) =>
-        useSqlTabs.getState().setLink(connectionId, tab.id, next);
-    if (tab.sql === sql) {
-        if (link.syncedSql !== sql || link.stale)
-            set({ ...link, syncedSql: sql, stale: undefined });
-        return;
-    }
-    // Nothing new: the editor was already given this query.
-    if (link.syncedSql === sql) return;
-    if (tab.sql === link.syncedSql) {
+    const base = { ...link, requestKey: requestKey ?? link.requestKey };
+    let next: SqlLink;
+    if (tab.sql === sql || link.syncedSql === sql)
+        next = { ...base, syncedSql: sql, stale: undefined };
+    else if (tab.sql === link.syncedSql) {
         replaceText(connectionId, tab.id, sql);
-        set({ ...link, syncedSql: sql, stale: undefined });
-    } else if (!link.stale) set({ ...link, stale: true });
+        next = { ...base, syncedSql: sql, stale: undefined };
+    } else next = { ...base, stale: true };
+    if (
+        next.syncedSql !== link.syncedSql ||
+        next.requestKey !== link.requestKey ||
+        !next.stale !== !link.stale
+    )
+        saveLink(connectionId, tab.id, next);
 }
 
 /**
- * A rows response arrived for a table tab. Only a new request (filters, sort, page or page size changed) counts as
- * a new query; a refetch of the same request (Refresh, Retry) does not.
+ * A rows response arrived for a table tab. Only a request other than the one the link last exchanged (filters,
+ * sort, page or page size changed) counts as a new query; a refetch of it (Refresh, Retry, a reload, another
+ * window) does not. The key is saved on the link, so this holds across reloads and windows.
  */
 export function reportTableRows(
     connectionId: number,
@@ -155,13 +195,14 @@ export function reportTableRows(
     requestKey: string,
     sql: string,
 ): void {
-    const key = tabKey(connectionId, browseTabId);
-    if (lastKey.get(key) === requestKey) {
-        lastSql.set(key, sql);
+    const link = useSqlTabs
+        .getState()
+        .findLinked(connectionId, browseTabId)?.link;
+    if (link && !link.closed && link.requestKey === requestKey) {
+        lastSql.set(tabKey(connectionId, browseTabId), { requestKey, sql });
         return;
     }
-    lastKey.set(key, requestKey);
-    onTableQuery(connectionId, browseTabId, sql);
+    onTableQuery(connectionId, browseTabId, sql, requestKey);
 }
 
 /** The table tab was closed: its editor tab says so until edited, and follows nothing. */
@@ -169,12 +210,10 @@ export function onBrowseTabClosed(
     connectionId: number,
     browseTabId: string,
 ): void {
-    const key = tabKey(connectionId, browseTabId);
-    lastKey.delete(key);
-    lastSql.delete(key);
+    lastSql.delete(tabKey(connectionId, browseTabId));
     const tab = useSqlTabs.getState().findLinked(connectionId, browseTabId);
     if (!tab?.link || tab.link.closed) return;
-    useSqlTabs.getState().setLink(connectionId, tab.id, {
+    saveLink(connectionId, tab.id, {
         ...tab.link,
         stale: undefined,
         closed: true,
@@ -190,7 +229,7 @@ export function updateSqlFromTable(
     const sql = latestTableSql(connectionId, browseTabId);
     if (!tab?.link || tab.link.closed || sql === undefined) return false;
     if (tab.sql !== sql) replaceText(connectionId, tab.id, sql);
-    useSqlTabs.getState().setLink(connectionId, tab.id, {
+    saveLink(connectionId, tab.id, {
         ...tab.link,
         syncedSql: sql,
         stale: undefined,
@@ -200,8 +239,9 @@ export function updateSqlFromTable(
 
 /**
  * Run in a linked editor tab, the statement fit the table: the table tab takes its filters, sort, page and page size
- * (keeping its page size when the statement has no LIMIT) and is activated. The editor text (`text`, default the
- * whole tab) becomes `syncedSql`; the rows that answer the applied state are not synced back over it.
+ * (keeping its page size when the statement has no LIMIT), shows its Data view and is activated. The editor text
+ * (`text`, default the whole tab) becomes `syncedSql` for the applied request, so the rows that answer it are not
+ * synced back over it.
  */
 export function applyToTable(
     connectionId: number,
@@ -220,19 +260,19 @@ export function applyToTable(
     };
     browse.updateTable(connectionId, link.browseTabId, {
         ...next,
+        view: 'data',
         drawerRow: null,
     });
     browse.activate(connectionId, link.browseTabId);
-    const key = tabKey(connectionId, link.browseTabId);
-    lastKey.set(key, rowsRequestKey(next));
-    lastSql.delete(key);
+    lastSql.delete(tabKey(connectionId, link.browseTabId));
     const tab = useSqlTabs
         .getState()
         .findLinked(connectionId, link.browseTabId);
     if (!tab?.link) return;
-    useSqlTabs.getState().setLink(connectionId, tab.id, {
+    saveLink(connectionId, tab.id, {
         ...tab.link,
         syncedSql: text ?? tab.sql,
+        requestKey: rowsRequestKey(next),
         stale: undefined,
     });
 }
@@ -247,14 +287,13 @@ export function dropDanglingLinks(): void {
     }
 }
 
-let installed = false;
+let uninstall: (() => void) | null = null;
 
-/** Watches the browse store for closed table tabs; runs once, on first import. */
+/** Watches the browse store for closed table tabs; runs once on first import, and again after a hot update. */
 export function initSqlLink(): void {
-    if (installed) return;
-    installed = true;
+    if (uninstall) return;
     dropDanglingLinks();
-    useBrowse.subscribe((state, prev) => {
+    uninstall = useBrowse.subscribe((state, prev) => {
         for (const [key, before] of Object.entries(prev.byConnection)) {
             const after = state.byConnection[Number(key)];
             if (after === before) continue;
@@ -267,3 +306,9 @@ export function initSqlLink(): void {
 }
 
 initSqlLink();
+
+if (import.meta.hot)
+    import.meta.hot.dispose(() => {
+        uninstall?.();
+        uninstall = null;
+    });

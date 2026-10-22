@@ -197,7 +197,8 @@ describe('table → editor', () => {
     it('Update SQL takes the latest table query and clears stale', () => {
         const { table, editorId } = linked('q1');
         useSqlTabs.getState().setSql(1, editorId, 'my edit');
-        reportTableRows(1, table.id, 'key-b', 'q2');
+        useBrowse.getState().updateTable(1, table.id, { page: 2 });
+        reportTableRows(1, table.id, keyOf(orders()), 'q2');
         expect(linkedTo(table.id)?.link?.stale).toBe(true);
 
         expect(updateSqlFromTable(1, table.id)).toBe(true);
@@ -297,5 +298,124 @@ describe('editor → table', () => {
             perPage: 500,
         });
         expect(orders().state.perPage).toBe(500);
+    });
+});
+
+describe('fix round 1', () => {
+    const editor = (browseTabId: string) => linkedTo(browseTabId)!;
+
+    it('records the request key and table title on the link', () => {
+        const { table } = linked('q1');
+        expect(editor(table.id).link).toMatchObject({
+            requestKey: keyOf(table),
+            title: 'orders',
+        });
+        reportTableRows(1, table.id, 'key-b', 'q2');
+        expect(editor(table.id).link?.requestKey).toBe('key-b');
+    });
+
+    it('after a reload, a response to the applied request changes nothing', () => {
+        const { table, editorId } = linked('q1');
+        useSqlTabs.getState().setSql(1, editorId, 'my statement');
+        // As saved before the reload: applied text, applied request; nothing in memory.
+        useSqlTabs.getState().setLink(1, editorId, {
+            ...editor(table.id).link!,
+            syncedSql: 'my statement',
+            requestKey: 'applied',
+        });
+        reportTableRows(1, table.id, 'applied', 'server formatted sql');
+        expect(editor(table.id).sql).toBe('my statement');
+        expect(editor(table.id).link?.stale).toBeFalsy();
+
+        useSqlTabs.getState().setSql(1, editorId, 'my statement, edited');
+        reportTableRows(1, table.id, 'applied', 'server formatted sql');
+        expect(editor(table.id).link?.stale).toBeFalsy();
+    });
+
+    it('a second window sharing storage does not replace the applied text', async () => {
+        const { table, editorId } = linked('q1');
+        useSqlTabs.getState().setSql(1, editorId, 'my statement');
+        applyToTable(1, editor(table.id).link!, {
+            filters: [{ column: 'status', op: 'eq', value: 'paid' }],
+            sort: [],
+            page: 1,
+            perPage: null,
+        });
+        const { flushBrowse } = await import('./browse-store');
+        flushBrowse();
+        flushSqlTabs();
+
+        vi.resetModules();
+        const other = await import('./sql-link');
+        const otherSql = (await import('@/sql/tabs-store')).useSqlTabs;
+        const otherBrowse = (await import('./browse-store')).useBrowse;
+        await otherSql.persist.rehydrate();
+        await otherBrowse.persist.rehydrate();
+        const tab = otherBrowse
+            .getState()
+            .byConnection[1].tabs.find((t) => t.id === table.id) as TableTab;
+        other.reportTableRows(1, table.id, keyOf(tab), 'server sql');
+        const theirs = otherSql.getState().findLinked(1, table.id)!;
+        expect(theirs.sql).toBe('my statement');
+        expect(theirs.link?.syncedSql).toBe('my statement');
+    });
+
+    it('with no rows cached, links a query built from the tab state and syncs on the next response', () => {
+        useBrowse.getState().openTable(1, 'orders', {
+            mode: 'permanent',
+            state: {
+                filters: [{ column: 'status', op: 'eq', value: 'paid' }],
+                page: 2,
+            },
+        });
+        const id = openTableTabInSql(1, orders(), 'mysql');
+        const tab = sqlTabs().find((t) => t.id === id)!;
+        expect(tab.sql).toBe(
+            "SELECT * FROM `orders` WHERE `status` = 'paid' LIMIT 100 OFFSET 100",
+        );
+        expect(tab.link?.requestKey).toBeUndefined();
+        // Even a response for the unchanged state replaces it with the server's query.
+        reportTableRows(1, orders().id, keyOf(orders()), 'server sql');
+        expect(editor(orders().id).sql).toBe('server sql');
+        expect(editor(orders().id).link?.requestKey).toBe(keyOf(orders()));
+    });
+
+    it('applyToTable shows the Data view', () => {
+        const { table } = linked('q1');
+        useBrowse.getState().updateTable(1, table.id, { view: 'structure' });
+        applyToTable(1, editor(table.id).link!, {
+            filters: [],
+            sort: [],
+            page: 1,
+            perPage: null,
+        });
+        expect(orders().state.view).toBe('data');
+    });
+
+    it('clears stale when the table query returns to syncedSql', () => {
+        const { table, editorId } = linked('q1');
+        useSqlTabs.getState().setSql(1, editorId, 'my edit');
+        reportTableRows(1, table.id, 'key-b', 'q2');
+        expect(editor(table.id).link?.stale).toBe(true);
+        reportTableRows(1, table.id, 'key-a', 'q1');
+        expect(editor(table.id).link?.stale).toBeFalsy();
+        expect(editor(table.id).sql).toBe('my edit');
+    });
+
+    it('setLink keeps one editor tab per table tab', () => {
+        const { table, editorId } = linked('q1');
+        const other = useSqlTabs.getState().openTab(1, 'x');
+        useSqlTabs.getState().setLink(1, other, {
+            ...editor(table.id).link!,
+        });
+        expect(sqlTabs().find((t) => t.id === other)?.link).toBeUndefined();
+        expect(editor(table.id).id).toBe(editorId);
+    });
+
+    it('opening a linked editor keeps a preview table tab', () => {
+        useBrowse.getState().openTable(1, 'orders', { mode: 'preview' });
+        expect(orders().preview).toBe(true);
+        openTableTabInSql(1, orders(), 'mysql');
+        expect(orders().preview).toBe(false);
     });
 });
