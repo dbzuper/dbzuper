@@ -83,6 +83,24 @@ describe('PendingGuard', () => {
         ).toBeInTheDocument();
     });
 
+    it('keeps the changes of a table that still has a view once the held close goes ahead', () => {
+        render(<PendingGuard />);
+        st().openTable(C, 'orders');
+        stage();
+        act(() => {
+            st().openTable(C, 'users');
+        });
+        // Meanwhile the preview was kept: the replacement is dropped and nothing is discarded.
+        st().promote(C, tableTabs()[0].id);
+        fireEvent.click(
+            within(screen.getByRole('dialog')).getByRole('button', {
+                name: 'Discard',
+            }),
+        );
+        expect(tableTabs().map((t) => t.table)).toEqual(['orders']);
+        expect(usePending.getState().count(C, 'orders').inserted).toBe(2);
+    });
+
     it('registers the leave-page prompt only while changes are pending', () => {
         const add = vi.spyOn(window, 'addEventListener');
         const remove = vi.spyOn(window, 'removeEventListener');

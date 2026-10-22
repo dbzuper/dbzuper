@@ -373,10 +373,39 @@ describe('reconcile with a refreshed schema', () => {
         expect(usePending.getState().byTable).toBe(before);
     });
 
+    it('forgets a removed column that only an original held, without reporting a drop', () => {
+        const s = usePending.getState();
+        s.setCell(C, T, row(1), 'status', 'paid');
+        expect(s.reconcile(C, tables([[T, ['id', 'status', 'paid']]]))).toEqual(
+            [],
+        );
+        expect(pending()[row(1).ref]).toMatchObject({
+            values: { status: 'paid' },
+            original: { id: 1, status: 'open', paid: true },
+        });
+    });
+
     it('leaves other connections alone', () => {
         const s = usePending.getState();
         s.setCell(2, T, row(1), 'status', 'paid');
         expect(s.reconcile(C, tables([]))).toEqual([]);
         expect(usePending.getState().byTable[`2:${T}`]).toBeDefined();
+    });
+});
+
+describe('settle after a commit', () => {
+    it('removes the committed changes that are unchanged and keeps later ones', () => {
+        const s = usePending.getState();
+        s.setCell(C, T, row(1), 'status', 'paid');
+        s.setCell(C, T, row(2), 'status', 'paid');
+        const committed = pending();
+        s.setCell(C, T, row(2), 'note', 'later');
+        s.setCell(C, T, row(3), 'status', 'paid');
+        s.settle(C, T, committed);
+        expect(Object.keys(pending()).sort()).toEqual(
+            [row(2).ref, row(3).ref].sort(),
+        );
+        s.settle(C, T, pending());
+        expect(usePending.getState().byTable[`${C}:${T}`]).toBeUndefined();
     });
 });

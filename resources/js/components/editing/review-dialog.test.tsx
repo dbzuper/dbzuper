@@ -229,6 +229,85 @@ describe('ReviewDialog', () => {
         expect(usePending.getState().count(C, T).inserted).toBe(1);
     });
 
+    it('reviews again when changes are staged while it is open, and commits only what was shown', async () => {
+        openDialog();
+        await screen.findAllByRole('listitem');
+        let resolve!: (v: unknown) => void;
+        api.preview.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+        const id9 = { key: { id: 9 } };
+        act(() =>
+            usePending
+                .getState()
+                .setCell(
+                    C,
+                    T,
+                    { ref: refOf(id9), id: id9, original: { status: 'a' } },
+                    'status',
+                    'b',
+                ),
+        );
+        expect(
+            screen.getByText('Changes were updated — reviewing again…'),
+        ).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^Commit/ })).toBeDisabled();
+        expect(api.preview).toHaveBeenCalledTimes(2);
+        expect(api.preview.mock.calls[1][2]).toHaveLength(4);
+        await act(async () =>
+            resolve({
+                statements: [
+                    ...statements,
+                    {
+                        index: 3,
+                        op: 'update',
+                        sql: 'UPDATE 9',
+                        target: 'id = 9',
+                    },
+                ],
+            }),
+        );
+        api.commit.mockResolvedValue({
+            applied: { inserted: 1, updated: 2, deleted: 1 },
+        });
+        fireEvent.click(
+            screen.getByRole('button', { name: 'Commit 4 changes' }),
+        );
+        await waitFor(() =>
+            expect(toast.success).toHaveBeenCalledWith('4 changes committed'),
+        );
+        expect(api.commit.mock.calls[0][2]).toHaveLength(4);
+    });
+
+    it('sends one commit however often Commit is clicked', async () => {
+        api.commit.mockReturnValue(new Promise(() => undefined));
+        openDialog();
+        await screen.findAllByRole('listitem');
+        const button = screen.getByRole('button', { name: 'Commit 3 changes' });
+        fireEvent.click(button);
+        fireEvent.click(button);
+        expect(api.commit).toHaveBeenCalledTimes(1);
+    });
+
+    it('says the result is unknown when the commit got no answer', async () => {
+        api.commit.mockRejectedValue(
+            fail({
+                kind: 'unknown',
+                message: 'Could not apply the changes.',
+                status: null,
+            }),
+        );
+        openDialog();
+        await screen.findAllByRole('listitem');
+        fireEvent.click(
+            screen.getByRole('button', { name: 'Commit 3 changes' }),
+        );
+        const alert = await screen.findByRole('alert');
+        expect(alert).toHaveTextContent(
+            'The result is unknown — refresh to check.',
+        );
+        expect(alert).not.toHaveTextContent('Nothing was changed');
+        expect(usePending.getState().count(C, T).updated).toBe(1);
+    });
+
     it('shows a preview that the server refuses', async () => {
         api.preview.mockRejectedValue(
             fail({

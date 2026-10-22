@@ -1,5 +1,5 @@
 import { Copy } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -50,7 +50,12 @@ export function changeErrorMessage(
     return info.message;
 }
 
-type Failure = { message: string; target: string | null };
+type Failure = {
+    message: string;
+    target: string | null;
+    /** The commit got no answer: whether it was applied is unknown. */
+    unknown: boolean;
+};
 
 const OP_LABEL: Record<PreviewStatement['op'], string> = {
     insert: 'Insert',
@@ -84,54 +89,76 @@ export function ReviewDialog({
         NO_ROWS;
     const total = Object.keys(rows).length;
 
-    const [statements, setStatements] = useState<PreviewStatement[] | null>(
-        null,
-    );
+    /** The statements shown and the exact pending rows they were built from: Commit sends those rows, no others. */
+    const [preview, setPreview] = useState<{
+        rows: Record<RowRef, PendingRow>;
+        statements: PreviewStatement[];
+    } | null>(null);
+    const statements = preview?.statements ?? null;
     const [failure, setFailure] = useState<Failure | null>(null);
     const [busy, setBusy] = useState<'preview' | 'commit' | null>(null);
+    /** The changes were staged again while the dialog was open: the preview is being built again. */
+    const [again, setAgain] = useState(false);
+    const committing = busy === 'commit';
+    /** A commit is on its way; a second click must not send it twice. */
+    const inFlight = useRef(false);
+    /** The open (nonce) and rows the last preview was asked for. */
+    const fetched = useRef<{
+        nonce: number;
+        rows: Record<RowRef, PendingRow>;
+    } | null>(null);
 
     // Everything staged was committed or discarded (another view, another window): nothing left to review.
     useEffect(() => {
-        if (open && total === 0 && busy !== 'commit')
+        if (open && total === 0 && !committing)
             useReview.getState().closeReview();
-    }, [open, total, busy]);
+    }, [open, total, committing]);
 
-    // A fresh preview on every open: the pending changes may have changed since the last one.
+    // A fresh preview on every open, and again whenever the pending changes change while it is open.
     useEffect(() => {
-        if (!open) return;
-        const pending =
-            usePending.getState().byTable[pendingKey(connectionId, table)] ??
-            NO_ROWS;
-        if (Object.keys(pending).length === 0) return;
+        if (!open || committing || Object.keys(rows).length === 0) return;
+        const last = fetched.current;
+        if (last && last.nonce === nonce && last.rows === rows) return;
+        fetched.current = { nonce, rows };
         let live = true;
-        setStatements(null);
+        setAgain(last?.nonce === nonce);
+        setPreview(null);
         setFailure(null);
         setBusy('preview');
         editingApi
-            .preview(connectionId, table, toChanges(pending))
+            .preview(connectionId, table, toChanges(rows))
             .then((res) => {
-                if (live) setStatements(res.statements);
+                if (live) setPreview({ rows, statements: res.statements });
             })
             .catch((e: unknown) => {
-                if (live) setFailure(fail(e, pending, null));
+                if (live) setFailure(fail(e, rows, null, false));
             })
             .finally(() => {
-                if (live) setBusy(null);
+                if (!live) return;
+                setBusy(null);
+                setAgain(false);
             });
         return () => {
             live = false;
         };
-        // `nonce` makes a re-open of the same table fetch again.
-    }, [open, nonce, connectionId, table]); // eslint-disable-line react-hooks/exhaustive-deps
+        // `fail` only reads props and the stores.
+    }, [open, nonce, rows, committing, connectionId, table]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /** The failure as the dialog shows it; a change's error also goes on its row in the grid. */
     function fail(
         e: unknown,
         pending: Record<RowRef, PendingRow>,
         shown: PreviewStatement[] | null,
+        committed: boolean,
     ): Failure {
         const info =
             e instanceof ChangeSetError ? e.info : changeSetErrorFrom(e);
+        // No answer (network, timeout) or a server crash: the transaction may or may not have been applied.
+        const unknown =
+            committed &&
+            (!(e instanceof ChangeSetError) ||
+                info.status === null ||
+                info.status >= 500);
         const ref =
             info.index === null ? undefined : changeRefs(pending)[info.index];
         const row = ref ? pending[ref] : undefined;
@@ -147,27 +174,29 @@ export function ReviewDialog({
             info.index === null
                 ? null
                 : (shown?.find((s) => s.index === info.index)?.target ?? null);
-        return { message, target };
+        return { message, target, unknown };
     }
 
+    const current = preview !== null && preview.rows === rows;
     const commit = async () => {
-        const pending =
-            usePending.getState().byTable[pendingKey(connectionId, table)] ??
-            NO_ROWS;
-        const changes = toChanges(pending);
+        if (inFlight.current || !preview || preview.rows !== rows) return;
+        const { rows: reviewed, statements: shown } = preview;
+        const changes = toChanges(reviewed);
         if (changes.length === 0) return;
+        inFlight.current = true;
         setBusy('commit');
         setFailure(null);
         try {
             await editingApi.commit(connectionId, table, changes);
         } catch (e) {
-            setFailure(fail(e, pending, statements));
+            setFailure(fail(e, reviewed, shown, true));
             setBusy(null);
             return;
+        } finally {
+            inFlight.current = false;
         }
-        const store = usePending.getState();
-        store.discard(connectionId, table);
-        store.setErrors(connectionId, table, {});
+        // Exactly the reviewed changes were applied; anything staged since stays.
+        usePending.getState().settle(connectionId, table, reviewed);
         setBusy(null);
         useReview.getState().closeReview();
         onCommitted();
@@ -181,7 +210,6 @@ export function ReviewDialog({
         else toast.error('Could not copy');
     };
 
-    const committing = busy === 'commit';
     const close = () => {
         if (!committing) useReview.getState().closeReview();
     };
@@ -211,7 +239,10 @@ export function ReviewDialog({
                 </DialogHeader>
                 {busy === 'preview' && (
                     <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Spinner className="size-3" /> Building the statements…
+                        <Spinner className="size-3" />{' '}
+                        {again
+                            ? 'Changes were updated — reviewing again…'
+                            : 'Building the statements…'}
                     </p>
                 )}
                 {statements && (
@@ -252,7 +283,9 @@ export function ReviewDialog({
                         className="rounded-md border border-destructive/40 px-3 py-2 text-xs"
                     >
                         <p className="font-medium text-destructive">
-                            Nothing was changed.{' '}
+                            {failure.unknown
+                                ? 'The result is unknown — refresh to check.'
+                                : 'Nothing was changed.'}{' '}
                             {failure.target && (
                                 <span>Row {failure.target}: </span>
                             )}
@@ -279,7 +312,7 @@ export function ReviewDialog({
                     </Button>
                     <Button
                         type="button"
-                        disabled={!statements || busy !== null || total === 0}
+                        disabled={!current || busy !== null || total === 0}
                         onClick={() => void commit()}
                     >
                         {committing ? (

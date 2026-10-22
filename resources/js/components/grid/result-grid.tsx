@@ -9,7 +9,14 @@ import {
     type SortColumn,
 } from 'react-data-grid';
 import { ChevronRight, ExternalLink, Filter } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+    type ReactNode,
+} from 'react';
 import { toast } from 'sonner';
 import {
     binaryBytes,
@@ -38,6 +45,7 @@ import {
     type PendingTarget,
     type RowRef,
 } from '@/editing/pending-store';
+import { registerEditFlush } from '@/editing/flush-edits';
 import { cn } from '@/lib/utils';
 import type { RowIdentity } from '@/lib/workspace-api';
 import type {
@@ -84,6 +92,22 @@ export type GridEditing = {
     /** The table's columns: defaults and NOT NULL for new rows, type names for editors. */
     tableColumns: ColumnSchema[];
 };
+
+/** Keeps an open inline editor flushable: Review & commit stages its draft before previewing. */
+function EditFlush({
+    onClose,
+    children,
+}: {
+    onClose: (commitChanges?: boolean, shouldFocus?: boolean) => void;
+    children: ReactNode;
+}) {
+    const close = useRef(onClose);
+    useLayoutEffect(() => {
+        close.current = onClose;
+    });
+    useEffect(() => registerEditFlush(() => close.current(true, false)), []);
+    return children;
+}
 
 const NO_PENDING: Record<RowRef, PendingRow> = {};
 const NO_ERRORS: Record<RowRef, string> = {};
@@ -733,6 +757,7 @@ export function ResultGrid({
                                   renderEditCell: ({
                                       row,
                                       onRowChange,
+                                      onClose,
                                   }: RenderEditCellProps<Row>) => {
                                       const draft =
                                           row.draft?.column === column.name
@@ -748,37 +773,43 @@ export function ResultGrid({
                                           });
                                       if (model.isBool(index))
                                           return (
-                                              <BoolCellEditor
-                                                  label={column.name}
-                                                  checked={truthy(
-                                                      draft === undefined
-                                                          ? row.cells[index]
-                                                          : draft,
-                                                  )}
-                                                  onChange={(on) =>
-                                                      change(
-                                                          model.boolValue(on),
-                                                      )
-                                                  }
-                                              />
+                                              <EditFlush onClose={onClose}>
+                                                  <BoolCellEditor
+                                                      label={column.name}
+                                                      checked={truthy(
+                                                          draft === undefined
+                                                              ? row.cells[index]
+                                                              : draft,
+                                                      )}
+                                                      onChange={(on) =>
+                                                          change(
+                                                              model.boolValue(
+                                                                  on,
+                                                              ),
+                                                          )
+                                                      }
+                                                  />
+                                              </EditFlush>
                                           );
                                       const value = row.cells[index];
                                       return (
-                                          <TextCellEditor
-                                              label={column.name}
-                                              initial={
-                                                  value === null
-                                                      ? ''
-                                                      : cellText(value)
-                                              }
-                                              draft={
-                                                  typeof draft === 'string'
-                                                      ? draft
-                                                      : undefined
-                                              }
-                                              onDraft={change}
-                                              json={model.isJson(index)}
-                                          />
+                                          <EditFlush onClose={onClose}>
+                                              <TextCellEditor
+                                                  label={column.name}
+                                                  initial={
+                                                      value === null
+                                                          ? ''
+                                                          : cellText(value)
+                                                  }
+                                                  draft={
+                                                      typeof draft === 'string'
+                                                          ? draft
+                                                          : undefined
+                                                  }
+                                                  onDraft={change}
+                                                  json={model.isJson(index)}
+                                              />
+                                          </EditFlush>
                                       );
                                   },
                               }

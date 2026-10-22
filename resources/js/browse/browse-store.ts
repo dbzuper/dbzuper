@@ -537,14 +537,15 @@ export const useBrowse = create<State>()(
                 keep: (t: BrowseTab, i: number) => boolean,
             ) => {
                 const before = current(connectionId).tabs;
-                const closing = lastViewsClosed(
-                    before,
-                    before.filter(
-                        (t, i) => t.kind === 'universe' || keep(t, i),
-                    ),
+                const kept = before.filter(
+                    (t, i) => t.kind === 'universe' || keep(t, i),
                 );
-                guarded(connectionId, closing, () =>
-                    removeNow(connectionId, keep),
+                // By id: a close held by the guard closes the tabs chosen now, even if tabs moved or opened meanwhile.
+                const ids = new Set(
+                    before.filter((t) => !kept.includes(t)).map((t) => t.id),
+                );
+                guarded(connectionId, lastViewsClosed(before, kept), () =>
+                    removeNow(connectionId, (t) => !ids.has(t.id)),
                 );
             };
             const removeNow = (
@@ -681,6 +682,19 @@ export const useBrowse = create<State>()(
                             : [];
                     let id = '';
                     const ran = guarded(connectionId, closing, () => {
+                        // Held, then the preview went or changed meanwhile: the replacement asked about is moot.
+                        if (
+                            unguarded &&
+                            replaced &&
+                            !current(connectionId).tabs.some(
+                                (t) =>
+                                    t.id === replaced.id &&
+                                    isTable(t) &&
+                                    t.preview &&
+                                    t.table === replaced.table,
+                            )
+                        )
+                            return;
                         id = openNow(connectionId, table, opts);
                     });
                     return ran ? id : '';

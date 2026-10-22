@@ -7,7 +7,10 @@ import {
     within,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushBrowse, useBrowse } from '@/browse/browse-store';
+import { dispatchBrowseKey } from '@/browse/key-dispatch';
 import { refOf, usePending } from '@/editing/pending-store';
+import { useReview } from '@/editing/review-store';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import type { QueryCell, QueryColumn } from '@/types/schema';
 import { CellView, ResultGrid, type GridEditing } from './result-grid';
@@ -682,6 +685,32 @@ describe('editing', () => {
             'title',
             'Original: Ada',
         );
+    });
+
+    it('stages the open editor’s draft before Ctrl+S opens Review, so the preview includes it', () => {
+        flushBrowse();
+        useBrowse.setState({ byConnection: {} });
+        useBrowse.getState().openTable(1, 'users', { mode: 'permanent' });
+        useReview.setState({ open: null, nonce: 0 });
+        renderGrid();
+        const input = edit('Ada');
+        fireEvent.change(input, { target: { value: 'Ada L.' } });
+        // Nothing staged yet: the draft lives in the editor.
+        expect(pending()).toEqual({});
+        const e = new KeyboardEvent('keydown', {
+            key: 's',
+            ctrlKey: true,
+            cancelable: true,
+        });
+        act(() => {
+            dispatchBrowseKey(e, 1, true);
+        });
+        expect(pending()[ref1]).toMatchObject({ values: { name: 'Ada L.' } });
+        expect(useReview.getState().open).toEqual({
+            connectionId: 1,
+            table: 'users',
+        });
+        expect(screen.queryByRole('textbox')).toBeNull();
     });
 
     it('opens the editor from the keyboard with Enter and F2', () => {

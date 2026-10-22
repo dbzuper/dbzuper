@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { setCloseGuard } from '@/browse/browse-store';
+import { setCloseGuard, useBrowse } from '@/browse/browse-store';
 import { usePending } from '@/editing/pending-store';
 import { DiscardDialog, type DiscardTarget } from './discard-dialog';
 
@@ -50,9 +50,21 @@ export function PendingGuard() {
             onConfirm={() => {
                 if (!ask) return;
                 setAsk(null);
-                for (const t of ask.targets)
-                    usePending.getState().discard(ask.connectionId, t.table);
                 ask.proceed();
+                // Only the tables actually left without a view lose their changes (tabs may have changed meanwhile).
+                const open = new Set(
+                    useBrowse
+                        .getState()
+                        .get(ask.connectionId)
+                        .tabs.flatMap((t) =>
+                            t.kind === 'table' ? [t.table] : [],
+                        ),
+                );
+                for (const t of ask.targets)
+                    if (!open.has(t.table))
+                        usePending
+                            .getState()
+                            .discard(ask.connectionId, t.table);
             }}
         />
     );

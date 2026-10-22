@@ -896,6 +896,26 @@ describe('close guard (pending changes, spec §4.4)', () => {
         expect(active()).toBe(tableTabId('users'));
     });
 
+    it('closes the tabs that were chosen when a held close goes ahead after tabs changed', () => {
+        st().openTable(C, 'orders', { mode: 'permanent' });
+        st().openTable(C, 'users', { mode: 'permanent' });
+        st().closeRight(C, tableTabId('orders'));
+        expect(held[0].tables).toEqual(['users']);
+        // Meanwhile (back/forward) another tab opens to the right of `orders`.
+        st().activate(C, tableTabId('orders'));
+        st().openTable(C, 'items', { mode: 'permanent' });
+        held[0].proceed();
+        expect(tableTabs().map((t) => t.table)).toEqual(['orders', 'items']);
+    });
+
+    it('drops a held preview replacement whose preview went meanwhile', () => {
+        st().openTable(C, 'orders');
+        st().openTable(C, 'users');
+        st().promote(C, tableTabId('orders'));
+        held[0].proceed();
+        expect(tableTabs().map((t) => t.table)).toEqual(['orders']);
+    });
+
     it('closes at once when the guard lets it', () => {
         setCloseGuard(() => false);
         st().openTable(C, 'orders', { mode: 'permanent' });
