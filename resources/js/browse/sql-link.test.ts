@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSqlTabs, useSqlTabs, type SqlTab } from '@/sql/tabs-store';
+import { useWorkspace } from '@/universe/store';
 import { tableTabOf } from '@/test/browse-tabs';
-import { useBrowse, type TableTab } from './browse-store';
+import { flushBrowse, useBrowse, type TableTab } from './browse-store';
 import { rowsCache, rowsRequestKey } from './rows-cache';
 import {
     applyToTable,
@@ -471,5 +472,130 @@ describe('task 6', () => {
             "SELECT * FROM `orders` WHERE `status` = 'paid' LIMIT 100",
         );
         expect(editor(table.id).link?.syncedSql).toBe(editor(table.id).sql);
+    });
+});
+
+describe('linked tabs follow each other', () => {
+    const browseActive = () => useBrowse.getState().byConnection[1].activeId;
+    const sqlActive = () => useSqlTabs.getState().byConnection[1].activeId;
+
+    /** Two views of `orders`, each with its linked editor tab; the second view and its editor are active. */
+    function twoLinked() {
+        useWorkspace.setState({ dockOpen: true });
+        useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+        const e1 = openTableTabInSql(1, orders(1), 'mysql');
+        useBrowse.getState().openNewView(1, 'orders');
+        const e2 = openTableTabInSql(1, orders(2), 'mysql');
+        return { t1: orders(1).id, t2: orders(2).id, e1, e2 };
+    }
+
+    beforeEach(() => useWorkspace.setState({ dockOpen: false }));
+
+    it('activating a table tab activates its linked editor tab when the dock is open', () => {
+        const { t1, t2, e1, e2 } = twoLinked();
+        expect([browseActive(), sqlActive()]).toEqual([t2, e2]);
+        useBrowse.getState().activate(1, t1);
+        expect(sqlActive()).toBe(e1);
+        useBrowse.getState().cycle(1, 1);
+        expect(sqlActive()).toBe(e2);
+        useBrowse.getState().activateIndex(1, 1);
+        expect(sqlActive()).toBe(e1);
+    });
+
+    it('a closed dock is left alone', () => {
+        const { t1, e2 } = twoLinked();
+        useWorkspace.setState({ dockOpen: false });
+        useBrowse.getState().activate(1, t1);
+        expect(sqlActive()).toBe(e2);
+        expect(useWorkspace.getState().dockOpen).toBe(false);
+    });
+
+    it('Universe, Records and unlinked table tabs leave the dock alone', () => {
+        const { e2 } = twoLinked();
+        useBrowse.getState().activate(1, 'universe');
+        expect(sqlActive()).toBe(e2);
+        useBrowse.getState().showRecords(1, 'Records');
+        expect(sqlActive()).toBe(e2);
+        useBrowse.getState().openTable(1, 'users', { mode: 'permanent' });
+        expect(sqlActive()).toBe(e2);
+    });
+
+    it('activating a linked editor tab activates its table tab', () => {
+        const { t1, t2, e1, e2 } = twoLinked();
+        useSqlTabs.getState().setActive(1, e1);
+        expect(browseActive()).toBe(t1);
+        useSqlTabs.getState().setActive(1, e2);
+        expect(browseActive()).toBe(t2);
+    });
+
+    it('scratchpad editor tabs and closed links leave the main area alone', () => {
+        const { t1, t2, e1 } = twoLinked();
+        const scratch = useSqlTabs.getState().openTab(1, 'select 1');
+        expect(browseActive()).toBe(t2);
+        useSqlTabs.getState().setActive(1, e1);
+        expect(browseActive()).toBe(t1);
+        useBrowse.getState().closeTab(1, t1);
+        expect(useSqlTabs.getState().findLinked(1, t1)?.link?.closed).toBe(
+            true,
+        );
+        useSqlTabs.getState().setActive(1, scratch);
+        useBrowse.getState().activate(1, 'universe');
+        useSqlTabs.getState().setActive(1, e1);
+        expect(browseActive()).toBe('universe');
+    });
+
+    it('closing the active tab is no activation: the other side stays', () => {
+        const { t1, t2, e1, e2 } = twoLinked();
+        useSqlTabs.getState().closeTab(1, e2);
+        expect(sqlActive()).toBe(e1);
+        expect(browseActive()).toBe(t2);
+        useBrowse.getState().activate(1, t1);
+        expect(sqlActive()).toBe(e1);
+        const scratch = useSqlTabs.getState().openTab(1);
+        useBrowse.getState().closeTab(1, t1);
+        expect(browseActive()).toBe(t2);
+        expect(sqlActive()).toBe(scratch);
+    });
+
+    it('applyToTable activates the table tab without bouncing the dock', () => {
+        const { t1, e1 } = twoLinked();
+        useSqlTabs.getState().setActive(1, e1);
+        useBrowse.getState().activate(1, 'universe');
+        const sqlChanges: string[] = [];
+        const off = useSqlTabs.subscribe((s, p) => {
+            if (s.byConnection[1].activeId !== p.byConnection[1].activeId)
+                sqlChanges.push(s.byConnection[1].activeId);
+        });
+        expect(
+            applyToTable(1, linkedTo(t1)!.link!, {
+                filters: [],
+                sort: [],
+                page: 2,
+                perPage: null,
+            }),
+        ).toBe(true);
+        off();
+        expect(browseActive()).toBe(t1);
+        expect(sqlActive()).toBe(e1);
+        expect(sqlChanges).toEqual([]);
+    });
+
+    it('a rehydrate from another window does not follow', async () => {
+        const { t1, t2, e1, e2 } = twoLinked();
+        useBrowse.getState().activate(1, t1);
+        expect(sqlActive()).toBe(e1);
+        // Static import: an earlier test reset the module registry.
+        flushBrowse();
+        flushSqlTabs();
+        // Another window closes t1 (this window's active tab) and activates t2.
+        const raw = JSON.parse(localStorage.getItem('dbsuperb.browse')!);
+        const c = raw.state.byConnection[1];
+        c.tabs = c.tabs.filter((t: { id: string }) => t.id !== t1);
+        c.activeId = t2;
+        localStorage.setItem('dbsuperb.browse', JSON.stringify(raw));
+        await useBrowse.persist.rehydrate();
+        expect(browseActive()).toBe(t2);
+        expect(sqlActive()).toBe(e1);
+        expect(e2).not.toBe(e1);
     });
 });

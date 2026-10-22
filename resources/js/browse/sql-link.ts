@@ -1,6 +1,7 @@
 import type * as Monaco from 'monaco-editor';
 import { useSqlTabs, type SqlLink } from '@/sql/tabs-store';
 import type { Dialect } from '@/types/schema';
+import { useWorkspace } from '@/universe/store';
 import { tabTitle, useBrowse, type TableTab } from './browse-store';
 import type { MatchedState } from './match-table-query';
 import { rowsCache, rowsRequestKey } from './rows-cache';
@@ -314,13 +315,76 @@ export function dropDanglingLinks(): void {
     }
 }
 
+/**
+ * The tab a connection switched to when the user activated it: the active id changed while the tab active before
+ * is still open. A close (its neighbour takes over) is no activation, nor is a store being rehydrated from storage
+ * (another window's changes), so following stays per window.
+ */
+function activations<C extends { activeId: string; tabs: { id: string }[] }>(
+    state: Record<number, C>,
+    prev: Record<number, C>,
+): [number, string][] {
+    const out: [number, string][] = [];
+    for (const [key, after] of Object.entries(state)) {
+        const before = prev[Number(key)];
+        if (!before || after === before || after.activeId === before.activeId)
+            continue;
+        if (!after.tabs.some((t) => t.id === before.activeId)) continue;
+        out.push([Number(key), after.activeId]);
+    }
+    return out;
+}
+
+/** Set while one side follows the other, so the follow is not followed back. */
+let following = false;
+
+function follow(fn: () => void): void {
+    if (following) return;
+    following = true;
+    try {
+        fn();
+    } finally {
+        following = false;
+    }
+}
+
+/** A table tab was activated: its linked editor tab becomes the dock's active tab, when the dock is open. */
+function followTable(connectionId: number, browseTabId: string): void {
+    if (!useWorkspace.getState().dockOpen) return;
+    const editor = useSqlTabs.getState().findLinked(connectionId, browseTabId);
+    if (!editor?.link || editor.link.closed) return;
+    if (
+        useSqlTabs.getState().byConnection[connectionId]?.activeId === editor.id
+    )
+        return;
+    useSqlTabs.getState().setActive(connectionId, editor.id);
+}
+
+/** An editor tab was activated: its linked table tab becomes the active tab of the main area. */
+function followEditor(connectionId: number, tabId: string): void {
+    const link = useSqlTabs
+        .getState()
+        .byConnection[connectionId]?.tabs.find((t) => t.id === tabId)?.link;
+    if (!link || link.closed || !tableTab(connectionId, link.browseTabId))
+        return;
+    if (
+        useBrowse.getState().byConnection[connectionId]?.activeId ===
+        link.browseTabId
+    )
+        return;
+    useBrowse.getState().activate(connectionId, link.browseTabId);
+}
+
 let uninstall: (() => void) | null = null;
 
-/** Watches the browse store for closed table tabs; runs once on first import, and again after a hot update. */
+/**
+ * Watches the browse store for closed table tabs, and both stores for activations, so a linked table tab and editor
+ * tab follow each other; runs once on first import, and again after a hot update.
+ */
 export function initSqlLink(): void {
     if (uninstall) return;
     dropDanglingLinks();
-    uninstall = useBrowse.subscribe((state, prev) => {
+    const offBrowse = useBrowse.subscribe((state, prev) => {
         for (const [key, before] of Object.entries(prev.byConnection)) {
             const after = state.byConnection[Number(key)];
             if (after === before) continue;
@@ -329,7 +393,25 @@ export function initSqlLink(): void {
                 if (t.kind === 'table' && !open.has(t.id))
                     onBrowseTabClosed(Number(key), t.id);
         }
+        if (!useBrowse.persist.hasHydrated()) return;
+        for (const [id, active] of activations(
+            state.byConnection,
+            prev.byConnection,
+        ))
+            follow(() => followTable(id, active));
     });
+    const offSql = useSqlTabs.subscribe((state, prev) => {
+        if (!useSqlTabs.persist.hasHydrated()) return;
+        for (const [id, active] of activations(
+            state.byConnection,
+            prev.byConnection,
+        ))
+            follow(() => followEditor(id, active));
+    });
+    uninstall = () => {
+        offBrowse();
+        offSql();
+    };
 }
 
 initSqlLink();

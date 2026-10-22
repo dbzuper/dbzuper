@@ -456,6 +456,39 @@ test('linked SQL: apply from the editor, follow the table, undo, stale and Shown
     await expect(tab('orders')).toHaveAttribute('aria-selected', 'true');
 
     page.off('request', onRequest);
+
+    // With two views each linked, switching table tabs switches the editor tab, and the other way round.
+    const sqlTab = (name: string) =>
+        dock()
+            .getByRole('tablist', { name: 'SQL tabs' })
+            .getByRole('tab', { name, exact: true });
+    const grouped = await editorText();
+    expect(grouped).toMatch(/group by/i);
+    await tab('orders (2)').click();
+    await expect(sqlTab('orders')).toHaveAttribute('aria-selected', 'true');
+    await panel().getByRole('button', { name: 'Open in SQL' }).click();
+    await expect(sqlTab('orders (2)')).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(editorText).toMatch(/status.+like.+pend/i);
+    await tab('orders').click();
+    await expect(sqlTab('orders')).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(editorText).toBe(grouped);
+    // Following never moves keyboard focus into the editor.
+    await expect(tab('orders')).toBeFocused();
+    await tab('orders (2)').click();
+    await expect(sqlTab('orders (2)')).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(editorText).toMatch(/status.+like.+pend/i);
+    await expect(tab('orders (2)')).toBeFocused();
+    await sqlTab('orders').click();
+    await expect(tab('orders')).toHaveAttribute('aria-selected', 'true');
+    await expect(panel().getByText('status contains paid')).toBeVisible();
+    await sqlTab('orders (2)').click();
+    await expect(tab('orders (2)')).toHaveAttribute('aria-selected', 'true');
+    await expect(panel().getByText('status contains pend')).toBeVisible();
+    // An unlinked editor tab leaves the table tab as it is.
+    await sqlTab('Query 2').click();
+    await expect.poll(editorText).toBe('');
+    await expect(tab('orders (2)')).toHaveAttribute('aria-selected', 'true');
+
     await page.getByRole('button', { name: 'Close SQL editor' }).click();
     await expect(dock()).toBeHidden();
 });
