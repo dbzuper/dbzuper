@@ -8,7 +8,7 @@ import {
     Trash2,
     Undo2,
     X,
-} from 'lucide-react';
+} from "lucide-react";
 import {
     useCallback,
     useEffect,
@@ -18,12 +18,13 @@ import {
     useRef,
     useState,
     type KeyboardEvent,
-} from 'react';
-import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
-import { blobLabel, cellKind, cellText, type CellValue } from '@/grid/cells';
-import { registerEditFlush } from '@/editing/flush-edits';
-import { pendingKey, usePending } from '@/editing/pending-store';
+} from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { blobLabel, cellKind, cellText, type CellValue } from "@/grid/cells";
+import { registerEditFlush } from "@/editing/flush-edits";
+import { pendingKey, usePending } from "@/editing/pending-store";
 import {
     boolValue,
     columnType,
@@ -39,26 +40,26 @@ import {
     truthy,
     UNPINNED_ROW,
     type GridEditing,
-} from '@/editing/row-edit';
-import { toJSON, writeClipboard } from '@/grid/copy';
-import type { RowFilter } from '@/lib/workspace-api';
+} from "@/editing/row-edit";
+import { toJSON, writeClipboard } from "@/grid/copy";
+import type { RowFilter } from "@/lib/workspace-api";
 import {
     explorableTable,
     keyDisplay,
     rowRecordTarget,
     type RecordTarget,
-} from '@/records/open-record';
-import { recordsApi } from '@/records/records-api';
-import type { RecordPayload, RelationshipSummary } from '@/records/types';
+} from "@/records/open-record";
+import { recordsApi } from "@/records/records-api";
+import type { RecordPayload, RelationshipSummary } from "@/records/types";
 import type {
     QueryCell,
     QueryColumn,
     SchemaSnapshot,
     TableSchema,
-} from '@/types/schema';
+} from "@/types/schema";
 
 /** How the drawer arrives: sliding in when it opens, or a header flash when it switches rows. */
-export type DrawerMotion = 'open' | 'change';
+export type DrawerMotion = "open" | "change";
 
 type Props = {
     connectionId: number;
@@ -91,12 +92,12 @@ const LONG_TEXT = 300;
 const targetId = (t: RecordTarget) => `${t.table}:${JSON.stringify(t.key)}`;
 
 const ASIDE =
-    'row-drawer flex h-full w-[420px] max-w-full shrink-0 flex-col border-l bg-background';
+    "row-drawer flex h-full w-[420px] max-w-full shrink-0 flex-col border-l bg-background";
 
 /** Held in the drawer's place while the page holding the row loads. */
 export function RowDrawerLoading({
     onClose,
-    motion = 'open',
+    motion = "open",
 }: {
     onClose: () => void;
     motion?: DrawerMotion;
@@ -109,7 +110,7 @@ export function RowDrawerLoading({
             data-motion={motion}
             className={`${ASIDE} relative`}
             onKeyDown={(e) => {
-                if (e.key === 'Escape') {
+                if (e.key === "Escape") {
                     e.stopPropagation();
                     onClose();
                 }
@@ -134,7 +135,7 @@ export function RowDrawerLoading({
 
 function formatJson(value: CellValue, pretty: boolean): string {
     try {
-        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+        const parsed = typeof value === "string" ? JSON.parse(value) : value;
         return JSON.stringify(parsed, null, pretty ? 2 : undefined);
     } catch {
         return cellText(value);
@@ -158,44 +159,44 @@ function Field({
     const [pretty, setPretty] = useState(true);
     const kind = cellKind(value, type);
     const text =
-        kind === 'json'
+        kind === "json"
             ? formatJson(value, pretty)
-            : kind === 'binary'
+            : kind === "binary"
               ? blobLabel(value)
               : cellText(value);
     const collapsible =
-        kind === 'json' || kind === 'text'
-            ? text.split('\n').length > COLLAPSED_LINES ||
+        kind === "json" || kind === "text"
+            ? text.split("\n").length > COLLAPSED_LINES ||
               text.length > LONG_TEXT
             : false;
-    const block = kind === 'json' || (kind === 'text' && collapsible);
+    const block = kind === "json" || (kind === "text" && collapsible);
 
     return (
         <div className="border-b px-4 py-2 last:border-b-0">
             <dt className="flex items-center justify-between gap-2 text-xs">
                 <span className="min-w-0 truncate font-mono font-medium">
-                    {column}{' '}
+                    {column}{" "}
                     <span className="font-normal text-muted-foreground">
                         {type}
                     </span>
                 </span>
-                {kind === 'json' && (
+                {kind === "json" && (
                     <button
                         type="button"
                         aria-label={`Pretty-print ${column}`}
                         aria-pressed={pretty}
                         title={
-                            pretty ? 'Show compact JSON' : 'Pretty-print JSON'
+                            pretty ? "Show compact JSON" : "Pretty-print JSON"
                         }
                         className={`ml-auto shrink-0 hover:text-foreground ${
-                            pretty ? 'text-foreground' : 'text-muted-foreground'
+                            pretty ? "text-foreground" : "text-muted-foreground"
                         }`}
                         onClick={() => setPretty((p) => !p)}
                     >
                         <Braces className="size-3" />
                     </button>
                 )}
-                {kind !== 'null' && (
+                {kind !== "null" && (
                     <button
                         type="button"
                         aria-label={`Copy ${column}`}
@@ -208,7 +209,7 @@ function Field({
                 )}
             </dt>
             <dd className="mt-1 text-xs break-words">
-                {kind === 'null' ? (
+                {kind === "null" ? (
                     <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
                         NULL
                     </span>
@@ -217,8 +218,8 @@ function Field({
                         <pre
                             className={`font-mono whitespace-pre-wrap ${
                                 collapsible && !expanded
-                                    ? 'max-h-[9em] overflow-hidden'
-                                    : ''
+                                    ? "max-h-[9em] overflow-hidden"
+                                    : ""
                             }`}
                         >
                             {text}
@@ -229,13 +230,13 @@ function Field({
                                 className="mt-1 text-muted-foreground underline hover:text-foreground"
                                 onClick={() => setExpanded((e) => !e)}
                             >
-                                {expanded ? 'Show less' : 'Show all'}
+                                {expanded ? "Show less" : "Show all"}
                             </button>
                         )}
                     </>
                 ) : (
                     <span className="font-mono whitespace-pre-wrap">
-                        {text === '' ? (
+                        {text === "" ? (
                             <span className="text-muted-foreground">
                                 (empty)
                             </span>
@@ -263,7 +264,7 @@ type FieldEdit = {
     staged: boolean;
     json: boolean;
     bool: boolean;
-    dialect: GridEditing['dialect'];
+    dialect: GridEditing["dialect"];
     stage: (value: string | null) => void;
     revert: () => void;
     /** Keeps an open draft flushable (Review & commit, stepping rows); returns the unregister. */
@@ -321,8 +322,17 @@ function EditableField({
         () => (hasDraft ? register(() => commitRef.current()) : undefined),
         [hasDraft, register],
     );
-    // A draft still open when the field goes (the drawer closes or moves on) is staged, not lost.
-    useEffect(() => () => void commitRef.current(), []);
+    // A draft still open when the field goes (the drawer closes or moves on) is staged; one that can't be (invalid
+    // JSON) is gone with the field, so say so rather than drop it silently.
+    useEffect(
+        () => () => {
+            if (!commitRef.current())
+                toast.error(`${column}: invalid JSON, not staged`);
+        },
+        // The field is keyed by its column: `column` never changes while it is mounted.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [],
+    );
 
     const cancel = () => {
         setDraft(undefined);
@@ -331,13 +341,13 @@ function EditableField({
     const onKeyDown = (
         e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
     ) => {
-        if (e.key === 'Escape' && hasDraft) {
+        if (e.key === "Escape" && hasDraft) {
             // The first Escape drops the draft; the next one closes the drawer.
             e.stopPropagation();
             e.preventDefault();
             cancel();
         } else if (
-            e.key === 'Enter' &&
+            e.key === "Enter" &&
             (!multiline || e.ctrlKey || e.metaKey)
         ) {
             e.preventDefault();
@@ -351,12 +361,12 @@ function EditableField({
     const describedBy =
         [error ? errorId : null, edit.staged ? stateId : null]
             .filter(Boolean)
-            .join(' ') || undefined;
+            .join(" ") || undefined;
     const textProps = {
         id: controlId,
-        'aria-invalid': error ? true : undefined,
-        'aria-describedby': describedBy,
-        placeholder: edit.value === null ? 'NULL' : '(empty)',
+        "aria-invalid": error ? true : undefined,
+        "aria-describedby": describedBy,
+        placeholder: edit.value === null ? "NULL" : "(empty)",
         value: draft ?? base,
         onChange: (
             e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -388,7 +398,7 @@ function EditableField({
     ) : multiline ? (
         <textarea
             {...textProps}
-            rows={Math.min(10, Math.max(3, base.split('\n').length))}
+            rows={Math.min(10, Math.max(3, base.split("\n").length))}
             className="block w-full resize-y rounded border bg-background px-2 py-1 font-mono text-xs outline-none placeholder:italic focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive"
         />
     ) : (
@@ -400,14 +410,14 @@ function EditableField({
 
     return (
         <div
-            data-edited={edit.staged ? 'true' : undefined}
+            data-edited={edit.staged ? "true" : undefined}
             className={`border-b px-4 py-2 last:border-b-0 ${
-                edit.staged ? 'bg-warning/10' : ''
+                edit.staged ? "bg-warning/10" : ""
             }`}
         >
             <dt className="flex items-center justify-between gap-2 text-xs">
                 <span className="min-w-0 truncate font-mono font-medium">
-                    <label htmlFor={controlId}>{column}</label>{' '}
+                    <label htmlFor={controlId}>{column}</label>{" "}
                     <span className="font-normal text-muted-foreground">
                         {type}
                     </span>
@@ -495,7 +505,7 @@ export function RowDrawer({
     columns,
     row,
     rowNumber,
-    motion = 'open',
+    motion = "open",
     onClose,
     onStep,
     onOpenTable,
@@ -534,7 +544,7 @@ export function RowDrawer({
             })
             .catch(() => {
                 if (controller.signal.aborted) return;
-                setFailed({ id: currentId, message: 'Could not load record.' });
+                setFailed({ id: currentId, message: "Could not load record." });
             });
         return () => controller.abort();
         // `current` is derived from `currentId`.
@@ -551,7 +561,7 @@ export function RowDrawer({
             hopped
                 ? (payload?.columns ?? []).map((c) => ({
                       ...c,
-                      table: current?.table ?? '',
+                      table: current?.table ?? "",
                   }))
                 : columns,
         [hopped, payload, columns, current],
@@ -582,7 +592,7 @@ export function RowDrawer({
     const rowLock =
         rowEditing && !target ? (rowEditing.rowReason ?? UNPINNED_ROW) : null;
     const rowEditable = !!rowEditing && !!target;
-    const deleted = pendingRow?.kind === 'delete';
+    const deleted = pendingRow?.kind === "delete";
 
     /** Drafts open in this drawer's fields: staged before the drawer steps to another row. */
     const drafts = useRef(new Set<() => boolean>());
@@ -601,7 +611,7 @@ export function RowDrawer({
         if (!rowEditing || !target || deleted) return null;
         const column = columns[index];
         const name = column.name;
-        const update = pendingRow?.kind === 'update' ? pendingRow : null;
+        const update = pendingRow?.kind === "update" ? pendingRow : null;
         const staged = !!update && name in update.values;
         const loaded = row[index] ?? null;
         const type = columnType(rowEditing, column);
@@ -668,7 +678,7 @@ export function RowDrawer({
             current.table,
             Object.entries(current.key).map(([column, value]) => ({
                 column,
-                op: 'eq' as const,
+                op: "eq" as const,
                 value: String(value),
             })),
         );
@@ -676,7 +686,7 @@ export function RowDrawer({
 
     const title = current
         ? `${current.table} · ${keyDisplay(current.key)}`
-        : `${table.name} · row ${rowNumber ?? ''}`.trim();
+        : `${table.name} · row ${rowNumber ?? ""}`.trim();
 
     const hop = (rel: RelationshipSummary) => {
         if (!current) return;
@@ -689,21 +699,21 @@ export function RowDrawer({
                 connectionId,
                 current.table,
                 current.key,
-                { rel: rel.id, dir: 'out', limit: 1 },
+                { rel: rel.id, dir: "out", limit: 1 },
                 controller.signal,
             )
             .then((res) => {
                 if (controller.signal.aborted) return;
                 const first = res.rows[0];
                 if (!first) {
-                    setHopError('The referenced record was not found.');
+                    setHopError("The referenced record was not found.");
                     return;
                 }
                 setStack((s) => [...s, { table: res.table, key: first.key }]);
             })
             .catch(() => {
                 if (controller.signal.aborted) return;
-                setHopError('Could not load the referenced record.');
+                setHopError("Could not load the referenced record.");
             });
     };
 
@@ -717,8 +727,8 @@ export function RowDrawer({
                 (v) =>
                     v === null ||
                     v === undefined ||
-                    typeof v === 'object' ||
-                    cellKind(v, null) === 'binary',
+                    typeof v === "object" ||
+                    cellKind(v, null) === "binary",
             )
         )
             return null;
@@ -732,7 +742,7 @@ export function RowDrawer({
             rel.table,
             resolved.found.from_columns.map((c, i) => ({
                 column: c,
-                op: 'eq' as const,
+                op: "eq" as const,
                 value: resolved.values[i],
             })),
         );
@@ -744,27 +754,27 @@ export function RowDrawer({
     );
 
     const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
-        if (e.key === 'Escape') {
+        if (e.key === "Escape") {
             e.stopPropagation();
             e.preventDefault();
             onClose();
         } else if (
-            (e.key === 'ArrowDown' || e.key === 'ArrowUp') &&
+            (e.key === "ArrowDown" || e.key === "ArrowUp") &&
             !isTextControl(e.target)
         ) {
             e.preventDefault();
             // A draft is staged before the drawer moves on; an invalid one keeps it here.
-            if (flushDrafts()) onStep(e.key === 'ArrowDown' ? 1 : -1);
+            if (flushDrafts()) onStep(e.key === "ArrowDown" ? 1 : -1);
         }
     };
 
     const relationships = payload?.relationships ?? [];
     const references = relationships.filter(
-        (r) => r.direction === 'out' && r.available,
+        (r) => r.direction === "out" && r.available,
     );
     const referencedBy = relationships.filter(
         (r) =>
-            r.direction === 'in' &&
+            r.direction === "in" &&
             r.available &&
             snapshot.relationships.some((s) => s.id === r.id),
     );
@@ -835,19 +845,19 @@ export function RowDrawer({
                     <span
                         className={`min-w-0 flex-1 truncate px-2 ${
                             deleted
-                                ? 'font-medium text-destructive'
+                                ? "font-medium text-destructive"
                                 : pendingRow
-                                  ? 'font-medium text-warning-foreground'
-                                  : 'text-muted-foreground'
+                                  ? "font-medium text-warning-foreground"
+                                  : "text-muted-foreground"
                         }`}
                     >
                         {deleted
-                            ? 'Deleted'
+                            ? "Deleted"
                             : pendingRow
-                              ? 'Edited'
-                              : 'Editable'}
+                              ? "Edited"
+                              : "Editable"}
                     </span>
-                    {pendingRow?.kind === 'update' && (
+                    {pendingRow?.kind === "update" && (
                         <Button
                             type="button"
                             variant="ghost"
@@ -907,10 +917,10 @@ export function RowDrawer({
             <div className="row-drawer-body min-h-0 flex-1 overflow-y-auto">
                 {hopped && !payload ? (
                     <p
-                        role={loadError ? 'alert' : undefined}
+                        role={loadError ? "alert" : undefined}
                         className="px-4 py-3 text-xs text-muted-foreground"
                     >
-                        {loadError ?? 'Loading record…'}
+                        {loadError ?? "Loading record…"}
                     </p>
                 ) : (
                     <dl>
@@ -921,14 +931,14 @@ export function RowDrawer({
                                 <EditableField
                                     key={`${c.name}:${i}`}
                                     column={c.name}
-                                    type={c.type ?? ''}
+                                    type={c.type ?? ""}
                                     edit={edit}
                                 />
                             ) : (
                                 <Field
                                     key={`${c.name}:${i}`}
                                     column={c.name}
-                                    type={c.type ?? ''}
+                                    type={c.type ?? ""}
                                     value={shownValues[i] ?? null}
                                     lock={lock}
                                 />
@@ -964,7 +974,7 @@ export function RowDrawer({
                                                 className="text-left underline hover:text-foreground"
                                                 onClick={() => hop(r)}
                                             >
-                                                {`${r.table} · ${r.columns.join(', ')}`}
+                                                {`${r.table} · ${r.columns.join(", ")}`}
                                             </button>
                                         </li>
                                     ))}
@@ -988,7 +998,7 @@ export function RowDrawer({
                                                 }
                                             >
                                                 {r.count
-                                                    ? `${r.table} (${r.count.value}${r.count.capped ? '+' : ''})`
+                                                    ? `${r.table} (${r.count.value}${r.count.capped ? "+" : ""})`
                                                     : r.table}
                                             </button>
                                         </li>
