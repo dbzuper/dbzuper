@@ -1,0 +1,866 @@
+{
+    "sqlite": [
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "eq",
+                    "value": "O'Brien"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" = 'O''Brien' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "neq",
+                    "value": "a\\b"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" <> 'a\\b' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "lt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" < '10.5' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "lte",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" <= '10.5' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "gt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "gte",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" >= '10.5' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "50%"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" LIKE '%50!%%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "starts_with",
+                    "value": "a_b"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" LIKE 'a!_b%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "ends_with",
+                    "value": "x!y"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" LIKE '%x!!y' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "note",
+                    "op": "is_null"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"note\" IS NULL order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "note",
+                    "op": "is_not_null"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"note\" IS NOT NULL order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "eq",
+                    "value": "数据"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" = '数据' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "ab"
+                },
+                {
+                    "column": "total",
+                    "op": "gt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" LIKE '%ab%' ESCAPE '!' and \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [
+                {
+                    "column": "name",
+                    "direction": "desc"
+                }
+            ],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"name\" desc, \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [
+                {
+                    "column": "total",
+                    "direction": "asc"
+                },
+                {
+                    "column": "name",
+                    "direction": "desc"
+                }
+            ],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"total\" asc, \"name\" desc, \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [],
+            "page": 3,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"id\" asc limit 50 offset 100"
+        },
+        {
+            "filters": [],
+            "sort": [],
+            "page": 1,
+            "perPage": 1000,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"id\" asc limit 1000 offset 0"
+        }
+    ],
+    "mysql": [
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "eq",
+                    "value": "O'Brien"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` = 'O\\'Brien' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "neq",
+                    "value": "a\\b"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` <> 'a\\\\b' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "lt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` < '10.5' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "lte",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` <= '10.5' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "gt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` > '10.5' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "gte",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` >= '10.5' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "50%"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%50!%%' ESCAPE '!' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "starts_with",
+                    "value": "a_b"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE 'a!_b%' ESCAPE '!' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "ends_with",
+                    "value": "x!y"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%x!!y' ESCAPE '!' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "note",
+                    "op": "is_null"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `note` IS NULL order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "note",
+                    "op": "is_not_null"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `note` IS NOT NULL order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "eq",
+                    "value": "数据"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` = '数据' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "ab"
+                },
+                {
+                    "column": "total",
+                    "op": "gt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%ab%' ESCAPE '!' and `total` > '10.5' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [
+                {
+                    "column": "name",
+                    "direction": "desc"
+                }
+            ],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `name` desc, `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [
+                {
+                    "column": "total",
+                    "direction": "asc"
+                },
+                {
+                    "column": "name",
+                    "direction": "desc"
+                }
+            ],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `total` asc, `name` desc, `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [],
+            "page": 3,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `id` asc limit 50 offset 100"
+        },
+        {
+            "filters": [],
+            "sort": [],
+            "page": 1,
+            "perPage": 1000,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `id` asc limit 1000 offset 0"
+        }
+    ],
+    "mariadb": [
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "eq",
+                    "value": "O'Brien"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` = 'O\\'Brien' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "neq",
+                    "value": "a\\b"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` <> 'a\\\\b' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "lt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` < '10.5' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "lte",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` <= '10.5' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "gt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` > '10.5' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "gte",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` >= '10.5' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "50%"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%50!%%' ESCAPE '!' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "starts_with",
+                    "value": "a_b"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE 'a!_b%' ESCAPE '!' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "ends_with",
+                    "value": "x!y"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%x!!y' ESCAPE '!' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "note",
+                    "op": "is_null"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `note` IS NULL order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "note",
+                    "op": "is_not_null"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `note` IS NOT NULL order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "eq",
+                    "value": "数据"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` = '数据' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "ab"
+                },
+                {
+                    "column": "total",
+                    "op": "gt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%ab%' ESCAPE '!' and `total` > '10.5' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [
+                {
+                    "column": "name",
+                    "direction": "desc"
+                }
+            ],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `name` desc, `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [
+                {
+                    "column": "total",
+                    "direction": "asc"
+                },
+                {
+                    "column": "name",
+                    "direction": "desc"
+                }
+            ],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `total` asc, `name` desc, `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [],
+            "page": 3,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `id` asc limit 50 offset 100"
+        },
+        {
+            "filters": [],
+            "sort": [],
+            "page": 1,
+            "perPage": 1000,
+            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `id` asc limit 1000 offset 0"
+        }
+    ],
+    "pgsql": [
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "eq",
+                    "value": "O'Brien"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" = 'O''Brien' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "neq",
+                    "value": "a\\b"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" <> 'a\\b' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "lt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" < '10.5' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "lte",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" <= '10.5' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "gt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "total",
+                    "op": "gte",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" >= '10.5' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "50%"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE '%50!%%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "starts_with",
+                    "value": "a_b"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE 'a!_b%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "ends_with",
+                    "value": "x!y"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE '%x!!y' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "note",
+                    "op": "is_null"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"note\" IS NULL order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "note",
+                    "op": "is_not_null"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"note\" IS NOT NULL order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "eq",
+                    "value": "数据"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" = '数据' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "ab"
+                },
+                {
+                    "column": "total",
+                    "op": "gt",
+                    "value": "10.5"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE '%ab%' ESCAPE '!' and \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [
+                {
+                    "column": "name",
+                    "direction": "desc"
+                }
+            ],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"name\" desc, \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [
+                {
+                    "column": "total",
+                    "direction": "asc"
+                },
+                {
+                    "column": "name",
+                    "direction": "desc"
+                }
+            ],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"total\" asc, \"name\" desc, \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [],
+            "sort": [],
+            "page": 3,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"id\" asc limit 50 offset 100"
+        },
+        {
+            "filters": [],
+            "sort": [],
+            "page": 1,
+            "perPage": 1000,
+            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"id\" asc limit 1000 offset 0"
+        }
+    ]
+}
