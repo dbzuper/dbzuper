@@ -54,6 +54,7 @@ class TableChangesController extends Controller
         } catch (ChangeSetRejected $e) {
             throw ValidationException::withMessages([$e->field => $e->getMessage()]);
         } catch (RowMismatch|ChangeFailed $e) {
+            // Already shaped (409 / 422 with the change's index): keep them out of the generic database-error catch below.
             throw $e;
         } catch (Throwable $e) {
             throw new DatabaseOperationFailed($errors->map($e));

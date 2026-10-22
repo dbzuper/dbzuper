@@ -21,8 +21,8 @@ class TableChangesRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // true: return the statements unrun, for Review; false (the default): commit them.
-            'preview' => ['sometimes', 'boolean'],
+            // true: return the statements unrun, for Review; false: commit them. Required: a commit is never implied.
+            'preview' => ['required', 'boolean'],
             'changes' => ['required', 'array', 'list', 'min:1', 'max:'.ChangeSet::MAX_CHANGES],
             'changes.*' => ['required', 'array'],
             'changes.*.op' => ['required', Rule::in(ChangeSet::OPS)],

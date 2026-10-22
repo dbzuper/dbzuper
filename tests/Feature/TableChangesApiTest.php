@@ -120,11 +120,20 @@ it('refuses read-only connections with the reason, before running anything', fun
     expect(fixturePdo()->query('select count(*) from users')->fetchColumn())->toBe(3);
 });
 
-it('commits when preview is left out, and returns the counts', function () {
-    $res = $this->actingAs($this->user)->postJson(route('api.tables.changes', [$this->connection, 'users']), ['changes' => [
+it('refuses a request that leaves preview out, writing nothing', function () {
+    $this->actingAs($this->user)->postJson(route('api.tables.changes', [$this->connection, 'users']), ['changes' => [
+        ['op' => 'insert', 'values' => ['name' => 'x', 'email' => 'x@example.com']],
+    ]])->assertUnprocessable()->assertJsonValidationErrors('preview');
+
+    expect(fixturePdo()->query('select count(*) from users')->fetchColumn())->toBe(3)
+        ->and($this->connection->history()->count())->toBe(0);
+});
+
+it('commits when preview is false, and returns the counts', function () {
+    $res = ($this->changes)('users', [
         ['op' => 'insert', 'values' => ['name' => "O'Neil", 'email' => 'o@example.com']],
         ['op' => 'update', 'id' => ['key' => ['id' => 2]], 'original' => ['name' => 'Alan Turing'], 'values' => ['name' => 'Alan M. Turing']],
-    ]])->assertOk();
+    ], ['preview' => false])->assertOk();
 
     expect($res->json())->toBe(['applied' => ['inserted' => 1, 'updated' => 1, 'deleted' => 0]]);
     $pdo = fixturePdo();
