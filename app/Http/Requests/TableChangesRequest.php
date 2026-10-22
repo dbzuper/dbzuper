@@ -29,6 +29,7 @@ class TableChangesRequest extends FormRequest
             'changes.*.id' => ['sometimes', 'array'],
             'changes.*.original' => ['sometimes', 'array'],
             'changes.*.values' => ['sometimes', 'array'],
+            'changes.*.shortened' => ['sometimes', 'array', 'list', 'max:1000'],
         ];
     }
 

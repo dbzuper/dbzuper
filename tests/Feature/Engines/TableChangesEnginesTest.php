@@ -11,7 +11,7 @@ use App\Models\User;
 use Illuminate\Database\Connection;
 use Tests\Support\Engines;
 
-const CHANGE_TABLES = ['tc_part', 'tc_pk', 'tc_bare', 'tc_ts', 'tc_long'];
+const CHANGE_TABLES = ['tc_part', 'tc_pk', 'tc_bare', 'tc_ts', 'tc_long', 'tc_same', 'tc_float'];
 
 function changeTablesDrop(Connection $db): void
 {
@@ -186,7 +186,7 @@ it('pins PostgreSQL rows by ctid, with tableoid on partitioned tables', function
         $original = array_combine(array_column($rows->json('columns'), 'name'), $rows->json('rows.1'));
         $change = ['op' => 'update', 'id' => $rows->json('row_ids.1'), 'original' => $original, 'values' => ['note' => 'b', 'flag' => false]];
         $built = builtChanges($saved, 'tc_bare', [$change]);
-        expect($built[0]->sql)->toEndWith('WHERE ctid = ?::tid AND xmin = ?::xid AND "note" = ? AND "flag" = ?');
+        expect($built[0]->sql)->toEndWith('WHERE ctid = ?::tid AND xmin = ?::xid AND pg_relation_filenode(tableoid) = ?::oid AND "note" = ? AND "qty" = ? AND "flag" = ?');
 
         $run = runRolledBack($saved, $built, fn (Connection $db) => $db->select('select note, flag from tc_bare order by ctid'));
         expect($run['bound'])->toBe([1])->and($run['preview'])->toBe([1])
@@ -229,11 +229,17 @@ it('pins PostgreSQL rows by ctid, with tableoid on partitioned tables', function
             fn (Connection $db) => array_column($db->select('select id from tc_part order by id'), 'id'));
         expect($run['bound'])->toBe([1])->and($run['preview'])->toBe([1])->and($run['after'])->toBe([1]);
 
-        // A row with a long (shortened, locked) text cell is still pinned by ctid + xmin; its other cells can change.
+        // A row with a long (shortened, locked) text cell keeps its identity; the client lists the cell in
+        // `shortened` instead of sending its original, and its other cells can change.
         $long = $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, 'tc_long']), [])->assertOk();
         $id = $long->json('row_ids.0');
-        expect($id)->toHaveKeys(['ctid', 'xmin'])->and($long->json('locked.0'))->toBe([0]);
-        $update = ['op' => 'update', 'id' => $id, 'original' => ['qty' => 1], 'values' => ['qty' => '2']];
+        expect($id)->toHaveKeys(['ctid', 'xmin', 'filenode'])->and($long->json('locked.0'))->toBe([0]);
+        $update = ['op' => 'update', 'id' => $id, 'shortened' => ['body'], 'original' => ['qty' => 1], 'values' => ['qty' => '2']];
+        $preview = fn (array $change) => $this->actingAs($saved->user)->postJson(route('api.tables.changes', [$saved, 'tc_long']), ['preview' => true, 'changes' => [$change]]);
+        $preview(['op' => 'update', 'id' => $id, 'original' => ['qty' => 1], 'values' => ['qty' => '2']])
+            ->assertUnprocessable()->assertJsonValidationErrors('changes.0.original');
+        $preview(['op' => 'update', 'id' => $id, 'shortened' => ['body', 'qty'], 'values' => ['qty' => '2']])
+            ->assertUnprocessable()->assertJsonValidationErrors('changes.0.shortened');
         $this->actingAs($saved->user)->postJson(route('api.tables.changes', [$saved, 'tc_long']), ['preview' => true, 'changes' => [$update]])->assertOk();
         $built = builtChanges($saved, 'tc_long', [$update]);
         $run = runRolledBack($saved, $built, fn (Connection $db) => $db->select('select qty, length(body) as len from tc_long'));
@@ -246,6 +252,67 @@ it('pins PostgreSQL rows by ctid, with tableoid on partitioned tables', function
         // A concurrent change to a column this change doesn't touch still gives a new xmin: nothing matches.
         $factory->using($saved, fn (Connection $db) => $db->update("update tc_long set body = 'other'"));
         expect(runRolledBack($saved, $built)['bound'])->toBe([0]);
+    } finally {
+        $db = $factory->make($saved);
+        changeTablesDrop($db);
+        $factory->release($db);
+    }
+});
+
+it('never pins a PostgreSQL row moved by a table rewrite', function (string $rewrite) {
+    $saved = changeEngine('pgsql');
+    $factory = app(ConnectionFactory::class);
+    $db = $factory->make($saved);
+
+    try {
+        changeTablesDrop($db);
+        // Identical rows inserted by one statement share xmin; only the slot (ctid) and the file tell them apart.
+        $db->statement('CREATE TABLE tc_same (v TEXT)');
+        $db->statement('CREATE INDEX tc_same_v ON tc_same (v)');
+        $db->statement("INSERT INTO tc_same VALUES ('same'), ('same'), ('same')");
+        $factory->release($db);
+
+        $rows = fn () => $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, 'tc_same']), [])->assertOk()->json('row_ids');
+        $before = $rows();
+        expect(array_unique(array_column($before, 'xmin')))->toHaveCount(1);
+        $stale = builtChanges($saved, 'tc_same', [['op' => 'delete', 'id' => $before[0], 'original' => ['v' => 'same']]]);
+        expect(runRolledBack($saved, $stale)['bound'])->toBe([1]);
+
+        // The reviewer's repro: delete the first row and rewrite the table; the next row moves into its slot.
+        $factory->using($saved, function (Connection $db) use ($before, $rewrite) {
+            $db->delete('delete from tc_same where ctid = ?::tid', [$before[0]['ctid']]);
+            $db->statement($rewrite);
+        });
+        $after = $rows();
+        expect($after[0]['ctid'])->toBe($before[0]['ctid'])
+            ->and($after[0]['xmin'])->toBe($before[0]['xmin'])
+            ->and($after[0]['filenode'])->not->toBe($before[0]['filenode'])
+            ->and(runRolledBack($saved, $stale)['bound'])->toBe([0]);
+    } finally {
+        $db = $factory->make($saved);
+        changeTablesDrop($db);
+        $factory->release($db);
+    }
+})->with(['VACUUM FULL tc_same', 'CLUSTER tc_same USING tc_same_v']);
+
+it('compares SQLite float originals numerically, even in an untyped column', function () {
+    $saved = changeEngine('sqlite');
+    $factory = app(ConnectionFactory::class);
+    $db = $factory->make($saved);
+
+    try {
+        changeTablesDrop($db);
+        $db->statement('CREATE TABLE tc_float (id INTEGER PRIMARY KEY, u, r REAL)');
+        $db->insert('insert into tc_float values (1, 0.1, 0.1)');
+        $factory->release($db);
+
+        $rows = $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, 'tc_float']), [])->assertOk();
+        expect($rows->json('rows.0'))->toBe([1, 0.1, 0.1]);
+        $built = builtChanges($saved, 'tc_float', [
+            ['op' => 'update', 'id' => $rows->json('row_ids.0'), 'original' => ['u' => $rows->json('rows.0.1')], 'values' => ['u' => '0.2']],
+        ]);
+        $run = runRolledBack($saved, $built, fn (Connection $db) => $db->select('select u from tc_float')[0]->u);
+        expect($run['bound'])->toBe([1])->and($run['preview'])->toBe([1])->and($run['after'])->toBe('0.2');
     } finally {
         $db = $factory->make($saved);
         changeTablesDrop($db);

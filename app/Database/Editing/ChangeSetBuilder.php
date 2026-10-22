@@ -101,7 +101,11 @@ final class ChangeSetBuilder
         [$where, $target] = $this->pin($i, $change);
         $values = $this->writes($i, $change, insert: false);
         $original = $this->originals($i, $change);
+        $shortened = $this->shortened($i, $change);
         foreach (array_keys($values) as $column) {
+            if (in_array($column, $shortened, true)) {
+                throw new ChangeSetRejected("changes.{$i}.values", "Column \"{$column}\" was shortened for display, so it can't be replaced.");
+            }
             if (! array_key_exists($column, $original)) {
                 throw new ChangeSetRejected("changes.{$i}.original", "The original value of \"{$column}\" is missing.");
             }
@@ -109,7 +113,7 @@ final class ChangeSetBuilder
 
         // Optimistic check (spec §5): the edited columns must still hold what the user saw.
         $checks = match ($this->plan->method) {
-            EditMethod::PrimaryKey, EditMethod::UniqueIndex, EditMethod::SqliteRowid, EditMethod::PgCtid => array_map(
+            EditMethod::PrimaryKey, EditMethod::UniqueIndex, EditMethod::SqliteRowid => array_map(
                 fn (string $column) => $this->compare($column, $original[$column]),
                 array_values(array_filter(
                     array_keys($values),
@@ -138,6 +142,7 @@ final class ChangeSetBuilder
     {
         [$where, $target] = $this->pin($i, $change);
         $this->originals($i, $change); // validated even where the method doesn't compare them
+        $this->shortened($i, $change);
 
         $sql = $this->cat(
             $this->raw('DELETE FROM '.$this->q($this->table['name']).' WHERE '),
@@ -196,25 +201,41 @@ final class ChangeSetBuilder
                 return [[$this->cat($this->raw("{$alias} = "), $this->param($rowid))], 'rowid '.$rowid];
 
             case EditMethod::PgCtid:
-                $shape($this->plan->needsTableoid ? ['ctid', 'xmin', 'tableoid'] : ['ctid', 'xmin']);
+                $shape($this->plan->needsTableoid ? ['ctid', 'xmin', 'filenode', 'tableoid'] : ['ctid', 'xmin', 'filenode']);
                 $ctid = $id['ctid'];
-                $xmin = is_int($id['xmin']) || is_string($id['xmin']) ? (string) $id['xmin'] : '';
-                $tableoid = $id['tableoid'] ?? null;
-                if (! is_string($ctid) || ! preg_match('/^\(\d{1,10},\d{1,5}\)$/', $ctid) || ! preg_match('/^\d{1,10}$/', $xmin)
-                    || ($this->plan->needsTableoid && ! preg_match('/^\d{1,10}$/', is_int($tableoid) || is_string($tableoid) ? (string) $tableoid : ''))) {
+                $xmin = $this->oid($id['xmin']);
+                $filenode = $this->oid($id['filenode']);
+                $tableoid = $this->plan->needsTableoid ? $this->oid($id['tableoid']) : null;
+                if (! is_string($ctid) || ! preg_match('/^\((0|[1-9]\d{0,9}),[1-9]\d{0,4}\)$/', $ctid)
+                    || $xmin === null || $filenode === null || ($this->plan->needsTableoid && $tableoid === null)) {
                     throw $mismatch();
                 }
+                // ctid is a slot in one relation file, and neither it nor xmin is unique on its own: rows inserted
+                // by one transaction share xmin, a slot is reused after VACUUM, and VACUUM FULL / CLUSTER rewrite the
+                // table (new ctids, same xmin) into a new file. The file node pins the physical file, ctid the slot in
+                // it, xmin the row version that was loaded.
                 $where = [];
-                if ($this->plan->needsTableoid) {
-                    $where[] = $this->cat($this->raw('tableoid = '), $this->param((string) $tableoid, '?::oid'));
+                if ($tableoid !== null) {
+                    $where[] = $this->cat($this->raw('tableoid = '), $this->param($tableoid, '?::oid'));
                 }
-                // ctid plus xmin pin one row version: a reused ctid slot or a row changed since loading has another xmin.
                 $where[] = $this->cat($this->raw('ctid = '), $this->param($ctid, '?::tid'));
                 $where[] = $this->cat($this->raw('xmin = '), $this->param($xmin, '?::xid'));
-                // Any change by another transaction gives the row a new xmin, so no other value needs checking; an
-                // UPDATE still checks the columns it writes, like the key methods (spec §5.1).
+                $where[] = $this->cat($this->raw('pg_relation_filenode(tableoid) = '), $this->param($filenode, '?::oid'));
+                // Defence in depth: every exactly comparable original must still match, except the cells the client
+                // only holds shortened (listed in `shortened`).
+                $original = $this->originals($i, $change);
+                $shortened = $this->shortened($i, $change);
+                foreach (array_keys($this->columns) as $column) {
+                    if (! $this->comparable($column) || in_array($column, $shortened, true)) {
+                        continue;
+                    }
+                    if (! array_key_exists($column, $original)) {
+                        throw new ChangeSetRejected("changes.{$i}.original", "The original value of \"{$column}\" is missing (list it in shortened if you only have it shortened).");
+                    }
+                    $where[] = $this->compare($column, $original[$column]);
+                }
 
-                return [$where, 'ctid '.$ctid.($this->plan->needsTableoid ? ' in tableoid '.$tableoid : '')];
+                return [$where, 'ctid '.$ctid.($tableoid !== null ? ' in tableoid '.$tableoid : '')];
 
             case EditMethod::MysqlAllValues:
                 $shape(['values']);
@@ -316,6 +337,62 @@ final class ChangeSetBuilder
                 : $this->text($value, $field, $column, $maxChars),
             default => throw new ChangeSetRejected($field, "The value of \"{$column}\" must be text or null."),
         };
+    }
+
+    /** An unsigned 32-bit catalogue number (xid, oid) as canonical text: 1..4294967295, no leading zeros. */
+    private function oid(mixed $value): ?string
+    {
+        $text = is_int($value) || is_string($value) ? (string) $value : '';
+
+        return preg_match('/^[1-9]\d{0,9}$/', $text) && (int) $text <= 4294967295 ? $text : null;
+    }
+
+    /**
+     * The change's `shortened` list: columns whose value the client only holds shortened (locked cells), so it
+     * can't send their original. Only types the grid can shorten qualify; such a column has no original and can't
+     * be written.
+     *
+     * @return list<string>
+     */
+    private function shortened(int $i, array $change): array
+    {
+        $field = "changes.{$i}.shortened";
+        $list = $change['shortened'] ?? [];
+        if (! is_array($list) || ! array_is_list($list)) {
+            throw new ChangeSetRejected($field, 'shortened must be a list of column names.');
+        }
+        $original = is_array($change['original'] ?? null) ? $change['original'] : [];
+        foreach ($list as $column) {
+            if (! is_string($column)) {
+                throw new ChangeSetRejected($field, 'shortened must be a list of column names.');
+            }
+            $this->known($field, $column);
+            if (! $this->canBeShortened($column)) {
+                throw new ChangeSetRejected($field, "Values of \"{$column}\" are never shortened for display.");
+            }
+            if (array_key_exists($column, $original)) {
+                throw new ChangeSetRejected($field, "Column \"{$column}\" can't be both shortened and sent as an original.");
+            }
+        }
+
+        return array_values(array_unique($list));
+    }
+
+    /**
+     * Whether the grid can shorten this column's values: anything shown as text that can exceed
+     * CellValue::RESULT_CHARS. Numbers, booleans, dates, times and UUIDs never do.
+     */
+    private function canBeShortened(string $column): bool
+    {
+        $type = strtolower(trim($this->typeName($column)));
+        if (str_starts_with($type, '_') || str_ends_with($type, '[]')) {
+            return true; // PostgreSQL arrays print as long text
+        }
+
+        return ! preg_match('/^(tinyint|smallint|mediumint|int|integer|bigint|int2|int4|int8|serial\d?|bigserial|smallserial|oid|xid'
+            .'|decimal|numeric|dec|fixed|money|float\d*|real|double( precision)?'
+            .'|bool|boolean|bit|year|date|datetime|time|timetz|timestamp|timestamptz|interval|uuid)(\s+unsigned)?$/', $type)
+            && ! preg_match('/^(time|timestamp)( with(out)? time zone)?$/', $type);
     }
 
     /** A number's exact text: floats in their shortest round-trip form. */
@@ -438,9 +515,14 @@ final class ChangeSetBuilder
     /** @param string $wrap the placeholder, possibly inside a cast; it holds exactly one `?` */
     private function param(string|int|float|null $value, string $wrap = '?'): array
     {
-        $literal = is_float($value) ? $this->number($value) : $this->db->escape($value);
+        if (is_float($value)) {
+            // Only SQLite keeps floats (see matchValue). PDO binds them as text, which an untyped column holding the
+            // real 0.1 would never equal, so the cast makes the comparison numeric.
+            $value = $this->number($value);
+            $wrap = str_replace('?', 'CAST(? AS REAL)', $wrap);
+        }
 
-        return ['sql' => $wrap, 'preview' => str_replace('?', $literal, $wrap), 'bindings' => [$value]];
+        return ['sql' => $wrap, 'preview' => str_replace('?', $this->db->escape($value), $wrap), 'bindings' => [$value]];
     }
 
     private function cat(array ...$parts): array

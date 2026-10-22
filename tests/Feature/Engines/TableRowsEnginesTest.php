@@ -120,11 +120,11 @@ it('returns exact row identities and locked cells on every engine', function (st
         }
         $factory->release($db);
         $rows = fn (string $table) => $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, $table]), [])->assertOk();
-        // ctid identities carry the row version (xmin); it varies per run, so it is checked for shape and set aside.
+        // ctid identities carry the row version (xmin) and the relation file node; they vary per run, so it is checked for shape and set aside.
         $ids = fn ($res) => array_map(function (?array $id) {
             if ($id !== null && isset($id['ctid'])) {
-                expect($id['xmin'])->toMatch('/^\d+$/');
-                unset($id['xmin']);
+                expect($id['xmin'])->toMatch('/^[1-9]\d*$/')->and($id['filenode'])->toMatch('/^[1-9]\d*$/');
+                unset($id['xmin'], $id['filenode']);
             }
 
             return $id;

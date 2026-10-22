@@ -43,7 +43,7 @@ export type EditMethod =
 export type RowIdentity =
     | { key: Record<string, string | number | null> }
     | { rowid: string }
-    | { ctid: string; xmin: string; tableoid?: string }
+    | { ctid: string; xmin: string; filenode: string; tableoid?: string }
     | { values: Record<string, string | number | null> };
 export type RowsEditing = {
     method: EditMethod;

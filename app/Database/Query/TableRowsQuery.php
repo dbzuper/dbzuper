@@ -109,10 +109,14 @@ final class TableRowsQuery
                 array_keys($plan->keyColumns),
             ),
             EditMethod::SqliteRowid => [$as(EditMethodResolver::sqliteRowidAlias($names), 'rowid')],
-            // xmin pins the row version: a ctid slot can hold another row after VACUUM or HOT pruning.
-            EditMethod::PgCtid => $plan->needsTableoid
-                ? [$as('ctid::text', 'ctid'), $as('xmin::text', 'xmin'), $as('tableoid::text', 'tableoid')]
-                : [$as('ctid::text', 'ctid'), $as('xmin::text', 'xmin')],
+            // ctid is a slot in one relation file; the file node pins the file (VACUUM FULL, CLUSTER and rewriting
+            // ALTERs make a new one) and xmin the row version loaded (a slot is reused after VACUUM).
+            EditMethod::PgCtid => [
+                $as('ctid::text', 'ctid'),
+                $as('xmin::text', 'xmin'),
+                $as('pg_relation_filenode(tableoid)::text', 'filenode'),
+                ...($plan->needsTableoid ? [$as('tableoid::text', 'tableoid')] : []),
+            ],
             EditMethod::MysqlAllValues, EditMethod::None => [],
         };
     }
@@ -174,8 +178,8 @@ final class TableRowsQuery
                 return ['rowid' => (string) $raw[0]];
             case EditMethod::PgCtid:
                 return $plan->needsTableoid
-                    ? ['ctid' => (string) $raw[0], 'xmin' => (string) $raw[1], 'tableoid' => (string) $raw[2]]
-                    : ['ctid' => (string) $raw[0], 'xmin' => (string) $raw[1]];
+                    ? ['ctid' => (string) $raw[0], 'xmin' => (string) $raw[1], 'filenode' => (string) $raw[2], 'tableoid' => (string) $raw[3]]
+                    : ['ctid' => (string) $raw[0], 'xmin' => (string) $raw[1], 'filenode' => (string) $raw[2]];
             case EditMethod::MysqlAllValues:
                 // Identity would be a guess when any value was shortened, is binary, or can't be compared exactly.
                 if ($unmatchable) {
