@@ -439,7 +439,7 @@ final class ChangeSetBuilder
 
     private function comparable(string $column): bool
     {
-        return ColumnComparability::exact($this->driver->name(), $this->columns[$column]);
+        return ColumnComparability::forPlan($this->driver->name(), $this->columns[$column], $this->plan);
     }
 
     /**

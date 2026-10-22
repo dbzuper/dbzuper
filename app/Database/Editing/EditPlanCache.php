@@ -20,7 +20,7 @@ final class EditPlanCache
 
     public function for(SavedConnection $connection, StoredSnapshot $snapshot, array $table, Connection $db): EditPlan
     {
-        $key = 'edit-plan:'.$connection->id.':'.$snapshot->id.':'.sha1(json_encode([$table['name'], $connection->read_only, $connection->options, $connection->updated_at?->toIso8601String()]));
+        $key = 'edit-plan:v2:'.$connection->id.':'.$snapshot->id.':'.sha1(json_encode([$table['name'], $connection->read_only, $connection->options, $connection->updated_at?->toIso8601String()]));
         $cached = Cache::get($key);
         if (is_array($cached)) {
             return EditPlan::fromArray($cached);

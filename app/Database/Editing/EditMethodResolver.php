@@ -48,7 +48,8 @@ final class EditMethodResolver
         $driver = $connection->driver;
         $name = (string) $table['name'];
         $readOnly = $this->readOnlyColumns($table, $this->generatedColumns($driver, $db, $connection, $name));
-        $plan = fn (EditMethod $method, array $keys = []) => new EditPlan($method, $keys, null, $readOnly);
+        $nonComparable = $driver === DriverName::Postgres ? $this->pgNonComparableColumns($db, $connection, $name) : [];
+        $plan = fn (EditMethod $method, array $keys = [], bool $tableoid = false) => new EditPlan($method, $keys, null, $readOnly, $tableoid, $nonComparable);
 
         $pk = array_values($table['primary_key'] ?? []);
         if ($pk !== []) {
@@ -66,7 +67,7 @@ final class EditMethodResolver
                 ! $this->sqliteRowidReachable($table) => EditPlan::none('columns named rowid, _rowid_ and oid hide the SQLite row id'),
                 default => $plan(EditMethod::SqliteRowid),
             },
-            DriverName::Postgres => new EditPlan(EditMethod::PgCtid, [], null, $readOnly, $this->pgNeedsTableoid($db, $connection, $name)),
+            DriverName::Postgres => $plan(EditMethod::PgCtid, [], $this->pgNeedsTableoid($db, $connection, $name)),
             DriverName::MySql, DriverName::MariaDb => $plan(EditMethod::MysqlAllValues),
         };
     }
@@ -181,6 +182,54 @@ final class EditMethodResolver
                 [$this->pgSchema($saved), $table],
             ),
         };
+
+        return array_map(fn (object $r) => (string) $r->name, $rows);
+    }
+
+    /**
+     * Columns whose type has no default btree operator class, so `col = ?` fails (jsonpath, txid_snapshot,
+     * pg_snapshot, json, xml, geometric and many extension types). Domains resolve to their base type and arrays to
+     * their element type (array `=` compares elements); a type matches an operator class on its own type, a
+     * binary-coercible one (varchar → text) or the polymorphic enum and range classes. Composite types are left out:
+     * record `=` fails at run time when any field can't be compared.
+     *
+     * @return list<string> in column order
+     */
+    private function pgNonComparableColumns(Connection $db, SavedConnection $saved, string $table): array
+    {
+        $sql = <<<'SQL'
+            with recursive col as (
+                select a.attname as name, a.attnum as num, a.atttypid as typ, 0 as depth
+                from pg_attribute a
+                join pg_class c on c.oid = a.attrelid
+                join pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = ? and c.relname = ? and a.attnum > 0 and not a.attisdropped
+                union all
+                select col.name, col.num, case when t.typtype = 'd' then t.typbasetype else t.typelem end, col.depth + 1
+                from col join pg_type t on t.oid = col.typ
+                where col.depth < 16 and (t.typtype = 'd' or (t.typcategory = 'A' and t.typelem <> 0))
+            ), base as (
+                select distinct on (num) name, num, typ from col order by num, depth desc
+            )
+            select base.name from base join pg_type t on t.oid = base.typ
+            where not exists (
+                select 1 from pg_opclass oc
+                join pg_am am on am.oid = oc.opcmethod
+                join pg_type it on it.oid = oc.opcintype
+                where am.amname = 'btree' and oc.opcdefault and (
+                    oc.opcintype = base.typ
+                    or exists (select 1 from pg_cast k where k.castsource = base.typ and k.casttarget = oc.opcintype and k.castmethod = 'b')
+                    or (it.typname = 'anyenum' and t.typtype = 'e')
+                    or (it.typname = 'anyrange' and t.typtype = 'r')
+                    or (it.typname = 'anymultirange' and t.typtype = 'm')
+                )
+            )
+            order by base.num
+            SQL;
+        $rows = $db->select(
+            $sql,
+            [$this->pgSchema($saved), $table],
+        );
 
         return array_map(fn (object $r) => (string) $r->name, $rows);
     }

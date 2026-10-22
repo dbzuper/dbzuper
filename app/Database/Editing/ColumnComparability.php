@@ -13,7 +13,10 @@ final class ColumnComparability
 {
     private const FLOAT = '/^(float\d*|real|double( precision)?|binary_float|binary_double)$/';
 
-    /** PostgreSQL types without an `=` operator (or whose text form doesn't round-trip through `=`). */
+    /**
+     * PostgreSQL types without an `=` operator (or whose text form doesn't round-trip through `=`). A fallback: the
+     * resolver also asks the catalogue (EditPlan::$nonComparableColumns), which catches domains and other types.
+     */
     private const PG_NO_EQUALITY = ['json', 'xml', 'point', 'line', 'lseg', 'box', 'path', 'polygon', 'circle'];
 
     /**
@@ -42,6 +45,12 @@ final class ColumnComparability
             DriverName::Postgres => self::postgres(ltrim($type, '_')),
             DriverName::Sqlite => ! preg_match('/real|floa|doub/', $type),
         };
+    }
+
+    /** exact(), and not a column the edit plan found the database can't compare with `=`. */
+    public static function forPlan(DriverName $driver, array $column, EditPlan $plan): bool
+    {
+        return self::exact($driver, $column) && ! in_array($column['name'] ?? null, $plan->nonComparableColumns, true);
     }
 
     private static function postgres(string $type): bool

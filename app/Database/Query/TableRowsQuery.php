@@ -142,7 +142,7 @@ final class TableRowsQuery
         $unmatchable = false;
         foreach ($table['columns'] as $i => $column) {
             $binary = ColumnKind::classify((string) ($column['type_name'] ?? $column['type'] ?? '')) === ColumnKind::Binary;
-            $inexact = $plan->method === EditMethod::MysqlAllValues && ! ColumnComparability::exact($driver->name(), $column);
+            $inexact = $plan->method === EditMethod::MysqlAllValues && ! ColumnComparability::forPlan($driver->name(), $column, $plan);
             $unmatchable = $unmatchable || $inexact;
             if ($binary || $inexact || in_array($column['name'], $plan->readOnlyColumns, true)) {
                 $locked[] = $i;
