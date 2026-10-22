@@ -109,7 +109,7 @@ final class ChangeSetBuilder
 
         // Optimistic check (spec §5): the edited columns must still hold what the user saw.
         $checks = match ($this->plan->method) {
-            EditMethod::PrimaryKey, EditMethod::UniqueIndex, EditMethod::SqliteRowid => array_map(
+            EditMethod::PrimaryKey, EditMethod::UniqueIndex, EditMethod::SqliteRowid, EditMethod::PgCtid => array_map(
                 fn (string $column) => $this->compare($column, $original[$column]),
                 array_values(array_filter(
                     array_keys($values),
@@ -211,17 +211,8 @@ final class ChangeSetBuilder
                 // ctid plus xmin pin one row version: a reused ctid slot or a row changed since loading has another xmin.
                 $where[] = $this->cat($this->raw('ctid = '), $this->param($ctid, '?::tid'));
                 $where[] = $this->cat($this->raw('xmin = '), $this->param($xmin, '?::xid'));
-                // Plus every comparable original value (defence in depth); each must be sent.
-                $original = $this->originals($i, $change);
-                foreach (array_keys($this->columns) as $column) {
-                    if (! $this->comparable($column)) {
-                        continue;
-                    }
-                    if (! array_key_exists($column, $original)) {
-                        throw new ChangeSetRejected("changes.{$i}.original", "The original value of \"{$column}\" is missing.");
-                    }
-                    $where[] = $this->compare($column, $original[$column]);
-                }
+                // Any change by another transaction gives the row a new xmin, so no other value needs checking; an
+                // UPDATE still checks the columns it writes, like the key methods (spec §5.1).
 
                 return [$where, 'ctid '.$ctid.($this->plan->needsTableoid ? ' in tableoid '.$tableoid : '')];
 

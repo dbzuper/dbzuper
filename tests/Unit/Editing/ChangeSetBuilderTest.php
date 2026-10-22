@@ -107,34 +107,34 @@ it('pins SQLite rows by the first rowid alias no column hides', function () {
         ->and($s->target)->toBe('rowid 12');
 });
 
-it('pins PostgreSQL rows by ctid and xmin plus every comparable original value', function () {
+it('pins PostgreSQL rows by ctid and xmin, checking only the written columns', function () {
     $table = csTable([csCol('note', 'text'), csCol('f', 'float8'), csCol('qty', 'int4'), csCol('j', 'json')]);
     [$s] = csBuild('pgsql', new EditPlan(EditMethod::PgCtid), $table, [
         ['op' => 'update', 'id' => ['ctid' => '(0,3)', 'xmin' => '7781'], 'original' => ['note' => 'a', 'f' => 1.5, 'qty' => null, 'j' => '{}'], 'values' => ['note' => 'b']],
     ]);
 
-    expect($s->sql)->toBe('UPDATE "things" SET "note" = ? WHERE ctid = ?::tid AND xmin = ?::xid AND "note" = ? AND "qty" IS NULL')
+    expect($s->sql)->toBe('UPDATE "things" SET "note" = ? WHERE ctid = ?::tid AND xmin = ?::xid AND "note" = ?')
         ->and($s->bindings)->toBe(['b', '(0,3)', '7781', 'a'])
-        ->and($s->previewSql)->toBe("UPDATE \"things\" SET \"note\" = 'b' WHERE ctid = '(0,3)'::tid AND xmin = '7781'::xid AND \"note\" = 'a' AND \"qty\" IS NULL")
+        ->and($s->previewSql)->toBe("UPDATE \"things\" SET \"note\" = 'b' WHERE ctid = '(0,3)'::tid AND xmin = '7781'::xid AND \"note\" = 'a'")
         ->and($s->target)->toBe('ctid (0,3)');
 });
 
-it('refuses ctid changes without xmin or without every comparable original', function (array $change, string $field) {
+it('refuses ctid changes without xmin or without the originals they write', function (array $change, string $field) {
     $table = csTable([csCol('note', 'text'), csCol('f', 'float8'), csCol('qty', 'int4'), csCol('photo', 'bytea')]);
 
     expect(csRejected('pgsql', new EditPlan(EditMethod::PgCtid), $table, [$change])->field)->toBe($field);
 })->with([
     'ctid only' => [['op' => 'delete', 'id' => ['ctid' => '(0,3)'], 'original' => ['note' => 'a', 'qty' => 1]], 'changes.0.id'],
     'bad xmin' => [['op' => 'delete', 'id' => ['ctid' => '(0,3)', 'xmin' => '1 or 1=1'], 'original' => ['note' => 'a', 'qty' => 1]], 'changes.0.id'],
-    'no originals' => [['op' => 'delete', 'id' => ['ctid' => '(0,3)', 'xmin' => '5']], 'changes.0.original'],
-    'a comparable original missing' => [['op' => 'update', 'id' => ['ctid' => '(0,3)', 'xmin' => '5'], 'original' => ['note' => 'a'], 'values' => ['note' => 'b']], 'changes.0.original'],
+    'a written original missing' => [['op' => 'update', 'id' => ['ctid' => '(0,3)', 'xmin' => '5'], 'original' => ['note' => 'a'], 'values' => ['note' => 'b', 'qty' => '2']], 'changes.0.original'],
 ]);
 
-it('does not need originals of inexact or binary columns under ctid', function () {
+it('deletes a ctid row by ctid and xmin alone', function () {
     $table = csTable([csCol('note', 'text'), csCol('f', 'float8'), csCol('photo', 'bytea')]);
     [$s] = csBuild('pgsql', new EditPlan(EditMethod::PgCtid), $table, [['op' => 'delete', 'id' => ['ctid' => '(0,3)', 'xmin' => '5'], 'original' => ['note' => 'a']]]);
 
-    expect($s->sql)->toBe('DELETE FROM "things" WHERE ctid = ?::tid AND xmin = ?::xid AND "note" = ?');
+    expect($s->sql)->toBe('DELETE FROM "things" WHERE ctid = ?::tid AND xmin = ?::xid')
+        ->and($s->bindings)->toBe(['(0,3)', '5']);
 });
 
 it('adds tableoid to the ctid when the table has children', function () {
@@ -142,8 +142,8 @@ it('adds tableoid to the ctid when the table has children', function () {
     $plan = new EditPlan(EditMethod::PgCtid, needsTableoid: true);
     [$s] = csBuild('pgsql', $plan, $table, [['op' => 'delete', 'id' => ['ctid' => '(0,1)', 'xmin' => '9', 'tableoid' => '16384'], 'original' => ['v' => 'a']]]);
 
-    expect($s->sql)->toBe('DELETE FROM "things" WHERE tableoid = ?::oid AND ctid = ?::tid AND xmin = ?::xid AND "v" = ?')
-        ->and($s->bindings)->toBe(['16384', '(0,1)', '9', 'a'])
+    expect($s->sql)->toBe('DELETE FROM "things" WHERE tableoid = ?::oid AND ctid = ?::tid AND xmin = ?::xid')
+        ->and($s->bindings)->toBe(['16384', '(0,1)', '9'])
         ->and($s->target)->toBe('ctid (0,1) in tableoid 16384');
 
     expect(csRejected('pgsql', $plan, $table, [['op' => 'delete', 'id' => ['ctid' => '(0,1)', 'xmin' => '9'], 'original' => ['v' => 'a']]])->field)->toBe('changes.0.id');

@@ -72,9 +72,7 @@ final class TableRowsQuery
             $cellLocks = array_values(array_unique(array_merge($inexact, $static['locked'])));
             sort($cellLocks);
             $locked[] = $cellLocks;
-            // A shortened value of a comparable column can't be sent back as an original, which the ctid method needs.
-            $shortenedComparable = array_filter($inexact, fn (int $i) => ColumnComparability::exact($driver->name(), $table['columns'][$i])) !== [];
-            $rowIds[] = self::rowId($plan, $table, $cells, array_slice($values, $width), $inexact !== [] || $static['unmatchable'], $shortenedComparable);
+            $rowIds[] = self::rowId($plan, $table, $cells, array_slice($values, $width), $inexact !== [] || $static['unmatchable']);
         }
 
         return [
@@ -151,9 +149,8 @@ final class TableRowsQuery
      * @param  list<mixed>  $cells  the fetched (sampled) cell values
      * @param  list<mixed>  $raw  the raw identity columns, in identitySelect order
      * @param  bool  $unmatchable  some value of this row is shortened, binary or not exactly comparable
-     * @param  bool  $shortenedComparable  some exactly comparable value of this row was shortened for display
      */
-    private static function rowId(EditPlan $plan, array $table, array $cells, array $raw, bool $unmatchable, bool $shortenedComparable): ?array
+    private static function rowId(EditPlan $plan, array $table, array $cells, array $raw, bool $unmatchable): ?array
     {
         $raw = array_map(fn ($v) => is_resource($v) ? stream_get_contents($v) : $v, $raw);
 
@@ -176,11 +173,6 @@ final class TableRowsQuery
             case EditMethod::SqliteRowid:
                 return ['rowid' => (string) $raw[0]];
             case EditMethod::PgCtid:
-                // The change set must send the original of every comparable column; a shortened one can't be sent.
-                if ($shortenedComparable) {
-                    return null;
-                }
-
                 return $plan->needsTableoid
                     ? ['ctid' => (string) $raw[0], 'xmin' => (string) $raw[1], 'tableoid' => (string) $raw[2]]
                     : ['ctid' => (string) $raw[0], 'xmin' => (string) $raw[1]];

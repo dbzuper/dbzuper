@@ -11,7 +11,7 @@ use App\Models\User;
 use Illuminate\Database\Connection;
 use Tests\Support\Engines;
 
-const CHANGE_TABLES = ['tc_part', 'tc_pk', 'tc_bare', 'tc_ts'];
+const CHANGE_TABLES = ['tc_part', 'tc_pk', 'tc_bare', 'tc_ts', 'tc_long'];
 
 function changeTablesDrop(Connection $db): void
 {
@@ -178,14 +178,15 @@ it('pins PostgreSQL rows by ctid, with tableoid on partitioned tables', function
         $db->statement('CREATE TABLE tc_part_a PARTITION OF tc_part FOR VALUES FROM (0) TO (10)');
         $db->statement('CREATE TABLE tc_part_b PARTITION OF tc_part FOR VALUES FROM (10) TO (20)');
         $db->table('tc_part')->insert([['id' => 1, 'v' => 'a'], ['id' => 11, 'v' => 'b']]);
+        $db->statement('CREATE TABLE tc_long (body TEXT, qty INT)');
+        $db->insert('insert into tc_long values (?, 1)', [str_repeat('x', 5000)]);
         $factory->release($db);
 
         $rows = $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, 'tc_bare']), [])->assertOk();
         $original = array_combine(array_column($rows->json('columns'), 'name'), $rows->json('rows.1'));
         $change = ['op' => 'update', 'id' => $rows->json('row_ids.1'), 'original' => $original, 'values' => ['note' => 'b', 'flag' => false]];
         $built = builtChanges($saved, 'tc_bare', [$change]);
-        expect($built[0]->sql)->toContain('ctid = ?::tid AND xmin = ?::xid AND "note" = ? AND "qty" = ? AND "flag" = ?')
-            ->and($built[0]->sql)->not->toContain('"f" =')->not->toContain('"doc" =');
+        expect($built[0]->sql)->toEndWith('WHERE ctid = ?::tid AND xmin = ?::xid AND "note" = ? AND "flag" = ?');
 
         $run = runRolledBack($saved, $built, fn (Connection $db) => $db->select('select note, flag from tc_bare order by ctid'));
         expect($run['bound'])->toBe([1])->and($run['preview'])->toBe([1])
@@ -227,6 +228,24 @@ it('pins PostgreSQL rows by ctid, with tableoid on partitioned tables', function
         $run = runRolledBack($saved, builtChanges($saved, 'tc_part', [['op' => 'delete', 'id' => $id, 'original' => ['id' => 11, 'v' => 'b']]]),
             fn (Connection $db) => array_column($db->select('select id from tc_part order by id'), 'id'));
         expect($run['bound'])->toBe([1])->and($run['preview'])->toBe([1])->and($run['after'])->toBe([1]);
+
+        // A row with a long (shortened, locked) text cell is still pinned by ctid + xmin; its other cells can change.
+        $long = $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, 'tc_long']), [])->assertOk();
+        $id = $long->json('row_ids.0');
+        expect($id)->toHaveKeys(['ctid', 'xmin'])->and($long->json('locked.0'))->toBe([0]);
+        $update = ['op' => 'update', 'id' => $id, 'original' => ['qty' => 1], 'values' => ['qty' => '2']];
+        $this->actingAs($saved->user)->postJson(route('api.tables.changes', [$saved, 'tc_long']), ['preview' => true, 'changes' => [$update]])->assertOk();
+        $built = builtChanges($saved, 'tc_long', [$update]);
+        $run = runRolledBack($saved, $built, fn (Connection $db) => $db->select('select qty, length(body) as len from tc_long'));
+        expect($run['bound'])->toBe([1])->and($run['preview'])->toBe([1])
+            ->and([$run['after'][0]->qty, $run['after'][0]->len])->toBe([2, 5000]);
+        // The long cell itself can't be written back from a shortened original.
+        $this->actingAs($saved->user)->postJson(route('api.tables.changes', [$saved, 'tc_long']), ['preview' => true, 'changes' => [
+            ['op' => 'update', 'id' => $id, 'original' => ['body' => $long->json('rows.0.0')], 'values' => ['body' => 'y']],
+        ]])->assertUnprocessable()->assertJsonValidationErrors('changes.0.original');
+        // A concurrent change to a column this change doesn't touch still gives a new xmin: nothing matches.
+        $factory->using($saved, fn (Connection $db) => $db->update("update tc_long set body = 'other'"));
+        expect(runRolledBack($saved, $built)['bound'])->toBe([0]);
     } finally {
         $db = $factory->make($saved);
         changeTablesDrop($db);
