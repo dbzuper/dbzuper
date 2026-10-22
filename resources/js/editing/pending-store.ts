@@ -1,7 +1,7 @@
-import { create } from 'zustand';
-import type { RowIdentity } from '@/lib/workspace-api';
-import type { QueryCell } from '@/types/schema';
-import type { ChangeRequest } from './editing-api';
+import { create } from "zustand";
+import type { RowIdentity } from "@/lib/workspace-api";
+import type { QueryCell } from "@/types/schema";
+import type { ChangeRequest } from "./editing-api";
 
 /** A pending row's stable key: the JSON of its RowIdentity, or `new:<uuid>` for a row not yet inserted. */
 export type RowRef = string;
@@ -10,9 +10,9 @@ export type RowRef = string;
 export type StagedValues = Record<string, string | null>;
 
 export type PendingRow =
-    | { kind: 'insert'; ref: RowRef; values: StagedValues }
+    | { kind: "insert"; ref: RowRef; values: StagedValues }
     | {
-          kind: 'update';
+          kind: "update";
           ref: RowRef;
           id: RowIdentity;
           /** The row's exact loaded values, by column; shortened cells are left out (listed in `shortened`). */
@@ -22,7 +22,7 @@ export type PendingRow =
           values: StagedValues;
       }
     | {
-          kind: 'delete';
+          kind: "delete";
           ref: RowRef;
           id: RowIdentity;
           original: Record<string, QueryCell>;
@@ -47,7 +47,7 @@ export type PendingCounts = {
 
 type Table = Record<RowRef, PendingRow>;
 
-export type PendingDrop = { table: string; reason: 'table' | 'columns' };
+export type PendingDrop = { table: string; reason: "table" | "columns" };
 
 type State = {
     /** By `${connectionId}:${table}`: every view (tab) of a table shares one set (spec §3, §4.4). */
@@ -93,11 +93,13 @@ type State = {
     ): void;
     /**
      * After a schema refresh (spec §4.4): drops a removed table's changes, and the changes that write or are pinned
-     * by a removed column; other changes forget the column. Returns each table whose changes were affected.
+     * by a removed column; other changes forget the column. Returns each table whose changes were affected. Only
+     * the tables `include` accepts are touched (all when it is left out).
      */
     reconcile(
         connectionId: number,
         tables: Map<string, string[]>,
+        include?: (table: string) => boolean,
     ): PendingDrop[];
     count(connectionId: number, table: string): PendingCounts;
 };
@@ -130,11 +132,11 @@ export function rowRefs(rowIds: (RowIdentity | null)[]): (RowRef | null)[] {
 
 const refCache = new WeakMap<(RowIdentity | null)[], (RowRef | null)[]>();
 
-export const isNewRef = (ref: RowRef) => ref.startsWith('new:');
+export const isNewRef = (ref: RowRef) => ref.startsWith("new:");
 
 const newRef = (): RowRef =>
     `new:${
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        typeof crypto !== "undefined" && "randomUUID" in crypto
             ? crypto.randomUUID()
             : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
     }`;
@@ -146,10 +148,10 @@ export function sameValue(
 ) {
     if (original === undefined) return false;
     if (original === null || value === null) return original === value;
-    if (typeof original === 'boolean')
+    if (typeof original === "boolean")
         return original
-            ? value === 'true' || value === '1'
-            : value === 'false' || value === '0';
+            ? value === "true" || value === "1"
+            : value === "false" || value === "0";
     return String(original) === value;
 }
 
@@ -185,8 +187,8 @@ export const usePending = create<State>()((set, get) => {
         setCell: (connectionId, table, row, column, value) =>
             patch(connectionId, table, (rows) => {
                 const current = rows[row.ref];
-                if (current?.kind === 'delete') return rows;
-                if (current?.kind === 'insert')
+                if (current?.kind === "delete") return rows;
+                if (current?.kind === "insert")
                     return {
                         ...rows,
                         [row.ref]: {
@@ -209,7 +211,7 @@ export const usePending = create<State>()((set, get) => {
                 return {
                     ...rows,
                     [row.ref]: {
-                        kind: 'update',
+                        kind: "update",
                         ref: row.ref,
                         id: current?.id ?? row.id,
                         original: current?.original ?? row.original,
@@ -221,11 +223,11 @@ export const usePending = create<State>()((set, get) => {
         revertCell: (connectionId, table, ref, column) =>
             patch(connectionId, table, (rows) => {
                 const current = rows[ref];
-                if (!current || current.kind === 'delete') return rows;
+                if (!current || current.kind === "delete") return rows;
                 if (!(column in current.values)) return rows;
                 const values = without(current.values, column);
                 if (
-                    current.kind === 'update' &&
+                    current.kind === "update" &&
                     Object.keys(values).length === 0
                 )
                     return without(rows, ref);
@@ -233,25 +235,25 @@ export const usePending = create<State>()((set, get) => {
             }),
         revertRow: (connectionId, table, ref) =>
             patch(connectionId, table, (rows) =>
-                rows[ref]?.kind === 'update' ? without(rows, ref) : rows,
+                rows[ref]?.kind === "update" ? without(rows, ref) : rows,
             ),
         addRow: (connectionId, table) => {
             const ref = newRef();
             patch(connectionId, table, (rows) => ({
                 ...rows,
-                [ref]: { kind: 'insert', ref, values: {} },
+                [ref]: { kind: "insert", ref, values: {} },
             }));
             return ref;
         },
         markDelete: (connectionId, table, row) =>
             patch(connectionId, table, (rows) => {
                 const current = rows[row.ref];
-                if (current?.kind === 'insert') return without(rows, row.ref);
-                if (current?.kind === 'delete' || !row.id) return rows;
+                if (current?.kind === "insert") return without(rows, row.ref);
+                if (current?.kind === "delete" || !row.id) return rows;
                 return {
                     ...rows,
                     [row.ref]: {
-                        kind: 'delete',
+                        kind: "delete",
                         ref: row.ref,
                         id: current?.id ?? row.id,
                         original: current?.original ?? row.original,
@@ -263,13 +265,13 @@ export const usePending = create<State>()((set, get) => {
         unmarkDelete: (connectionId, table, ref) =>
             patch(connectionId, table, (rows) => {
                 const current = rows[ref];
-                if (current?.kind !== 'delete') return rows;
+                if (current?.kind !== "delete") return rows;
                 if (!current.edits || Object.keys(current.edits).length === 0)
                     return without(rows, ref);
                 return {
                     ...rows,
                     [ref]: {
-                        kind: 'update',
+                        kind: "update",
                         ref,
                         id: current.id,
                         original: current.original,
@@ -302,7 +304,7 @@ export const usePending = create<State>()((set, get) => {
                     return { errors: { ...s.errors, [key]: errors } };
                 return key in s.errors ? { errors: without(s.errors, key) } : s;
             }),
-        reconcile: (connectionId, tables) => {
+        reconcile: (connectionId, tables, include) => {
             const dropped: PendingDrop[] = [];
             const prefix = `${connectionId}:`;
             const s = get();
@@ -311,6 +313,7 @@ export const usePending = create<State>()((set, get) => {
             for (const [key, rows] of Object.entries(s.byTable)) {
                 if (!key.startsWith(prefix)) continue;
                 const table = key.slice(prefix.length);
+                if (include && !include(table)) continue;
                 const columns = tables.get(table);
                 const fit = columns
                     ? fitRows(rows, new Set(columns))
@@ -321,7 +324,7 @@ export const usePending = create<State>()((set, get) => {
                 if (fit.lost)
                     dropped.push({
                         table,
-                        reason: columns ? 'columns' : 'table',
+                        reason: columns ? "columns" : "table",
                     });
                 errors = keepErrors(errors, key, rows, next);
                 byTable =
@@ -341,8 +344,8 @@ export const usePending = create<State>()((set, get) => {
 function sameJson(a: unknown, b: unknown): boolean {
     if (a === b) return true;
     if (
-        typeof a !== 'object' ||
-        typeof b !== 'object' ||
+        typeof a !== "object" ||
+        typeof b !== "object" ||
         a === null ||
         b === null ||
         Array.isArray(a) !== Array.isArray(b)
@@ -368,23 +371,23 @@ function sameChange(committed: PendingRow | undefined, row: PendingRow) {
     if (!committed) return false;
     if (committed === row) return true;
     if (committed.kind !== row.kind || committed.ref !== row.ref) return false;
-    if (row.kind === 'insert')
+    if (row.kind === "insert")
         return sameJson((committed as typeof row).values, row.values);
-    const c = committed as Exclude<PendingRow, { kind: 'insert' }>;
+    const c = committed as Exclude<PendingRow, { kind: "insert" }>;
     return (
         sameJson(c.id, row.id) &&
-        (row.kind === 'delete' ||
+        (row.kind === "delete" ||
             sameJson((c as typeof row).values, row.values))
     );
 }
 
 /** The table's errors without those of rows whose change is gone or changed. */
 function keepErrors(
-    errors: State['errors'],
+    errors: State["errors"],
     key: string,
     before: Table,
     after: Table,
-): State['errors'] {
+): State["errors"] {
     const current = errors[key];
     if (!current) return errors;
     const kept = Object.fromEntries(
@@ -411,9 +414,9 @@ const keep = <V>(
 
 /** The id names columns: by key or by all values. */
 const idColumns = (id: RowIdentity): string[] =>
-    'key' in id
+    "key" in id
         ? Object.keys(id.key)
-        : 'values' in id
+        : "values" in id
           ? Object.keys(id.values)
           : [];
 
@@ -428,7 +431,7 @@ function fitRows(
     const next: Table = {};
     for (const [ref, row] of Object.entries(rows)) {
         let fitted: PendingRow | null = row;
-        if (row.kind === 'insert') {
+        if (row.kind === "insert") {
             const values = keep(row.values, columns);
             if (values !== row.values) {
                 fitted = { ...row, values };
@@ -436,7 +439,7 @@ function fitRows(
             }
         } else if (
             idColumns(row.id).some((c) => !columns.has(c)) ||
-            (row.kind === 'update' &&
+            (row.kind === "update" &&
                 Object.keys(row.values).some((c) => !columns.has(c)))
         ) {
             fitted = null;
@@ -445,15 +448,15 @@ function fitRows(
             const original = keep(row.original, columns);
             const shortened = row.shortened.filter((c) => columns.has(c));
             const edits =
-                row.kind === 'delete' && row.edits
+                row.kind === "delete" && row.edits
                     ? keep(row.edits, columns)
                     : undefined;
             if (
                 original !== row.original ||
                 shortened.length !== row.shortened.length ||
-                (row.kind === 'delete' && edits !== row.edits)
+                (row.kind === "delete" && edits !== row.edits)
             ) {
-                if (row.kind === 'delete' && edits !== row.edits) lost = true;
+                if (row.kind === "delete" && edits !== row.edits) lost = true;
                 fitted = {
                     ...row,
                     original,
@@ -471,8 +474,8 @@ function fitRows(
 export function pendingCounts(rows: Record<RowRef, PendingRow>): PendingCounts {
     const counts = { inserted: 0, updated: 0, deleted: 0 };
     for (const row of Object.values(rows)) {
-        if (row.kind === 'insert') counts.inserted++;
-        else if (row.kind === 'update') counts.updated++;
+        if (row.kind === "insert") counts.inserted++;
+        else if (row.kind === "update") counts.updated++;
         else counts.deleted++;
     }
     return counts;
@@ -501,25 +504,25 @@ export function toChanges(
 ): ChangeRequest[] {
     return changeRefs(pending).map((ref): ChangeRequest => {
         const row = pending[ref];
-        if (row.kind === 'insert') return { op: 'insert', values: row.values };
-        const ctid = 'ctid' in row.id;
+        if (row.kind === "insert") return { op: "insert", values: row.values };
+        const ctid = "ctid" in row.id;
         const original = ctid
             ? row.original
-            : row.kind === 'update'
+            : row.kind === "update"
               ? pick(row.original, Object.keys(row.values))
               : {};
         const shortened =
             ctid && row.shortened.length > 0
                 ? { shortened: row.shortened }
                 : {};
-        return row.kind === 'update'
+        return row.kind === "update"
             ? {
-                  op: 'update',
+                  op: "update",
                   id: row.id,
                   original,
                   values: row.values,
                   ...shortened,
               }
-            : { op: 'delete', id: row.id, original, ...shortened };
+            : { op: "delete", id: row.id, original, ...shortened };
     });
 }

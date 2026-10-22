@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { setCloseGuard, useBrowse } from '@/browse/browse-store';
-import { usePending } from '@/editing/pending-store';
-import { DiscardDialog, type DiscardTarget } from './discard-dialog';
+import { useEffect, useState } from "react";
+import { setCloseGuard, useBrowse } from "@/browse/browse-store";
+import { usePending } from "@/editing/pending-store";
+import { DiscardDialog, type DiscardTarget } from "./discard-dialog";
 
 type Ask = {
     connectionId: number;
@@ -37,10 +37,10 @@ export function PendingGuard() {
         const onBeforeUnload = (e: BeforeUnloadEvent) => {
             e.preventDefault();
             // Older browsers show the prompt only when a return value is set.
-            e.returnValue = '';
+            e.returnValue = "";
         };
-        window.addEventListener('beforeunload', onBeforeUnload);
-        return () => window.removeEventListener('beforeunload', onBeforeUnload);
+        window.addEventListener("beforeunload", onBeforeUnload);
+        return () => window.removeEventListener("beforeunload", onBeforeUnload);
     }, [anyPending]);
 
     return (
@@ -57,7 +57,7 @@ export function PendingGuard() {
                         .getState()
                         .get(ask.connectionId)
                         .tabs.flatMap((t) =>
-                            t.kind === 'table' ? [t.table] : [],
+                            t.kind === "table" ? [t.table] : [],
                         ),
                 );
                 for (const t of ask.targets)
