@@ -1097,9 +1097,9 @@ describe('values the server request would change before filtering', () => {
         expect(
             ok("SELECT * FROM orders WHERE note LIKE '%a b%'").filters,
         ).toEqual([{ column: 'note', op: 'contains', value: 'a b' }]);
-        expect(
-            ok("SELECT * FROM orders WHERE status = 'a​b'").filters,
-        ).toEqual([{ column: 'status', op: 'eq', value: 'a​b' }]);
+        expect(ok("SELECT * FROM orders WHERE status = 'a​b'").filters).toEqual([
+            { column: 'status', op: 'eq', value: 'a​b' },
+        ]);
         expect(ok("SELECT * FROM orders WHERE note LIKE '%%'").filters).toEqual(
             [{ column: 'note', op: 'contains', value: '' }],
         );
@@ -1128,9 +1128,7 @@ describe('quoted special table names', () => {
         for (const d of DIALECTS) {
             const t = typed(d, 'bestellüngen', [['id', 'int']]);
             const q = d === 'mysql' || d === 'mariadb' ? '`' : '"';
-            expect(ok(`SELECT * FROM ${q}bestellüngen${q}`, d, t).page).toBe(
-                1,
-            );
+            expect(ok(`SELECT * FROM ${q}bestellüngen${q}`, d, t).page).toBe(1);
             expect(reason(`SELECT * FROM ${q}bestellungen${q}`, d, t)).toBe(
                 'reads a different table: `bestellungen`',
             );
