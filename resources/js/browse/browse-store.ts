@@ -566,6 +566,10 @@ export const useBrowse = create<State>()(
                                       )
                                     : -1;
                             if (previewIndex >= 0) {
+                                // The replaced preview is gone, like a closed tab: its rows would only hold an LRU slot.
+                                rowsCache.delete(
+                                    `${connectionId}:${c.tabs[previewIndex].id}`,
+                                );
                                 tabs = c.tabs.map((t, i) =>
                                     i === previewIndex ? tab : t,
                                 );

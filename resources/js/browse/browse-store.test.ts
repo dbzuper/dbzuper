@@ -819,4 +819,20 @@ describe('fix round 1', () => {
             ).toEqual(kept);
         },
     );
+    it('drops the cached rows of a preview tab another preview replaces', () => {
+        rowsCache.clear();
+        const keep = st().openTable(C, 'a', { mode: 'permanent' });
+        const first = st().openTable(C, 'b');
+        for (const id of [keep, first])
+            rowsCache.set(`${C}:${id}`, {
+                requestKey: '',
+                rows: {} as never,
+                total: null,
+                scrollTop: 0,
+            });
+        const second = st().openTable(C, 'c');
+        expect(second).not.toBe(first);
+        expect(rowsCache.get(`${C}:${first}`)).toBeUndefined();
+        expect(rowsCache.get(`${C}:${keep}`)).toBeDefined();
+    });
 });
