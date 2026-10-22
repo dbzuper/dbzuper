@@ -335,7 +335,7 @@ function activations<C extends { activeId: string; tabs: { id: string }[] }>(
     return out;
 }
 
-/** Set while one side follows the other, so the follow is not followed back. */
+/** Set while one side follows the other: each follow is a single set on the other store, so suppressing the nested follow it triggers only stops the echo back. */
 let following = false;
 
 function follow(fn: () => void): void {

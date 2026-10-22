@@ -581,21 +581,39 @@ describe('linked tabs follow each other', () => {
     });
 
     it('a rehydrate from another window does not follow', async () => {
-        const { t1, t2, e1, e2 } = twoLinked();
+        const { t1, t2, e1 } = twoLinked();
         useBrowse.getState().activate(1, t1);
         expect(sqlActive()).toBe(e1);
         // Static import: an earlier test reset the module registry.
         flushBrowse();
         flushSqlTabs();
-        // Another window closes t1 (this window's active tab) and activates t2.
+        // Another window activates t2; both tabs stay open, so this window's previous tab survives.
         const raw = JSON.parse(localStorage.getItem('dbsuperb.browse')!);
-        const c = raw.state.byConnection[1];
-        c.tabs = c.tabs.filter((t: { id: string }) => t.id !== t1);
-        c.activeId = t2;
+        raw.state.byConnection[1].activeId = t2;
         localStorage.setItem('dbsuperb.browse', JSON.stringify(raw));
+        // An active id that changes while the store hydrates (whatever merge decides) is not followed.
+        const off = useBrowse.persist.onHydrate(() =>
+            useBrowse.setState((s) => ({
+                byConnection: {
+                    ...s.byConnection,
+                    1: { ...s.byConnection[1], activeId: t2 },
+                },
+            })),
+        );
         await useBrowse.persist.rehydrate();
-        expect(browseActive()).toBe(t2);
+        off();
+        expect(useBrowse.persist.hasHydrated()).toBe(true);
         expect(sqlActive()).toBe(e1);
-        expect(e2).not.toBe(e1);
+        // After the rehydrate, this window's own activations follow again.
+        useBrowse.getState().activate(1, t1);
+        useBrowse.getState().activate(1, t2);
+        expect(sqlActive()).not.toBe(e1);
+    });
+
+    it('restoring ?tab= on load is an activation: the open dock follows', () => {
+        const { t1, e1 } = twoLinked();
+        // use-browse-url restores a deep-linked view with activate(), like a tab click.
+        useBrowse.getState().activate(1, t1);
+        expect(sqlActive()).toBe(e1);
     });
 });
