@@ -19,6 +19,7 @@ import { useBrowseUrl } from '@/browse/use-browse-url';
 import { panelDomId, TabBar, tabDomId } from '@/components/browse/tab-bar';
 import { TableSidebar } from '@/components/browse/table-sidebar';
 import { TableTabView } from '@/components/browse/table-tab';
+import { PendingGuard } from '@/components/editing/pending-guard';
 import { HistoryList } from '@/components/history/history-list';
 import { InspectorPanel } from '@/components/inspector/inspector-panel';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,7 @@ import { PathDialog } from '@/components/workspace/path-dialog';
 import { PathPickChip } from '@/components/workspace/path-pick-chip';
 import { LeftRail } from '@/components/workspace/left-rail';
 import { WorkspaceHeader } from '@/components/workspace/workspace-header';
+import { usePending } from '@/editing/pending-store';
 import { historyApi } from '@/lib/history-api';
 import { dbErrorFrom, workspaceApi } from '@/lib/workspace-api';
 import { toggleDock, togglePalette } from '@/lib/workspace-shortcuts';
@@ -188,20 +190,27 @@ export default function WorkspaceShow({
                 if (!isCurrent()) return;
                 // Open tabs (also those restored from storage) may filter or sort on columns the
                 // schema no longer has.
+                const tables = new Map(
+                    schema.snapshot.tables.map((t) => [
+                        t.name,
+                        t.columns.map((c) => c.name),
+                    ]),
+                );
                 const { cleaned } = useBrowse
                     .getState()
-                    .reconcile(
-                        connection.id,
-                        new Map(
-                            schema.snapshot.tables.map((t) => [
-                                t.name,
-                                t.columns.map((c) => c.name),
-                            ]),
-                        ),
-                    );
+                    .reconcile(connection.id, tables);
                 // Once per table, however many of its tabs were cleaned.
                 for (const t of new Set(cleaned))
                     toast(`Filters on removed columns of ${t} were cleared.`);
+                // Staged changes to what no longer exists could never be committed (spec §4.4).
+                for (const d of usePending
+                    .getState()
+                    .reconcile(connection.id, tables))
+                    toast(
+                        d.reason === 'table'
+                            ? `Pending changes to ${d.table} were dropped: the table no longer exists.`
+                            : `Pending changes to removed columns of ${d.table} were dropped.`,
+                    );
                 // Cached pages may predate the refreshed schema.
                 if (refresh) rowsCache.clear();
                 setData(schema);
@@ -379,6 +388,7 @@ export default function WorkspaceShow({
         <div className="flex h-dvh flex-col bg-background text-foreground">
             <Head title={connection.name} />
             <SkipLink />
+            <PendingGuard />
             <WorkspaceHeader
                 connection={connection}
                 storedAt={data?.stored_at ?? null}

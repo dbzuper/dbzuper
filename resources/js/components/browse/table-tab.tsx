@@ -18,6 +18,7 @@ import { openTableTabInSql, tableTabSql } from '@/browse/sql-link';
 import { openTableTab } from '@/browse/table-actions';
 import { tabDomId } from '@/components/browse/tab-bar';
 import type { TableActions } from '@/components/browse/table-context-menu';
+import { ReviewDialog } from '@/components/editing/review-dialog';
 import { Button } from '@/components/ui/button';
 import { usePending } from '@/editing/pending-store';
 import { writeClipboard } from '@/grid/copy';
@@ -85,6 +86,15 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
         rowsCache.delete(`${connectionId}:${tab.id}`);
         setRefreshNonce((n) => n + 1);
     };
+
+    // Committed rows are stale in every view of the table; this view refetches now (a linked SQL editor follows
+    // as usual), the others when shown again.
+    const onCommitted = useCallback(() => {
+        for (const t of useBrowse.getState().get(connectionId).tabs)
+            if (t.kind === 'table' && t.table === tableName)
+                rowsCache.delete(`${connectionId}:${t.id}`);
+        setRefreshNonce((n) => n + 1);
+    }, [connectionId, tableName]);
 
     // A new row goes to the top of the grid, staged with every view of the table (spec 4.1).
     const addRow = () => {
@@ -265,6 +275,11 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
                     />
                 )}
             </div>
+            <ReviewDialog
+                connectionId={connectionId}
+                table={tableName}
+                onCommitted={onCommitted}
+            />
         </div>
     );
 }

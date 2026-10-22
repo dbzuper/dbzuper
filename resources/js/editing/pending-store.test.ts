@@ -18,7 +18,7 @@ const row = (id: number) => ({
 
 const pending = () => usePending.getState().byTable[`${C}:${T}`] ?? {};
 
-beforeEach(() => usePending.setState({ byTable: {} }));
+beforeEach(() => usePending.setState({ byTable: {}, errors: {} }));
 
 describe('usePending', () => {
     it('stages a cell edit and removes it when set back to the original', () => {
@@ -283,5 +283,100 @@ describe('toChanges', () => {
                 },
             ],
         );
+    });
+});
+
+describe('row errors after a failed commit', () => {
+    const errors = () => usePending.getState().errors[`${C}:${T}`] ?? {};
+
+    it('keeps an error until its row is edited, and drops all on discard', () => {
+        const s = usePending.getState();
+        s.setCell(C, T, row(1), 'status', 'paid');
+        s.setCell(C, T, row(2), 'status', 'paid');
+        s.setErrors(C, T, {
+            [row(1).ref]: 'row changed',
+            [row(2).ref]: 'other',
+        });
+        expect(errors()).toEqual({
+            [row(1).ref]: 'row changed',
+            [row(2).ref]: 'other',
+        });
+        s.setCell(C, T, row(1), 'note', 'x');
+        expect(errors()).toEqual({ [row(2).ref]: 'other' });
+        s.discard(C, T);
+        expect(usePending.getState().errors[`${C}:${T}`]).toBeUndefined();
+    });
+
+    it('drops the error of a reverted or unmarked row', () => {
+        const s = usePending.getState();
+        s.markDelete(C, T, row(1));
+        s.setErrors(C, T, { [row(1).ref]: 'gone' });
+        s.unmarkDelete(C, T, row(1).ref);
+        expect(errors()).toEqual({});
+    });
+
+    it('replaces every earlier error of the table', () => {
+        const s = usePending.getState();
+        s.setCell(C, T, row(1), 'status', 'paid');
+        s.setErrors(C, T, { [row(1).ref]: 'a' });
+        s.setErrors(C, T, {});
+        expect(usePending.getState().errors[`${C}:${T}`]).toBeUndefined();
+    });
+});
+
+describe('reconcile with a refreshed schema', () => {
+    const tables = (entries: [string, string[]][]) => new Map(entries);
+
+    it('drops every change of a removed table', () => {
+        const s = usePending.getState();
+        s.setCell(C, T, row(1), 'status', 'paid');
+        s.addRow(C, 'users');
+        const dropped = s.reconcile(C, tables([['users', ['id']]]));
+        expect(dropped).toEqual([{ table: T, reason: 'table' }]);
+        expect(usePending.getState().byTable[`${C}:${T}`]).toBeUndefined();
+        expect(usePending.getState().byTable[`${C}:users`]).toBeDefined();
+    });
+
+    it('drops the changes that write or pin a removed column, and strips it elsewhere', () => {
+        const s = usePending.getState();
+        s.setCell(C, T, row(1), 'note', 'x'); // writes the removed column: dropped
+        s.setCell(C, T, row(2), 'status', 'paid'); // kept, its stored original loses `note`
+        const keyed = { key: { note: 'k' } };
+        s.markDelete(C, T, { ref: refOf(keyed), id: keyed, original: {} }); // pinned by it: dropped
+        const insert = s.addRow(C, T);
+        s.setCell(C, T, { ref: insert, id: null, original: {} }, 'note', 'n');
+        s.setCell(C, T, { ref: insert, id: null, original: {} }, 'status', 's');
+        const dropped = s.reconcile(C, tables([[T, ['id', 'status', 'paid']]]));
+        expect(dropped).toEqual([{ table: T, reason: 'columns' }]);
+        const p = pending();
+        expect(p[row(1).ref]).toBeUndefined();
+        expect(p[refOf(keyed)]).toBeUndefined();
+        expect(p[row(2).ref]).toMatchObject({
+            kind: 'update',
+            values: { status: 'paid' },
+            original: { id: 2, status: 'open', paid: true },
+        });
+        expect(p[insert]).toEqual({
+            kind: 'insert',
+            ref: insert,
+            values: { status: 's' },
+        });
+    });
+
+    it('reports nothing and keeps the same map when the schema still fits', () => {
+        const s = usePending.getState();
+        s.setCell(C, T, row(1), 'status', 'paid');
+        const before = usePending.getState().byTable;
+        expect(
+            s.reconcile(C, tables([[T, ['id', 'status', 'note', 'paid']]])),
+        ).toEqual([]);
+        expect(usePending.getState().byTable).toBe(before);
+    });
+
+    it('leaves other connections alone', () => {
+        const s = usePending.getState();
+        s.setCell(2, T, row(1), 'status', 'paid');
+        expect(s.reconcile(C, tables([]))).toEqual([]);
+        expect(usePending.getState().byTable[`2:${T}`]).toBeDefined();
     });
 });

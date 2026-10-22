@@ -6,6 +6,7 @@ export type BrowseKeyAction =
     | { type: 'focusSearch' }
     | { type: 'focusFilter' }
     | { type: 'closeTab' }
+    | { type: 'review' }
     | { type: 'jumpTab'; index: number }
     | { type: 'cycleTab'; dir: 1 | -1 };
 
@@ -32,6 +33,8 @@ export function browseKeyAction(
         if (k === 'b') return { type: 'toggleSidebar' };
         if (k === 'f' && ctx.tableTabActive && !ctx.typing)
             return { type: 'focusFilter' };
+        // Never the browser's "save page" on a table tab, typing or not.
+        if (k === 's' && ctx.tableTabActive) return { type: 'review' };
         return null;
     }
     if (ctx.typing) return null;
@@ -73,6 +76,7 @@ export const SHORTCUTS: { keys: string; label: string }[] = (() => {
         { keys: `${m} J`, label: 'Toggle SQL dock' },
         { keys: '/', label: 'Search tables' },
         { keys: `${m} F`, label: 'Filter the table' },
+        { keys: `${m} S`, label: 'Review & commit pending changes' },
         { keys: `${a} W`, label: 'Close tab' },
         { keys: `${a} 1–9`, label: 'Jump to tab' },
         { keys: 'Enter', label: 'Open row details (grid)' },

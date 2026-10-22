@@ -47,9 +47,16 @@ export type PendingCounts = {
 
 type Table = Record<RowRef, PendingRow>;
 
+export type PendingDrop = { table: string; reason: 'table' | 'columns' };
+
 type State = {
     /** By `${connectionId}:${table}`: every view (tab) of a table shares one set (spec §3, §4.4). */
     byTable: Record<string, Table>;
+    /**
+     * By the same key: why a row's change failed in the last commit (spec §4.1 red outline). A row's error goes
+     * when its change is edited, reverted or discarded.
+     */
+    errors: Record<string, Record<RowRef, string>>;
     /** Stages `value` for a cell; setting it back to the original removes the change. */
     setCell(
         connectionId: number,
@@ -70,6 +77,20 @@ type State = {
     markDelete(connectionId: number, table: string, row: PendingTarget): void;
     unmarkDelete(connectionId: number, table: string, ref: RowRef): void;
     discard(connectionId: number, table: string): void;
+    /** Replaces the table's row errors (empty clears them). */
+    setErrors(
+        connectionId: number,
+        table: string,
+        errors: Record<RowRef, string>,
+    ): void;
+    /**
+     * After a schema refresh (spec §4.4): drops a removed table's changes, and the changes that write or are pinned
+     * by a removed column; other changes forget the column. Returns each table whose changes were affected.
+     */
+    reconcile(
+        connectionId: number,
+        tables: Map<string, string[]>,
+    ): PendingDrop[];
     count(connectionId: number, table: string): PendingCounts;
 };
 
@@ -124,11 +145,13 @@ export const usePending = create<State>()((set, get) => {
                     Object.keys(after).length === 0
                         ? without(s.byTable, key)
                         : { ...s.byTable, [key]: after },
+                errors: keepErrors(s.errors, key, before, after),
             };
         });
 
     return {
         byTable: {},
+        errors: {},
         setCell: (connectionId, table, row, column, value) =>
             patch(connectionId, table, (rows) => {
                 const current = rows[row.ref];
@@ -225,10 +248,118 @@ export const usePending = create<State>()((set, get) => {
             patch(connectionId, table, (rows) =>
                 Object.keys(rows).length === 0 ? rows : {},
             ),
+        setErrors: (connectionId, table, errors) =>
+            set((s) => {
+                const key = pendingKey(connectionId, table);
+                if (Object.keys(errors).length > 0)
+                    return { errors: { ...s.errors, [key]: errors } };
+                return key in s.errors ? { errors: without(s.errors, key) } : s;
+            }),
+        reconcile: (connectionId, tables) => {
+            const dropped: PendingDrop[] = [];
+            const prefix = `${connectionId}:`;
+            const s = get();
+            let byTable = s.byTable;
+            let errors = s.errors;
+            for (const [key, rows] of Object.entries(s.byTable)) {
+                if (!key.startsWith(prefix)) continue;
+                const table = key.slice(prefix.length);
+                const columns = tables.get(table);
+                const next = columns ? fitRows(rows, new Set(columns)) : {};
+                if (next === rows) continue;
+                dropped.push({ table, reason: columns ? 'columns' : 'table' });
+                errors = keepErrors(errors, key, rows, next);
+                byTable =
+                    Object.keys(next).length === 0
+                        ? without(byTable, key)
+                        : { ...byTable, [key]: next };
+            }
+            if (dropped.length > 0) set({ byTable, errors });
+            return dropped;
+        },
         count: (connectionId, table) =>
             pendingCounts(get().byTable[pendingKey(connectionId, table)] ?? {}),
     };
 });
+
+/** The table's errors without those of rows whose change is gone or changed. */
+function keepErrors(
+    errors: State['errors'],
+    key: string,
+    before: Table,
+    after: Table,
+): State['errors'] {
+    const current = errors[key];
+    if (!current) return errors;
+    const kept = Object.fromEntries(
+        Object.entries(current).filter(
+            ([ref]) => after[ref] !== undefined && after[ref] === before[ref],
+        ),
+    );
+    if (Object.keys(kept).length === Object.keys(current).length) return errors;
+    return Object.keys(kept).length === 0
+        ? without(errors, key)
+        : { ...errors, [key]: kept };
+}
+
+const keep = <V>(
+    map: Record<string, V>,
+    columns: Set<string>,
+): Record<string, V> => {
+    const removed = Object.keys(map).filter((c) => !columns.has(c));
+    if (removed.length === 0) return map;
+    let next = map;
+    for (const c of removed) next = without(next, c);
+    return next;
+};
+
+/** The id names columns: by key or by all values. */
+const idColumns = (id: RowIdentity): string[] =>
+    'key' in id
+        ? Object.keys(id.key)
+        : 'values' in id
+          ? Object.keys(id.values)
+          : [];
+
+/** The rows as they fit `columns`; the same object when all of them already do. */
+function fitRows(rows: Table, columns: Set<string>): Table {
+    let changed = false;
+    const next: Table = {};
+    for (const [ref, row] of Object.entries(rows)) {
+        let fitted: PendingRow | null = row;
+        if (row.kind === 'insert') {
+            const values = keep(row.values, columns);
+            if (values !== row.values) fitted = { ...row, values };
+        } else if (
+            idColumns(row.id).some((c) => !columns.has(c)) ||
+            (row.kind === 'update' &&
+                Object.keys(row.values).some((c) => !columns.has(c)))
+        )
+            fitted = null;
+        else {
+            const original = keep(row.original, columns);
+            const shortened = row.shortened.filter((c) => columns.has(c));
+            const edits =
+                row.kind === 'delete' && row.edits
+                    ? keep(row.edits, columns)
+                    : undefined;
+            if (
+                original !== row.original ||
+                shortened.length !== row.shortened.length ||
+                (row.kind === 'delete' && edits !== row.edits)
+            )
+                fitted = {
+                    ...row,
+                    original,
+                    shortened,
+                    ...(edits ? { edits } : {}),
+                };
+        }
+        if (fitted !== row) changed = true;
+        if (fitted) next[ref] = fitted;
+    }
+    return changed ? next : rows;
+}
 
 export function pendingCounts(rows: Record<RowRef, PendingRow>): PendingCounts {
     const counts = { inserted: 0, updated: 0, deleted: 0 };

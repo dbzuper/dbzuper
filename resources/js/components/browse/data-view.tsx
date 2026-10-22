@@ -31,6 +31,7 @@ import {
 import { rowsCache, rowsRequestKey } from '@/browse/rows-cache';
 import { reportTableRows } from '@/browse/sql-link';
 import type { GridEditing } from '@/components/grid/result-grid';
+import { PendingBar } from '@/components/editing/pending-bar';
 import { FilterBar } from '@/components/inspector/filter-bar';
 import { Button } from '@/components/ui/button';
 import {
@@ -42,7 +43,6 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
-import { pendingCounts, pendingKey, usePending } from '@/editing/pending-store';
 import {
     dbErrorFrom,
     workspaceApi,
@@ -547,18 +547,6 @@ function DataViewBody({
         if (view) onEditableChange?.(editable);
     }, [editable, view, onEditableChange]);
 
-    // Pending changes belong to the table, so changes made on other pages (or in other views) count too.
-    const pendingRows = usePending(
-        (s) => s.byTable[pendingKey(connectionId, name)],
-    );
-    const pending = useMemo(
-        () => (pendingRows ? pendingCounts(pendingRows) : null),
-        [pendingRows],
-    );
-    const pendingTotal = pending
-        ? pending.inserted + pending.updated + pending.deleted
-        : 0;
-
     const currentError = error?.key === requestKey ? error.message : null;
     const loading = !currentError && view?.key !== requestKey;
     // Offered for estimates and lower bounds, and when there is no total (not counted, or the capped count failed).
@@ -690,6 +678,8 @@ function DataViewBody({
                         />
                     ) : null)}
             </div>
+            {/* Pending changes belong to the table: changes on other pages or in other views count too. */}
+            <PendingBar connectionId={connectionId} table={name} />
             <Pagination
                 page={page}
                 perPage={perPage}
@@ -702,14 +692,6 @@ function DataViewBody({
                     update({ perPage: n, page: 1, drawerRow: null })
                 }
             >
-                {pending && pendingTotal > 0 && (
-                    <span
-                        role="status"
-                        className="font-medium text-warning-foreground"
-                    >
-                        {`${pendingTotal} pending change${pendingTotal === 1 ? '' : 's'} · ${pending.inserted} new · ${pending.updated} edited · ${pending.deleted} deleted`}
-                    </span>
-                )}
                 {view && countState.failed && (
                     <span className="text-muted-foreground">
                         count unavailable

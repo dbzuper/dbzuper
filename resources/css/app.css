@@ -253,6 +253,12 @@
     background: color-mix(in oklab, var(--warning) 22%, transparent);
 }
 
+/* A row whose change failed to commit; the marker column says why (text, not colour alone). */
+.rdg-dbsuperb .rdg-row-error {
+    outline: 2px solid var(--destructive);
+    outline-offset: -2px;
+}
+
 .rdg-dbsuperb .rdg-cell-required {
     box-shadow: inset 0 0 0 1px var(--destructive);
 }

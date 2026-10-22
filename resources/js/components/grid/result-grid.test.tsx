@@ -1,4 +1,5 @@
 import {
+    act,
     cleanup,
     fireEvent,
     render,
@@ -661,7 +662,7 @@ describe('editing', () => {
         return screen.getByRole('textbox');
     };
 
-    beforeEach(() => usePending.setState({ byTable: {} }));
+    beforeEach(() => usePending.setState({ byTable: {}, errors: {} }));
 
     it('stages an edit on Enter and shows it as edited with the original in its tooltip', () => {
         renderGrid();
@@ -813,6 +814,30 @@ describe('editing', () => {
             await screen.findByRole('menuitem', { name: 'Restore row' }),
         );
         expect(pending()).toEqual({});
+    });
+
+    it('outlines a row whose change failed to commit, with the error in its tooltip, until it is edited', () => {
+        renderGrid();
+        act(() => {
+            usePending.getState().markDelete(1, 'users', {
+                ref: ref1,
+                id: { key: { id: 1 } },
+                original: {},
+            });
+            usePending.getState().setErrors(1, 'users', {
+                [ref1]: 'row changed since you loaded it',
+            });
+        });
+        const row = cell(/Ada/).closest('[role="row"]')!;
+        expect(row).toHaveClass('rdg-row-error');
+        expect(
+            row.querySelector('[title*="row changed since you loaded it"]'),
+        ).not.toBeNull();
+        expect(row).toHaveTextContent('row changed since you loaded it');
+        act(() => usePending.getState().unmarkDelete(1, 'users', ref1));
+        expect(cell(/Ada/).closest('[role="row"]')).not.toHaveClass(
+            'rdg-row-error',
+        );
     });
 
     it('marks the active row with Delete when nothing is selected', () => {

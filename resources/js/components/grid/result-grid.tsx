@@ -86,6 +86,7 @@ export type GridEditing = {
 };
 
 const NO_PENDING: Record<RowRef, PendingRow> = {};
+const NO_ERRORS: Record<RowRef, string> = {};
 const UNPINNED_ROW =
     "this row can't be pinned to exactly one row (some of its values were shortened or can't be compared exactly)";
 
@@ -452,6 +453,10 @@ export function ResultGrid({
     const pending = usePending((s) =>
         pendingKey ? (s.byTable[pendingKey] ?? NO_PENDING) : NO_PENDING,
     );
+    // Why a row's change failed in the last commit: a red outline, and the error on its marker (spec §4.1).
+    const rowErrors = usePending((s) =>
+        pendingKey ? (s.errors[pendingKey] ?? NO_ERRORS) : NO_ERRORS,
+    );
     const model = useMemo(
         () => (editing ? editModel(editing, columns, rows, pending) : null),
         [editing, columns, rows, pending],
@@ -567,14 +572,26 @@ export function ResultGrid({
                                   : p.kind === 'delete'
                                     ? ['−', 'deleted']
                                     : ['•', 'edited row'];
+                          const error = row.ref
+                              ? rowErrors[row.ref]
+                              : undefined;
                           return (
                               <span
-                                  title={label}
+                                  title={error ? `${label}: ${error}` : label}
                                   data-state={p.kind}
-                                  className="block text-center font-semibold"
+                                  className={cn(
+                                      'block text-center font-semibold',
+                                      error && 'text-destructive',
+                                  )}
                               >
-                                  <span aria-hidden="true">{mark}</span>
-                                  <span className="sr-only">{label}</span>
+                                  <span aria-hidden="true">
+                                      {error ? '!' : mark}
+                                  </span>
+                                  <span className="sr-only">
+                                      {error
+                                          ? `${label}, failed: ${error}`
+                                          : label}
+                                  </span>
                               </span>
                           );
                       },
@@ -893,6 +910,7 @@ export function ResultGrid({
         onFilterColumn,
         model,
         rows,
+        rowErrors,
     ]);
 
     const maxKeys = Math.max(1, sort?.maxKeys ?? 1);
@@ -1038,6 +1056,7 @@ export function ResultGrid({
                         r.__i === activeRow && 'rdg-row-active',
                         kind === 'insert' && 'rdg-row-new',
                         kind === 'delete' && 'rdg-row-deleted',
+                        kind && r.ref && rowErrors[r.ref] && 'rdg-row-error',
                     ) || undefined
                 );
             }}

@@ -10,6 +10,7 @@ import { useBrowse } from '@/browse/browse-store';
 import { usePins } from '@/browse/pins-store';
 import { rowsCache } from '@/browse/rows-cache';
 import { useSidebarPrefs } from '@/browse/sidebar-prefs';
+import { refOf, usePending } from '@/editing/pending-store';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useRecords } from '@/records/records-store';
 import { useSqlTabs } from '@/sql/tabs-store';
@@ -312,6 +313,42 @@ describe('workspace page', () => {
         expect(toast).toHaveBeenCalledTimes(1);
         clear.mockRestore();
         window.history.replaceState(null, '', '/');
+    });
+
+    it('drops pending changes to a removed table or column after a refresh, with a toast', async () => {
+        usePending.setState({ byTable: {}, errors: {} });
+        const id = { key: { id: 1 } };
+        usePending
+            .getState()
+            .setCell(
+                1,
+                'orders',
+                { ref: refOf(id), id, original: { gone: 'a' } },
+                'gone',
+                'b',
+            );
+        usePending.getState().addRow(1, 'users');
+        render(<WorkspaceShow connection={connection} />);
+        await screen.findByRole('button', { name: 'Refresh schema' });
+        // The first load fits the changes to `users`; the column is unknown already.
+        await waitFor(() =>
+            expect(toast).toHaveBeenCalledWith(
+                'Pending changes to removed columns of orders were dropped.',
+            ),
+        );
+        expect(usePending.getState().byTable['1:users']).toBeDefined();
+        api.refresh.mockResolvedValue({
+            snapshot: makeSnapshot([{ name: 'orders' }]),
+            snapshot_id: 2,
+            stored_at: new Date().toISOString(),
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh schema' }));
+        await waitFor(() =>
+            expect(toast).toHaveBeenCalledWith(
+                'Pending changes to users were dropped: the table no longer exists.',
+            ),
+        );
+        expect(usePending.getState().byTable).toEqual({});
     });
 
     it('shows the inspector only on the Universe tab', async () => {
