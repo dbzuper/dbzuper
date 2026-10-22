@@ -242,6 +242,8 @@ it('pins primary-key rows by their key and locks binary columns', function () {
     expect($res->json('editing'))->toBe(['method' => 'primary_key', 'reason' => null, 'read_only_columns' => ['avatar']])
         ->and($res->json('row_ids'))->toBe([['key' => ['id' => 1]], ['key' => ['id' => 2]], ['key' => ['id' => 3]]])
         ->and($res->json('locked'))->toBe([[5], [5], [5]])
+        // Only the cell whose shown value isn't the stored one counts as shortened; a NULL binary cell is shown whole.
+        ->and($res->json('shortened'))->toBe([[], [5], []])
         ->and($res->json('rows.1.5'))->toBe('[binary 3 bytes]')
         ->and($res->json('columns'))->toHaveCount(7)
         ->and($res->json('rows.0'))->toHaveCount(7);
@@ -260,6 +262,7 @@ it('returns exact key values even when the shown value is shortened', function (
         ->and($res->json('row_ids.0.key.code'))->toBe($long)
         ->and($res->json('rows.0.0'))->toBe(str_repeat('k', 4000).'…')
         ->and($res->json('locked'))->toBe([[0, 2], []])
+        ->and($res->json('shortened'))->toBe([[0, 2], []])
         ->and($res->json('row_ids.1'))->toBe(['key' => ['code' => 'short']]);
 
     $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'bigkey']))->assertOk();
@@ -297,7 +300,8 @@ it('marks views as not editable with a reason', function () {
 
     expect($res->json('editing'))->toBe(['method' => 'none', 'reason' => "views can't be edited", 'read_only_columns' => []])
         ->and($res->json('row_ids'))->toBe(array_fill(0, count($res->json('rows')), null))
-        ->and($res->json('locked'))->toHaveCount(count($res->json('rows')));
+        ->and($res->json('locked'))->toHaveCount(count($res->json('rows')))
+        ->and($res->json('shortened'))->toHaveCount(count($res->json('rows')));
 });
 
 it('marks rows of a read-only connection as not editable', function () {

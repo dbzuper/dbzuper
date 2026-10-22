@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse, type TableTab } from '@/browse/browse-store';
 import { rowsCache } from '@/browse/rows-cache';
+import { refOf, usePending } from '@/editing/pending-store';
 import type { RowFilter, RowsResponse } from '@/lib/workspace-api';
 import type { QueryCell, RowCountSchema } from '@/types/schema';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
@@ -39,6 +40,7 @@ vi.mock('@/components/grid/result-grid', () => ({
         onOpenRow?: (rowIndex: number) => void;
         onOpenForeign?: (table: string, column: string, value: string) => void;
         activeRow?: number | null;
+        editing?: { table: string; rowIds: unknown[]; shortened: number[][] };
         layout?: {
             value: { widths: Record<string, number>; hidden: string[] };
             onChange: (next: {
@@ -51,6 +53,11 @@ vi.mock('@/components/grid/result-grid', () => ({
             <span>{`${props.rows.length} rows`}</span>
             <span data-testid="first-cell">{String(props.rows[0]?.[0])}</span>
             <span data-testid="active-row">{String(props.activeRow)}</span>
+            <span data-testid="editing">
+                {props.editing
+                    ? `editable ${props.editing.table} ${props.editing.rowIds.length} ${JSON.stringify(props.editing.shortened[0])}`
+                    : 'read-only'}
+            </span>
             <button
                 type="button"
                 onClick={() => props.onFilterColumn?.('name')}
@@ -148,6 +155,7 @@ const page = (
     editing: { method: 'primary_key', reason: null, read_only_columns: [] },
     row_ids: Array.from({ length: 100 }, (_, i) => ({ key: { id: i + 1 } })),
     locked: Array.from({ length: 100 }, () => []),
+    shortened: Array.from({ length: 100 }, () => []),
     ...over,
 });
 
@@ -173,8 +181,12 @@ function Harness({
     id,
     onOpenTable = vi.fn(),
     refreshNonce,
+    readOnly,
+    onEditableChange,
 }: {
     refreshNonce?: number;
+    readOnly?: boolean;
+    onEditableChange?: (editable: boolean) => void;
     rowCount?: RowCountSchema;
     table?: string;
     /** A particular tab of the table; its first tab when not given. */
@@ -197,6 +209,8 @@ function Harness({
             tab={tab}
             onOpenTable={onOpenTable}
             refreshNonce={refreshNonce}
+            readOnly={readOnly}
+            onEditableChange={onEditableChange}
         />
     );
 }
@@ -215,6 +229,7 @@ const tabState = (table = 'orders') =>
 
 beforeEach(() => {
     useBrowse.setState({ byConnection: {} });
+    usePending.setState({ byTable: {} });
     rowsCache.clear();
     api.rows.mockReset();
     api.count.mockReset();
@@ -226,6 +241,82 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.restoreAllMocks();
+});
+
+describe('DataView editing', () => {
+    it('lets the grid edit the rows of an editable table', async () => {
+        open();
+        api.rows.mockResolvedValue(
+            page(1, 1, {
+                shortened: [[1], ...Array.from({ length: 99 }, () => [])],
+            }),
+        );
+        const onEditableChange = vi.fn();
+        render(<Harness onEditableChange={onEditableChange} />);
+        expect(await screen.findByTestId('editing')).toHaveTextContent(
+            'editable orders 100 [1]',
+        );
+        expect(onEditableChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it('does not edit a table no row of which can be pinned', async () => {
+        open();
+        api.rows.mockResolvedValue(
+            page(1, 1, {
+                editing: {
+                    method: 'none',
+                    reason: "views can't be edited",
+                    read_only_columns: [],
+                },
+                row_ids: Array.from({ length: 100 }, () => null),
+            }),
+        );
+        const onEditableChange = vi.fn();
+        render(<Harness onEditableChange={onEditableChange} />);
+        expect(await screen.findByTestId('editing')).toHaveTextContent(
+            'read-only',
+        );
+        expect(onEditableChange).not.toHaveBeenCalledWith(true);
+    });
+
+    it('does not edit on a read-only connection', async () => {
+        open();
+        render(<Harness readOnly />);
+        expect(await screen.findByTestId('editing')).toHaveTextContent(
+            'read-only',
+        );
+    });
+
+    it('counts pending changes on other pages too', async () => {
+        open();
+        render(<Harness />);
+        await screen.findByText('Rows 1–100 of 10');
+        const id = { key: { id: 1 } };
+        act(() => {
+            usePending
+                .getState()
+                .setCell(
+                    1,
+                    'orders',
+                    { ref: refOf(id), id, original: { name: 'x' } },
+                    'name',
+                    'y',
+                );
+            usePending.getState().addRow(1, 'orders');
+        });
+        expect(screen.getByRole('status')).toHaveTextContent(
+            '2 pending changes · 1 new · 1 edited · 0 deleted',
+        );
+        api.rows.mockResolvedValue(page(2, 'B', { has_more: false }));
+        fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+        await screen.findByText('Rows 101–200 of 10');
+        expect(screen.getByRole('status')).toHaveTextContent(
+            '2 pending changes',
+        );
+        // Discarding clears it.
+        act(() => usePending.getState().discard(1, 'orders'));
+        expect(screen.queryByRole('status')).toBeNull();
+    });
 });
 
 describe('DataView', () => {

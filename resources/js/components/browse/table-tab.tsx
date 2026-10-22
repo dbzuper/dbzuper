@@ -1,4 +1,4 @@
-import { Code2, Copy, RefreshCw, Star } from 'lucide-react';
+import { Code2, Copy, Plus, RefreshCw, Star } from 'lucide-react';
 import {
     useCallback,
     useMemo,
@@ -19,6 +19,7 @@ import { openTableTab } from '@/browse/table-actions';
 import { tabDomId } from '@/components/browse/tab-bar';
 import type { TableActions } from '@/components/browse/table-context-menu';
 import { Button } from '@/components/ui/button';
+import { usePending } from '@/editing/pending-store';
 import { writeClipboard } from '@/grid/copy';
 import type { RowFilter } from '@/lib/workspace-api';
 import { cn } from '@/lib/utils';
@@ -50,6 +51,15 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
         [snapshot, tab.table],
     );
     const [refreshNonce, setRefreshNonce] = useState(0);
+    // Reported by the Data view once its rows say whether they can be edited; a preview tab that moves to
+    // another table forgets it.
+    const [editableTable, setEditableTable] = useState<string | null>(null);
+    const editable = editableTable === tab.table;
+    const tableName = tab.table;
+    const onEditableChange = useCallback(
+        (can: boolean) => setEditableTable(can ? tableName : null),
+        [tableName],
+    );
     const pinned = usePins(
         (s) =>
             s.byConnection[connectionId]?.some((p) => p.table === tab.table) ??
@@ -74,6 +84,12 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
     const refresh = () => {
         rowsCache.delete(`${connectionId}:${tab.id}`);
         setRefreshNonce((n) => n + 1);
+    };
+
+    // A new row goes to the top of the grid, staged with every view of the table (spec 4.1).
+    const addRow = () => {
+        usePending.getState().addRow(connectionId, tab.table);
+        useBrowse.getState().promote(connectionId, tab.id);
     };
 
     const setView = (view: TableView) =>
@@ -169,6 +185,18 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
                     })}
                 </div>
                 <div className="ml-auto flex items-center gap-1">
+                    {editable &&
+                        !connection.read_only &&
+                        tab.state.view === 'data' && (
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={addRow}
+                            >
+                                <Plus className="size-3.5" /> Add row
+                            </Button>
+                        )}
                     <Button
                         type="button"
                         variant="ghost"
@@ -232,6 +260,8 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
                         tab={tab}
                         onOpenTable={openFiltered}
                         refreshNonce={refreshNonce}
+                        readOnly={connection.read_only}
+                        onEditableChange={onEditableChange}
                     />
                 )}
             </div>

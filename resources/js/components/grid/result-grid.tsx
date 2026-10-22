@@ -5,11 +5,14 @@ import {
     renderHeaderCell as defaultHeaderCell,
     type Column,
     type DataGridHandle,
+    type RenderEditCellProps,
     type SortColumn,
 } from 'react-data-grid';
 import { ChevronRight, ExternalLink, Filter } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import {
+    binaryBytes,
     blobLabel,
     cellKind,
     cellText,
@@ -28,17 +31,63 @@ import {
 import { sortRows } from '@/grid/sort';
 import type { GridLayout } from '@/browse/local-prefs';
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu';
+import {
+    refOf,
+    usePending,
+    type PendingRow,
+    type PendingTarget,
+    type RowRef,
+} from '@/editing/pending-store';
 import { cn } from '@/lib/utils';
+import type { RowIdentity } from '@/lib/workspace-api';
 import type {
+    ColumnSchema,
     Dialect,
     QueryCell,
     QueryColumn,
     SchemaSnapshot,
 } from '@/types/schema';
 import { CellDrawer, type DrawerState } from './cell-drawer';
+import {
+    BoolCellEditor,
+    isBinaryType,
+    isBooleanType,
+    isJsonType,
+    jsonError,
+    TextCellEditor,
+} from './cell-editors';
 import { RowMenu } from './row-menu';
 
-type Row = { __i: number; cells: QueryCell[] };
+/**
+ * One grid row. `__i` is the row's index in `rows` (negative for new, not yet inserted rows, shown first); `ref` keys
+ * its pending change; `draft` is the inline editor's value until the grid commits it.
+ */
+type Row = {
+    __i: number;
+    cells: QueryCell[];
+    ref: RowRef | null;
+    draft?: { column: string; value: string | null };
+};
+
+/** Staged editing of a table tab's rows (spec §4.1). Only given for an editable table on a writable connection. */
+export type GridEditing = {
+    connectionId: number;
+    table: string;
+    dialect: Dialect;
+    /** From the rows response, parallel to `rows`. */
+    rowIds: (RowIdentity | null)[];
+    locked: number[][];
+    shortened: number[][];
+    readOnlyColumns: string[];
+    /** Why a row without an identity can't be edited; a generic reason when null. */
+    rowReason: string | null;
+    /** The table's columns: defaults and NOT NULL for new rows, type names for editors. */
+    tableColumns: ColumnSchema[];
+};
+
+const NO_PENDING: Record<RowRef, PendingRow> = {};
+const UNPINNED_ROW =
+    "this row can't be pinned to exactly one row (some of its values were shortened or can't be compared exactly)";
 
 type Props = {
     columns: QueryColumn[];
@@ -70,6 +119,8 @@ type Props = {
     /** Restores and reports the vertical scroll offset. */
     scrollTop?: number;
     onScrollTopChange?: (top: number) => void;
+    /** Inline editing staged into the pending-changes store; table tabs only (never SQL results). */
+    editing?: GridEditing;
 };
 
 const MAX_WIDTH = 480;
@@ -82,11 +133,14 @@ export function CellView({
     type,
     onOpen,
     foreign,
+    title,
 }: {
     value: CellValue;
     type: string | null;
     onOpen: () => void;
     foreign?: { label: string; onClick: () => void } | null;
+    /** Replaces the value tooltip (an edited cell shows its original, a locked one why). */
+    title?: string;
 }) {
     const kind = cellKind(value, type);
     if (kind === 'null')
@@ -123,9 +177,10 @@ export function CellView({
         <span
             data-kind={kind}
             title={
-                kind === 'boolean' || kind === 'binary'
+                title ??
+                (kind === 'boolean' || kind === 'binary'
                     ? undefined
-                    : cellTitle(textValue)
+                    : cellTitle(textValue))
             }
             role={kind === 'boolean' ? 'img' : undefined}
             aria-label={kind === 'boolean' ? textValue : undefined}
@@ -163,6 +218,111 @@ export function CellView({
 const initialOrder = (columns: QueryColumn[]) =>
     columns.map((_, i) => String(i));
 
+const truthy = (value: QueryCell | undefined) =>
+    value === true ||
+    value === 1 ||
+    (typeof value === 'string' && /^(1|t|true)$/i.test(value));
+
+const shownText = (value: QueryCell | undefined) =>
+    value === null || value === undefined
+        ? 'NULL'
+        : value === ''
+          ? '(empty)'
+          : cellText(value);
+
+/** What the grid needs to stage edits: per-row targets, staged values and why a cell is locked. */
+function editModel(
+    editing: GridEditing,
+    columns: QueryColumn[],
+    rows: QueryCell[][],
+    pending: Record<RowRef, PendingRow>,
+) {
+    const refs = editing.rowIds.map((id) => (id ? refOf(id) : null));
+    const schema = new Map(editing.tableColumns.map((c) => [c.name, c]));
+    const typeOf = (index: number) =>
+        schema.get(columns[index].name)?.type_name ?? columns[index].type;
+    const readOnly = new Set(editing.readOnlyColumns);
+    const pendingOf = (row: Row) => (row.ref ? pending[row.ref] : undefined);
+
+    const target = (row: Row): PendingTarget | null => {
+        if (!row.ref) return null;
+        if (row.__i < 0) return { ref: row.ref, id: null, original: {} };
+        const id = editing.rowIds[row.__i];
+        const cells = rows[row.__i];
+        if (!id || !cells) return null;
+        const cut = new Set(editing.shortened[row.__i] ?? []);
+        const original: Record<string, QueryCell> = {};
+        const shortened: string[] = [];
+        columns.forEach((c, i) => {
+            if (cut.has(i)) shortened.push(c.name);
+            else original[c.name] = cells[i];
+        });
+        return { ref: row.ref, id, original, shortened };
+    };
+
+    /** Why the cell can't be edited, or null when it can. */
+    const lockReason = (row: Row, index: number): string | null => {
+        const name = columns[index].name;
+        const binary =
+            isBinaryType(typeOf(index)) ||
+            binaryBytes(rows[row.__i]?.[index] ?? null) !== null;
+        if (row.__i < 0)
+            return readOnly.has(name)
+                ? 'generated column'
+                : binary
+                  ? 'binary'
+                  : null;
+        if (!editing.rowIds[row.__i]) return editing.rowReason ?? UNPINNED_ROW;
+        if (!(editing.locked[row.__i] ?? []).includes(index)) return null;
+        if (readOnly.has(name)) return 'generated column';
+        if (binary) return 'binary';
+        if ((editing.shortened[row.__i] ?? []).includes(index))
+            return 'shortened for display';
+        return "its values can't be compared exactly";
+    };
+
+    const editable = (row: Row, index: number) =>
+        pendingOf(row)?.kind !== 'delete' && lockReason(row, index) === null;
+
+    /** Whether the cell holds a staged value (not its loaded or default one). */
+    const staged = (row: Row, index: number) => {
+        const p = pendingOf(row);
+        return !!p && p.kind !== 'delete' && columns[index].name in p.values;
+    };
+
+    /** A new row's column that is NOT NULL without a default and still has no value. */
+    const required = (row: Row, index: number) => {
+        const p = pendingOf(row);
+        const column = schema.get(columns[index].name);
+        return (
+            p?.kind === 'insert' &&
+            !(columns[index].name in p.values) &&
+            !!column &&
+            !column.nullable &&
+            column.default === null &&
+            !column.auto_increment &&
+            !readOnly.has(column.name)
+        );
+    };
+
+    const boolValue = (on: boolean) =>
+        editing.dialect === 'pgsql' ? String(on) : on ? '1' : '0';
+
+    return {
+        refs,
+        typeOf,
+        pendingOf,
+        target,
+        lockReason,
+        editable,
+        staged,
+        required,
+        boolValue,
+        isBool: (index: number) => isBooleanType(typeOf(index)),
+        isJson: (index: number) => isJsonType(typeOf(index)),
+    };
+}
+
 export function ResultGrid({
     columns,
     rows,
@@ -177,6 +337,7 @@ export function ResultGrid({
     rowMenu,
     scrollTop,
     onScrollTopChange,
+    editing,
 }: Props) {
     const [colState, setLayout] = useState(() => ({
         columns,
@@ -187,6 +348,8 @@ export function ResultGrid({
         selected: ReadonlySet<number>;
     }>({ rows, selected: new Set() });
     const [menuRow, setMenuRow] = useState<number | null>(null);
+    /** The data column (index into `columns`) the context menu was opened on. */
+    const [menuColumn, setMenuColumn] = useState<number | null>(null);
     const gridRef = useRef<DataGridHandle>(null);
     const [localSort, setLocalSort] = useState<SortColumn[]>([]);
     const [drawer, setDrawer] = useState<DrawerState>(null);
@@ -254,14 +417,57 @@ export function ResultGrid({
         [],
     );
 
+    const pendingKey = editing
+        ? `${editing.connectionId}:${editing.table}`
+        : null;
+    const pending = usePending((s) =>
+        pendingKey ? (s.byTable[pendingKey] ?? NO_PENDING) : NO_PENDING,
+    );
+    const model = useMemo(
+        () => (editing ? editModel(editing, columns, rows, pending) : null),
+        [editing, columns, rows, pending],
+    );
+
     const sortColumns = sort?.columns ?? localSort;
     const data: Row[] = useMemo(() => {
-        const active = sort ? undefined : localSort[0];
+        // Editable rows are indexed by their position in `rows`, so they are never sorted here.
+        const active = sort || model ? undefined : localSort[0];
         const sorted = active
             ? sortRows(rows, Number(active.columnKey), active.direction)
             : rows;
-        return sorted.map((cells, i) => ({ __i: i, cells }));
-    }, [rows, localSort, sort]);
+        const loaded = sorted.map((cells, i): Row => {
+            const ref = model?.refs[i] ?? null;
+            const p = ref ? pending[ref] : undefined;
+            return {
+                __i: i,
+                ref,
+                cells:
+                    p?.kind === 'update'
+                        ? cells.map((cell, c) =>
+                              columns[c] && columns[c].name in p.values
+                                  ? p.values[columns[c].name]
+                                  : cell,
+                          )
+                        : cells,
+            };
+        });
+        if (!model) return loaded;
+        // New rows first, newest on top; each keeps its index (-1 for the oldest) while others come and go.
+        const inserts = Object.values(pending).filter(
+            (p): p is Extract<PendingRow, { kind: 'insert' }> =>
+                p.kind === 'insert',
+        );
+        const added = inserts.map((p, k): Row => ({
+            __i: -(k + 1),
+            ref: p.ref,
+            cells: columns.map((c) => p.values[c.name] ?? null),
+        }));
+        return [...added.reverse(), ...loaded];
+    }, [rows, localSort, sort, model, pending, columns]);
+    const rowByIndex = useMemo(
+        () => new Map(data.map((r) => [r.__i, r])),
+        [data],
+    );
 
     // The column shows when any row stands for a record; each row then decides for itself
     // (a row with a NULL key has nothing to open).
@@ -279,6 +485,44 @@ export function ResultGrid({
         const hidden = new Set(layout?.value.hidden);
         const widths = layout?.value.widths;
         const selectColumn: Column<Row>[] = rowMenu ? [SelectColumn] : [];
+        const stateColumn: Column<Row>[] = model
+            ? [
+                  {
+                      key: '__state',
+                      name: '',
+                      width: 28,
+                      minWidth: 28,
+                      maxWidth: 28,
+                      frozen: true,
+                      resizable: false,
+                      sortable: false,
+                      draggable: false,
+                      renderHeaderCell: () => (
+                          <span className="sr-only">Pending change</span>
+                      ),
+                      renderCell: ({ row }) => {
+                          const p = model.pendingOf(row);
+                          if (!p) return null;
+                          const [mark, label] =
+                              p.kind === 'insert'
+                                  ? ['+', 'new row']
+                                  : p.kind === 'delete'
+                                    ? ['−', 'deleted']
+                                    : ['•', 'edited row'];
+                          return (
+                              <span
+                                  title={label}
+                                  data-state={p.kind}
+                                  className="block text-center font-semibold"
+                              >
+                                  <span aria-hidden="true">{mark}</span>
+                                  <span className="sr-only">{label}</span>
+                              </span>
+                          );
+                      },
+                  },
+              ]
+            : [];
         const rowButton: Column<Row>[] = onOpenRow
             ? [
                   {
@@ -291,18 +535,19 @@ export function ResultGrid({
                       resizable: false,
                       sortable: false,
                       draggable: false,
-                      renderCell: ({ row }) => (
-                          <button
-                              type="button"
-                              aria-label="Open row"
-                              title="Open row"
-                              data-row-index={row.__i}
-                              onClick={() => onOpenRow(row.__i)}
-                              className="rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
-                          >
-                              <ChevronRight className="size-3.5" />
-                          </button>
-                      ),
+                      renderCell: ({ row }) =>
+                          row.__i < 0 ? null : (
+                              <button
+                                  type="button"
+                                  aria-label="Open row"
+                                  title="Open row"
+                                  data-row-index={row.__i}
+                                  onClick={() => onOpenRow(row.__i)}
+                                  className="rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+                              >
+                                  <ChevronRight className="size-3.5" />
+                              </button>
+                          ),
                   },
               ]
             : [];
@@ -343,6 +588,7 @@ export function ResultGrid({
                 : [];
         return [
             ...selectColumn,
+            ...stateColumn,
             ...rowButton,
             ...openColumn,
             ...order
@@ -395,8 +641,99 @@ export function ResultGrid({
                                   </span>
                               )
                             : undefined,
+                        ...(model
+                            ? {
+                                  editable: (row: Row) =>
+                                      model.editable(row, index),
+                                  editorOptions: {
+                                      closeOnExternalRowChange: false,
+                                  },
+                                  cellClass: (row: Row) =>
+                                      model.staged(row, index) &&
+                                      model.pendingOf(row)?.kind === 'update'
+                                          ? 'rdg-cell-edited'
+                                          : model.required(row, index)
+                                            ? 'rdg-cell-required'
+                                            : undefined,
+                                  renderEditCell: ({
+                                      row,
+                                      onRowChange,
+                                  }: RenderEditCellProps<Row>) => {
+                                      const draft =
+                                          row.draft?.column === column.name
+                                              ? row.draft.value
+                                              : undefined;
+                                      const change = (value: string) =>
+                                          onRowChange({
+                                              ...row,
+                                              draft: {
+                                                  column: column.name,
+                                                  value,
+                                              },
+                                          });
+                                      if (model.isBool(index))
+                                          return (
+                                              <BoolCellEditor
+                                                  label={column.name}
+                                                  checked={truthy(
+                                                      draft === undefined
+                                                          ? row.cells[index]
+                                                          : draft,
+                                                  )}
+                                                  onChange={(on) =>
+                                                      change(
+                                                          model.boolValue(on),
+                                                      )
+                                                  }
+                                              />
+                                          );
+                                      const value = row.cells[index];
+                                      return (
+                                          <TextCellEditor
+                                              label={column.name}
+                                              initial={
+                                                  value === null
+                                                      ? ''
+                                                      : cellText(value)
+                                              }
+                                              draft={
+                                                  typeof draft === 'string'
+                                                      ? draft
+                                                      : undefined
+                                              }
+                                              onDraft={change}
+                                              json={model.isJson(index)}
+                                          />
+                                      );
+                                  },
+                              }
+                            : {}),
                         renderCell: ({ row }) => {
                             const value = row.cells[index];
+                            if (
+                                model?.pendingOf(row)?.kind === 'insert' &&
+                                !model.staged(row, index)
+                            ) {
+                                const required = model.required(row, index);
+                                return (
+                                    <span
+                                        data-default="true"
+                                        title={
+                                            required
+                                                ? 'NOT NULL without a default: give it a value'
+                                                : 'Left out of the INSERT: the column default applies'
+                                        }
+                                        className={cn(
+                                            'italic',
+                                            required
+                                                ? 'font-medium text-destructive'
+                                                : 'text-muted-foreground',
+                                        )}
+                                    >
+                                        {required ? 'required' : '(default)'}
+                                    </span>
+                                );
+                            }
                             // The parent record when the cell opens one, else the Data-tab filter.
                             const record =
                                 target &&
@@ -429,14 +766,59 @@ export function ResultGrid({
                                           },
                                       }
                                     : null;
-                            return (
+                            const lock =
+                                model && row.__i >= 0
+                                    ? model.lockReason(row, index)
+                                    : null;
+                            const edited =
+                                !!model &&
+                                row.__i >= 0 &&
+                                model.pendingOf(row)?.kind === 'update' &&
+                                model.staged(row, index);
+                            const hint = edited
+                                ? `Original: ${shownText(rows[row.__i]?.[index])}`
+                                : lock
+                                  ? `Not editable: ${lock}`
+                                  : undefined;
+                            const view = (
                                 <CellView
                                     value={value}
                                     type={column.type}
                                     foreign={foreign}
+                                    title={hint}
                                     onOpen={() => setDrawer({ column, value })}
                                 />
                             );
+                            if (edited)
+                                return (
+                                    <span
+                                        data-edited="true"
+                                        title={hint}
+                                        className="flex h-full items-center gap-1"
+                                    >
+                                        <span className="min-w-0 flex-1">
+                                            {view}
+                                        </span>
+                                        <span
+                                            aria-hidden="true"
+                                            className="shrink-0 text-warning-foreground"
+                                        >
+                                            •
+                                        </span>
+                                        <span className="sr-only">edited</span>
+                                    </span>
+                                );
+                            if (lock)
+                                return (
+                                    <span
+                                        data-locked="true"
+                                        title={hint}
+                                        className="block h-full"
+                                    >
+                                        {view}
+                                    </span>
+                                );
+                            return view;
                         },
                     };
                 }),
@@ -452,16 +834,118 @@ export function ResultGrid({
         rowMenu,
         onOpenRow,
         onFilterColumn,
+        model,
+        rows,
     ]);
 
     const maxKeys = Math.max(1, sort?.maxKeys ?? 1);
+    /** The rows a row action applies to: every selected row when `row` is one of them, else `row` alone. */
+    const actionRows = (row: number) =>
+        (selected.has(row) ? [...selected].sort((a, b) => a - b) : [row])
+            .map((i) => rowByIndex.get(i))
+            .filter((r): r is Row => !!r);
     const menuRows = useMemo(() => {
         if (menuRow === null || !rowMenu) return [];
         const indices = selected.has(menuRow)
             ? [...selected].sort((a, b) => a - b)
             : [menuRow];
-        return indices.flatMap((i) => (data[i] ? [data[i].cells] : []));
-    }, [menuRow, selected, data, rowMenu]);
+        // New rows aren't in the table yet: nothing to copy.
+        return indices.flatMap((i) => {
+            const r = i >= 0 ? rowByIndex.get(i) : undefined;
+            return r ? [r.cells] : [];
+        });
+    }, [menuRow, selected, rowByIndex, rowMenu]);
+
+    const markDelete = (targets: Row[]) => {
+        if (!editing || !model) return;
+        const store = usePending.getState();
+        for (const r of targets) {
+            const target = model.target(r);
+            if (target)
+                store.markDelete(editing.connectionId, editing.table, target);
+        }
+    };
+
+    const editItems = (() => {
+        if (!editing || !model || menuRow === null) return [];
+        const row = rowByIndex.get(menuRow);
+        if (!row || !model.target(row)) return [];
+        const { connectionId, table } = editing;
+        const store = usePending.getState();
+        const p = model.pendingOf(row);
+        if (p?.kind === 'delete')
+            return [
+                {
+                    label: 'Restore row',
+                    onSelect: () =>
+                        store.unmarkDelete(connectionId, table, p.ref),
+                },
+            ];
+        const items: { label: string; onSelect: () => void }[] = [];
+        const column = menuColumn;
+        if (column !== null && columns[column]) {
+            const name = columns[column].name;
+            if (model.editable(row, column))
+                items.push({
+                    label: 'Set NULL',
+                    onSelect: () => {
+                        const target = model.target(row);
+                        if (target)
+                            store.setCell(
+                                connectionId,
+                                table,
+                                target,
+                                name,
+                                null,
+                            );
+                    },
+                });
+            if (model.staged(row, column))
+                items.push({
+                    label: 'Revert change',
+                    onSelect: () =>
+                        store.revertCell(connectionId, table, row.ref!, name),
+                });
+        }
+        const targets = actionRows(row.__i);
+        items.push({
+            label:
+                targets.length > 1
+                    ? `Delete ${targets.length} rows`
+                    : 'Delete row',
+            onSelect: () => markDelete(targets),
+        });
+        return items;
+    })();
+
+    /** Commits what the inline editor staged (Enter, Tab, a click outside). */
+    const onRowsChange = (next: Row[], change: { indexes: number[] }) => {
+        if (!editing || !model) return;
+        for (const i of change.indexes) {
+            const r = next[i];
+            if (!r?.draft) continue;
+            const target = model.target(r);
+            const index = columns.findIndex((c) => c.name === r.draft!.column);
+            if (!target || index < 0) continue;
+            const { value } = r.draft;
+            if (model.isJson(index) && value !== null) {
+                const problem = jsonError(value);
+                if (problem) {
+                    toast.error(`${columns[index].name}: ${problem}`);
+                    continue;
+                }
+            }
+            usePending
+                .getState()
+                .setCell(
+                    editing.connectionId,
+                    editing.table,
+                    target,
+                    r.draft.column,
+                    value,
+                );
+        }
+    };
 
     const grid = (
         <DataGrid
@@ -490,20 +974,82 @@ export function ResultGrid({
                     ? (next) => setSelection({ rows, selected: next })
                     : undefined
             }
-            rowClass={(r) =>
-                r.__i === activeRow ? 'rdg-row-active' : undefined
-            }
+            rowClass={(r) => {
+                const kind = model?.pendingOf(r)?.kind;
+                return (
+                    cn(
+                        r.__i === activeRow && 'rdg-row-active',
+                        kind === 'insert' && 'rdg-row-new',
+                        kind === 'delete' && 'rdg-row-deleted',
+                    ) || undefined
+                );
+            }}
+            onRowsChange={model ? onRowsChange : undefined}
             onCellContextMenu={
-                rowMenu ? ({ row }) => setMenuRow(row.__i) : undefined
+                rowMenu
+                    ? ({ row, column }) => {
+                          setMenuRow(row.__i);
+                          setMenuColumn(
+                              columns[Number(column.key)] &&
+                                  /^\d+$/.test(column.key)
+                                  ? Number(column.key)
+                                  : null,
+                          );
+                      }
+                    : undefined
             }
             onCellKeyDown={
-                onOpenRow
+                onOpenRow || model
                     ? (args, event) => {
+                          if (args.mode !== 'ACTIVE' || !args.row) return;
+                          const onButton =
+                              event.target instanceof HTMLButtonElement;
+                          if (model) {
+                              const key = event.key;
+                              if (key === 'Delete') {
+                                  // Marks the selected rows (else this one); never opens an editor.
+                                  markDelete(
+                                      actionRows(
+                                          selected.size > 0
+                                              ? [...selected][0]
+                                              : args.row.__i,
+                                      ),
+                                  );
+                                  event.preventGridDefault();
+                                  return;
+                              }
+                              const col = args.column;
+                              const editableHere =
+                                  !!col &&
+                                  col.renderEditCell != null &&
+                                  (typeof col.editable === 'function'
+                                      ? col.editable(args.row)
+                                      : col.editable) !== false;
+                              // Enter and F2 edit; a typed character or Backspace would open an editor
+                              // that drops it, so only those two keys start editing.
+                              if (
+                                  (key === 'Enter' || key === 'F2') &&
+                                  editableHere &&
+                                  !onButton
+                              )
+                                  return;
+                              if (
+                                  editableHere &&
+                                  (key === 'Backspace' ||
+                                      (key.length === 1 &&
+                                          !event.ctrlKey &&
+                                          !event.metaKey &&
+                                          !(key === ' ' && event.shiftKey)))
+                              ) {
+                                  event.preventGridDefault();
+                                  return;
+                              }
+                          }
                           if (
-                              args.mode === 'ACTIVE' &&
-                              args.row &&
+                              onOpenRow &&
+                              args.row.__i >= 0 &&
                               event.key === 'Enter' &&
-                              !(event.target instanceof HTMLButtonElement)
+                              !onButton
                           ) {
                               onOpenRow(args.row.__i);
                               event.preventGridDefault();
@@ -560,14 +1106,15 @@ export function ResultGrid({
                             {grid}
                         </div>
                     </ContextMenuTrigger>
-                    {menuRows.length > 0 && (
+                    {(menuRows.length > 0 || editItems.length > 0) && (
                         <RowMenu
                             dialect={rowMenu.dialect}
                             table={rowMenu.table}
                             columns={columns}
                             rows={menuRows}
+                            editItems={editItems}
                             onOpenRow={
-                                onOpenRow && menuRow !== null
+                                onOpenRow && menuRow !== null && menuRow >= 0
                                     ? () => onOpenRow(menuRow)
                                     : undefined
                             }

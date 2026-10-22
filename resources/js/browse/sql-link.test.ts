@@ -40,6 +40,7 @@ function linked(sql = 'q1'): { table: TableTab; editorId: string } {
             editing: { method: 'none', reason: null, read_only_columns: [] },
             row_ids: [],
             locked: [],
+            shortened: [],
         },
         total: null,
         scrollTop: 0,

@@ -30,6 +30,7 @@ import {
 } from '@/browse/local-prefs';
 import { rowsCache, rowsRequestKey } from '@/browse/rows-cache';
 import { reportTableRows } from '@/browse/sql-link';
+import type { GridEditing } from '@/components/grid/result-grid';
 import { FilterBar } from '@/components/inspector/filter-bar';
 import { Button } from '@/components/ui/button';
 import {
@@ -41,6 +42,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
+import { pendingCounts, pendingKey, usePending } from '@/editing/pending-store';
 import {
     dbErrorFrom,
     workspaceApi,
@@ -93,6 +95,10 @@ type Props = {
     onOpenTable: (table: string, filters: RowFilter[]) => void;
     /** Bumped by the header's Refresh: drops the cached rows and refetches rows and count. */
     refreshNonce?: number;
+    /** The connection is read-only: nothing is editable, whatever the rows response says. */
+    readOnly?: boolean;
+    /** Whether the loaded rows can be edited (the table tab shows + Add row). */
+    onEditableChange?: (editable: boolean) => void;
 };
 
 type Request = {
@@ -132,6 +138,8 @@ function DataViewBody({
     tab,
     onOpenTable,
     refreshNonce = 0,
+    readOnly = false,
+    onEditableChange,
 }: Props) {
     const name = table.name;
     // Per tab: two views of one table keep their own rows.
@@ -517,6 +525,40 @@ function DataViewBody({
     );
     const rowMenu = useMemo(() => ({ dialect, table: name }), [dialect, name]);
 
+    // Staged editing (spec 4.1): only a table whose rows can be pinned, on a writable connection.
+    const loaded = view?.rows;
+    const editing: GridEditing | undefined = useMemo(() => {
+        if (readOnly || !loaded?.editing || loaded.editing.method === 'none')
+            return undefined;
+        return {
+            connectionId,
+            table: name,
+            dialect,
+            rowIds: loaded.row_ids,
+            locked: loaded.locked,
+            shortened: loaded.shortened ?? [],
+            readOnlyColumns: loaded.editing.read_only_columns,
+            rowReason: loaded.editing.reason,
+            tableColumns: table.columns,
+        };
+    }, [readOnly, loaded, connectionId, name, dialect, table.columns]);
+    const editable = !!editing;
+    useEffect(() => {
+        if (view) onEditableChange?.(editable);
+    }, [editable, view, onEditableChange]);
+
+    // Pending changes belong to the table, so changes made on other pages (or in other views) count too.
+    const pendingRows = usePending(
+        (s) => s.byTable[pendingKey(connectionId, name)],
+    );
+    const pending = useMemo(
+        () => (pendingRows ? pendingCounts(pendingRows) : null),
+        [pendingRows],
+    );
+    const pendingTotal = pending
+        ? pending.inserted + pending.updated + pending.deleted
+        : 0;
+
     const currentError = error?.key === requestKey ? error.message : null;
     const loading = !currentError && view?.key !== requestKey;
     // Offered for estimates and lower bounds, and when there is no total (not counted, or the capped count failed).
@@ -615,6 +657,7 @@ function DataViewBody({
                                     rowMenu={rowMenu}
                                     scrollTop={view.scrollTop}
                                     onScrollTopChange={onScrollTopChange}
+                                    editing={editing}
                                 />
                             </Suspense>
                         </div>
@@ -659,6 +702,14 @@ function DataViewBody({
                     update({ perPage: n, page: 1, drawerRow: null })
                 }
             >
+                {pending && pendingTotal > 0 && (
+                    <span
+                        role="status"
+                        className="font-medium text-warning-foreground"
+                    >
+                        {`${pendingTotal} pending change${pendingTotal === 1 ? '' : 's'} · ${pending.inserted} new · ${pending.updated} edited · ${pending.deleted} deleted`}
+                    </span>
+                )}
                 {view && countState.failed && (
                     <span className="text-muted-foreground">
                         count unavailable

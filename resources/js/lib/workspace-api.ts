@@ -62,6 +62,11 @@ export type RowsResponse = {
     row_ids: (RowIdentity | null)[];
     /** Parallel to rows: column indexes whose shown value isn't exact or that can't be edited. */
     locked: number[][];
+    /**
+     * Parallel to rows: column indexes whose shown value isn't the stored one (cut for display, or binary). A change
+     * lists these columns in `shortened` instead of sending their originals.
+     */
+    shortened: number[][];
 };
 export type CountResponse = { count: number | null; kind: 'exact' | 'timeout' };
 

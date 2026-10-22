@@ -143,7 +143,9 @@ it('returns exact row identities and locked cells on every engine', function (st
             expect($res->json('editing.method'))->toBe('pg_ctid')
                 // The second row's long text stays locked, but ctid + xmin still pin the row.
                 ->and($ids($res))->toBe([['ctid' => '(0,1)'], ['ctid' => '(0,2)']])
-                ->and($res->json('locked'))->toBe([[], [0]]);
+                ->and($res->json('locked'))->toBe([[], [0]])
+                // The client lists these in a change's `shortened` instead of sending their originals.
+                ->and($res->json('shortened'))->toBe([[], [0]]);
         } else {
             expect($res->json('editing.method'))->toBe('mysql_all_values')
                 ->and($res->json('row_ids'))->toBe([['values' => ['note' => 'short', 'qty' => 1]], null])

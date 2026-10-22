@@ -26,7 +26,10 @@ final class TableRowsQuery
      * @param  list<array{column: string, op: string, value?: ?string}>  $filters
      * @param  list<array{column: string, direction: string}>  $sort
      * @param  ?EditPlan  $plan  how rows are pinned for editing; null means not editable
-     * @return array{columns: list<array{name:string,type:?string,table:string}>, rows: list<list<mixed>>, has_more: bool, sql: string, editing: array{method:string,reason:?string,read_only_columns:list<string>}, row_ids: list<?array>, locked: list<list<int>>}
+     * @return array{columns: list<array{name:string,type:?string,table:string}>, rows: list<list<mixed>>, has_more: bool, sql: string, editing: array{method:string,reason:?string,read_only_columns:list<string>}, row_ids: list<?array>, locked: list<list<int>>, shortened: list<list<int>>}
+     *
+     * `shortened` lists, per row, the cells whose shown value isn't the stored one (cut, or a non-NULL binary value): a
+     * change lists these columns in its `shortened` instead of sending their originals.
      */
     public static function run(Connection $db, Driver $driver, array $table, array $filters, array $sort, int $page, int $perPage, ?EditPlan $plan = null): array
     {
@@ -63,7 +66,8 @@ final class TableRowsQuery
         $more = count($fetched) > $perPage;
         $width = count($table['columns']);
         $static = self::staticLocks($driver, $table, $plan);
-        $rows = $rowIds = $locked = [];
+        $binary = array_keys(array_filter($table['columns'], fn ($c) => ColumnKind::classify((string) ($c['type_name'] ?? $c['type'] ?? '')) === ColumnKind::Binary));
+        $rows = $rowIds = $locked = $shortened = [];
         foreach (array_slice($fetched, 0, $perPage) as $row) {
             $values = array_values((array) $row);
             $cells = array_map(fn ($v) => is_resource($v) ? stream_get_contents($v) : $v, array_slice($values, 0, $width));
@@ -72,6 +76,10 @@ final class TableRowsQuery
             $cellLocks = array_values(array_unique(array_merge($inexact, $static['locked'])));
             sort($cellLocks);
             $locked[] = $cellLocks;
+            // Binary values may be sampled into a placeholder that looks whole, so any non-NULL binary cell counts.
+            $cut = array_values(array_unique(array_merge($inexact, array_filter($binary, fn (int $i) => $cells[$i] !== null))));
+            sort($cut);
+            $shortened[] = $cut;
             $rowIds[] = self::rowId($plan, $table, $cells, array_slice($values, $width), $inexact !== [] || $static['unmatchable']);
         }
 
@@ -83,6 +91,7 @@ final class TableRowsQuery
             'editing' => ['method' => $plan->method->value, 'reason' => $plan->reason, 'read_only_columns' => $plan->readOnlyColumns],
             'row_ids' => $rowIds,
             'locked' => $locked,
+            'shortened' => $shortened,
         ];
     }
 

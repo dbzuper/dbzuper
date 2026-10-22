@@ -238,6 +238,25 @@
     background: color-mix(in oklab, var(--universe-accent) 10%, transparent);
 }
 
+/* Staged editing (spec 4.1): every state also has a text label (marker column, sr-only "edited"). */
+.rdg-dbsuperb .rdg-row-new {
+    background: color-mix(in oklab, var(--success) 12%, transparent);
+}
+
+.rdg-dbsuperb .rdg-row-deleted {
+    background: color-mix(in oklab, var(--destructive) 10%, transparent);
+    text-decoration: line-through;
+    text-decoration-color: var(--destructive);
+}
+
+.rdg-dbsuperb .rdg-cell-edited {
+    background: color-mix(in oklab, var(--warning) 22%, transparent);
+}
+
+.rdg-dbsuperb .rdg-cell-required {
+    box-shadow: inset 0 0 0 1px var(--destructive);
+}
+
 /* React Flow (record explorer): map its variables to the app theme tokens (follows light/dark). */
 .react-flow.records-flow {
     --xy-background-color: var(--universe-bg);
