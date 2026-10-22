@@ -9,6 +9,7 @@ import {
     useBrowse,
 } from './browse-store';
 import type { RowFilter } from '@/lib/workspace-api';
+import { rowsCache } from './rows-cache';
 
 const C = 1;
 const st = () => useBrowse.getState();
@@ -681,4 +682,141 @@ describe('saved tabs version 2', () => {
         expect(st().get(2).activeId).toBe(tableTabs(2)[0].id);
         expect(tableTabs(1).map((x) => x.table)).toEqual(['mine']);
     });
+});
+
+describe('fix round 1', () => {
+    const KEY = 'dbsuperb.browse';
+    const rehydrate = async (value: unknown) => {
+        localStorage.setItem(KEY, JSON.stringify(value));
+        useBrowse.setState({ byConnection: {} });
+        await useBrowse.persist.rehydrate();
+    };
+    const view = (id: string, table: string, ordinal: number, at: number) => ({
+        id,
+        kind: 'table',
+        table,
+        ordinal,
+        activatedAt: at,
+        preview: false,
+        state: { page: ordinal },
+    });
+
+    it('keeps connections that are already views when an old window saves the blob as version 1', async () => {
+        await rehydrate({
+            version: 1,
+            state: {
+                byConnection: {
+                    1: {
+                        tabs: [
+                            { id: 'universe', kind: 'universe' },
+                            view('t:aaa-1', 'orders', 1, 3),
+                            view('t:bbb-2', 'orders', 2, 5),
+                            view('t:ccc-3', 'users', 1, 4),
+                        ],
+                        activeId: 't:bbb-2',
+                        recents: ['orders'],
+                        perPage: 100,
+                    },
+                    2: {
+                        tabs: [
+                            { id: 'universe', kind: 'universe' },
+                            {
+                                id: 't:legacy',
+                                kind: 'table',
+                                table: 'legacy',
+                                preview: false,
+                                state: {},
+                            },
+                        ],
+                        activeId: 't:legacy',
+                        recents: [],
+                        perPage: 100,
+                    },
+                },
+            },
+        });
+        expect(
+            tableTabs(1).map((t) => [t.id, t.table, t.ordinal, t.activatedAt]),
+        ).toEqual([
+            ['t:aaa-1', 'orders', 1, 3],
+            ['t:bbb-2', 'orders', 2, 5],
+            ['t:ccc-3', 'users', 1, 4],
+        ]);
+        expect(tableTabs(1)[1].state.page).toBe(2);
+        expect(st().get(1).activeId).toBe('t:bbb-2');
+        const [legacy] = tableTabs(2);
+        expect(legacy.table).toBe('legacy');
+        expect(legacy.id).not.toBe('t:legacy');
+        expect(legacy.ordinal).toBe(1);
+        expect(st().get(2).activeId).toBe(legacy.id);
+    });
+
+    it('migrates an unversioned blob', async () => {
+        await rehydrate({
+            state: {
+                byConnection: {
+                    1: {
+                        tabs: [
+                            {
+                                id: 't:users',
+                                kind: 'table',
+                                table: 'users',
+                                preview: false,
+                                state: {},
+                            },
+                        ],
+                        activeId: 't:users',
+                        recents: [],
+                        perPage: 100,
+                    },
+                },
+            },
+        });
+        expect(tableTabs().map((t) => t.table)).toEqual(['users']);
+        expect(active()).toBe(tableTabs()[0].id);
+        expect(active()).not.toBe('t:users');
+    });
+
+    it('never opens a new view before the Universe tab', () => {
+        useBrowse.setState({
+            byConnection: {
+                [C]: {
+                    tabs: [{ id: 'universe', kind: 'universe' }],
+                    activeId: 'gone',
+                    recents: [],
+                    perPage: 100,
+                },
+            },
+        });
+        const id = st().openNewView(C, 'orders');
+        expect(tabs()).toEqual(['universe', id]);
+    });
+
+    it.each([
+        ['closeTab', (a: string, b: string) => st().closeTab(C, b), ['a', 'c']],
+        ['closeRight', (a: string) => st().closeRight(C, a), ['a']],
+        ['closeOthers', (a: string) => st().closeOthers(C, a), ['a']],
+        ['closeAll', () => st().closeAll(C), []],
+    ] as const)(
+        "drops the cached rows of tabs closed by %s, keeping the others'",
+        (_name, close, kept) => {
+            rowsCache.clear();
+            const ids = ['a', 'b', 'c'].map((t) =>
+                st().openTable(C, t, { mode: 'permanent' }),
+            );
+            for (const id of ids)
+                rowsCache.set(`${C}:${id}`, {
+                    requestKey: '',
+                    rows: {} as never,
+                    total: null,
+                    scrollTop: 0,
+                });
+            close(ids[0], ids[1]);
+            expect(
+                ['a', 'b', 'c'].filter(
+                    (_t, i) => rowsCache.get(`${C}:${ids[i]}`) !== undefined,
+                ),
+            ).toEqual(kept);
+        },
+    );
 });

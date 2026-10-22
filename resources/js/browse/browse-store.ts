@@ -1,5 +1,9 @@
 import { create } from 'zustand';
-import { persist, type PersistStorage } from 'zustand/middleware';
+import {
+    persist,
+    type PersistStorage,
+    type StorageValue,
+} from 'zustand/middleware';
 import {
     FILTER_OPS,
     PER_PAGE_OPTIONS,
@@ -7,6 +11,7 @@ import {
     type RowFilter,
     type SortKey,
 } from '@/lib/workspace-api';
+import { rowsCache } from './rows-cache';
 import { safeStorage } from './safe-storage';
 
 export type TableView = 'data' | 'structure';
@@ -322,6 +327,12 @@ function sanitize(input: unknown): Record<number, ConnectionBrowse> {
 /**
  * Version 1 had one tab per table, id `t:<table>`. Each becomes a view: a fresh id, ordinal 1, activation in tab
  * order (the active tab latest), and the active id follows. Anything malformed is passed on for sanitize() to drop.
+ *
+ * A blob labelled version 1 may still hold version-2 connections: a window running older code copies the other
+ * connections verbatim when it saves its own. Tabs that are already views (a non-legacy id and an ordinal) pass
+ * through untouched, and only a legacy active id is remapped. Two windows running this code that migrate the same
+ * legacy blob mint different ids; the later write wins and the other window takes it over on its storage-event
+ * rehydrate, so they converge.
  */
 function migrateConnections(input: unknown): unknown {
     if (!isObj(input)) return input;
@@ -336,7 +347,14 @@ function migrateConnections(input: unknown): unknown {
         const raw: unknown[] = value.tabs;
         const tabs = raw.flatMap((t, i) => {
             if (!isObj(t) || t.kind !== 'table') return [t];
-            if (typeof t.table !== 'string' || tables.has(t.table)) return [];
+            if (typeof t.table !== 'string') return [];
+            const isView =
+                typeof t.id === 'string' &&
+                TAB_ID.test(t.id) &&
+                t.id !== `t:${t.table}` &&
+                Number.isInteger(t.ordinal);
+            if (isView) return [t];
+            if (tables.has(t.table)) return [];
             tables.add(t.table);
             const id = newTabId();
             // Version 1 always named a table tab `t:<table>`, whatever id was stored.
@@ -391,7 +409,12 @@ const browseStorage: PersistStorage<Persisted> = {
         const raw = safeStorage.getItem(name);
         if (!raw) return null;
         try {
-            return JSON.parse(raw);
+            const parsed: unknown = JSON.parse(raw);
+            if (!isObj(parsed)) return null;
+            // zustand migrates only numbered versions; an unversioned blob is as old as they come.
+            return typeof parsed.version === 'number'
+                ? (parsed as StorageValue<Persisted>)
+                : ({ ...parsed, version: 0 } as StorageValue<Persisted>);
         } catch {
             return null;
         }
@@ -462,6 +485,10 @@ export const useBrowse = create<State>()(
                     const tabs = c.tabs.filter(
                         (t, i) => t.kind === 'universe' || keep(t, i),
                     );
+                    // Closed tabs' rows would only hold LRU slots.
+                    for (const t of c.tabs)
+                        if (isTable(t) && !tabs.includes(t))
+                            rowsCache.delete(`${connectionId}:${t.id}`);
                     return focus(
                         { ...c, tabs },
                         afterRemoval(c.tabs, tabs, c.activeId),
@@ -577,7 +604,12 @@ export const useBrowse = create<State>()(
                 openNewView: (connectionId, table) =>
                     insertAfter(
                         connectionId,
-                        (c) => c.tabs.findIndex((t) => t.id === c.activeId),
+                        // Never before the Universe tab, even when the active id is stale.
+                        (c) =>
+                            Math.max(
+                                0,
+                                c.tabs.findIndex((t) => t.id === c.activeId),
+                            ),
                         (c) => ({
                             id: newTabId(),
                             kind: 'table',
@@ -734,7 +766,7 @@ export const useBrowse = create<State>()(
             migrate: (persisted, version) => {
                 const state = isObj(persisted) ? persisted : {};
                 return (
-                    version < 2
+                    (version ?? 0) < 2
                         ? {
                               ...state,
                               byConnection: migrateConnections(
