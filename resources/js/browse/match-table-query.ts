@@ -17,7 +17,7 @@ import type {
 import { PER_PAGE_OPTIONS } from '@/lib/workspace-api';
 import { asciiLower, asciiUpper, tokenize } from '@/sql/lexer';
 import type { SqlToken } from '@/sql/lexer';
-import type { Dialect, TableSchema } from '@/types/schema';
+import type { ColumnSchema, Dialect, TableSchema } from '@/types/schema';
 
 /** perPage null = the statement has no LIMIT (keep the tab's page size). */
 export type MatchedState = {
@@ -35,6 +35,8 @@ const MAX_FILTERS = 20;
 const MAX_SORT = 3;
 const MAX_VALUE_CHARS = 1000;
 const MAX_PAGE = 100000;
+/** MySQL/MariaDB compare a number with the server's quoted value as a double. */
+const MYSQL_MAX_DIGITS = 15;
 
 const pageSizes = (() => {
     const all = PER_PAGE_OPTIONS.map(String);
@@ -70,7 +72,17 @@ export const MATCH_REASONS = {
     fn: (name: string) => `uses a function: \`${name}(…)\``,
     differentTable: (name: string) => `reads a different table: \`${name}\``,
     unknownColumn: (name: string) => `unknown column \`${name}\``,
+    // Used by the SQL dock when the linked table tab's table is gone (spec §6).
     missingTable: (name: string) => `\`${name}\` no longer exists`,
+    reservedWord: (word: string) => `\`${word}\` is a reserved word; quote it`,
+    numberVsColumn: (column: string, type: string) =>
+        `compares column \`${column}\` (${type}) with a number`,
+    booleanVsColumn: (column: string, type: string) =>
+        `compares column \`${column}\` (${type}) with \`TRUE\`/\`FALSE\``,
+    tooPrecise: (num: string) =>
+        `the number ${num} has more than ${MYSQL_MAX_DIGITS} significant digits`,
+    ilikeNeedsCast: (column: string, type: string) =>
+        `ILIKE on column \`${column}\` (${type}) needs \`CAST(… AS TEXT)\``,
     pageSize: (limit: string) =>
         `LIMIT ${limit} isn't a page size: ${pageSizes}`,
     offset: (offset: string, perPage: number) =>
@@ -82,6 +94,10 @@ export const MATCH_REASONS = {
     unsupported: (text: string) =>
         `unsupported syntax near \`${text.length > 40 ? `${text.slice(0, 40)}…` : text}\``,
 } as const;
+
+function words(list: string): Set<string> {
+    return new Set(list.trim().split(/\s+/));
+}
 
 class NoFit {
     constructor(readonly reason: string) {}
@@ -99,6 +115,79 @@ const JOIN_WORDS = new Set([
     'STRAIGHT_JOIN',
     'LATERAL',
 ]);
+/** Words explain() names with their own reason when they stand where a name should. */
+const EXPLAINED = new Set([
+    ...JOIN_WORDS,
+    'OR',
+    'XOR',
+    'NOT',
+    'GROUP',
+    'DISTINCT',
+    'HAVING',
+    'UNION',
+    'INTERSECT',
+    'EXCEPT',
+    'MINUS',
+    'WINDOW',
+    'IN',
+    'BETWEEN',
+    'EXISTS',
+    'CASE',
+]);
+/**
+ * Words each engine reserves: bare, they are a syntax error or a built-in value
+ * (`current_user`, `CURRENT_DATE`, …), never a column. Over-inclusion only means "quote it".
+ */
+const ENGINE_RESERVED: Record<'mysql' | 'pgsql' | 'sqlite', Set<string>> = {
+    mysql: words(`
+        ACCESSIBLE ADD ALL ALTER ANALYZE AND AS ASC ASENSITIVE BEFORE BETWEEN BIGINT BINARY BLOB
+        BOTH BY CALL CASCADE CASE CHANGE CHAR CHARACTER CHECK COLLATE COLUMN CONDITION CONSTRAINT
+        CONTINUE CONVERT CREATE CROSS CUBE CUME_DIST CURRENT_DATE CURRENT_ROLE CURRENT_TIME
+        CURRENT_TIMESTAMP CURRENT_USER CURSOR DATABASE DATABASES DAY_HOUR DAY_MICROSECOND
+        DAY_MINUTE DAY_SECOND DEC DECIMAL DECLARE DEFAULT DELAYED DELETE DENSE_RANK DESC DESCRIBE
+        DETERMINISTIC DISTINCT DISTINCTROW DIV DO_DOMAIN_IDS DOUBLE DROP DUAL EACH ELSE ELSEIF
+        EMPTY ENCLOSED ESCAPED EXCEPT EXISTS EXIT EXPLAIN FALSE FETCH FIRST_VALUE FLOAT FLOAT4
+        FLOAT8 FOR FORCE FOREIGN FROM FULLTEXT FUNCTION GENERAL GENERATED GET GRANT GROUP GROUPING
+        GROUPS HAVING HIGH_PRIORITY HOUR_MICROSECOND HOUR_MINUTE HOUR_SECOND IF IGNORE
+        IGNORE_DOMAIN_IDS IGNORE_SERVER_IDS IN INDEX INFILE INNER INOUT INSENSITIVE INSERT INT INT1
+        INT2 INT3 INT4 INT8 INTEGER INTERSECT INTERVAL INTO IO_AFTER_GTIDS IO_BEFORE_GTIDS IS
+        ITERATE JOIN JSON_TABLE KEY KEYS KILL LAG LAST_VALUE LATERAL LEAD LEADING LEAVE LEFT LIKE
+        LIMIT LINEAR LINES LOAD LOCALTIME LOCALTIMESTAMP LOCK LONG LONGBLOB LONGTEXT LOOP
+        LOW_PRIORITY MASTER_BIND MASTER_HEARTBEAT_PERIOD MASTER_SSL_VERIFY_SERVER_CERT MATCH
+        MAXVALUE MEDIUMBLOB MEDIUMINT MEDIUMTEXT MIDDLEINT MINUTE_MICROSECOND MINUTE_SECOND MOD
+        MODIFIES NATURAL NOT NO_WRITE_TO_BINLOG NTH_VALUE NTILE NULL NUMERIC OF OFFSET ON OPTIMIZE
+        OPTIMIZER_COSTS OPTION OPTIONALLY OR ORDER OUT OUTER OUTFILE OVER PAGE_CHECKSUM
+        PARSE_VCOL_EXPR PARTITION PERCENT_RANK POSITION PRECISION PRIMARY PROCEDURE PURGE RANGE
+        RANK READ READS READ_WRITE REAL RECURSIVE REF_SYSTEM_ID REFERENCES REGEXP RELEASE RENAME
+        REPEAT REPLACE REQUIRE RESIGNAL RESTRICT RETURN RETURNING REVOKE RIGHT RLIKE ROW ROWS
+        ROW_NUMBER SCHEMA SCHEMAS SECOND_MICROSECOND SELECT SENSITIVE SEPARATOR SET SHOW SIGNAL
+        SLOW SMALLINT SPATIAL SPECIFIC SQL SQLEXCEPTION SQLSTATE SQLWARNING SQL_BIG_RESULT
+        SQL_CALC_FOUND_ROWS SQL_SMALL_RESULT SSL STARTING STATS_AUTO_RECALC STATS_PERSISTENT
+        STATS_SAMPLE_PAGES STORED STRAIGHT_JOIN SYSTEM TABLE TERMINATED THEN TINYBLOB TINYINT
+        TINYTEXT TO TRAILING TRIGGER TRUE UNDO UNION UNIQUE UNLOCK UNSIGNED UPDATE USAGE USE USING
+        UTC_DATE UTC_TIME UTC_TIMESTAMP VALUES VARBINARY VARCHAR VARCHARACTER VARYING VIRTUAL WHEN
+        WHERE WHILE WINDOW WITH WRITE XOR YEAR_MONTH ZEROFILL
+    `),
+    pgsql: words(`
+        ALL ANALYSE ANALYZE AND ANY ARRAY AS ASC ASYMMETRIC AUTHORIZATION BINARY BOTH CASE CAST
+        CHECK COLLATE COLLATION COLUMN CONCURRENTLY CONSTRAINT CREATE CROSS CURRENT_CATALOG
+        CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER
+        DEFAULT DEFERRABLE DESC DISTINCT DO ELSE END EXCEPT FALSE FETCH FOR FOREIGN FREEZE FROM
+        FULL GRANT GROUP HAVING ILIKE IN INITIALLY INNER INTERSECT INTO IS ISNULL JOIN LATERAL
+        LEADING LEFT LIKE LIMIT LOCALTIME LOCALTIMESTAMP NATURAL NOT NOTNULL NULL OFFSET ON ONLY
+        OR ORDER OUTER OVERLAPS PLACING PRIMARY REFERENCES RETURNING RIGHT SELECT SESSION_USER
+        SIMILAR SOME SYMMETRIC SYSTEM_USER TABLE TABLESAMPLE THEN TO TRAILING TRUE UNION UNIQUE
+        USER USING VARIADIC VERBOSE WHEN WHERE WINDOW WITH
+    `),
+    sqlite: words(`
+        ADD ALL ALTER AND AS AUTOINCREMENT BETWEEN CASE CHECK COLLATE COMMIT CONSTRAINT CREATE
+        CROSS CURRENT_DATE CURRENT_TIME CURRENT_TIMESTAMP DEFAULT DEFERRABLE DELETE DISTINCT DROP
+        ELSE ESCAPE EXCEPT EXISTS FOREIGN FROM FULL GLOB GROUP HAVING IN INDEX INNER INSERT
+        INTERSECT INTO IS ISNULL JOIN LEFT LIKE LIMIT MATCH NATURAL NOT NOTHING NOTNULL NULL ON OR
+        ORDER OUTER PRIMARY REFERENCES REGEXP RETURNING RIGHT SELECT SET TABLE THEN TO TRANSACTION
+        UNION UNIQUE UPDATE USING VALUES WHEN WHERE WINDOW
+    `),
+};
 /** Words that are never a bare column or table name in this grammar. */
 const RESERVED = new Set([
     ...JOIN_WORDS,
@@ -177,11 +266,92 @@ const MYSQL_ESCAPES: Record<string, string> = {
 };
 
 type Ident = { name: string; bare: boolean; token: SqlToken };
+type Literal = { kind: 'string' | 'number' | 'boolean'; text: string };
+
+const typeLabel = (c: ColumnSchema) => c.type || c.type_name || 'untyped';
+const lowerTrim = (s: string | null | undefined) => asciiLower(s ?? '').trim();
+/** The type name without size or modifiers, lower case: `type_name`, else `type`. */
+const baseType = (c: ColumnSchema) =>
+    lowerTrim(c.type_name || c.type)
+        .split('(')[0]
+        .trim();
+
+const MYSQL_NUMERIC = words(
+    'tinyint smallint mediumint int integer bigint decimal numeric dec fixed float double real',
+);
+const PG_NUMERIC = new Set([
+    'int2',
+    'int4',
+    'int8',
+    'smallint',
+    'integer',
+    'bigint',
+    'numeric',
+    'decimal',
+    'float4',
+    'float8',
+    'real',
+    'double precision',
+]);
+
+/** SQLite's declared-type affinity (INTEGER, REAL or NUMERIC), limited to clearly numeric names. */
+function sqliteNumeric(c: ColumnSchema): boolean {
+    const decl = asciiUpper(c.type || c.type_name || '');
+    if (decl.includes('INT')) return true;
+    if (decl.trim() === '' || /CHAR|CLOB|TEXT|BLOB/.test(decl)) return false;
+    return /REAL|FLOA|DOUB|NUMERIC|DECIMAL|BOOL/.test(decl);
+}
+
+function isNumericColumn(c: ColumnSchema, dialect: Dialect): boolean {
+    if (dialect === 'sqlite') return sqliteNumeric(c);
+    if (dialect === 'pgsql')
+        return (
+            PG_NUMERIC.has(baseType(c)) ||
+            PG_NUMERIC.has(lowerTrim(c.type).split('(')[0].trim())
+        );
+    return MYSQL_NUMERIC.has(baseType(c));
+}
+
+function isBooleanColumn(c: ColumnSchema, dialect: Dialect): boolean {
+    const base = baseType(c);
+    if (dialect === 'pgsql')
+        return (
+            base === 'bool' ||
+            base === 'boolean' ||
+            lowerTrim(c.type) === 'boolean'
+        );
+    if (dialect === 'sqlite')
+        return (
+            asciiUpper(c.type || c.type_name || '').includes('BOOL') ||
+            lowerTrim(c.type).startsWith('tinyint(1)')
+        );
+    return (
+        base === 'bool' ||
+        base === 'boolean' ||
+        lowerTrim(c.type).startsWith('tinyint(1)')
+    );
+}
+
+/** PostgreSQL types where a bare `col ILIKE` reads the same as `CAST(col AS TEXT) ILIKE`. */
+function isPgTextColumn(c: ColumnSchema): boolean {
+    const type = lowerTrim(c.type);
+    return (
+        ['text', 'varchar', 'citext', 'character varying'].includes(
+            baseType(c),
+        ) &&
+        (type === '' ||
+            type === 'text' ||
+            type === 'citext' ||
+            type.startsWith('character varying') ||
+            type.startsWith('varchar'))
+    );
+}
 
 class Matcher {
     private i = 0;
     private readonly mysql: boolean;
     private readonly pg: boolean;
+    private readonly reserved: Set<string>;
 
     constructor(
         private readonly t: SqlToken[],
@@ -191,6 +361,10 @@ class Matcher {
     ) {
         this.mysql = dialect === 'mysql' || dialect === 'mariadb';
         this.pg = dialect === 'pgsql';
+        this.reserved =
+            ENGINE_RESERVED[
+                this.mysql ? 'mysql' : this.pg ? 'pgsql' : 'sqlite'
+            ];
     }
 
     run(): MatchedState {
@@ -263,11 +437,10 @@ class Matcher {
         const typed = qualifier ? `${qualifier.name}.${name.name}` : name.name;
         if (
             qualifier &&
-            (this.schema === null ||
-                this.resolve(qualifier, [this.schema]) === null)
+            (this.schema === null || !this.resolveTable(qualifier, this.schema))
         )
             throw new NoFit(MATCH_REASONS.differentTable(typed));
-        if (this.resolve(name, [this.table.name]) === null)
+        if (!this.resolveTable(name, this.table.name))
             throw new NoFit(MATCH_REASONS.differentTable(typed));
         if (this.isPunct(this.peek(), ',')) throw new NoFit(MATCH_REASONS.join);
     }
@@ -338,6 +511,13 @@ class Matcher {
             const ilike = this.isWord(op, 'ILIKE');
             if (this.pg && !ilike) throw new NoFit(MATCH_REASONS.pgLike);
             if (!this.pg && ilike) throw new NoFit(MATCH_REASONS.ilikeNotPg);
+            // The server writes CAST(col AS TEXT) ILIKE; a bare column only reads the same when
+            // it is already unpadded text (char(n) pads, other types don't ILIKE at all).
+            const schema = this.columnSchema(column);
+            if (this.pg && castAt === null && !isPgTextColumn(schema))
+                throw new NoFit(
+                    MATCH_REASONS.ilikeNeedsCast(column, typeLabel(schema)),
+                );
             this.i++;
             const pattern = this.stringLiteral();
             let escape: string | null = this.dialect === 'sqlite' ? null : '\\';
@@ -366,7 +546,10 @@ class Matcher {
         }
 
         const filterOp = this.comparison();
-        const value = this.literal();
+        const value = this.typedValue(
+            this.columnSchema(column),
+            this.literal(),
+        );
         // The server requires a value for comparisons.
         if (value === '') throw new NoFit(MATCH_REASONS.emptyValue);
         checkValue(value);
@@ -403,7 +586,7 @@ class Matcher {
         return op;
     }
 
-    private literal(): string {
+    private literal(): Literal {
         const tok = this.peek();
         if (this.isWord(tok, 'NULL'))
             throw new NoFit(MATCH_REASONS.nullComparison);
@@ -412,12 +595,10 @@ class Matcher {
             !this.isPunct(this.peek(1), '(')
         ) {
             this.i++;
-            const truthy = this.isWord(tok, 'TRUE');
-            // PostgreSQL reads 'true'/'false' for booleans; MySQL, MariaDB and SQLite define TRUE as 1.
-            if (this.pg) return truthy ? 'true' : 'false';
-            return truthy ? '1' : '0';
+            return { kind: 'boolean', text: asciiUpper(tok?.value ?? '') };
         }
-        if (tok?.type === 'string') return this.stringLiteral();
+        if (tok?.type === 'string')
+            return { kind: 'string', text: this.stringLiteral() };
         let sign = '';
         if (this.isPunct(tok, '-') && this.peek(1)?.type === 'number') {
             sign = '-';
@@ -426,9 +607,39 @@ class Matcher {
         const num = this.peek();
         if (num?.type === 'number') {
             this.i++;
-            return sign + num.value;
+            return { kind: 'number', text: sign + num.value };
         }
         return this.fail();
+    }
+
+    /**
+     * The server always binds the value as a string (`col op '…'`). A string literal is exactly
+     * that; a number or TRUE/FALSE only reads the same against a column of the matching type.
+     */
+    private typedValue(column: ColumnSchema, literal: Literal): string {
+        if (literal.kind === 'string') return literal.text;
+        if (literal.kind === 'number') {
+            if (!isNumericColumn(column, this.dialect))
+                throw new NoFit(
+                    MATCH_REASONS.numberVsColumn(
+                        column.name,
+                        typeLabel(column),
+                    ),
+                );
+            // MySQL compares a number with a quoted value as doubles: exact up to 15 digits.
+            const digits = literal.text.replace(/[-.]/g, '').replace(/^0+/, '');
+            if (this.mysql && digits.length > MYSQL_MAX_DIGITS)
+                throw new NoFit(MATCH_REASONS.tooPrecise(literal.text));
+            return literal.text;
+        }
+        if (!isBooleanColumn(column, this.dialect))
+            throw new NoFit(
+                MATCH_REASONS.booleanVsColumn(column.name, typeLabel(column)),
+            );
+        const truthy = literal.text === 'TRUE';
+        // PostgreSQL reads 'true'/'false' for booleans; MySQL, MariaDB and SQLite define TRUE as 1.
+        if (this.pg) return truthy ? 'true' : 'false';
+        return truthy ? '1' : '0';
     }
 
     private orderBy(): SortKey[] {
@@ -523,11 +734,11 @@ class Matcher {
     private identifier(): Ident {
         const tok = this.peek();
         if (tok?.type === 'word') {
-            if (
-                RESERVED.has(asciiUpper(tok.value)) ||
-                this.isPunct(this.peek(1), '(')
-            )
+            const upper = asciiUpper(tok.value);
+            if (EXPLAINED.has(upper) || this.isPunct(this.peek(1), '('))
                 this.fail();
+            if (RESERVED.has(upper) || this.reserved.has(upper))
+                throw new NoFit(MATCH_REASONS.reservedWord(tok.value));
             this.i++;
             return { name: tok.value, bare: true, token: tok };
         }
@@ -565,6 +776,18 @@ class Matcher {
         if (name === null)
             throw new NoFit(MATCH_REASONS.unknownColumn(id.name));
         return name;
+    }
+
+    private columnSchema(name: string): ColumnSchema {
+        const column = this.table.columns.find((c) => c.name === name);
+        if (!column) throw new NoFit(MATCH_REASONS.unknownColumn(name));
+        return column;
+    }
+
+    /** MySQL/MariaDB table and schema names are case-sensitive on Linux: match them exactly. */
+    private resolveTable(id: Ident, name: string): boolean {
+        if (this.mysql) return id.name === name;
+        return this.resolve(id, [name]) !== null;
     }
 
     /**

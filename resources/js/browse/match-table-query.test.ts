@@ -5,19 +5,63 @@ import type { PerPage, RowFilter, SortKey } from '@/lib/workspace-api';
 import type { ColumnSchema, Dialect, TableSchema } from '@/types/schema';
 import { matchTableQuery } from './match-table-query';
 
-const column = (name: string, nullable = false): ColumnSchema => ({
+const asciiLowerName = (s: string) =>
+    s.replace(/[A-Z]+/g, (m) => m.toLowerCase());
+
+type Kind = 'int' | 'varchar' | 'text' | 'decimal' | 'bool' | 'char';
+/** [type_name, type] as Laravel's Schema::getColumns reports them per engine. */
+const TYPES: Record<Dialect, Record<Kind, [string, string]>> = {
+    mysql: {
+        int: ['int', 'int'],
+        varchar: ['varchar', 'varchar(255)'],
+        text: ['text', 'text'],
+        decimal: ['decimal', 'decimal(10,2)'],
+        bool: ['tinyint', 'tinyint(1)'],
+        char: ['char', 'char(5)'],
+    },
+    mariadb: {
+        int: ['int', 'int(11)'],
+        varchar: ['varchar', 'varchar(255)'],
+        text: ['text', 'text'],
+        decimal: ['decimal', 'decimal(10,2)'],
+        bool: ['tinyint', 'tinyint(1)'],
+        char: ['char', 'char(5)'],
+    },
+    pgsql: {
+        int: ['int4', 'integer'],
+        varchar: ['varchar', 'character varying(255)'],
+        text: ['text', 'text'],
+        decimal: ['numeric', 'numeric(10,2)'],
+        bool: ['bool', 'boolean'],
+        char: ['bpchar', 'character(5)'],
+    },
+    sqlite: {
+        int: ['integer', 'integer'],
+        varchar: ['varchar', 'varchar'],
+        text: ['text', 'text'],
+        decimal: ['numeric', 'numeric'],
+        bool: ['tinyint', 'tinyint(1)'],
+        char: ['varchar', 'varchar'],
+    },
+};
+
+const column = (
+    name: string,
+    [typeName, type]: [string, string] = ['text', 'text'],
+    nullable = false,
+): ColumnSchema => ({
     name,
-    type: 'text',
-    type_name: 'text',
+    type,
+    type_name: typeName,
     nullable,
     default: null,
     auto_increment: false,
     comment: null,
 });
 
-const tableOf = (
+const tableWith = (
     name: string,
-    columns: string[],
+    columns: ColumnSchema[],
     primaryKey: string[] = ['id'],
 ): TableSchema => ({
     name,
@@ -25,20 +69,44 @@ const tableOf = (
     row_count: { count: null, kind: 'unknown' },
     size_bytes: null,
     primary_key: primaryKey,
-    columns: columns.map((c) => column(c, c === 'note')),
+    columns,
     indexes: [
         { name: 'primary', columns: primaryKey, unique: true, primary: true },
     ],
 });
 
-const fixtureTable = tableOf('m7_sql_fixture', ['id', 'name', 'note', 'total']);
-const orders = tableOf('orders', [
-    'id',
-    'status',
-    'total',
-    'customer_id',
-    'note',
-]);
+/** A table of untyped-text columns, for name-matching tests. */
+const tableOf = (name: string, columns: string[]) =>
+    tableWith(
+        name,
+        columns.map((c) => column(c)),
+    );
+
+const typed = (dialect: Dialect, name: string, spec: [string, Kind][]) =>
+    tableWith(
+        name,
+        spec.map(([c, kind]) => column(c, TYPES[dialect][kind], c === 'note')),
+    );
+
+/** Task 1's table: id int PK, name varchar, nullable note text, total decimal. */
+const fixtureTable = (dialect: Dialect) =>
+    typed(dialect, 'm7_sql_fixture', [
+        ['id', 'int'],
+        ['name', 'varchar'],
+        ['note', 'text'],
+        ['total', 'decimal'],
+    ]);
+const ordersFor = (dialect: Dialect) =>
+    typed(dialect, 'orders', [
+        ['id', 'int'],
+        ['status', 'varchar'],
+        ['total', 'decimal'],
+        ['customer_id', 'int'],
+        ['note', 'text'],
+        ['paid', 'bool'],
+        ['code', 'char'],
+    ]);
+const ALL_COLUMNS = 'id, status, total, customer_id, note, paid, code';
 
 type FixtureCase = {
     filters: RowFilter[];
@@ -66,7 +134,9 @@ describe('fixture round trip (server-generated SQL)', () => {
         });
         for (const c of fixtures[dialect]) {
             it(`${dialect}: ${c.sql}`, () => {
-                expect(matchTableQuery(c.sql, dialect, fixtureTable)).toEqual({
+                expect(
+                    matchTableQuery(c.sql, dialect, fixtureTable(dialect)),
+                ).toEqual({
                     ok: true,
                     state: {
                         filters: c.filters,
@@ -83,7 +153,7 @@ describe('fixture round trip (server-generated SQL)', () => {
 const ok = (
     sql: string,
     dialect: Dialect = 'mysql',
-    table: TableSchema = orders,
+    table: TableSchema = ordersFor(dialect),
     schema?: string | null,
 ) => {
     const r = matchTableQuery(sql, dialect, table, schema);
@@ -94,7 +164,7 @@ const ok = (
 const reason = (
     sql: string,
     dialect: Dialect = 'mysql',
-    table: TableSchema = orders,
+    table: TableSchema = ordersFor(dialect),
     schema?: string | null,
 ) => {
     const r = matchTableQuery(sql, dialect, table, schema);
@@ -115,7 +185,7 @@ describe('edited variants that fit', () => {
     it('mixes bare and quoted identifiers, any keyword case', () => {
         expect(
             ok(
-                "sElEcT `id`, status, `total`, customer_id, note fRoM `orders` wHeRe `status` = 'x' oRdEr By total DeSc LiMiT 100",
+                "sElEcT `id`, status, `total`, customer_id, note, paid, `code` fRoM `orders` wHeRe `status` = 'x' oRdEr By total DeSc LiMiT 100",
             ),
         ).toEqual({
             filters: [{ column: 'status', op: 'eq', value: 'x' }],
@@ -125,7 +195,7 @@ describe('edited variants that fit', () => {
         });
         expect(
             ok(
-                'select id, "status", total, "customer_id", note from "orders" where "note" is null',
+                'select id, "status", total, "customer_id", note, paid, "code" from "orders" where "note" is null',
                 'pgsql',
             ).filters,
         ).toEqual([{ column: 'note', op: 'is_null' }]);
@@ -193,18 +263,18 @@ describe('edited variants that fit', () => {
 
     it('TRUE / FALSE become the engine value', () => {
         expect(
-            ok('SELECT * FROM orders WHERE status = TRUE', 'pgsql').filters,
-        ).toEqual([{ column: 'status', op: 'eq', value: 'true' }]);
+            ok('SELECT * FROM orders WHERE paid = TRUE', 'pgsql').filters,
+        ).toEqual([{ column: 'paid', op: 'eq', value: 'true' }]);
         expect(
-            ok('SELECT * FROM orders WHERE status <> false', 'pgsql').filters,
-        ).toEqual([{ column: 'status', op: 'neq', value: 'false' }]);
+            ok('SELECT * FROM orders WHERE paid <> false', 'pgsql').filters,
+        ).toEqual([{ column: 'paid', op: 'neq', value: 'false' }]);
         // MySQL/MariaDB/SQLite define TRUE as 1; the server binds a string, so '1' keeps the meaning.
         expect(
-            ok('SELECT * FROM orders WHERE status = TRUE', 'mysql').filters,
-        ).toEqual([{ column: 'status', op: 'eq', value: '1' }]);
+            ok('SELECT * FROM orders WHERE paid = TRUE', 'mysql').filters,
+        ).toEqual([{ column: 'paid', op: 'eq', value: '1' }]);
         expect(
-            ok('SELECT * FROM orders WHERE status = FALSE', 'sqlite').filters,
-        ).toEqual([{ column: 'status', op: 'eq', value: '0' }]);
+            ok('SELECT * FROM orders WHERE paid = FALSE', 'sqlite').filters,
+        ).toEqual([{ column: 'paid', op: 'eq', value: '0' }]);
     });
 
     it('decodes string escapes per engine', () => {
@@ -243,7 +313,7 @@ describe('edited variants that fit', () => {
         }
     });
 
-    it('PostgreSQL ILIKE with ::text or CAST or bare column', () => {
+    it('PostgreSQL ILIKE with ::text or CAST, or bare on a text column', () => {
         expect(
             ok(`SELECT * FROM orders WHERE "note"::text ILIKE '%x%'`, 'pgsql')
                 .filters,
@@ -288,17 +358,30 @@ describe('edited variants that fit', () => {
 
     it('schema-qualified table on PostgreSQL when it is the snapshot schema', () => {
         expect(
-            ok('SELECT * FROM public.orders', 'pgsql', orders, 'public'),
+            ok(
+                'SELECT * FROM public.orders',
+                'pgsql',
+                ordersFor('pgsql'),
+                'public',
+            ),
         ).toEqual({ filters: [], sort: [], page: 1, perPage: null });
         expect(
-            ok('SELECT * FROM "public"."orders"', 'pgsql', orders, 'public')
-                .page,
+            ok(
+                'SELECT * FROM "public"."orders"',
+                'pgsql',
+                ordersFor('pgsql'),
+                'public',
+            ).page,
         ).toBe(1);
     });
 
     it('bare names fall back to a case-insensitive match; PostgreSQL folds bare names', () => {
+        // MySQL/MariaDB columns are case-insensitive; their table names are matched exactly.
         expect(
-            ok("SELECT * FROM ORDERS WHERE Status = 'x'", 'mysql').filters,
+            ok("SELECT * FROM orders WHERE Status = 'x'", 'mysql').filters,
+        ).toEqual([{ column: 'status', op: 'eq', value: 'x' }]);
+        expect(
+            ok("SELECT * FROM ORDERS WHERE STATUS = 'x'", 'sqlite').filters,
         ).toEqual([{ column: 'status', op: 'eq', value: 'x' }]);
         expect(
             ok("SELECT * FROM ORDERS WHERE STATUS = 'x'", 'pgsql').filters,
@@ -359,7 +442,7 @@ describe('near-misses that do not fit', () => {
             'unknown column `colour`',
         ],
         [
-            'SELECT id, status, total, customer_id, note, colour FROM orders',
+            `SELECT ${ALL_COLUMNS}, colour FROM orders`,
             'unknown column `colour`',
         ],
         [
@@ -450,14 +533,8 @@ describe('fails closed on anything else', () => {
         ['SELECT * FROM orders AS o', 'mysql'],
         ['SELECT orders.* FROM orders', 'mysql'],
         ['SELECT *, id FROM orders', 'mysql'],
-        [
-            'SELECT id, id, status, total, customer_id, note FROM orders',
-            'mysql',
-        ],
-        [
-            'SELECT id AS i, status, total, customer_id, note FROM orders',
-            'mysql',
-        ],
+        [`SELECT id, ${ALL_COLUMNS} FROM orders`, 'mysql'],
+        [`SELECT id AS i, ${ALL_COLUMNS.slice(4)} FROM orders`, 'mysql'],
         ['SELECT * FROM orders WHERE orders.total > 5', 'mysql'],
         ['SELECT * FROM orders WHERE total BETWEEN 1 AND 5', 'mysql'],
         ['SELECT * FROM orders WHERE total IN (1, 2)', 'mysql'],
@@ -496,7 +573,9 @@ describe('fails closed on anything else', () => {
     ];
     for (const [sql, dialect] of notOk) {
         it(`${dialect}: ${sql}`, () => {
-            expect(matchTableQuery(sql, dialect, orders).ok).toBe(false);
+            expect(matchTableQuery(sql, dialect, ordersFor(dialect)).ok).toBe(
+                false,
+            );
         });
     }
 
@@ -531,11 +610,21 @@ describe('fails closed on anything else', () => {
 
     it('rejects a schema that is not the snapshot schema', () => {
         expect(
-            reason('SELECT * FROM other.orders', 'pgsql', orders, 'public'),
+            reason(
+                'SELECT * FROM other.orders',
+                'pgsql',
+                ordersFor('pgsql'),
+                'public',
+            ),
         ).toBe('reads a different table: `other.orders`');
-        expect(reason('SELECT * FROM shop.orders', 'mysql', orders, null)).toBe(
-            'reads a different table: `shop.orders`',
-        );
+        expect(
+            reason(
+                'SELECT * FROM shop.orders',
+                'mysql',
+                ordersFor('mysql'),
+                null,
+            ),
+        ).toBe('reads a different table: `shop.orders`');
     });
 
     it('PostgreSQL bare names fold to lower case before matching', () => {
@@ -558,5 +647,268 @@ describe('fails closed on anything else', () => {
         expect(reason("SELECT * FROM t WHERE name = 'x'", 'sqlite', twin)).toBe(
             'unknown column `name`',
         );
+    });
+});
+
+describe('column types decide what a number or TRUE/FALSE means', () => {
+    const NUMBER_ON_TEXT: [string, Dialect, string][] = [
+        // MySQL compares a text column with a number numerically ('7abc' = 7); the server compares strings.
+        [
+            'status = 7',
+            'mysql',
+            'compares column `status` (varchar(255)) with a number',
+        ],
+        [
+            'status = 0',
+            'mariadb',
+            'compares column `status` (varchar(255)) with a number',
+        ],
+        ['note > 10', 'mysql', 'compares column `note` (text) with a number'],
+        // SQLite TEXT affinity turns 1.50 into '1.5'; the server sends '1.50'.
+        [
+            'note = 1.50',
+            'sqlite',
+            'compares column `note` (text) with a number',
+        ],
+        [
+            'status = 05',
+            'sqlite',
+            'compares column `status` (varchar) with a number',
+        ],
+        // PostgreSQL text = integer is an error.
+        ['note = 5', 'pgsql', 'compares column `note` (text) with a number'],
+        [
+            'code = 5',
+            'pgsql',
+            'compares column `code` (character(5)) with a number',
+        ],
+    ];
+    for (const [cond, dialect, why] of NUMBER_ON_TEXT) {
+        it(`${dialect}: ${cond} does not fit`, () => {
+            expect(reason(`SELECT * FROM orders WHERE ${cond}`, dialect)).toBe(
+                why,
+            );
+        });
+    }
+
+    it('SQLite untyped (BLOB affinity) columns never take a number', () => {
+        const loose = tableWith('t', [
+            column('id', ['integer', 'integer']),
+            column('x', ['', '']),
+        ]);
+        expect(reason('SELECT * FROM t WHERE x = 5', 'sqlite', loose)).toBe(
+            'compares column `x` (untyped) with a number',
+        );
+        expect(
+            ok("SELECT * FROM t WHERE x = '5'", 'sqlite', loose).filters,
+        ).toEqual([{ column: 'x', op: 'eq', value: '5' }]);
+    });
+
+    it('numbers fit numeric columns on every engine', () => {
+        for (const d of DIALECTS) {
+            expect(
+                ok(
+                    'SELECT * FROM orders WHERE customer_id = 7 AND total >= 1.50',
+                    d,
+                ).filters,
+            ).toEqual([
+                { column: 'customer_id', op: 'eq', value: '7' },
+                { column: 'total', op: 'gte', value: '1.50' },
+            ]);
+        }
+    });
+
+    it('SQLite numeric affinities: INT, REAL/FLOA/DOUB, NUMERIC/DECIMAL', () => {
+        const t = tableWith('t', [
+            column('id', ['integer', 'integer']),
+            column('a', ['bigint', 'bigint']),
+            column('b', ['double', 'double']),
+            column('c', ['float', 'float']),
+            column('d', ['decimal', 'decimal(10,2)']),
+            column('e', ['real', 'real']),
+        ]);
+        for (const c of ['a', 'b', 'c', 'd', 'e'])
+            expect(
+                ok(`SELECT * FROM t WHERE ${c} = 5`, 'sqlite', t).filters,
+            ).toEqual([{ column: c, op: 'eq', value: '5' }]);
+    });
+
+    it('MySQL/MariaDB numbers stop at 15 significant digits (the server compares as double)', () => {
+        const big = tableWith('t', [
+            column('id', ['bigint', 'bigint unsigned']),
+        ]);
+        expect(
+            ok('SELECT * FROM t WHERE id = 123456789012345', 'mysql', big)
+                .filters,
+        ).toEqual([{ column: 'id', op: 'eq', value: '123456789012345' }]);
+        expect(
+            reason('SELECT * FROM t WHERE id = 9007199254740993', 'mysql', big),
+        ).toBe(
+            'the number 9007199254740993 has more than 15 significant digits',
+        );
+        expect(
+            reason(
+                'SELECT * FROM orders WHERE total = 0.1234567890123456',
+                'mariadb',
+            ),
+        ).toBe(
+            'the number 0.1234567890123456 has more than 15 significant digits',
+        );
+        // PostgreSQL casts the quoted value to the column type, so long numbers stay exact.
+        expect(
+            ok('SELECT * FROM orders WHERE total = 0.1234567890123456', 'pgsql')
+                .filters,
+        ).toHaveLength(1);
+    });
+
+    it('TRUE/FALSE only against boolean columns', () => {
+        expect(
+            reason('SELECT * FROM orders WHERE status = TRUE', 'mysql'),
+        ).toBe('compares column `status` (varchar(255)) with `TRUE`/`FALSE`');
+        expect(
+            reason('SELECT * FROM orders WHERE customer_id = FALSE', 'mysql'),
+        ).toBe('compares column `customer_id` (int) with `TRUE`/`FALSE`');
+        expect(reason('SELECT * FROM orders WHERE note = TRUE', 'pgsql')).toBe(
+            'compares column `note` (text) with `TRUE`/`FALSE`',
+        );
+        expect(
+            reason('SELECT * FROM orders WHERE status = TRUE', 'sqlite'),
+        ).toBe('compares column `status` (varchar) with `TRUE`/`FALSE`');
+        expect(
+            ok('SELECT * FROM orders WHERE paid = true', 'mariadb').filters,
+        ).toEqual([{ column: 'paid', op: 'eq', value: '1' }]);
+        const pgBool = tableWith('t', [
+            column('id', ['int4', 'integer']),
+            column('flag', ['bool', 'boolean']),
+        ]);
+        expect(
+            ok('SELECT * FROM t WHERE flag = FALSE', 'pgsql', pgBool).filters,
+        ).toEqual([{ column: 'flag', op: 'eq', value: 'false' }]);
+        const liteBool = tableWith('t', [
+            column('id', ['integer', 'integer']),
+            column('flag', ['boolean', 'boolean']),
+        ]);
+        expect(
+            ok('SELECT * FROM t WHERE flag = TRUE', 'sqlite', liteBool).filters,
+        ).toEqual([{ column: 'flag', op: 'eq', value: '1' }]);
+    });
+
+    it('PostgreSQL bare ILIKE only on text, varchar or citext columns', () => {
+        expect(
+            reason("SELECT * FROM orders WHERE code ILIKE 'ab%'", 'pgsql'),
+        ).toBe('ILIKE on column `code` (character(5)) needs `CAST(… AS TEXT)`');
+        expect(
+            reason("SELECT * FROM orders WHERE total ILIKE '%5%'", 'pgsql'),
+        ).toBe(
+            'ILIKE on column `total` (numeric(10,2)) needs `CAST(… AS TEXT)`',
+        );
+        expect(
+            ok(
+                "SELECT * FROM orders WHERE CAST(code AS TEXT) ILIKE 'ab%'",
+                'pgsql',
+            ).filters,
+        ).toEqual([{ column: 'code', op: 'starts_with', value: 'ab' }]);
+        expect(
+            ok("SELECT * FROM orders WHERE total::text ILIKE '%5%'", 'pgsql')
+                .filters,
+        ).toEqual([{ column: 'total', op: 'contains', value: '5' }]);
+        expect(
+            ok("SELECT * FROM orders WHERE status ILIKE '%x%'", 'pgsql')
+                .filters,
+        ).toEqual([{ column: 'status', op: 'contains', value: 'x' }]);
+        const ci = tableWith('t', [
+            column('id', ['int4', 'integer']),
+            column('email', ['citext', 'citext']),
+        ]);
+        expect(
+            ok("SELECT * FROM t WHERE email ILIKE '%@x'", 'pgsql', ci).filters,
+        ).toEqual([{ column: 'email', op: 'ends_with', value: '@x' }]);
+    });
+});
+
+describe('names the engine reads differently', () => {
+    it('MySQL/MariaDB table names and schema qualifiers match exactly', () => {
+        for (const d of ['mysql', 'mariadb'] as Dialect[]) {
+            expect(reason('SELECT * FROM ORDERS', d)).toBe(
+                'reads a different table: `ORDERS`',
+            );
+            expect(reason('SELECT * FROM `Orders`', d)).toBe(
+                'reads a different table: `Orders`',
+            );
+            expect(
+                reason('SELECT * FROM SHOP.orders', d, ordersFor(d), 'shop'),
+            ).toBe('reads a different table: `SHOP.orders`');
+            expect(
+                ok('SELECT * FROM shop.orders', d, ordersFor(d), 'shop').page,
+            ).toBe(1);
+        }
+    });
+
+    const BUILT_INS: [string, Dialect][] = [
+        ['current_user', 'pgsql'],
+        ['user', 'pgsql'],
+        ['session_user', 'pgsql'],
+        ['current_role', 'pgsql'],
+        ['current_date', 'pgsql'],
+        ['current_time', 'pgsql'],
+        ['current_timestamp', 'pgsql'],
+        ['localtime', 'pgsql'],
+        ['localtimestamp', 'pgsql'],
+        ['CURRENT_DATE', 'sqlite'],
+        ['CURRENT_TIME', 'sqlite'],
+        ['CURRENT_TIMESTAMP', 'sqlite'],
+        ['CURRENT_USER', 'mysql'],
+        ['CURRENT_DATE', 'mysql'],
+        ['CURRENT_TIME', 'mysql'],
+        ['CURRENT_TIMESTAMP', 'mysql'],
+        ['LOCALTIME', 'mysql'],
+        ['LOCALTIMESTAMP', 'mysql'],
+        ['UTC_DATE', 'mariadb'],
+        ['UTC_TIME', 'mariadb'],
+        ['UTC_TIMESTAMP', 'mysql'],
+    ];
+    for (const [word, dialect] of BUILT_INS) {
+        it(`${dialect}: bare ${word} is a built-in value, not a column`, () => {
+            const t = tableOf('t', ['id', asciiLowerName(word)]);
+            expect(
+                reason(`SELECT * FROM t WHERE ${word} = 'x'`, dialect, t),
+            ).toBe(`\`${word}\` is a reserved word; quote it`);
+            const q = dialect === 'pgsql' || dialect === 'sqlite' ? '"' : '`';
+            expect(
+                ok(
+                    `SELECT * FROM t WHERE ${q}${asciiLowerName(word)}${q} = 'x'`,
+                    dialect,
+                    t,
+                ).filters,
+            ).toHaveLength(1);
+        });
+    }
+
+    it('unquoted reserved words do not fit; quoted they do', () => {
+        const t = tableOf('t', ['id', 'key', 'order']);
+        expect(reason("SELECT * FROM t WHERE key = 'x'", 'mysql', t)).toBe(
+            '`key` is a reserved word; quote it',
+        );
+        expect(reason("SELECT * FROM t WHERE order = 'x'", 'pgsql', t)).toBe(
+            '`order` is a reserved word; quote it',
+        );
+        expect(reason('SELECT id, key, `order` FROM t', 'mariadb', t)).toBe(
+            '`key` is a reserved word; quote it',
+        );
+        expect(reason('SELECT * FROM t ORDER BY order', 'sqlite', t)).toBe(
+            '`order` is a reserved word; quote it',
+        );
+        expect(
+            ok(
+                "SELECT id, `key`, `order` FROM t WHERE `key` = 'x' ORDER BY `order`",
+                'mysql',
+                t,
+            ),
+        ).toEqual({
+            filters: [{ column: 'key', op: 'eq', value: 'x' }],
+            sort: [{ column: 'order', direction: 'asc' }],
+            page: 1,
+            perPage: null,
+        });
     });
 });
