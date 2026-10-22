@@ -267,17 +267,17 @@ export function updateSqlFromTable(
  * Run in a linked editor tab, the statement fit the table: the table tab takes its filters, sort, page and page size
  * (keeping its page size when the statement has no LIMIT), shows its Data view and is activated. The editor text
  * (`text`, default the whole tab) becomes `syncedSql` for the applied request, so the rows that answer it are not
- * synced back over it.
+ * synced back over it. False (nothing applied) when the table tab is gone.
  */
 export function applyToTable(
     connectionId: number,
     link: SqlLink,
     state: MatchedState,
     text?: string,
-): void {
+): boolean {
     const browse = useBrowse.getState();
     const target = tableTab(connectionId, link.browseTabId);
-    if (!target) return;
+    if (!target) return false;
     const next = {
         filters: state.filters,
         sort: state.sort,
@@ -294,13 +294,14 @@ export function applyToTable(
     const tab = useSqlTabs
         .getState()
         .findLinked(connectionId, link.browseTabId);
-    if (!tab?.link) return;
+    if (!tab?.link) return true;
     saveLink(connectionId, tab.id, {
         ...tab.link,
         syncedSql: text ?? tab.sql,
         requestKey: rowsRequestKey(next),
         stale: undefined,
     });
+    return true;
 }
 
 /** Links whose table tab is gone (e.g. closed in an earlier session) are marked closed. */

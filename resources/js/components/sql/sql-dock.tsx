@@ -30,6 +30,7 @@ import type {
 } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
 import { DOCK_ID, DockSeparator } from './dock-separator';
+import { CodeText } from './code-text';
 import { LinkChip } from './link-chip';
 import { ConfirmDialog, type ConfirmRequest } from './confirm-dialog';
 import { ResultPanel } from './result-panel';
@@ -345,15 +346,24 @@ export default function SqlDock({
                 snapshot.schema,
             );
             if (!match.ok) return { applied: false, reason: match.reason };
-            // The tab's whole text is what the table tab now shows, unless it holds other statements too: then
-            // only this one is, and a later table change marks the link stale instead of replacing them all.
-            const whole = splitStatements(tab.sql, dialect).length === 1;
-            applyToTable(
+            // The tab's whole text is what the table tab now shows only when the run statement is the tab's one
+            // statement. Otherwise (other statements, or a selection of part of it) only the statement is, and a
+            // later table change marks the link stale instead of replacing the text.
+            const parts = splitStatements(tab.sql, dialect);
+            const whole =
+                parts.length === 1 && parts[0].sql.trim() === statement.trim();
+            const applied = applyToTable(
                 connection.id,
                 link,
                 match.state,
                 whole ? undefined : statement,
             );
+            // The table tab is gone (but the link was not yet marked closed): the statement runs here.
+            if (!applied)
+                return {
+                    applied: false,
+                    reason: MATCH_REASONS.missingTable(link.title),
+                };
             clearMarkers();
             setResultsByTab((prev) => ({
                 ...prev,
@@ -532,8 +542,12 @@ export default function SqlDock({
                 ) : (
                     <>
                         {tabResults?.reason && !running && (
-                            <p className="shrink-0 border-b px-3 py-1 text-xs text-muted-foreground">
-                                {`Shown here: ${tabResults.reason}`}
+                            <p
+                                role="status"
+                                className="shrink-0 border-b px-3 py-1 text-xs text-muted-foreground"
+                            >
+                                Shown here:{' '}
+                                <CodeText text={tabResults.reason} />
                             </p>
                         )}
                         <div className="min-h-0 flex-1">

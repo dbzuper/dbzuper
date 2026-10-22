@@ -1,5 +1,6 @@
 import { ChevronDown, Link2, Link2Off } from 'lucide-react';
-import { updateSqlFromTable } from '@/browse/sql-link';
+import { useBrowse } from '@/browse/browse-store';
+import { latestTableSql, updateSqlFromTable } from '@/browse/sql-link';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -28,7 +29,18 @@ export function LinkChip({
     dialect: Dialect;
 }) {
     const link = tab.link;
+    // With its table tab open a query is always known (one is built from its state when none was reported).
+    const tableOpen = useBrowse(
+        (s) =>
+            !!link &&
+            !!s.byConnection[connectionId]?.tabs.some(
+                (t) => t.id === link.browseTabId && t.kind === 'table',
+            ),
+    );
     if (!link) return null;
+    const known =
+        tableOpen ||
+        latestTableSql(connectionId, link.browseTabId) !== undefined;
 
     if (link.closed)
         return (
@@ -54,21 +66,30 @@ export function LinkChip({
                 <span aria-hidden className="text-muted-foreground">
                     ·
                 </span>
-                <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 px-2 text-xs"
-                    title="Replace the editor text with the table tab's query (Ctrl/⌘+Z undoes it)"
-                    onClick={() =>
-                        updateSqlFromTable(
-                            connectionId,
-                            link.browseTabId,
-                            dialect,
-                        )
+                {/* A disabled button gets no pointer events, so the reason sits on its wrapper. */}
+                <span
+                    title={
+                        known
+                            ? "Replace the editor text with the table tab's query (Ctrl/⌘+Z undoes it)"
+                            : "The table tab's query isn't known, so there is nothing to update to"
                     }
                 >
-                    Update SQL
-                </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs"
+                        disabled={!known}
+                        onClick={() =>
+                            updateSqlFromTable(
+                                connectionId,
+                                link.browseTabId,
+                                dialect,
+                            )
+                        }
+                    >
+                        Update SQL
+                    </Button>
+                </span>
             </span>
         );
 

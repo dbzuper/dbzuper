@@ -29,6 +29,8 @@ const commands = vi.hoisted(() => new Map<number, () => void>());
 const pushEdits = vi.hoisted(() => vi.fn());
 /** The fake editor's text (the statement at the cursor is its first one). */
 const editorText = vi.hoisted(() => ({ value: 'select 1' }));
+/** The fake editor's selected text; null = no selection (the statement at the cursor runs). */
+const editorSelection = vi.hoisted(() => ({ value: null as string | null }));
 vi.mock('@/sql/query-api', () => ({ queryApi: api }));
 
 // Monaco cannot run in jsdom: the editor mounts a minimal fake that exposes the statement under the cursor.
@@ -43,6 +45,7 @@ vi.mock('./sql-editor', async () => {
             useEffect(() => {
                 const model = {
                     getValue: () => editorText.value,
+                    getValueInRange: () => editorSelection.value ?? '',
                     getOffsetAt: () => 0,
                     isDisposed: () => false,
                     getFullModelRange: () => ({}),
@@ -53,7 +56,16 @@ vi.mock('./sql-editor', async () => {
                 onMount(
                     {
                         getModel: () => model,
-                        getSelection: () => null,
+                        getSelection: () =>
+                            editorSelection.value === null
+                                ? null
+                                : {
+                                      isEmpty: () => false,
+                                      getStartPosition: () => ({
+                                          lineNumber: 1,
+                                          column: 1,
+                                      }),
+                                  },
                         getPosition: () => ({ lineNumber: 1, column: 1 }),
                         addCommand: (key: number, run: () => void) =>
                             commands.set(key, run),
@@ -120,6 +132,7 @@ beforeEach(() => {
     completion.getter = null;
     commands.clear();
     editorText.value = 'select 1';
+    editorSelection.value = null;
     useSqlTabs.setState({ byConnection: {} });
     useBrowse.setState({ byConnection: {} });
     rowsCache.clear();
@@ -409,9 +422,9 @@ describe('linked editor tabs', () => {
             fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
 
             await waitFor(() => expect(api.run).toHaveBeenCalled());
-            expect(
-                await screen.findByText(/^Shown here: /),
-            ).toBeInTheDocument();
+            const line = await screen.findByText(/^Shown here:/);
+            expect(line).toHaveAttribute('role', 'status');
+            expect(line.textContent).not.toContain('`');
             expect(
                 screen.getByRole('tab', { name: /#1 SELECT/ }),
             ).toBeInTheDocument();
@@ -426,11 +439,114 @@ describe('linked editor tabs', () => {
             renderDock([]);
             fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
             await waitFor(() => expect(api.run).toHaveBeenCalled());
-            expect(
-                await screen.findByText(
-                    'Shown here: `orders` no longer exists',
+            const line = await screen.findByText(/^Shown here:/);
+            expect(line).toHaveTextContent(
+                'Shown here: orders no longer exists',
+            );
+            expect(line.querySelector('code')).toHaveTextContent('orders');
+        });
+
+        it('shows backticked parts of the reason as code, not raw backticks', async () => {
+            api.run.mockResolvedValue(ok);
+            setup('select distinct status from orders');
+            renderDock();
+            fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+            const line = await screen.findByText(/^Shown here:/);
+            expect(line).toHaveTextContent('Shown here: DISTINCT');
+            expect(line.textContent).not.toContain('`');
+            const code = line.querySelector('code');
+            expect(code).toHaveTextContent('DISTINCT');
+            expect(code).toHaveClass('font-mono');
+        });
+
+        it('runs in the editor when the linked table tab itself is gone, never saying Applied', async () => {
+            api.run.mockResolvedValue(ok);
+            const id = setup("select * from orders where status = 'paid'");
+            const link = editorTab(id)!.link!;
+            useSqlTabs
+                .getState()
+                .setLink(1, id, { ...link, browseTabId: 'gone' });
+            renderDock();
+            fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+            await waitFor(() => expect(api.run).toHaveBeenCalled());
+            expect(await screen.findByText(/^Shown here:/)).toHaveTextContent(
+                'Shown here: orders no longer exists',
+            );
+            expect(screen.queryByText(/Applied to/)).toBeNull();
+            expect(orders().state.filters).toEqual([]);
+        });
+
+        it('a selection that is not the whole single statement links only the selection', async () => {
+            const id = setup(
+                "select * from orders where status = 'paid' order by id desc",
+            );
+            editorSelection.value =
+                "select * from orders where status = 'paid'";
+            renderDock();
+            fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+            expect(await screen.findByText(/Applied to/)).toBeInTheDocument();
+            expect(orders().state.sort).toEqual([]);
+            expect(editorTab(id)?.link?.syncedSql).toBe(
+                "select * from orders where status = 'paid'",
+            );
+            // A later table change marks the link stale instead of replacing the text.
+            act(() => onTableQuery(1, orders().id, 'select 2'));
+            expect(editorTab(id)?.sql).toBe(
+                "select * from orders where status = 'paid' order by id desc",
+            );
+            expect(editorTab(id)?.link?.stale).toBe(true);
+        });
+
+        it('a selection of the whole single statement (with its semicolon) links the whole text', async () => {
+            const text = "select * from orders where status = 'paid';";
+            const id = setup(text);
+            editorSelection.value = text;
+            renderDock();
+            fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+            expect(await screen.findByText(/Applied to/)).toBeInTheDocument();
+            expect(editorTab(id)?.link?.syncedSql).toBe(text);
+        });
+
+        it('Explain on a linked tab is not intercepted', async () => {
+            api.explain.mockResolvedValue(ok);
+            setup("select * from orders where status = 'paid'");
+            renderDock();
+            fireEvent.click(screen.getByRole('button', { name: /^Explain/ }));
+            await waitFor(() =>
+                expect(api.explain).toHaveBeenCalledWith(
+                    1,
+                    "select * from orders where status = 'paid'",
+                    expect.anything(),
                 ),
-            ).toBeInTheDocument();
+            );
+            expect(screen.queryByText(/Applied to/)).toBeNull();
+            expect(orders().state.filters).toEqual([]);
+        });
+
+        it('a destructive statement in a linked tab still asks for confirmation', async () => {
+            api.run
+                .mockRejectedValueOnce(
+                    new ApiError(409, {
+                        confirmation: {
+                            statement_index: 0,
+                            mode: 'confirm',
+                            kind: 'write',
+                            keyword: 'DELETE',
+                            target: null,
+                        },
+                    }),
+                )
+                .mockResolvedValue(ok);
+            setup('delete from orders');
+            renderDock();
+            fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+            expect(await screen.findByRole('dialog')).toBeInTheDocument();
+            fireEvent.click(
+                await screen.findByRole('button', { name: 'Run DELETE' }),
+            );
+            await waitFor(() => expect(api.run).toHaveBeenCalledTimes(2));
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(screen.queryByText(/Applied to/)).toBeNull();
         });
 
         it('an unlinked tab runs as today, with no chip', async () => {
@@ -507,6 +623,24 @@ describe('linked editor tabs', () => {
             expect(
                 screen.getByRole('button', { name: /Linked to orders/ }),
             ).toBeInTheDocument();
+        });
+
+        it('Update SQL is disabled, with a reason, when no table query is known', () => {
+            const id = setup('my edit');
+            act(() => onTableQuery(1, orders().id, 'select 2'));
+            const link = editorTab(id)!.link!;
+            act(() =>
+                useSqlTabs
+                    .getState()
+                    .setLink(1, id, { ...link, browseTabId: 'gone' }),
+            );
+            renderDock();
+            const button = screen.getByRole('button', { name: 'Update SQL' });
+            expect(button).toBeDisabled();
+            expect(button.closest('[title]')).toHaveAttribute(
+                'title',
+                expect.stringMatching(/isn't known/),
+            );
         });
     });
 });

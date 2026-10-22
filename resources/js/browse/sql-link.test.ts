@@ -299,6 +299,16 @@ describe('editor → table', () => {
         });
         expect(orders().state.perPage).toBe(500);
     });
+
+    it('returns true when applied and false when the table tab is gone', () => {
+        const { table } = linked('q1');
+        const state = { filters: [], sort: [], page: 1, perPage: null };
+        const link = linkedTo(table.id)!.link!;
+        expect(applyToTable(1, link, state)).toBe(true);
+        expect(applyToTable(1, { ...link, browseTabId: 'gone' }, state)).toBe(
+            false,
+        );
+    });
 });
 
 describe('fix round 1', () => {
