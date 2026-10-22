@@ -79,6 +79,10 @@ export const MATCH_REASONS = {
         `compares column \`${column}\` (${type}) with a number`,
     booleanVsColumn: (column: string, type: string) =>
         `compares column \`${column}\` (${type}) with \`TRUE\`/\`FALSE\``,
+    numberNotExact: (column: string, type: string) =>
+        `compares column \`${column}\` (${type}) with a number the table view would compare differently`,
+    numberOutOfType: (num: string, column: string, type: string) =>
+        `${num} isn't a valid value for column \`${column}\` (${type})`,
     tooPrecise: (num: string) =>
         `the number ${num} has more than ${MYSQL_MAX_DIGITS} significant digits`,
     ilikeNeedsCast: (column: string, type: string) =>
@@ -279,6 +283,11 @@ const baseType = (c: ColumnSchema) =>
 const MYSQL_NUMERIC = words(
     'tinyint smallint mediumint int integer bigint decimal numeric dec fixed float double real',
 );
+/**
+ * PostgreSQL numeric types a number literal compares the same as the server's quoted value
+ * (which PostgreSQL parses as the column type). real/float4 is left out: `r = 1.1` compares as
+ * float8 (1.10000002 <> 1.1) while `r = '1.1'` parses as real and matches.
+ */
 const PG_NUMERIC = new Set([
     'int2',
     'int4',
@@ -286,13 +295,34 @@ const PG_NUMERIC = new Set([
     'smallint',
     'integer',
     'bigint',
+    'smallserial',
+    'serial',
+    'bigserial',
+    'serial2',
+    'serial4',
+    'serial8',
     'numeric',
     'decimal',
-    'float4',
     'float8',
-    'real',
     'double precision',
 ]);
+/** Integer ranges: '1.5'::integer or an out-of-range value makes the server's query fail. */
+const PG_INT_RANGE: Record<string, bigint> = {
+    int2: 2n ** 15n,
+    smallint: 2n ** 15n,
+    smallserial: 2n ** 15n,
+    serial2: 2n ** 15n,
+    int4: 2n ** 31n,
+    integer: 2n ** 31n,
+    serial: 2n ** 31n,
+    serial4: 2n ** 31n,
+    int8: 2n ** 63n,
+    bigint: 2n ** 63n,
+    bigserial: 2n ** 63n,
+    serial8: 2n ** 63n,
+};
+/** MySQL's default DECIMAL precision when the type doesn't state one. */
+const MYSQL_DEFAULT_DECIMAL_PRECISION = 10;
 
 /** SQLite's declared-type affinity (INTEGER, REAL or NUMERIC), limited to clearly numeric names. */
 function sqliteNumeric(c: ColumnSchema): boolean {
@@ -302,14 +332,58 @@ function sqliteNumeric(c: ColumnSchema): boolean {
     return /REAL|FLOA|DOUB|NUMERIC|DECIMAL|BOOL/.test(decl);
 }
 
+/** The PostgreSQL type the column is, by `type_name` or else by `type`, if numeric here. */
+function pgNumericType(c: ColumnSchema): string | null {
+    const fromType = lowerTrim(c.type).split('(')[0].trim();
+    if (PG_NUMERIC.has(baseType(c))) return baseType(c);
+    return PG_NUMERIC.has(fromType) ? fromType : null;
+}
+
 function isNumericColumn(c: ColumnSchema, dialect: Dialect): boolean {
     if (dialect === 'sqlite') return sqliteNumeric(c);
-    if (dialect === 'pgsql')
-        return (
-            PG_NUMERIC.has(baseType(c)) ||
-            PG_NUMERIC.has(lowerTrim(c.type).split('(')[0].trim())
-        );
+    if (dialect === 'pgsql') return pgNumericType(c) !== null;
     return MYSQL_NUMERIC.has(baseType(c));
+}
+
+/**
+ * Why a number literal against this numeric column would compare differently from the server's
+ * quoted value, or null when both compare the same.
+ * - PostgreSQL parses the quoted value as the column type: integer columns need an integer literal
+ *   in range (else the server errors); numeric and float8 compare the same.
+ * - MySQL/MariaDB compare a column with a quoted value as doubles. Exact for integers and for
+ *   DECIMAL up to 15 digits of precision; FLOAT is single precision, so only whole numbers.
+ * - SQLite applies the column's numeric affinity to the quoted value, parsing it like the literal.
+ */
+function numberMismatch(
+    c: ColumnSchema,
+    dialect: Dialect,
+    num: string,
+): string | null {
+    const type = typeLabel(c);
+    const whole = /^-?[0-9]+$/.test(num);
+    if (dialect === 'pgsql') {
+        const range = PG_INT_RANGE[pgNumericType(c) ?? ''];
+        if (range === undefined) return null;
+        if (!whole) return MATCH_REASONS.numberOutOfType(num, c.name, type);
+        const value = BigInt(num);
+        return value < -range || value >= range
+            ? MATCH_REASONS.numberOutOfType(num, c.name, type)
+            : null;
+    }
+    if (dialect === 'mysql' || dialect === 'mariadb') {
+        const base = baseType(c);
+        if (base === 'float' && !whole)
+            return MATCH_REASONS.numberNotExact(c.name, type);
+        if (['decimal', 'numeric', 'dec', 'fixed'].includes(base)) {
+            const m = /\(\s*([0-9]+)/.exec(lowerTrim(c.type));
+            const precision = m
+                ? Number(m[1])
+                : MYSQL_DEFAULT_DECIMAL_PRECISION;
+            if (precision > MYSQL_MAX_DIGITS)
+                return MATCH_REASONS.numberNotExact(c.name, type);
+        }
+    }
+    return null;
 }
 
 function isBooleanColumn(c: ColumnSchema, dialect: Dialect): boolean {
@@ -630,6 +704,8 @@ class Matcher {
             const digits = literal.text.replace(/[-.]/g, '').replace(/^0+/, '');
             if (this.mysql && digits.length > MYSQL_MAX_DIGITS)
                 throw new NoFit(MATCH_REASONS.tooPrecise(literal.text));
+            const mismatch = numberMismatch(column, this.dialect, literal.text);
+            if (mismatch !== null) throw new NoFit(mismatch);
             return literal.text;
         }
         if (!isBooleanColumn(column, this.dialect))

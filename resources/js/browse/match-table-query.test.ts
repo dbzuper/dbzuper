@@ -912,3 +912,139 @@ describe('names the engine reads differently', () => {
         });
     });
 });
+
+describe('numbers where the server would compare differently', () => {
+    const cols = (...spec: [string, string, string][]) =>
+        tableWith(
+            't',
+            spec.map(([name, typeName, type]) =>
+                column(name, [typeName, type]),
+            ),
+        );
+
+    it('PostgreSQL real/float4: the literal compares as float8, the quoted value as real', () => {
+        const t = cols(
+            ['id', 'int4', 'integer'],
+            ['r', 'float4', 'real'],
+            ['d', 'float8', 'double precision'],
+        );
+        expect(reason('SELECT * FROM t WHERE r = 1.1', 'pgsql', t)).toBe(
+            'compares column `r` (real) with a number',
+        );
+        expect(reason('SELECT * FROM t WHERE r > 1', 'pgsql', t)).toBe(
+            'compares column `r` (real) with a number',
+        );
+        expect(
+            ok("SELECT * FROM t WHERE r = '1.1'", 'pgsql', t).filters,
+        ).toEqual([{ column: 'r', op: 'eq', value: '1.1' }]);
+        // float8 parses the literal and the quoted value to the same double.
+        expect(ok('SELECT * FROM t WHERE d = 1.1', 'pgsql', t).filters).toEqual(
+            [{ column: 'd', op: 'eq', value: '1.1' }],
+        );
+    });
+
+    it('PostgreSQL integer columns take only whole numbers in range', () => {
+        const t = cols(
+            ['id', 'int4', 'integer'],
+            ['s', 'int2', 'smallint'],
+            ['b', 'int8', 'bigint'],
+        );
+        const refused: [string, string][] = [
+            ['id = 1.5', "1.5 isn't a valid value for column `id` (integer)"],
+            ['id > 2.5', "2.5 isn't a valid value for column `id` (integer)"],
+            [
+                'id = 3000000000',
+                "3000000000 isn't a valid value for column `id` (integer)",
+            ],
+            [
+                'id = 2147483648',
+                "2147483648 isn't a valid value for column `id` (integer)",
+            ],
+            [
+                'id = -2147483649',
+                "-2147483649 isn't a valid value for column `id` (integer)",
+            ],
+            [
+                's = 40000',
+                "40000 isn't a valid value for column `s` (smallint)",
+            ],
+            [
+                's = 32768',
+                "32768 isn't a valid value for column `s` (smallint)",
+            ],
+            [
+                'b = 9223372036854775808',
+                "9223372036854775808 isn't a valid value for column `b` (bigint)",
+            ],
+            ['b = 1.0', "1.0 isn't a valid value for column `b` (bigint)"],
+        ];
+        for (const [cond, why] of refused)
+            expect(reason(`SELECT * FROM t WHERE ${cond}`, 'pgsql', t)).toBe(
+                why,
+            );
+        for (const cond of [
+            'id = 2147483647',
+            'id = -2147483648',
+            's = 32767',
+            's = -32768',
+            'b = 9223372036854775807',
+            'b = -9223372036854775808',
+            'id = 007',
+        ])
+            expect(
+                ok(`SELECT * FROM t WHERE ${cond}`, 'pgsql', t).filters,
+            ).toHaveLength(1);
+    });
+
+    it('MySQL/MariaDB DECIMAL takes numbers only up to 15 digits of precision', () => {
+        for (const d of ['mysql', 'mariadb'] as Dialect[]) {
+            const t = cols(
+                ['id', 'int', 'int'],
+                ['wide', 'decimal', 'decimal(20,10)'],
+                ['n16', 'decimal', 'decimal(16,0) unsigned'],
+                ['p15', 'decimal', 'decimal(15,2)'],
+                ['plain', 'decimal', 'decimal'],
+            );
+            expect(reason('SELECT * FROM t WHERE wide = 1234567', d, t)).toBe(
+                'compares column `wide` (decimal(20,10)) with a number the table view would compare differently',
+            );
+            expect(reason('SELECT * FROM t WHERE n16 > 5', d, t)).toBe(
+                'compares column `n16` (decimal(16,0) unsigned) with a number the table view would compare differently',
+            );
+            expect(
+                ok("SELECT * FROM t WHERE wide = '1234567'", d, t).filters,
+            ).toEqual([{ column: 'wide', op: 'eq', value: '1234567' }]);
+            expect(
+                ok('SELECT * FROM t WHERE p15 = 1234567.25 AND plain > 3', d, t)
+                    .filters,
+            ).toHaveLength(2);
+        }
+    });
+
+    it('MySQL/MariaDB FLOAT (single precision) takes only whole numbers; DOUBLE takes any', () => {
+        const t = cols(
+            ['id', 'int', 'int'],
+            ['f', 'float', 'float'],
+            ['d', 'double', 'double'],
+        );
+        expect(reason('SELECT * FROM t WHERE f = 1.1', 'mysql', t)).toBe(
+            'compares column `f` (float) with a number the table view would compare differently',
+        );
+        expect(
+            ok('SELECT * FROM t WHERE f = 2', 'mysql', t).filters,
+        ).toHaveLength(1);
+        expect(
+            ok('SELECT * FROM t WHERE d = 1.1', 'mariadb', t).filters,
+        ).toHaveLength(1);
+    });
+
+    it('SQLite REAL: the quoted value takes REAL affinity and parses like the literal', () => {
+        const t = cols(['id', 'integer', 'integer'], ['r', 'real', 'real']);
+        expect(
+            ok('SELECT * FROM t WHERE r = 1.1', 'sqlite', t).filters,
+        ).toEqual([{ column: 'r', op: 'eq', value: '1.1' }]);
+        expect(
+            ok('SELECT * FROM t WHERE id = 1.5', 'sqlite', t).filters,
+        ).toEqual([{ column: 'id', op: 'eq', value: '1.5' }]);
+    });
+});
