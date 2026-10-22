@@ -186,6 +186,8 @@ it('compares only exactly comparable columns', function (string $driver, string 
     ['mysql', 'bigint', true],
     ['mysql', 'decimal', true],
     ['mysql', 'datetime', true],
+    ['mysql', 'timestamp', false],
+    ['mariadb', 'timestamp', false],
     ['mysql', 'varchar', true],
     ['mysql', 'longtext', true],
     ['mysql', 'double', false],

@@ -11,7 +11,6 @@ use App\Database\Editing\EditMethodResolver;
 use App\Database\Editing\EditPlan;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder;
-use LogicException;
 
 final class TableRowsQuery
 {
@@ -109,25 +108,12 @@ final class TableRowsQuery
                 $plan->keyColumns,
                 array_keys($plan->keyColumns),
             ),
-            EditMethod::SqliteRowid => [$as(self::sqliteRowidAlias($names), 'rowid')],
+            EditMethod::SqliteRowid => [$as(EditMethodResolver::sqliteRowidAlias($names), 'rowid')],
             EditMethod::PgCtid => $plan->needsTableoid
                 ? [$as('ctid::text', 'ctid'), $as('tableoid::text', 'tableoid')]
                 : [$as('ctid::text', 'ctid')],
             EditMethod::MysqlAllValues, EditMethod::None => [],
         };
-    }
-
-    /** @param list<string> $names */
-    private static function sqliteRowidAlias(array $names): string
-    {
-        $taken = array_map('strtolower', $names);
-        foreach (EditMethodResolver::SQLITE_ROWID_ALIASES as $alias) {
-            if (! in_array($alias, $taken, true)) {
-                return $alias;
-            }
-        }
-
-        throw new LogicException('Every SQLite rowid alias is hidden by a column.');
     }
 
     /**

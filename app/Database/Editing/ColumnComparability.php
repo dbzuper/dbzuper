@@ -18,12 +18,13 @@ final class ColumnComparability
 
     /**
      * MySQL/MariaDB types compared exactly: integer, decimal, date-time and text. Text is only exact when compared
-     * byte for byte through a BINARY/varbinary cast: even utf8mb4_bin is PAD SPACE ('a' = 'a ').
+     * byte for byte through a BINARY/varbinary cast: even utf8mb4_bin is PAD SPACE ('a' = 'a '). TIMESTAMP is left
+     * out: it is shown in the session time zone, where a DST fall-back hour shows two stored instants as the same text.
      */
     private const MYSQL_EXACT = [
         'tinyint', 'smallint', 'mediumint', 'int', 'integer', 'bigint',
         'decimal', 'numeric', 'dec', 'fixed',
-        'date', 'datetime', 'timestamp', 'time', 'year',
+        'date', 'datetime', 'time', 'year',
         'char', 'varchar', 'tinytext', 'text', 'mediumtext', 'longtext', 'enum',
     ];
 

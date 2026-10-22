@@ -24,6 +24,11 @@ return Application::configure(basePath: dirname(__DIR__))
             fn () => RedirectToSetup::adminExists() ? route('login') : route('setup.show'),
         );
 
+        // Change sets save values exactly as typed: no trimming, and '' stays an empty string, not NULL.
+        $changeSet = fn (Request $request) => $request->is('api/c/*/tables/*/changes');
+        $middleware->trimStrings(except: [$changeSet]);
+        $middleware->convertEmptyStringsToNull(except: [$changeSet]);
+
         $middleware->web(append: [
             RedirectToSetup::class,
             HandleAppearance::class,

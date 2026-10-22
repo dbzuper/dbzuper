@@ -6,6 +6,7 @@ use App\Database\ColumnKind;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
 use Illuminate\Database\Connection;
+use LogicException;
 use Throwable;
 
 /** Decides per table how a row is pinned for UPDATE/DELETE (spec §5) and which columns can never be edited. */
@@ -14,6 +15,26 @@ final class EditMethodResolver
     /** SQLite names for the rowid; a column with the same name hides it. */
     public const SQLITE_ROWID_ALIASES = ['rowid', '_rowid_', 'oid'];
 
+    /** Why a read-only connection's tables can't be edited. */
+    public const READ_ONLY_REASON = 'this connection is read-only';
+
+    /**
+     * The SQLite rowid name a statement uses: the first alias no column shadows (rows and change sets agree).
+     *
+     * @param  list<string>  $names  the table's column names
+     */
+    public static function sqliteRowidAlias(array $names): string
+    {
+        $taken = array_map('strtolower', $names);
+        foreach (self::SQLITE_ROWID_ALIASES as $alias) {
+            if (! in_array($alias, $taken, true)) {
+                return $alias;
+            }
+        }
+
+        throw new LogicException('Every SQLite rowid alias is hidden by a column.');
+    }
+
     /** @param array{name: string, kind: string, columns: list<array>, primary_key: list<string>, indexes: list<array>} $table */
     public function resolve(SavedConnection $connection, array $table, Connection $db): EditPlan
     {
@@ -21,7 +42,7 @@ final class EditMethodResolver
             return EditPlan::none("views can't be edited");
         }
         if ($connection->read_only) {
-            return EditPlan::none('this connection is read-only');
+            return EditPlan::none(self::READ_ONLY_REASON);
         }
 
         $driver = $connection->driver;
