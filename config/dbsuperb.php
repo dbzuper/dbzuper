@@ -7,8 +7,8 @@ return [
         explode(',', (string) env('DBSUPERB_SQLITE_PATHS', '')),
     ))),
 
-    // API requests per user per minute (the e2e server raises it: every spec signs in as the same user).
-    'api_per_minute' => (int) env('DBSUPERB_API_PER_MINUTE') ?: 120,
+    // API requests per user per minute, at least 1 (the e2e server raises it: every spec signs in as the same user).
+    'api_per_minute' => max(1, (int) env('DBSUPERB_API_PER_MINUTE') ?: 120),
 
     // Seconds to wait when opening a connection to a database server.
     'connect_timeout' => (int) env('DBSUPERB_CONNECT_TIMEOUT') ?: 5,
