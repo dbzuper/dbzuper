@@ -207,6 +207,28 @@ describe('sql tabs store', () => {
             expect(s().findLinked(2, 't:a')).toBeUndefined();
         });
 
+        it('never activates a closed link for a live table tab: it opens a fresh linked tab', () => {
+            const old = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q1');
+            s().setLink(1, old, { ...link(old)!, closed: true });
+            s().openTab(1, 'x');
+
+            const id = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q2');
+
+            expect(id).not.toBe(old);
+            expect(s().byConnection[1].activeId).toBe(id);
+            expect(link(id)).toMatchObject({
+                browseTabId: 't:a',
+                syncedSql: 'q2',
+            });
+            expect(link(id)?.closed).toBeUndefined();
+            // The old tab keeps its text but no longer claims the table tab.
+            expect(link(old)).toBeUndefined();
+            expect(
+                s().byConnection[1].tabs.find((t) => t.id === old)?.sql,
+            ).toBe('q1');
+            expect(s().findLinked(1, 't:a')?.id).toBe(id);
+        });
+
         it('links two views of a table to two editor tabs', () => {
             const a = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q');
             const b = s().openLinkedTab(1, 't:b', 'orders', 'orders (2)', 'q');

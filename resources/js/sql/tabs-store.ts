@@ -300,7 +300,18 @@ export const useSqlTabs = create<State>()(
                         connectionId,
                         browseTabId,
                     );
-                    if (existing) {
+                    // A link whose table tab was closed (an id since reused by this live table tab) is never
+                    // revived or activated: its tab keeps its text, drops the link, and a fresh linked tab opens.
+                    if (existing?.link?.closed)
+                        update(connectionId, (c) => ({
+                            ...c,
+                            tabs: c.tabs.map((t) => {
+                                if (t.id !== existing.id) return t;
+                                const { link: _closed, ...rest } = t;
+                                return rest;
+                            }),
+                        }));
+                    else if (existing) {
                         update(connectionId, (c) => ({
                             tabs: c.tabs.map((t) =>
                                 t.id === existing.id &&
