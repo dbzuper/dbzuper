@@ -51,12 +51,16 @@ final class EditMethodResolver
         $nonComparable = $driver === DriverName::Postgres ? $this->pgNonComparableColumns($db, $connection, $name) : [];
         $plan = fn (EditMethod $method, array $keys = [], bool $tableoid = false) => new EditPlan($method, $keys, null, $readOnly, $tableoid, $nonComparable);
 
+        // A MySQL/MariaDB TIMESTAMP is shown in the session time zone, where a DST fall-back hour shows two stored
+        // instants as the same text: a key holding one could pin the other row, so such a key is passed over.
+        $timestamps = in_array($driver, [DriverName::MySql, DriverName::MariaDb], true) ? $this->timestampColumns($table) : [];
+
         $pk = array_values($table['primary_key'] ?? []);
-        if ($pk !== []) {
+        if ($pk !== [] && array_intersect($pk, $timestamps) === []) {
             return $plan(EditMethod::PrimaryKey, $pk);
         }
 
-        $unique = $this->uniqueNotNullIndex($table, $this->unusableIndexes($driver, $db, $connection, $name));
+        $unique = $this->uniqueNotNullIndex($table, $this->unusableIndexes($driver, $db, $connection, $name), $timestamps);
         if ($unique !== null) {
             return $plan(EditMethod::UniqueIndex, $unique);
         }
@@ -76,16 +80,17 @@ final class EditMethodResolver
      * The first unique index (by name) whose columns all exist and are NOT NULL.
      *
      * @param  list<string>  $partial  index names that can't pin a row (partial, expression, invalid, deferrable)
+     * @param  list<string>  $excluded  columns that can't be part of a key (MySQL/MariaDB TIMESTAMP)
      * @return ?list<string>
      */
-    private function uniqueNotNullIndex(array $table, array $partial): ?array
+    private function uniqueNotNullIndex(array $table, array $partial, array $excluded = []): ?array
     {
         $nullable = [];
         foreach ($table['columns'] ?? [] as $column) {
             $nullable[$column['name']] = (bool) $column['nullable'];
         }
 
-        $candidates = array_values(array_filter($table['indexes'] ?? [], function (array $index) use ($nullable, $partial) {
+        $candidates = array_values(array_filter($table['indexes'] ?? [], function (array $index) use ($nullable, $partial, $excluded) {
             if (! ($index['unique'] ?? false) || ($index['primary'] ?? false) || in_array($index['name'], $partial, true)) {
                 return false;
             }
@@ -95,7 +100,7 @@ final class EditMethodResolver
             }
             foreach ($columns as $column) {
                 // Expression parts come back empty or unnamed; they can't be bound as a key.
-                if (! is_string($column) || ! array_key_exists($column, $nullable) || $nullable[$column]) {
+                if (! is_string($column) || ! array_key_exists($column, $nullable) || $nullable[$column] || in_array($column, $excluded, true)) {
                     return false;
                 }
             }
@@ -105,6 +110,19 @@ final class EditMethodResolver
         usort($candidates, fn (array $a, array $b) => strcmp((string) $a['name'], (string) $b['name']));
 
         return $candidates === [] ? null : array_values($candidates[0]['columns']);
+    }
+
+    /** @return list<string> columns of type TIMESTAMP */
+    private function timestampColumns(array $table): array
+    {
+        $out = [];
+        foreach ($table['columns'] ?? [] as $column) {
+            if (preg_match('/^timestamp(\(\d\))?$/i', trim((string) ($column['type_name'] ?? $column['type'] ?? '')))) {
+                $out[] = (string) $column['name'];
+            }
+        }
+
+        return $out;
     }
 
     /**

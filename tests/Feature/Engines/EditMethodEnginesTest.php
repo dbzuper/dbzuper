@@ -11,7 +11,7 @@ use Tests\Support\Engines;
 
 afterEach(fn () => Engines::resetSqlite());
 
-const EDIT_METHOD_TABLES = ['em_inh_child', 'em_inh_parent', 'em_part', 'em_pk', 'em_unique', 'em_bare', 'em_generated', 'em_norowid', 'em_partial', 'em_expr', 'em_invalid', 'em_deferred'];
+const EDIT_METHOD_TABLES = ['em_inh_child', 'em_inh_parent', 'em_part', 'em_pk', 'em_unique', 'em_bare', 'em_generated', 'em_norowid', 'em_partial', 'em_expr', 'em_invalid', 'em_deferred', 'em_ts_pk', 'em_ts_unique'];
 
 function editMethodDrop(Connection $db): void
 {
@@ -69,6 +69,33 @@ it('decides how rows are pinned on every engine', function (string $engine) {
             ->and($plans['em_generated']->method)->toBe(EditMethod::PrimaryKey)
             ->and($plans['em_generated']->readOnlyColumns)->toBe(['total'])
             ->and($plans['em_pk']->readOnlyColumns)->toBe([]);
+    } finally {
+        editMethodDrop($db);
+        $factory->release($db);
+    }
+})->with(Engines::ENGINES);
+
+it('never pins rows by a TIMESTAMP key on mysql and mariadb (ambiguous in a DST fall-back hour)', function (string $engine) {
+    Engines::skipUnlessAvailable($engine);
+    $saved = Engines::savedConnection($engine);
+    $factory = app(ConnectionFactory::class);
+    $db = $factory->make($saved);
+
+    try {
+        editMethodDrop($db);
+        $db->statement('CREATE TABLE em_ts_pk (at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, code VARCHAR(20) NOT NULL, note VARCHAR(20), PRIMARY KEY (at))');
+        $db->statement('CREATE UNIQUE INDEX em_ts_pk_code ON em_ts_pk (code)');
+        $db->statement('CREATE TABLE em_ts_unique (at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, note VARCHAR(20))');
+        $db->statement('CREATE UNIQUE INDEX em_ts_unique_at ON em_ts_unique (at)');
+        $plans = editPlans($saved, $db);
+
+        $mysql = in_array($engine, ['mysql', 'mariadb'], true);
+        expect($plans['em_ts_pk']->method)->toBe($mysql ? EditMethod::UniqueIndex : EditMethod::PrimaryKey)
+            ->and($plans['em_ts_pk']->keyColumns)->toBe($mysql ? ['code'] : ['at'])
+            ->and($plans['em_ts_unique']->method)->toBe(match ($engine) {
+                'mysql', 'mariadb' => EditMethod::MysqlAllValues,
+                default => EditMethod::UniqueIndex,
+            });
     } finally {
         editMethodDrop($db);
         $factory->release($db);
