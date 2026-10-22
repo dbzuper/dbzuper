@@ -72,21 +72,9 @@ final class QueryRunner
         }
 
         if ($record) {
-            $this->recordAll($connection, $results);
+            $this->history->recordAll($connection, $results);
         }
 
         return new BatchResult($results, $rolledBack);
-    }
-
-    /** @param list<StatementResult> $results */
-    private function recordAll(SavedConnection $connection, array $results): void
-    {
-        foreach ($results as $result) {
-            try {
-                $this->history->record($connection, $result);
-            } catch (Throwable $e) {
-                report($e); // history is best effort and must never hide the results
-            }
-        }
     }
 }

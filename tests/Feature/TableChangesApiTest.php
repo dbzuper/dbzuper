@@ -19,7 +19,7 @@ beforeEach(function () {
         'driver' => DriverName::Sqlite, 'host' => null, 'port' => null, 'database' => $path, 'username' => null, 'password' => null,
     ]);
     $this->changes = fn (string $table, array $changes, array $extra = []): TestResponse => $this->actingAs($this->user)
-        ->postJson(route('api.tables.changes', [$this->connection, $table]), ['preview' => true, 'changes' => $changes] + $extra);
+        ->postJson(route('api.tables.changes', [$this->connection, $table]), $extra + ['preview' => true, 'changes' => $changes]);
 });
 
 afterEach(fn () => Engines::resetSqlite());
@@ -103,18 +103,52 @@ it('bounds the request', function () {
 
     ($this->changes)('users', array_fill(0, 501, $insert))->assertUnprocessable()->assertJsonValidationErrors('changes');
     ($this->changes)('users', [])->assertUnprocessable()->assertJsonValidationErrors('changes');
-    $this->actingAs($this->user)->postJson(route('api.tables.changes', [$this->connection, 'users']), ['changes' => [$insert]])
-        ->assertUnprocessable()->assertJsonValidationErrors('preview');
+    ($this->changes)('users', [$insert], ['preview' => 'yes please'])->assertUnprocessable()->assertJsonValidationErrors('preview');
     ($this->changes)('users', [['op' => 'insert', 'values' => ['name' => str_repeat('x', 1_000_001)]]])
         ->assertUnprocessable()->assertJsonValidationErrors('changes.0.values');
     ($this->changes)('nope', [$insert])->assertNotFound();
 });
 
-it('refuses read-only connections with the reason', function () {
+it('refuses read-only connections with the reason, before running anything', function () {
     $this->connection->update(['read_only' => true]);
+    $insert = ['op' => 'insert', 'values' => ['name' => 'a', 'email' => 'ro@example.com']];
 
-    ($this->changes)('users', [['op' => 'insert', 'values' => ['name' => 'a']]])
+    ($this->changes)('users', [$insert])
         ->assertForbidden()->assertJsonPath('message', 'this connection is read-only');
+    ($this->changes)('users', [$insert], ['preview' => false])
+        ->assertForbidden()->assertJsonPath('message', 'this connection is read-only');
+    expect(fixturePdo()->query('select count(*) from users')->fetchColumn())->toBe(3);
+});
+
+it('commits when preview is left out, and returns the counts', function () {
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.changes', [$this->connection, 'users']), ['changes' => [
+        ['op' => 'insert', 'values' => ['name' => "O'Neil", 'email' => 'o@example.com']],
+        ['op' => 'update', 'id' => ['key' => ['id' => 2]], 'original' => ['name' => 'Alan Turing'], 'values' => ['name' => 'Alan M. Turing']],
+    ]])->assertOk();
+
+    expect($res->json())->toBe(['applied' => ['inserted' => 1, 'updated' => 1, 'deleted' => 0]]);
+    $pdo = fixturePdo();
+    expect($pdo->query('select name from users where id = 2')->fetchColumn())->toBe('Alan M. Turing')
+        ->and($pdo->query("select count(*) from users where email = 'o@example.com'")->fetchColumn())->toBe(1)
+        ->and($this->connection->history()->orderBy('id')->pluck('sql')->all())->toBe([
+            <<<'SQL'
+            UPDATE "users" SET "name" = 'Alan M. Turing' WHERE "id" = 2 AND "name" = 'Alan Turing'
+            SQL,
+            <<<'SQL'
+            INSERT INTO "users" ("name", "email") VALUES ('O''Neil', 'o@example.com')
+            SQL,
+        ]);
+});
+
+it('reports a row changed since loading with its index, writing nothing', function () {
+    $res = ($this->changes)('users', [
+        ['op' => 'insert', 'values' => ['name' => 'new', 'email' => 'new@example.com']],
+        ['op' => 'update', 'id' => ['key' => ['id' => 2]], 'original' => ['name' => 'someone else'], 'values' => ['name' => 'x']],
+    ], ['preview' => false])->assertStatus(409);
+
+    expect($res->json('error'))->toBe(['kind' => 'row_mismatch', 'message' => 'row changed since you loaded it', 'index' => 1, 'reason' => 'changed'])
+        ->and(fixturePdo()->query('select count(*) from users')->fetchColumn())->toBe(3)
+        ->and($this->connection->history()->count())->toBe(0);
 });
 
 it('authorizes like the other connection endpoints', function () {

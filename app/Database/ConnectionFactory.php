@@ -16,10 +16,10 @@ final class ConnectionFactory
     ) {}
 
     /** Runs the callback with a connection and always releases it, even when the callback throws.
-     * A timeout is applied now and again after every reconnect. */
-    public function using(SavedConnection $connection, Closure $callback, ?int $timeoutSeconds = null): mixed
+     * A timeout is applied now and again after every reconnect. $countMatchedRows: see Driver::config(). */
+    public function using(SavedConnection $connection, Closure $callback, ?int $timeoutSeconds = null, bool $countMatchedRows = false): mixed
     {
-        $db = $this->make($connection);
+        $db = $this->make($connection, $countMatchedRows);
 
         try {
             if ($timeoutSeconds !== null) {
@@ -38,10 +38,10 @@ final class ConnectionFactory
         }
     }
 
-    public function make(SavedConnection $connection): Connection
+    public function make(SavedConnection $connection, bool $countMatchedRows = false): Connection
     {
         $name = 'dbsuperb_'.($connection->getKey() ?? 'transient').'_'.bin2hex(random_bytes(8));
-        $config = $this->drivers->for($connection->driver)->config($connection);
+        $config = $this->drivers->for($connection->driver)->config($connection, $countMatchedRows);
 
         // Registered in config so Laravel can rebuild the connection by name on reconnect. This matters on
         // PostgreSQL: a read-only violation (SQLSTATE 25006) is treated as a lost connection, which triggers
