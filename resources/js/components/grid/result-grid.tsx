@@ -38,7 +38,7 @@ import { sortRows } from '@/grid/sort';
 import type { GridLayout } from '@/browse/local-prefs';
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu';
 import {
-    refOf,
+    rowRefs,
     usePending,
     type PendingRow,
     type PendingTarget,
@@ -236,7 +236,7 @@ function editModel(
     rows: QueryCell[][],
     pending: Record<RowRef, PendingRow>,
 ) {
-    const refs = editing.rowIds.map((id) => (id ? refOf(id) : null));
+    const refs = rowRefs(editing.rowIds);
     const schema = new Map(editing.tableColumns.map((c) => [c.name, c]));
     const typeOf = (index: number) =>
         schema.get(columns[index].name)?.type_name ?? columns[index].type;

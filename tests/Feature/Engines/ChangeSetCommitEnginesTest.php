@@ -186,6 +186,21 @@ it('changes exactly one of three identical rows on MySQL/MariaDB', function (str
     });
 })->with(['mysql', 'mariadb']);
 
+it('deletes exactly two of three identical rows when two are marked in one change set', function (string $engine) {
+    $saved = commitEngine($engine);
+
+    withCommitTables($saved, function () use ($saved) {
+        [$a, , $c] = commitRows($saved, 'cc_same');
+        expect($a['id'])->toBe($c['id']);
+
+        commitChanges($saved, 'cc_same', [
+            ['op' => 'delete', 'id' => $a['id'], 'original' => []],
+            ['op' => 'delete', 'id' => $c['id'], 'original' => []],
+        ])->assertOk()->assertJsonPath('applied', ['inserted' => 0, 'updated' => 0, 'deleted' => 2]);
+        expect(commitState($saved, 'cc_same'))->toBe([['same', 1]]);
+    });
+})->with(['mysql', 'mariadb']);
+
 it('keeps the SQL editor counting changed rows on MySQL/MariaDB', function (string $engine) {
     $saved = commitEngine($engine);
 

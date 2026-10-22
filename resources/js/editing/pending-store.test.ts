@@ -3,6 +3,7 @@ import {
     changeRefs,
     pendingCounts,
     refOf,
+    rowRefs,
     toChanges,
     usePending,
     type PendingRow,
@@ -419,5 +420,65 @@ describe('settle after a commit', () => {
         );
         s.settle(C, T, pending());
         expect(usePending.getState().byTable[`${C}:${T}`]).toBeUndefined();
+    });
+});
+
+describe('rowRefs', () => {
+    it('gives each identical row of a response its own ref, sharing the identity', () => {
+        const dup = { values: { note: 'same', qty: 1 } };
+        const other = { values: { note: 'other', qty: 2 } };
+        expect(rowRefs([dup, other, dup, null, dup])).toEqual([
+            refOf(dup),
+            refOf(other),
+            `${refOf(dup)}#1`,
+            null,
+            `${refOf(dup)}#2`,
+        ]);
+    });
+
+    it('stages one delete per marked duplicate, each with the same identity', () => {
+        const dup = { values: { note: 'same', qty: 1 } };
+        const refs = rowRefs([dup, dup, dup]);
+        const s = usePending.getState();
+        for (const ref of [refs[0], refs[2]])
+            s.markDelete(C, T, { ref: ref!, id: dup, original: {} });
+        expect(s.count(C, T)).toEqual({ inserted: 0, updated: 0, deleted: 2 });
+        expect(toChanges(pending())).toEqual([
+            { op: 'delete', id: dup, original: {} },
+            { op: 'delete', id: dup, original: {} },
+        ]);
+    });
+});
+
+describe('settle compares structurally as well', () => {
+    it('removes a committed change whose object was replaced by an equal one (schema refresh)', () => {
+        const s = usePending.getState();
+        const ref = s.addRow(C, T);
+        s.setCell(C, T, { ref, id: null, original: {} }, 'status', 'paid');
+        s.setCell(C, T, row(1), 'status', 'paid');
+        const committed = pending();
+        // A refresh rebuilds the row objects without changing them.
+        usePending.setState({
+            byTable: {
+                [`${C}:${T}`]: Object.fromEntries(
+                    Object.entries(committed).map(([k, v]) => [
+                        k,
+                        structuredClone(v),
+                    ]),
+                ),
+            },
+        });
+        s.settle(C, T, committed);
+        expect(usePending.getState().byTable[`${C}:${T}`]).toBeUndefined();
+    });
+
+    it('keeps a change edited after the commit started', () => {
+        const s = usePending.getState();
+        const ref = s.addRow(C, T);
+        s.setCell(C, T, { ref, id: null, original: {} }, 'status', 'paid');
+        const committed = pending();
+        s.setCell(C, T, { ref, id: null, original: {} }, 'status', 'later');
+        s.settle(C, T, committed);
+        expect(pending()[ref]).toMatchObject({ values: { status: 'later' } });
     });
 });

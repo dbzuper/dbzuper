@@ -845,6 +845,40 @@ describe('editing', () => {
         expect(pending()).toEqual({});
     });
 
+    it('marks two of three identical key-less rows as two deletions', () => {
+        const dup = { values: { name: 'Same', id: 7 } };
+        renderGrid({
+            rows: [
+                ['Same', 7],
+                ['Same', 7],
+                ['Same', 7],
+            ],
+            editing: editing({
+                dialect: 'mysql',
+                rowIds: [dup, dup, dup],
+                locked: [[], [], []],
+                shortened: [[], [], []],
+            }),
+        });
+        const boxes = screen.getAllByRole('checkbox', { name: 'Select' });
+        fireEvent.click(boxes[0]);
+        fireEvent.click(boxes[2]);
+        const first = screen.getAllByRole('gridcell', { name: /^Same/ })[0];
+        fireEvent.mouseDown(first);
+        fireEvent.keyDown(first, { key: 'Delete' });
+        expect(usePending.getState().count(1, 'users')).toEqual({
+            inserted: 0,
+            updated: 0,
+            deleted: 2,
+        });
+        const rowsShown = screen
+            .getAllByRole('gridcell', { name: /^Same/ })
+            .map((c) => c.closest('[role="row"]')!);
+        expect(
+            rowsShown.map((r) => r.classList.contains('rdg-row-deleted')),
+        ).toEqual([true, false, true]);
+    });
+
     it('outlines a row whose change failed to commit, with the error in its tooltip, until it is edited', () => {
         renderGrid();
         act(() => {

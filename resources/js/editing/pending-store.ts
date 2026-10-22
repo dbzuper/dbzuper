@@ -108,6 +108,28 @@ export const pendingKey = (connectionId: number, table: string) =>
 /** The ref of a loaded row: its identity as JSON (the server always sends identity keys in one order). */
 export const refOf = (id: RowIdentity): RowRef => JSON.stringify(id);
 
+/**
+ * The refs of a response's rows, parallel to `rowIds`. Rows with the same identity (identical rows of a MySQL/MariaDB
+ * table without a key) each get their own ref, `<identity JSON>#<n>` for the n-th repeat in the response, while
+ * sharing the identity: each staged change still affects one of them (`LIMIT 1`).
+ */
+export function rowRefs(rowIds: (RowIdentity | null)[]): (RowRef | null)[] {
+    const cached = refCache.get(rowIds);
+    if (cached) return cached;
+    const seen = new Map<string, number>();
+    const refs = rowIds.map((id) => {
+        if (!id) return null;
+        const base = refOf(id);
+        const n = seen.get(base) ?? 0;
+        seen.set(base, n + 1);
+        return n === 0 ? base : `${base}#${n}`;
+    });
+    refCache.set(rowIds, refs);
+    return refs;
+}
+
+const refCache = new WeakMap<(RowIdentity | null)[], (RowRef | null)[]>();
+
 export const isNewRef = (ref: RowRef) => ref.startsWith('new:');
 
 const newRef = (): RowRef =>
@@ -258,9 +280,11 @@ export const usePending = create<State>()((set, get) => {
             }),
         settle: (connectionId, table, committed) =>
             patch(connectionId, table, (rows) => {
+                // By identity, and structurally as a second guard: a schema refresh during the commit rebuilds
+                // row objects, and a committed change must never stay pending (it would be committed twice).
                 const left = Object.fromEntries(
                     Object.entries(rows).filter(
-                        ([ref, row]) => committed[ref] !== row,
+                        ([ref, row]) => !sameChange(committed[ref], row),
                     ),
                 );
                 return Object.keys(left).length === Object.keys(rows).length
@@ -312,6 +336,47 @@ export const usePending = create<State>()((set, get) => {
             pendingCounts(get().byTable[pendingKey(connectionId, table)] ?? {}),
     };
 });
+
+/** Whether two plain JSON-like values are equal, key order aside. */
+function sameJson(a: unknown, b: unknown): boolean {
+    if (a === b) return true;
+    if (
+        typeof a !== 'object' ||
+        typeof b !== 'object' ||
+        a === null ||
+        b === null ||
+        Array.isArray(a) !== Array.isArray(b)
+    )
+        return false;
+    const ka = Object.keys(a);
+    const kb = Object.keys(b);
+    return (
+        ka.length === kb.length &&
+        ka.every(
+            (k) =>
+                Object.prototype.hasOwnProperty.call(b, k) &&
+                sameJson(
+                    (a as Record<string, unknown>)[k],
+                    (b as Record<string, unknown>)[k],
+                ),
+        )
+    );
+}
+
+/** Whether `row` is still the change that was committed: the same object, or the same op, identity and values. */
+function sameChange(committed: PendingRow | undefined, row: PendingRow) {
+    if (!committed) return false;
+    if (committed === row) return true;
+    if (committed.kind !== row.kind || committed.ref !== row.ref) return false;
+    if (row.kind === 'insert')
+        return sameJson((committed as typeof row).values, row.values);
+    const c = committed as Exclude<PendingRow, { kind: 'insert' }>;
+    return (
+        sameJson(c.id, row.id) &&
+        (row.kind === 'delete' ||
+            sameJson((c as typeof row).values, row.values))
+    );
+}
 
 /** The table's errors without those of rows whose change is gone or changed. */
 function keepErrors(

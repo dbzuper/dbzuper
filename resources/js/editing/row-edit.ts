@@ -6,7 +6,7 @@ import type {
     QueryCell,
     QueryColumn,
 } from '@/types/schema';
-import { refOf, type PendingTarget } from './pending-store';
+import { rowRefs, type PendingTarget } from './pending-store';
 
 /**
  * The editing rules shared by the grid and the row drawer (spec §4.1, §4.2, §6): which rows and cells can be edited,
@@ -76,7 +76,7 @@ export function rowTarget(
         if (cut.has(i)) shortened.push(c.name);
         else original[c.name] = cells[i];
     });
-    return { ref: refOf(id), id, original, shortened };
+    return { ref: rowRefs(editing.rowIds)[index]!, id, original, shortened };
 }
 
 /**
