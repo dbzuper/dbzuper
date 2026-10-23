@@ -14,8 +14,11 @@ interface Driver
 {
     public function name(): DriverName;
 
-    /** Laravel runtime connection config, including the read-only guard. */
-    public function config(SavedConnection $connection): array;
+    /**
+     * Laravel runtime connection config, including the read-only guard. With $countMatchedRows, UPDATE reports the
+     * rows its WHERE matched, not only those it changed (MySQL/MariaDB count changed rows unless told otherwise).
+     */
+    public function config(SavedConnection $connection, bool $countMatchedRows = false): array;
 
     public function inspector(): SchemaInspector;
 

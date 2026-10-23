@@ -36,7 +36,7 @@ class PostgresDriver implements Driver
         return DriverName::Postgres;
     }
 
-    public function config(SavedConnection $connection): array
+    public function config(SavedConnection $connection, bool $countMatchedRows = false): array
     {
         $options = $connection->options ?? [];
 

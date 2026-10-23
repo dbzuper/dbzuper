@@ -81,6 +81,26 @@ describe('browseKeyAction', () => {
     });
 });
 
+describe('Ctrl/Cmd+S (review pending changes)', () => {
+    it('is taken on a table tab, typing or not, and left alone elsewhere', () => {
+        expect(browseKeyAction(key('s', { ctrlKey: true }), idle)).toEqual({
+            type: 'review',
+        });
+        expect(browseKeyAction(key('S', { metaKey: true }), typing)).toEqual({
+            type: 'review',
+        });
+        expect(
+            browseKeyAction(key('s', { ctrlKey: true }), {
+                typing: false,
+                tableTabActive: false,
+            }),
+        ).toBeNull();
+        expect(
+            browseKeyAction(key('s', { ctrlKey: true, shiftKey: true }), idle),
+        ).toBeNull();
+    });
+});
+
 describe('isTypingTarget', () => {
     it('recognises inputs, textareas, selects, contenteditable and Monaco', () => {
         const input = document.createElement('input');

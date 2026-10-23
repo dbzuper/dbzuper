@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+    act,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RecordPayload, RelationshipSummary } from '@/records/types';
 import type { QueryCell, QueryColumn } from '@/types/schema';
@@ -7,6 +13,15 @@ import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 const api = vi.hoisted(() => ({ show: vi.fn(), related: vi.fn() }));
 vi.mock('@/records/records-api', () => ({ recordsApi: api }));
 
+const toast = vi.hoisted(() =>
+    Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+);
+vi.mock('sonner', () => ({ toast }));
+
+import { ResultGrid } from '@/components/grid/result-grid';
+import { flushOpenEdits } from '@/editing/flush-edits';
+import { refOf, usePending } from '@/editing/pending-store';
+import type { GridEditing } from '@/editing/row-edit';
 import { RowDrawer } from './row-drawer';
 
 const idColumn = {
@@ -478,5 +493,302 @@ describe('RowDrawer', () => {
                 screen.queryByRole('button', { name: 'users · user_id' }),
             ).not.toBeInTheDocument(),
         );
+    });
+});
+
+describe('RowDrawer editing', () => {
+    const editColumns: QueryColumn[] = [
+        col('orders', 'id', 'integer'),
+        col('orders', 'user_id', 'integer'),
+        col('orders', 'note', 'text'),
+        col('orders', 'meta', 'json'),
+        col('orders', 'score', 'float'),
+        col('orders', 'flag', 'boolean'),
+    ];
+    const editRow: QueryCell[] = [
+        1,
+        3,
+        'line one\r\nline two',
+        '{"a":1}',
+        1.5,
+        true,
+    ];
+    const editing = (over: Partial<GridEditing> = {}): GridEditing => ({
+        connectionId: 1,
+        table: 'orders',
+        dialect: 'pgsql',
+        rowIds: [{ key: { id: 1 } }],
+        locked: [[4]],
+        shortened: [[]],
+        readOnlyColumns: [],
+        rowReason: null,
+        tableColumns: [],
+        ...over,
+    });
+    const ref = refOf({ key: { id: 1 } });
+    const pending = () => usePending.getState().byTable['1:orders'] ?? {};
+    const setupEdit = (over: Over = {}) =>
+        setup({
+            columns: editColumns,
+            row: editRow,
+            editing: editing(),
+            rowIndex: 0,
+            ...over,
+        });
+    const field = (name: string) => screen.getByRole('textbox', { name });
+
+    beforeEach(() => usePending.setState({ byTable: {}, errors: {} }));
+
+    it('stages a field on blur, labels it edited with its original, and reverts it', () => {
+        setupEdit();
+        const userId = field('user_id');
+        expect(userId).toHaveValue('3');
+        fireEvent.change(userId, { target: { value: '4' } });
+        // A draft is not staged until the field is left.
+        expect(pending()).toEqual({});
+        fireEvent.blur(userId);
+        expect(pending()[ref]).toMatchObject({
+            kind: 'update',
+            values: { user_id: '4' },
+            original: { id: 1, user_id: 3 },
+        });
+        expect(field('user_id')).toHaveValue('4');
+        expect(screen.getByText('Original: 3')).toBeInTheDocument();
+        expect(screen.getAllByText('edited').length).toBeGreaterThan(0);
+        fireEvent.click(screen.getByRole('button', { name: 'Revert user_id' }));
+        expect(pending()).toEqual({});
+    });
+
+    it('shows a drawer edit in the grid as an edited cell', () => {
+        // Only the first columns render in jsdom: the edited one comes first.
+        const gridColumns = [
+            col('orders', 'note', 'text'),
+            col('orders', 'id', 'integer'),
+        ];
+        const gridEditing = editing({ locked: [[]] });
+        render(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid
+                    columns={gridColumns}
+                    rows={[['hi', 1]]}
+                    editing={gridEditing}
+                />
+            </div>,
+        );
+        setup({
+            columns: gridColumns,
+            row: ['hi', 1],
+            editing: gridEditing,
+            rowIndex: 0,
+        });
+        const note = field('note');
+        fireEvent.change(note, { target: { value: 'hello' } });
+        fireEvent.keyDown(note, { key: 'Enter', ctrlKey: true });
+        const cell = screen.getByRole('gridcell', { name: /hello/ });
+        expect(cell).toHaveClass('rdg-cell-edited');
+    });
+
+    it('edits multi-line text in a textarea and keeps its line ends', () => {
+        setupEdit();
+        const note = field('note');
+        expect(note.tagName).toBe('TEXTAREA');
+        // Enter is a new line in a multi-line field, not a commit.
+        fireEvent.change(note, {
+            target: { value: 'line one\nline two\nline three' },
+        });
+        fireEvent.keyDown(note, { key: 'Enter' });
+        expect(pending()).toEqual({});
+        fireEvent.keyDown(note, { key: 'Enter', ctrlKey: true });
+        expect(pending()[ref]).toMatchObject({
+            values: { note: 'line one\r\nline two\r\nline three' },
+        });
+    });
+
+    it('stages a single-line field on Enter and cancels a draft with Escape before closing', () => {
+        const { props } = setupEdit();
+        const id = field('id');
+        expect(id.tagName).toBe('INPUT');
+        fireEvent.change(id, { target: { value: '9' } });
+        fireEvent.keyDown(id, { key: 'Escape' });
+        expect(id).toHaveValue('1');
+        expect(props.onClose).not.toHaveBeenCalled();
+        fireEvent.keyDown(id, { key: 'Escape' });
+        expect(props.onClose).toHaveBeenCalledTimes(1);
+        fireEvent.change(id, { target: { value: '9' } });
+        fireEvent.keyDown(id, { key: 'Enter' });
+        expect(pending()[ref]).toMatchObject({ values: { id: '9' } });
+    });
+
+    it('validates JSON before staging and ties the error to the field', () => {
+        setupEdit();
+        const meta = field('meta');
+        expect(meta.tagName).toBe('TEXTAREA');
+        fireEvent.change(meta, { target: { value: '{"a":' } });
+        fireEvent.blur(meta);
+        expect(pending()).toEqual({});
+        expect(meta).toHaveAttribute('aria-invalid', 'true');
+        const error = screen.getByRole('alert');
+        expect(error).toHaveTextContent(/^Invalid JSON/);
+        expect(meta.getAttribute('aria-describedby')).toContain(error.id);
+        fireEvent.change(meta, { target: { value: '{"a":2}' } });
+        fireEvent.blur(meta);
+        expect(pending()[ref]).toMatchObject({ values: { meta: '{"a":2}' } });
+        expect(meta).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('says an invalid JSON draft was not staged when the drawer leaves the row', () => {
+        toast.error.mockReset();
+        const { unmount } = setupEdit();
+        fireEvent.change(field('meta'), { target: { value: '{"a":' } });
+        unmount();
+        expect(pending()).toEqual({});
+        expect(toast.error).toHaveBeenCalledWith(
+            'meta: invalid JSON, not staged',
+        );
+    });
+
+    it('says nothing when the drawer leaves with no draft or a valid one', () => {
+        toast.error.mockReset();
+        const { unmount } = setupEdit();
+        fireEvent.change(field('meta'), { target: { value: '{"a":3}' } });
+        unmount();
+        expect(pending()[ref]).toMatchObject({ values: { meta: '{"a":3}' } });
+        expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('keeps a locked field read-only and says why, like the grid', () => {
+        setupEdit();
+        expect(
+            screen.queryByRole('textbox', { name: 'score' }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.getByText(
+                "Not editable: its values can't be compared exactly",
+            ),
+        ).toBeInTheDocument();
+    });
+
+    it('keeps a value with mixed line ends read-only', () => {
+        setupEdit({ row: [1, 3, 'a\r\nb\nc', '{}', 1.5, true] });
+        expect(
+            screen.queryByRole('textbox', { name: 'note' }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.getByText(/Not editable: mixed line ends/),
+        ).toBeInTheDocument();
+    });
+
+    it('sets a field to NULL and toggles a boolean per engine', () => {
+        setupEdit();
+        fireEvent.click(
+            screen.getByRole('button', { name: 'Set user_id to NULL' }),
+        );
+        fireEvent.click(screen.getByRole('checkbox', { name: 'flag' }));
+        expect(pending()[ref]).toMatchObject({
+            values: { user_id: null, flag: 'false' },
+        });
+    });
+
+    it('deletes, restores and reverts the row from the header', () => {
+        setupEdit();
+        fireEvent.click(screen.getByRole('button', { name: 'Delete row' }));
+        expect(pending()[ref]).toMatchObject({ kind: 'delete' });
+        expect(screen.getByText('Deleted')).toBeInTheDocument();
+        expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Restore row' }));
+        expect(pending()).toEqual({});
+        fireEvent.change(field('user_id'), { target: { value: '7' } });
+        fireEvent.blur(field('user_id'));
+        expect(screen.getByText('Edited')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Revert row' }));
+        expect(pending()).toEqual({});
+        expect(
+            screen.queryByRole('button', { name: 'Revert row' }),
+        ).not.toBeInTheDocument();
+    });
+
+    it('stages an open draft when Review flushes edits, and before stepping', () => {
+        const { props } = setupEdit();
+        fireEvent.change(field('user_id'), { target: { value: '5' } });
+        act(() => flushOpenEdits());
+        expect(pending()[ref]).toMatchObject({ values: { user_id: '5' } });
+        fireEvent.change(field('note'), { target: { value: 'x' } });
+        fireEvent.keyDown(screen.getByRole('heading', { level: 3 }), {
+            key: 'ArrowDown',
+        });
+        expect(pending()[ref]).toMatchObject({
+            values: { user_id: '5', note: 'x' },
+        });
+        expect(props.onStep).toHaveBeenCalledWith(1);
+    });
+
+    it('keeps a row that cannot be pinned read-only, with the reason', () => {
+        setupEdit({
+            editing: editing({ rowIds: [null], rowReason: 'no key here' }),
+        });
+        expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+        expect(
+            screen.getByText('Not editable: no key here'),
+        ).toBeInTheDocument();
+        expect(
+            screen.queryByRole('button', { name: 'Delete row' }),
+        ).not.toBeInTheDocument();
+    });
+
+    it('shows a hopped record read-only with Open to edit, filtered on its key', async () => {
+        api.related.mockResolvedValue({
+            table: 'users',
+            columns: [],
+            primary_key: ['id'],
+            rows: [{ key: { id: 3 }, values: [3, 'Ann'] }],
+            next_cursor: null,
+        });
+        api.show.mockImplementation((_id, table) =>
+            Promise.resolve(
+                table === 'users'
+                    ? {
+                          table: 'users',
+                          key: { id: 3 },
+                          columns: [
+                              { name: 'id', type: 'integer' },
+                              { name: 'name', type: 'text' },
+                          ],
+                          values: [3, 'Ann'],
+                          relationships: [],
+                      }
+                    : ordersPayload,
+            ),
+        );
+        const { props } = setupEdit();
+        fireEvent.click(
+            await screen.findByRole('button', { name: 'users · user_id' }),
+        );
+        await screen.findByText('Ann');
+        expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole('button', { name: 'Delete row' }),
+        ).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Open to edit' }));
+        expect(props.onOpenTable).toHaveBeenCalledWith('users', [
+            { column: 'id', op: 'eq', value: '3' },
+        ]);
+    });
+
+    it('offers no Open to edit on a read-only connection', async () => {
+        api.related.mockResolvedValue({
+            table: 'users',
+            columns: [],
+            primary_key: ['id'],
+            rows: [{ key: { id: 3 }, values: [3, 'Ann'] }],
+            next_cursor: null,
+        });
+        setup({ readOnly: true });
+        fireEvent.click(
+            await screen.findByRole('button', { name: 'users · user_id' }),
+        );
+        await screen.findByRole('heading', { name: 'users · 3' });
+        expect(
+            screen.queryByRole('button', { name: 'Open to edit' }),
+        ).not.toBeInTheDocument();
     });
 });

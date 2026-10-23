@@ -31,7 +31,7 @@ class MySqlDriver implements Driver
         return DriverName::MySql;
     }
 
-    public function config(SavedConnection $connection): array
+    public function config(SavedConnection $connection, bool $countMatchedRows = false): array
     {
         $options = $connection->options ?? [];
         DsnValue::assertSafe(['host' => $connection->host, 'database' => $connection->database, 'username' => $connection->username, 'ssl_ca' => $options['ssl_ca'] ?? null]);
@@ -40,6 +40,11 @@ class MySqlDriver implements Driver
             PDO::ATTR_TIMEOUT => (int) config('dbsuperb.connect_timeout'),
             Mysql::ATTR_MULTI_STATEMENTS => false,
         ];
+        if ($countMatchedRows) {
+            // Connect-time only, so only the change-set connection asks for it: the SQL editor keeps MySQL's
+            // usual "changed rows" count.
+            $pdo[Mysql::ATTR_FOUND_ROWS] = true;
+        }
 
         if (! empty($options['ssl_ca'])) {
             $pdo[Mysql::ATTR_SSL_CA] = $options['ssl_ca'];

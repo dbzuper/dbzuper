@@ -1,15 +1,46 @@
-import { ArrowLeft, Braces, Copy, Network, X } from 'lucide-react';
+import {
+    ArrowLeft,
+    Braces,
+    Copy,
+    Network,
+    PencilLine,
+    RotateCcw,
+    Trash2,
+    Undo2,
+    X,
+} from 'lucide-react';
 import {
     useCallback,
     useEffect,
+    useId,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState,
     type KeyboardEvent,
 } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { blobLabel, cellKind, cellText, type CellValue } from '@/grid/cells';
+import { registerEditFlush } from '@/editing/flush-edits';
+import { pendingKey, usePending } from '@/editing/pending-store';
+import {
+    boolValue,
+    columnType,
+    editorText,
+    isBooleanType,
+    isJsonType,
+    jsonError,
+    lineEndProblem,
+    lockedFor,
+    restoreLineEnds,
+    rowTarget,
+    shownText,
+    truthy,
+    UNPINNED_ROW,
+    type GridEditing,
+} from '@/editing/row-edit';
 import { toJSON, writeClipboard } from '@/grid/copy';
 import type { RowFilter } from '@/lib/workspace-api';
 import {
@@ -43,6 +74,14 @@ type Props = {
     onStep: (dir: 1 | -1) => void;
     onOpenTable: (table: string, filters: RowFilter[]) => void;
     onExplore: (target: RecordTarget) => void;
+    /**
+     * Staged editing of the grid's rows (spec §4.2), with `rowIndex` the row's index in them: the drawer's fields
+     * edit the same pending changes as the grid. Records reached by a hop are never edited here.
+     */
+    editing?: GridEditing;
+    rowIndex?: number;
+    /** The connection is read-only: no "Open to edit" for hopped records. */
+    readOnly?: boolean;
 };
 
 type Loaded = { id: string; payload: RecordPayload } | null;
@@ -107,10 +146,13 @@ function Field({
     column,
     type,
     value,
+    lock,
 }: {
     column: string;
     type: string;
     value: CellValue;
+    /** Why the field can't be edited, on an editable row. */
+    lock?: string | null;
 }) {
     const [expanded, setExpanded] = useState(false);
     // JSON is pretty-printed by default; the toggle shows it compact, as the grid does.
@@ -204,6 +246,250 @@ function Field({
                     </span>
                 )}
             </dd>
+            {lock && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                    {`Not editable: ${lock}`}
+                </p>
+            )}
+        </div>
+    );
+}
+
+/** What an editable field needs from the drawer. */
+type FieldEdit = {
+    /** The value shown: staged, else loaded. */
+    value: QueryCell;
+    /** The loaded value a staged one replaced. */
+    original: QueryCell;
+    staged: boolean;
+    json: boolean;
+    bool: boolean;
+    dialect: GridEditing['dialect'];
+    stage: (value: string | null) => void;
+    revert: () => void;
+    /** Keeps an open draft flushable (Review & commit, stepping rows); returns the unregister. */
+    register: (flush: () => boolean) => () => void;
+};
+
+const MULTI_LINE_CHARS = 80;
+
+/**
+ * A field of an editable row (spec §4.2): text in an input, or a textarea for text, JSON and long or multi-line
+ * values. A draft is staged on blur, Enter (Ctrl/Cmd+Enter in a textarea) or a flush; Escape cancels it. JSON is
+ * validated first; an invalid draft stays unstaged with the error tied to the field.
+ */
+function EditableField({
+    column,
+    type,
+    edit,
+}: {
+    column: string;
+    type: string;
+    edit: FieldEdit;
+}) {
+    const id = useId();
+    const [draft, setDraft] = useState<string | undefined>(undefined);
+    const [error, setError] = useState<string | null>(null);
+    const base = editorText(edit.value);
+    const multiline =
+        edit.json ||
+        /text|clob/i.test(type) ||
+        /[\r\n]/.test(base) ||
+        base.length > MULTI_LINE_CHARS;
+
+    /** Stages the draft; false when it is invalid and stays a draft. */
+    const commit = (): boolean => {
+        if (draft === undefined) return true;
+        // A textarea hands back every line end as \n: the value keeps the line ends it had.
+        const value = restoreLineEnds(base, draft);
+        const problem = edit.json ? jsonError(value) : null;
+        if (problem) {
+            setError(problem);
+            return false;
+        }
+        setDraft(undefined);
+        setError(null);
+        edit.stage(value);
+        return true;
+    };
+    const commitRef = useRef(commit);
+    useLayoutEffect(() => {
+        commitRef.current = commit;
+    });
+    const hasDraft = draft !== undefined;
+    const { register } = edit;
+    useEffect(
+        () => (hasDraft ? register(() => commitRef.current()) : undefined),
+        [hasDraft, register],
+    );
+    // A draft still open when the field goes (the drawer closes or moves on) is staged; one that can't be (invalid
+    // JSON) is gone with the field, so say so rather than drop it silently.
+    useEffect(
+        () => () => {
+            if (!commitRef.current())
+                toast.error(`${column}: invalid JSON, not staged`);
+        },
+        // The field is keyed by its column: `column` never changes while it is mounted.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [],
+    );
+
+    const cancel = () => {
+        setDraft(undefined);
+        setError(null);
+    };
+    const onKeyDown = (
+        e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+    ) => {
+        if (e.key === 'Escape' && hasDraft) {
+            // The first Escape drops the draft; the next one closes the drawer.
+            e.stopPropagation();
+            e.preventDefault();
+            cancel();
+        } else if (
+            e.key === 'Enter' &&
+            (!multiline || e.ctrlKey || e.metaKey)
+        ) {
+            e.preventDefault();
+            commit();
+        }
+    };
+
+    const controlId = `${id}-control`;
+    const errorId = `${id}-error`;
+    const stateId = `${id}-state`;
+    const describedBy =
+        [error ? errorId : null, edit.staged ? stateId : null]
+            .filter(Boolean)
+            .join(' ') || undefined;
+    const textProps = {
+        id: controlId,
+        'aria-invalid': error ? true : undefined,
+        'aria-describedby': describedBy,
+        placeholder: edit.value === null ? 'NULL' : '(empty)',
+        value: draft ?? base,
+        onChange: (
+            e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+        ) => {
+            setError(null);
+            setDraft(e.target.value);
+        },
+        onBlur: () => void commit(),
+        onKeyDown,
+    };
+    const control = edit.bool ? (
+        <span className="flex items-center gap-2">
+            <input
+                id={controlId}
+                type="checkbox"
+                aria-describedby={describedBy}
+                className="size-3.5 accent-[var(--universe-accent)]"
+                checked={truthy(edit.value)}
+                onChange={(e) =>
+                    edit.stage(boolValue(edit.dialect, e.target.checked))
+                }
+            />
+            {edit.value === null && (
+                <span className="font-mono text-[10px] text-muted-foreground">
+                    NULL
+                </span>
+            )}
+        </span>
+    ) : multiline ? (
+        <textarea
+            {...textProps}
+            rows={Math.min(10, Math.max(3, base.split('\n').length))}
+            className="block w-full resize-y rounded border bg-background px-2 py-1 font-mono text-xs outline-none placeholder:italic focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive"
+        />
+    ) : (
+        <input
+            {...textProps}
+            className="block h-7 w-full rounded border bg-background px-2 font-mono text-xs outline-none placeholder:italic focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive"
+        />
+    );
+
+    return (
+        <div
+            data-edited={edit.staged ? 'true' : undefined}
+            className={`border-b px-4 py-2 last:border-b-0 ${
+                edit.staged ? 'bg-warning/10' : ''
+            }`}
+        >
+            <dt className="flex items-center justify-between gap-2 text-xs">
+                <span className="min-w-0 truncate font-mono font-medium">
+                    <label htmlFor={controlId}>{column}</label>{' '}
+                    <span className="font-normal text-muted-foreground">
+                        {type}
+                    </span>
+                    {edit.staged && (
+                        <span className="ml-1.5 rounded bg-warning/20 px-1 font-sans text-[10px] font-normal text-warning-foreground">
+                            edited
+                        </span>
+                    )}
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                    {edit.value !== null && (
+                        <button
+                            type="button"
+                            aria-label={`Set ${column} to NULL`}
+                            title="Set NULL"
+                            className="font-mono text-[10px] text-muted-foreground hover:text-foreground"
+                            onClick={() => {
+                                cancel();
+                                edit.stage(null);
+                            }}
+                        >
+                            NULL
+                        </button>
+                    )}
+                    {edit.staged && (
+                        <button
+                            type="button"
+                            aria-label={`Revert ${column}`}
+                            title="Revert change"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() => {
+                                cancel();
+                                edit.revert();
+                            }}
+                        >
+                            <Undo2 className="size-3" />
+                        </button>
+                    )}
+                    {edit.value !== null && (
+                        <button
+                            type="button"
+                            aria-label={`Copy ${column}`}
+                            title={`Copy ${column}`}
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() =>
+                                void writeClipboard(cellText(edit.value))
+                            }
+                        >
+                            <Copy className="size-3" />
+                        </button>
+                    )}
+                </span>
+            </dt>
+            <dd className="mt-1 text-xs">{control}</dd>
+            {error && (
+                <p
+                    id={errorId}
+                    role="alert"
+                    className="mt-1 text-[11px] text-destructive"
+                >
+                    {error}
+                </p>
+            )}
+            {edit.staged && (
+                <p
+                    id={stateId}
+                    className="mt-1 truncate text-[11px] text-muted-foreground"
+                    title={shownText(edit.original)}
+                >
+                    {`Original: ${shownText(edit.original)}`}
+                </p>
+            )}
         </div>
     );
 }
@@ -224,6 +510,9 @@ export function RowDrawer({
     onStep,
     onOpenTable,
     onExplore,
+    editing,
+    rowIndex,
+    readOnly = false,
 }: Props) {
     const heading = useRef<HTMLHeadingElement>(null);
 
@@ -282,6 +571,117 @@ export function RowDrawer({
     const valueOf = (column: string): QueryCell => {
         const i = shownColumns.findIndex((c) => c.name === column);
         return i < 0 ? null : (shownValues[i] ?? null);
+    };
+
+    // Editing (spec §4.2): the grid's row only, never a record reached by a hop (§5.2).
+    const rowEditing =
+        !hopped && editing && rowIndex !== undefined ? editing : null;
+    const target = useMemo(
+        () =>
+            editing && rowIndex !== undefined
+                ? rowTarget(editing, columns, rowIndex, row)
+                : null,
+        [editing, columns, rowIndex, row],
+    );
+    const storeKey = editing
+        ? pendingKey(editing.connectionId, editing.table)
+        : null;
+    const pendingRow = usePending((s) =>
+        storeKey && target ? s.byTable[storeKey]?.[target.ref] : undefined,
+    );
+    const rowLock =
+        rowEditing && !target ? (rowEditing.rowReason ?? UNPINNED_ROW) : null;
+    const rowEditable = !!rowEditing && !!target;
+    const deleted = pendingRow?.kind === 'delete';
+
+    /** Drafts open in this drawer's fields: staged before the drawer steps to another row. */
+    const drafts = useRef(new Set<() => boolean>());
+    const register = useCallback((flush: () => boolean) => {
+        drafts.current.add(flush);
+        const off = registerEditFlush(flush);
+        return () => {
+            drafts.current.delete(flush);
+            off();
+        };
+    }, []);
+    const flushDrafts = () =>
+        [...drafts.current].map((flush) => flush()).every(Boolean);
+
+    const fieldEdit = (index: number): FieldEdit | null => {
+        if (!rowEditing || !target || deleted) return null;
+        const column = columns[index];
+        const name = column.name;
+        const update = pendingRow?.kind === 'update' ? pendingRow : null;
+        const staged = !!update && name in update.values;
+        const loaded = row[index] ?? null;
+        const type = columnType(rowEditing, column);
+        const { connectionId, table: tableName } = rowEditing;
+        return {
+            value: update && staged ? update.values[name] : loaded,
+            original:
+                update && name in update.original
+                    ? update.original[name]
+                    : loaded,
+            staged,
+            json: isJsonType(type),
+            bool: isBooleanType(type),
+            dialect: rowEditing.dialect,
+            stage: (next) =>
+                usePending
+                    .getState()
+                    .setCell(connectionId, tableName, target, name, next),
+            revert: () =>
+                usePending
+                    .getState()
+                    .revertCell(connectionId, tableName, target.ref, name),
+            register,
+        };
+    };
+    /** Why a field of the editable row can't be edited: the grid's reasons, or line ends an editor can't keep. */
+    const fieldLock = (index: number): string | null =>
+        rowEditing && target && rowIndex !== undefined && !deleted
+            ? (lockedFor(rowEditing, columns, rowIndex, row, index) ??
+              lineEndProblem(fieldEdit(index)?.value))
+            : null;
+
+    const deleteRow = () => {
+        if (!rowEditing || !target) return;
+        flushDrafts();
+        usePending
+            .getState()
+            .markDelete(rowEditing.connectionId, rowEditing.table, target);
+    };
+    const restoreRow = () => {
+        if (rowEditing && target)
+            usePending
+                .getState()
+                .unmarkDelete(
+                    rowEditing.connectionId,
+                    rowEditing.table,
+                    target.ref,
+                );
+    };
+    const revertRow = () => {
+        if (rowEditing && target)
+            usePending
+                .getState()
+                .revertRow(
+                    rowEditing.connectionId,
+                    rowEditing.table,
+                    target.ref,
+                );
+    };
+    /** Opens the hopped record's table filtered to it, on every key column (a composite key too). */
+    const openToEdit = () => {
+        if (!current) return;
+        onOpenTable(
+            current.table,
+            Object.entries(current.key).map(([column, value]) => ({
+                column,
+                op: 'eq' as const,
+                value: String(value),
+            })),
+        );
     };
 
     const title = current
@@ -363,7 +763,8 @@ export function RowDrawer({
             !isTextControl(e.target)
         ) {
             e.preventDefault();
-            onStep(e.key === 'ArrowDown' ? 1 : -1);
+            // A draft is staged before the drawer moves on; an invalid one keeps it here.
+            if (flushDrafts()) onStep(e.key === 'ArrowDown' ? 1 : -1);
         }
     };
 
@@ -435,6 +836,84 @@ export function RowDrawer({
                     <X className="size-4" />
                 </Button>
             </header>
+            {rowEditable && (
+                <div
+                    role="toolbar"
+                    aria-label="Row actions"
+                    className="flex items-center gap-1 border-b px-2 py-1 text-xs"
+                >
+                    <span
+                        className={`min-w-0 flex-1 truncate px-2 ${
+                            deleted
+                                ? 'font-medium text-destructive'
+                                : pendingRow
+                                  ? 'font-medium text-warning-foreground'
+                                  : 'text-muted-foreground'
+                        }`}
+                    >
+                        {deleted
+                            ? 'Deleted'
+                            : pendingRow
+                              ? 'Edited'
+                              : 'Editable'}
+                    </span>
+                    {pendingRow?.kind === 'update' && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={revertRow}
+                        >
+                            <RotateCcw className="size-3.5" /> Revert row
+                        </Button>
+                    )}
+                    {deleted ? (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={restoreRow}
+                        >
+                            <Undo2 className="size-3.5" /> Restore row
+                        </Button>
+                    ) : (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs text-destructive hover:text-destructive"
+                            onClick={deleteRow}
+                        >
+                            <Trash2 className="size-3.5" /> Delete row
+                        </Button>
+                    )}
+                </div>
+            )}
+            {rowLock && (
+                <p className="border-b px-4 py-2 text-xs text-muted-foreground">
+                    {`Not editable: ${rowLock}`}
+                </p>
+            )}
+            {hopped && payload && (
+                <div className="flex items-center gap-2 border-b px-4 py-2 text-xs text-muted-foreground">
+                    <span className="min-w-0 flex-1">
+                        Read-only here: a related record.
+                    </span>
+                    {!readOnly && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={openToEdit}
+                        >
+                            <PencilLine className="size-3.5" /> Open to edit
+                        </Button>
+                    )}
+                </div>
+            )}
             <div className="row-drawer-body min-h-0 flex-1 overflow-y-auto">
                 {hopped && !payload ? (
                     <p
@@ -445,14 +924,26 @@ export function RowDrawer({
                     </p>
                 ) : (
                     <dl>
-                        {shownColumns.map((c, i) => (
-                            <Field
-                                key={`${c.name}:${i}`}
-                                column={c.name}
-                                type={c.type ?? ''}
-                                value={shownValues[i] ?? null}
-                            />
-                        ))}
+                        {shownColumns.map((c, i) => {
+                            const lock = fieldLock(i);
+                            const edit = lock ? null : fieldEdit(i);
+                            return edit ? (
+                                <EditableField
+                                    key={`${c.name}:${i}`}
+                                    column={c.name}
+                                    type={c.type ?? ''}
+                                    edit={edit}
+                                />
+                            ) : (
+                                <Field
+                                    key={`${c.name}:${i}`}
+                                    column={c.name}
+                                    type={c.type ?? ''}
+                                    value={shownValues[i] ?? null}
+                                    lock={lock}
+                                />
+                            );
+                        })}
                     </dl>
                 )}
                 {keyed ? (

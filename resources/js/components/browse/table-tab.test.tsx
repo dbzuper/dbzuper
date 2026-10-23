@@ -1,8 +1,17 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+    act,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse, type TableTab } from '@/browse/browse-store';
 import { rowsCache } from '@/browse/rows-cache';
+import { usePending } from '@/editing/pending-store';
+import { useReview } from '@/editing/review-store';
 import { useSqlTabs } from '@/sql/tabs-store';
+import type { RowsResponse } from '@/lib/workspace-api';
 import type { ConnectionSummary } from '@/types/connection';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useWorkspace } from '@/universe/store';
@@ -16,6 +25,13 @@ vi.mock('@/lib/workspace-api', async (orig) => ({
     ...(await orig<typeof import('@/lib/workspace-api')>()),
     workspaceApi: { ...api },
 }));
+const editingApi = vi.hoisted(() => ({ preview: vi.fn(), commit: vi.fn() }));
+vi.mock('@/editing/editing-api', async (orig) => ({
+    ...(await orig<typeof import('@/editing/editing-api')>()),
+    editingApi,
+}));
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock('sonner', () => ({ toast }));
 vi.mock('@/components/grid/result-grid', () => ({
     ResultGrid: () => <div data-testid="grid" />,
 }));
@@ -34,7 +50,13 @@ const actions = {
 
 const tabOf = (table: string) => tableTabOf(1, table) as TableTab;
 
-function Harness({ table = 'orders' }: { table?: string }) {
+function Harness({
+    table = 'orders',
+    readOnly = false,
+}: {
+    table?: string;
+    readOnly?: boolean;
+}) {
     const tab = useBrowse((s) =>
         s.byConnection[1]?.tabs.find(
             (t) => t.kind === 'table' && t.table === table && t.ordinal === 1,
@@ -42,7 +64,9 @@ function Harness({ table = 'orders' }: { table?: string }) {
     ) as TableTab;
     return (
         <TableTabView
-            connection={connection}
+            connection={
+                readOnly ? { ...connection, read_only: true } : connection
+            }
             snapshot={snapshot}
             tab={tab}
             actions={actions}
@@ -52,6 +76,9 @@ function Harness({ table = 'orders' }: { table?: string }) {
 
 beforeEach(() => {
     useBrowse.setState({ byConnection: {} });
+    usePending.setState({ byTable: {}, errors: {} });
+    useReview.setState({ open: null, nonce: 0 });
+    toast.success.mockReset();
     useSqlTabs.setState({ byConnection: {} });
     rowsCache.clear();
     api.rows.mockReset();
@@ -120,6 +147,14 @@ describe('TableTabView', () => {
                 page,
                 per_page: 100,
                 sql,
+                editing: {
+                    method: 'primary_key',
+                    reason: null,
+                    read_only_columns: [],
+                },
+                row_ids: [{ key: { id: 1 } }],
+                locked: [[]],
+                shortened: [[]],
             },
             total: { count: 1, exact: true },
             scrollTop: 0,
@@ -142,6 +177,97 @@ describe('TableTabView', () => {
         cacheWith(2, 'select * from `orders` limit 100 offset 100');
         render(<Harness />);
         expect(openedSql()).toBe('SELECT * FROM `orders` LIMIT 100');
+    });
+
+    const editableRows = {
+        columns: [{ name: 'id', type: 'int', table: 'orders' }],
+        rows: [[1]],
+        has_more: false,
+        page: 1,
+        per_page: 100,
+        sql: 'select 1',
+        editing: {
+            method: 'primary_key',
+            reason: null,
+            read_only_columns: [],
+        },
+        row_ids: [{ key: { id: 1 } }],
+        locked: [[]],
+        shortened: [[]],
+    };
+
+    it('adds a new row for an editable table, shared by every view of it', async () => {
+        useBrowse.getState().openTable(1, 'orders');
+        api.rows.mockResolvedValue(editableRows);
+        render(<Harness />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Add row' }));
+        expect(usePending.getState().count(1, 'orders')).toEqual({
+            inserted: 1,
+            updated: 0,
+            deleted: 0,
+        });
+        // Adding a row is an interaction that keeps a preview tab.
+        expect(tabOf('orders').preview).toBe(false);
+    });
+
+    it('offers no Add row for a table that cannot be edited or a read-only connection', async () => {
+        useBrowse.getState().openTable(1, 'orders');
+        api.rows.mockResolvedValue({
+            ...editableRows,
+            editing: { method: 'none', reason: 'x', read_only_columns: [] },
+            row_ids: [null],
+        });
+        const { unmount } = render(<Harness />);
+        await waitFor(() => expect(api.rows).toHaveBeenCalled());
+        await act(async () => {});
+        expect(screen.queryByRole('button', { name: 'Add row' })).toBeNull();
+        unmount();
+        rowsCache.clear();
+        api.rows.mockResolvedValue(editableRows);
+        render(<Harness readOnly />);
+        await waitFor(() => expect(api.rows).toHaveBeenCalledTimes(2));
+        await act(async () => {});
+        expect(screen.queryByRole('button', { name: 'Add row' })).toBeNull();
+    });
+
+    it('commits from Review: clears the changes, drops the cached rows of every view and refetches', async () => {
+        useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+        const second = useBrowse.getState().openNewView(1, 'orders');
+        useBrowse.getState().activate(1, tabOf('orders').id);
+        api.rows.mockResolvedValue(editableRows);
+        render(<Harness />);
+        await screen.findByRole('button', { name: 'Add row' });
+        expect(api.rows).toHaveBeenCalledTimes(1);
+        rowsCache.set(`1:${second}`, {
+            requestKey: 'x',
+            rows: editableRows as RowsResponse,
+            total: null,
+            scrollTop: 0,
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Add row' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Add row' }));
+        editingApi.preview.mockResolvedValue({
+            statements: [
+                { index: 0, op: 'insert', sql: 'INSERT 1', target: 'new row' },
+                { index: 1, op: 'insert', sql: 'INSERT 2', target: 'new row' },
+            ],
+        });
+        editingApi.commit.mockResolvedValue({
+            applied: { inserted: 2, updated: 0, deleted: 0 },
+        });
+        fireEvent.click(
+            screen.getByRole('button', { name: 'Review & commit…' }),
+        );
+        fireEvent.click(
+            await screen.findByRole('button', { name: 'Commit 2 changes' }),
+        );
+        await waitFor(() =>
+            expect(toast.success).toHaveBeenCalledWith('2 changes committed'),
+        );
+        expect(usePending.getState().byTable).toEqual({});
+        expect(rowsCache.get(`1:${second}`)).toBeUndefined();
+        await waitFor(() => expect(api.rows).toHaveBeenCalledTimes(2));
+        expect(screen.queryByRole('dialog')).toBeNull();
     });
 
     it('says when the table no longer exists', () => {
@@ -169,6 +295,14 @@ describe('TableTabView', () => {
                 page: 1,
                 per_page: 100,
                 sql: 'select 1',
+                editing: {
+                    method: 'primary_key',
+                    reason: null,
+                    read_only_columns: [],
+                },
+                row_ids: [{ key: { id: 1 } }],
+                locked: [[]],
+                shortened: [[]],
             },
             total: { count: 1, exact: true },
             scrollTop: 0,

@@ -208,6 +208,61 @@ type Actions = {
 
 type State = { byConnection: Record<number, ConnectionBrowse> } & Actions;
 
+/**
+ * Asked before tabs close (or a preview is replaced) that leave `tables` with no open view. Returning true holds
+ * the close: the guard calls `proceed` itself once the user agrees (staged editing asks before pending changes of
+ * such a table are discarded, spec §4.4). False lets the close go ahead now.
+ */
+export type CloseGuard = (
+    connectionId: number,
+    tables: string[],
+    proceed: () => void,
+) => boolean;
+
+let closeGuard: CloseGuard | null = null;
+/** True while a held close runs after the guard agreed: it is not asked again. */
+let unguarded = false;
+
+export function setCloseGuard(guard: CloseGuard | null): void {
+    closeGuard = guard;
+}
+
+/** Runs `run` unless the guard holds it; whether it ran now. */
+function guarded(
+    connectionId: number,
+    tables: string[],
+    run: () => void,
+): boolean {
+    if (
+        unguarded ||
+        tables.length === 0 ||
+        !closeGuard?.(connectionId, tables, () => {
+            unguarded = true;
+            try {
+                run();
+            } finally {
+                unguarded = false;
+            }
+        })
+    ) {
+        run();
+        return true;
+    }
+    return false;
+}
+
+/** The tables shown by tabs of `before` that are not kept, and by none that are. */
+function lastViewsClosed(before: BrowseTab[], kept: BrowseTab[]): string[] {
+    const left = new Set(kept.filter(isTable).map((t) => t.table));
+    return [
+        ...new Set(
+            before
+                .filter((t): t is TableTab => isTable(t) && !kept.includes(t))
+                .map((t) => t.table),
+        ),
+    ].filter((t) => !left.has(t));
+}
+
 /** After removing tabs, the active one is kept if it survives, else its right neighbour, else its left. */
 function afterRemoval(
     before: BrowseTab[],
@@ -480,6 +535,22 @@ export const useBrowse = create<State>()(
             const remove = (
                 connectionId: number,
                 keep: (t: BrowseTab, i: number) => boolean,
+            ) => {
+                const before = current(connectionId).tabs;
+                const kept = before.filter(
+                    (t, i) => t.kind === 'universe' || keep(t, i),
+                );
+                // By id: a close held by the guard closes the tabs chosen now, even if tabs moved or opened meanwhile.
+                const ids = new Set(
+                    before.filter((t) => !kept.includes(t)).map((t) => t.id),
+                );
+                guarded(connectionId, lastViewsClosed(before, kept), () =>
+                    removeNow(connectionId, (t) => !ids.has(t.id)),
+                );
+            };
+            const removeNow = (
+                connectionId: number,
+                keep: (t: BrowseTab, i: number) => boolean,
             ) =>
                 update(connectionId, (c) => {
                     const tabs = c.tabs.filter(
@@ -511,80 +582,122 @@ export const useBrowse = create<State>()(
                 return id;
             };
 
+            const openNow = (
+                connectionId: number,
+                table: string,
+                opts: Parameters<Actions['openTable']>[2] = {},
+            ): string => {
+                const mode = opts.mode ?? 'preview';
+                let id = '';
+                update(connectionId, (c) => {
+                    const recents = [
+                        table,
+                        ...c.recents.filter((r) => r !== table),
+                    ].slice(0, MAX_RECENTS);
+                    const existing = latestOf(c.tabs, table);
+                    id = existing?.id ?? newTabId();
+                    let tabs: BrowseTab[];
+                    if (existing) {
+                        tabs = c.tabs.map((t) =>
+                            t.id === id && t.kind === 'table'
+                                ? {
+                                      ...t,
+                                      preview: t.preview && mode === 'preview',
+                                      state: !opts.state
+                                          ? t.state
+                                          : opts.merge
+                                            ? { ...t.state, ...opts.state }
+                                            : {
+                                                  ...defaultState(
+                                                      t.state.perPage,
+                                                  ),
+                                                  ...opts.state,
+                                              },
+                                  }
+                                : t,
+                        );
+                    } else {
+                        const tab: TableTab = {
+                            id,
+                            kind: 'table',
+                            table,
+                            ordinal: nextOrdinal(c.tabs, table),
+                            activatedAt: nextStamp(c.tabs),
+                            preview: mode === 'preview',
+                            state: {
+                                ...defaultState(c.perPage),
+                                ...opts.state,
+                            },
+                        };
+                        const previewIndex =
+                            mode === 'preview'
+                                ? c.tabs.findIndex(
+                                      (t) => t.kind === 'table' && t.preview,
+                                  )
+                                : -1;
+                        if (previewIndex >= 0) {
+                            // The replaced preview is gone, like a closed tab: its rows would only hold an LRU slot.
+                            rowsCache.delete(
+                                `${connectionId}:${c.tabs[previewIndex].id}`,
+                            );
+                            tabs = c.tabs.map((t, i) =>
+                                i === previewIndex ? tab : t,
+                            );
+                        } else {
+                            const activeIndex = c.tabs.findIndex(
+                                (t) => t.id === c.activeId,
+                            );
+                            tabs = [...c.tabs];
+                            tabs.splice(activeIndex + 1, 0, tab);
+                        }
+                    }
+                    const next = { ...c, tabs, recents };
+                    return mode === 'background' ? next : focus(next, id);
+                });
+                return id;
+            };
+
             return {
                 byConnection: {},
                 get: current,
                 openTable: (connectionId, table, opts = {}) => {
-                    const mode = opts.mode ?? 'preview';
+                    // A preview that replaces the last view of its table closes that view.
+                    const c = current(connectionId);
+                    const replaced =
+                        (opts.mode ?? 'preview') === 'preview' &&
+                        !latestOf(c.tabs, table)
+                            ? c.tabs.find(
+                                  (t): t is TableTab => isTable(t) && t.preview,
+                              )
+                            : undefined;
+                    const closing =
+                        replaced &&
+                        !c.tabs.some(
+                            (t) =>
+                                isTable(t) &&
+                                t !== replaced &&
+                                t.table === replaced.table,
+                        )
+                            ? [replaced.table]
+                            : [];
                     let id = '';
-                    update(connectionId, (c) => {
-                        const recents = [
-                            table,
-                            ...c.recents.filter((r) => r !== table),
-                        ].slice(0, MAX_RECENTS);
-                        const existing = latestOf(c.tabs, table);
-                        id = existing?.id ?? newTabId();
-                        let tabs: BrowseTab[];
-                        if (existing) {
-                            tabs = c.tabs.map((t) =>
-                                t.id === id && t.kind === 'table'
-                                    ? {
-                                          ...t,
-                                          preview:
-                                              t.preview && mode === 'preview',
-                                          state: !opts.state
-                                              ? t.state
-                                              : opts.merge
-                                                ? { ...t.state, ...opts.state }
-                                                : {
-                                                      ...defaultState(
-                                                          t.state.perPage,
-                                                      ),
-                                                      ...opts.state,
-                                                  },
-                                      }
-                                    : t,
-                            );
-                        } else {
-                            const tab: TableTab = {
-                                id,
-                                kind: 'table',
-                                table,
-                                ordinal: nextOrdinal(c.tabs, table),
-                                activatedAt: nextStamp(c.tabs),
-                                preview: mode === 'preview',
-                                state: {
-                                    ...defaultState(c.perPage),
-                                    ...opts.state,
-                                },
-                            };
-                            const previewIndex =
-                                mode === 'preview'
-                                    ? c.tabs.findIndex(
-                                          (t) =>
-                                              t.kind === 'table' && t.preview,
-                                      )
-                                    : -1;
-                            if (previewIndex >= 0) {
-                                // The replaced preview is gone, like a closed tab: its rows would only hold an LRU slot.
-                                rowsCache.delete(
-                                    `${connectionId}:${c.tabs[previewIndex].id}`,
-                                );
-                                tabs = c.tabs.map((t, i) =>
-                                    i === previewIndex ? tab : t,
-                                );
-                            } else {
-                                const activeIndex = c.tabs.findIndex(
-                                    (t) => t.id === c.activeId,
-                                );
-                                tabs = [...c.tabs];
-                                tabs.splice(activeIndex + 1, 0, tab);
-                            }
-                        }
-                        const next = { ...c, tabs, recents };
-                        return mode === 'background' ? next : focus(next, id);
+                    const ran = guarded(connectionId, closing, () => {
+                        // Held, then the preview went or changed meanwhile: the replacement asked about is moot.
+                        if (
+                            unguarded &&
+                            replaced &&
+                            !current(connectionId).tabs.some(
+                                (t) =>
+                                    t.id === replaced.id &&
+                                    isTable(t) &&
+                                    t.preview &&
+                                    t.table === replaced.table,
+                            )
+                        )
+                            return;
+                        id = openNow(connectionId, table, opts);
                     });
-                    return id;
+                    return ran ? id : '';
                 },
                 duplicateTab: (connectionId, id) => {
                     const source = current(connectionId).tabs.find(

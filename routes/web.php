@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\PinController;
 use App\Http\Controllers\Api\QueryController;
 use App\Http\Controllers\Api\RecordController;
 use App\Http\Controllers\Api\SchemaController;
+use App\Http\Controllers\Api\TableChangesController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\TableCountController;
 use App\Http\Controllers\Api\TableRowsController;
@@ -44,6 +45,7 @@ Route::middleware('auth')->group(function () {
         Route::get('tables/{table}/ddl', [TableController::class, 'ddl'])->where('table', '.+')->name('tables.ddl');
         Route::post('tables/{table}/rows', TableRowsController::class)->where('table', '.+')->name('tables.rows');
         Route::post('tables/{table}/count', TableCountController::class)->where('table', '.+')->name('tables.count');
+        Route::post('tables/{table}/changes', TableChangesController::class)->where('table', '.+')->name('tables.changes');
         Route::post('query', [QueryController::class, 'run'])->name('query.run');
         Route::post('query/explain', [QueryController::class, 'explain'])->name('query.explain');
         Route::get('history', [HistoryController::class, 'index'])->name('history.index');

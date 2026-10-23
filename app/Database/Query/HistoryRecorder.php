@@ -4,10 +4,28 @@ namespace App\Database\Query;
 
 use App\Database\Sql\SqlRedactor;
 use App\Models\SavedConnection;
+use Throwable;
 
 final class HistoryRecorder
 {
     public const MAX_SQL = 100_000;
+
+    /**
+     * Records each result in order. History is best effort: a failure is reported, never thrown, so it can't hide
+     * results (or undo a commit) the user already has.
+     *
+     * @param  list<StatementResult>  $results
+     */
+    public function recordAll(SavedConnection $connection, array $results): void
+    {
+        foreach ($results as $result) {
+            try {
+                $this->record($connection, $result);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
+    }
 
     public function record(SavedConnection $connection, StatementResult $result): void
     {

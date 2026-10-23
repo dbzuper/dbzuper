@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Database\ConnectionFactory;
 use App\Database\DriverRegistry;
+use App\Database\Editing\EditPlanCache;
 use App\Database\Errors\DbErrorMapper;
 use App\Database\Exceptions\DatabaseOperationFailed;
 use App\Database\Query\TableRowsQuery;
@@ -19,10 +20,11 @@ use Throwable;
 
 class TableRowsController extends Controller
 {
-    public function __invoke(TableRowsRequest $request, SavedConnection $connection, string $table, SnapshotService $snapshots, ConnectionFactory $factory, DriverRegistry $drivers, DbErrorMapper $errors): JsonResponse
+    public function __invoke(TableRowsRequest $request, SavedConnection $connection, string $table, SnapshotService $snapshots, ConnectionFactory $factory, DriverRegistry $drivers, DbErrorMapper $errors, EditPlanCache $plans): JsonResponse
     {
         Gate::authorize('view', $connection);
-        $info = collect($snapshots->current($connection)->payload['tables'] ?? [])->firstWhere('name', $table);
+        $snapshot = $snapshots->current($connection);
+        $info = collect($snapshot->payload['tables'] ?? [])->firstWhere('name', $table);
         abort_if($info === null, 404);
 
         $names = array_column($info['columns'], 'name');
@@ -42,7 +44,11 @@ class TableRowsController extends Controller
         $perPage = (int) $request->validated('per_page', 100);
 
         try {
-            $data = $factory->using($connection, fn (Connection $db) => TableRowsQuery::run($db, $drivers->for($connection->driver), $info, $filters, $sort, $page, $perPage), (int) config('dbsuperb.query_timeout'));
+            $data = $factory->using($connection, function (Connection $db) use ($connection, $snapshot, $drivers, $info, $filters, $sort, $page, $perPage, $plans) {
+                $plan = $plans->for($connection, $snapshot, $info, $db);
+
+                return TableRowsQuery::run($db, $drivers->for($connection->driver), $info, $filters, $sort, $page, $perPage, $plan);
+            }, (int) config('dbsuperb.query_timeout'));
         } catch (Throwable $e) {
             throw new DatabaseOperationFailed($errors->map($e));
         }

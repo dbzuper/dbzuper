@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     filterSummary,
     flushBrowse,
     latestTableTab,
+    setCloseGuard,
     tabTitle,
     type TableTab,
     type TableTabState,
@@ -834,5 +835,91 @@ describe('fix round 1', () => {
         expect(second).not.toBe(first);
         expect(rowsCache.get(`${C}:${first}`)).toBeUndefined();
         expect(rowsCache.get(`${C}:${keep}`)).toBeDefined();
+    });
+});
+
+describe('close guard (pending changes, spec §4.4)', () => {
+    const held: { tables: string[]; proceed: () => void }[] = [];
+    const guard = vi.fn((_c: number, tables: string[], proceed: () => void) => {
+        held.push({ tables, proceed });
+        return true;
+    });
+    beforeEach(() => {
+        held.length = 0;
+        guard.mockClear();
+        setCloseGuard(guard);
+    });
+    afterEach(() => setCloseGuard(null));
+
+    it('holds closing the last view of a table until the guard proceeds', () => {
+        st().openTable(C, 'orders', { mode: 'permanent' });
+        const id = tableTabId('orders');
+        st().closeTab(C, id);
+        expect(guard).toHaveBeenCalledWith(C, ['orders'], expect.any(Function));
+        expect(tabs()).toContain(id);
+        held[0].proceed();
+        expect(tabs()).not.toContain(id);
+    });
+
+    it('never asks when another view of the table stays open, nor for the records tab', () => {
+        st().openTable(C, 'orders', { mode: 'permanent' });
+        st().openNewView(C, 'orders');
+        st().showRecords(C, 'Records');
+        st().closeTab(C, tableTabId('orders', 2));
+        st().closeRecords(C);
+        expect(guard).not.toHaveBeenCalled();
+        expect(tableTabs().map((t) => t.ordinal)).toEqual([1]);
+    });
+
+    it('asks for close others, close to the right and close all', () => {
+        st().openTable(C, 'orders', { mode: 'permanent' });
+        st().openTable(C, 'users', { mode: 'permanent' });
+        st().closeOthers(C, tableTabId('users'));
+        expect(held.at(-1)?.tables).toEqual(['orders']);
+        st().closeRight(C, 'universe');
+        expect(held.at(-1)?.tables).toEqual(['orders', 'users']);
+        st().closeAll(C);
+        expect(held.at(-1)?.tables).toEqual(['orders', 'users']);
+        expect(tableTabs()).toHaveLength(2);
+        held.at(-1)!.proceed();
+        expect(tableTabs()).toHaveLength(0);
+    });
+
+    it('asks before a preview replaces the last view of a table', () => {
+        st().openTable(C, 'orders');
+        const id = st().openTable(C, 'users');
+        expect(held[0].tables).toEqual(['orders']);
+        expect(id).toBe('');
+        expect(tableTabs().map((t) => t.table)).toEqual(['orders']);
+        held[0].proceed();
+        expect(tableTabs().map((t) => t.table)).toEqual(['users']);
+        expect(active()).toBe(tableTabId('users'));
+    });
+
+    it('closes the tabs that were chosen when a held close goes ahead after tabs changed', () => {
+        st().openTable(C, 'orders', { mode: 'permanent' });
+        st().openTable(C, 'users', { mode: 'permanent' });
+        st().closeRight(C, tableTabId('orders'));
+        expect(held[0].tables).toEqual(['users']);
+        // Meanwhile (back/forward) another tab opens to the right of `orders`.
+        st().activate(C, tableTabId('orders'));
+        st().openTable(C, 'items', { mode: 'permanent' });
+        held[0].proceed();
+        expect(tableTabs().map((t) => t.table)).toEqual(['orders', 'items']);
+    });
+
+    it('drops a held preview replacement whose preview went meanwhile', () => {
+        st().openTable(C, 'orders');
+        st().openTable(C, 'users');
+        st().promote(C, tableTabId('orders'));
+        held[0].proceed();
+        expect(tableTabs().map((t) => t.table)).toEqual(['orders']);
+    });
+
+    it('closes at once when the guard lets it', () => {
+        setCloseGuard(() => false);
+        st().openTable(C, 'orders', { mode: 'permanent' });
+        st().closeTab(C, tableTabId('orders'));
+        expect(tableTabs()).toHaveLength(0);
     });
 });

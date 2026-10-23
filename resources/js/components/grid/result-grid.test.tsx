@@ -1,8 +1,19 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import {
+    act,
+    cleanup,
+    fireEvent,
+    render,
+    screen,
+    within,
+} from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushBrowse, useBrowse } from '@/browse/browse-store';
+import { dispatchBrowseKey } from '@/browse/key-dispatch';
+import { refOf, usePending } from '@/editing/pending-store';
+import { useReview } from '@/editing/review-store';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import type { QueryCell, QueryColumn } from '@/types/schema';
-import { CellView, ResultGrid } from './result-grid';
+import { CellView, ResultGrid, type GridEditing } from './result-grid';
 
 const columns: QueryColumn[] = [
     { name: 'id', type: 'int', table: 'orders' },
@@ -586,5 +597,504 @@ describe('cell titles', () => {
             'title',
             'hello',
         );
+    });
+});
+
+describe('editing', () => {
+    const editColumns: QueryColumn[] = [
+        { name: 'name', type: 'text', table: 'users' },
+        { name: 'id', type: 'integer', table: 'users' },
+    ];
+    const tableColumns = [
+        {
+            name: 'name',
+            type: 'text',
+            type_name: 'text',
+            nullable: false,
+            default: null,
+            auto_increment: false,
+            comment: null,
+        },
+        {
+            name: 'id',
+            type: 'integer',
+            type_name: 'integer',
+            nullable: false,
+            default: null,
+            auto_increment: true,
+            comment: null,
+        },
+    ];
+    const editRows: QueryCell[][] = [
+        ['Ada', 1],
+        ['Grace', 2],
+        ['Linus', 3],
+    ];
+    const editing = (over: Partial<GridEditing> = {}): GridEditing => ({
+        connectionId: 1,
+        table: 'users',
+        dialect: 'pgsql',
+        rowIds: [{ key: { id: 1 } }, { key: { id: 2 } }, null],
+        locked: [[], [0], []],
+        shortened: [[], [0], []],
+        readOnlyColumns: [],
+        rowReason: null,
+        tableColumns,
+        ...over,
+    });
+    const pending = () => usePending.getState().byTable['1:users'] ?? {};
+    const ref1 = refOf({ key: { id: 1 } });
+    const renderGrid = (
+        props: Partial<Parameters<typeof ResultGrid>[0]> = {},
+    ) =>
+        render(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid
+                    columns={editColumns}
+                    rows={editRows}
+                    rowMenu={{ dialect: 'pgsql', table: 'users' }}
+                    editing={editing()}
+                    {...props}
+                />
+            </div>,
+        );
+    const cell = (text: string | RegExp) =>
+        screen.getByRole('gridcell', { name: text });
+    const edit = (text: string | RegExp) => {
+        fireEvent.doubleClick(cell(text));
+        return screen.getByRole('textbox');
+    };
+
+    beforeEach(() => usePending.setState({ byTable: {}, errors: {} }));
+
+    it('stages an edit on Enter and shows it as edited with the original in its tooltip', () => {
+        renderGrid();
+        const input = edit('Ada');
+        expect(input).toHaveValue('Ada');
+        fireEvent.change(input, { target: { value: 'Ada L.' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(pending()[ref1]).toMatchObject({
+            kind: 'update',
+            original: { name: 'Ada', id: 1 },
+            values: { name: 'Ada L.' },
+        });
+        const edited = cell(/Ada L\./);
+        expect(edited).toHaveClass('rdg-cell-edited');
+        expect(edited).toHaveTextContent('edited');
+        expect(edited.querySelector('[data-edited]')).toHaveAttribute(
+            'title',
+            'Original: Ada',
+        );
+    });
+
+    it('stages the open editor’s draft before Ctrl+S opens Review, so the preview includes it', () => {
+        flushBrowse();
+        useBrowse.setState({ byConnection: {} });
+        useBrowse.getState().openTable(1, 'users', { mode: 'permanent' });
+        useReview.setState({ open: null, nonce: 0 });
+        renderGrid();
+        const input = edit('Ada');
+        fireEvent.change(input, { target: { value: 'Ada L.' } });
+        // Nothing staged yet: the draft lives in the editor.
+        expect(pending()).toEqual({});
+        const e = new KeyboardEvent('keydown', {
+            key: 's',
+            ctrlKey: true,
+            cancelable: true,
+        });
+        act(() => {
+            dispatchBrowseKey(e, 1, true);
+        });
+        expect(pending()[ref1]).toMatchObject({ values: { name: 'Ada L.' } });
+        expect(useReview.getState().open).toEqual({
+            connectionId: 1,
+            table: 'users',
+        });
+        expect(screen.queryByRole('textbox')).toBeNull();
+    });
+
+    it('opens the editor from the keyboard with Enter and F2', () => {
+        renderGrid();
+        fireEvent.mouseDown(cell('Ada'));
+        fireEvent.keyDown(cell('Ada'), { key: 'Enter' });
+        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+        expect(screen.queryByRole('textbox')).toBeNull();
+        fireEvent.keyDown(cell('Ada'), { key: 'F2' });
+        expect(screen.getByRole('textbox')).toHaveValue('Ada');
+        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+        // Typing a character doesn't open an editor that would drop it.
+        fireEvent.keyDown(cell('Ada'), { key: 'x' });
+        expect(screen.queryByRole('textbox')).toBeNull();
+    });
+
+    it('cancels on Escape', () => {
+        renderGrid();
+        const input = edit('Ada');
+        fireEvent.change(input, { target: { value: 'nope' } });
+        fireEvent.keyDown(input, { key: 'Escape' });
+        expect(screen.queryByRole('textbox')).toBeNull();
+        expect(pending()).toEqual({});
+        expect(cell('Ada')).toBeInTheDocument();
+    });
+
+    it('keeps the value on Tab and moves to the next cell', () => {
+        renderGrid();
+        const input = edit('Ada');
+        fireEvent.change(input, { target: { value: 'Ada L.' } });
+        fireEvent.keyDown(input, { key: 'Tab' });
+        expect(pending()[ref1]).toMatchObject({ values: { name: 'Ada L.' } });
+        expect(screen.queryByRole('textbox')).toBeNull();
+        const active = screen
+            .getAllByRole('gridcell')
+            .find((c) => c.getAttribute('aria-selected') === 'true');
+        expect(active).toHaveTextContent('1');
+    });
+
+    it("doesn't edit a locked cell or a row that can't be pinned, and says why", () => {
+        renderGrid();
+        fireEvent.doubleClick(cell(/^Grace/));
+        expect(screen.queryByRole('textbox')).toBeNull();
+        expect(cell(/^Grace/).querySelector('[data-locked]')).toHaveAttribute(
+            'title',
+            'Not editable: shortened for display',
+        );
+        fireEvent.doubleClick(cell(/^Linus/));
+        expect(screen.queryByRole('textbox')).toBeNull();
+        expect(
+            cell(/^Linus/)
+                .querySelector('[data-locked]')
+                ?.getAttribute('title'),
+        ).toMatch(/^Not editable: this row can't be pinned/);
+    });
+
+    it('names generated and binary columns as the reason', () => {
+        renderGrid({
+            columns: [{ name: 'total', type: 'bytea', table: 'users' }],
+            rows: [[5], ['[binary 3 bytes]']],
+            editing: editing({
+                tableColumns: [],
+                rowIds: [{ key: { id: 1 } }, { key: { id: 2 } }],
+                locked: [[0], [0]],
+                shortened: [[], [0]],
+                readOnlyColumns: [],
+            }),
+        });
+        expect(cell(/^5/).querySelector('[data-locked]')).toHaveAttribute(
+            'title',
+            'Not editable: binary',
+        );
+        cleanup();
+        renderGrid({
+            columns: [{ name: 'total', type: 'integer', table: 'users' }],
+            rows: [[5]],
+            editing: editing({
+                tableColumns: [],
+                rowIds: [{ key: { id: 1 } }],
+                locked: [[0]],
+                shortened: [[]],
+                readOnlyColumns: ['total'],
+            }),
+        });
+        expect(cell(/^5/).querySelector('[data-locked]')).toHaveAttribute(
+            'title',
+            'Not editable: generated column',
+        );
+    });
+
+    it('is not editable without editing (method none, read-only connection, SQL results)', () => {
+        renderGrid({ editing: undefined });
+        fireEvent.doubleClick(cell('Ada'));
+        expect(screen.queryByRole('textbox')).toBeNull();
+        expect(cell('Ada')).toHaveAttribute('aria-readonly', 'true');
+    });
+
+    it('sets NULL and reverts a change from the cell menu', async () => {
+        renderGrid();
+        fireEvent.contextMenu(cell('Ada'));
+        fireEvent.click(
+            await screen.findByRole('menuitem', { name: 'Set NULL' }),
+        );
+        expect(pending()[ref1]).toMatchObject({ values: { name: null } });
+        fireEvent.keyDown(document.body, { key: 'Escape' });
+        fireEvent.contextMenu(cell(/NULL/));
+        fireEvent.click(
+            await screen.findByRole('menuitem', { name: 'Revert change' }),
+        );
+        expect(pending()).toEqual({});
+    });
+
+    it('marks the selected rows for deletion with the Delete key, and restores them', async () => {
+        renderGrid();
+        fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select' })[0]);
+        fireEvent.mouseDown(cell(/^Grace/));
+        fireEvent.keyDown(cell(/^Grace/), { key: 'Delete' });
+        expect(screen.queryByRole('textbox')).toBeNull();
+        // The selected row, not the active one.
+        expect(Object.keys(pending())).toEqual([ref1]);
+        expect(pending()[ref1]).toMatchObject({ kind: 'delete' });
+        const row = cell(/Ada/).closest('[role="row"]')!;
+        expect(row).toHaveClass('rdg-row-deleted');
+        expect(row).toHaveTextContent('deleted');
+        // A row marked for deletion isn't edited.
+        fireEvent.doubleClick(cell(/Ada/));
+        expect(screen.queryByRole('textbox')).toBeNull();
+        fireEvent.contextMenu(cell(/Ada/));
+        fireEvent.click(
+            await screen.findByRole('menuitem', { name: 'Restore row' }),
+        );
+        expect(pending()).toEqual({});
+    });
+
+    it('marks two of three identical key-less rows as two deletions', () => {
+        const dup = { values: { name: 'Same', id: 7 } };
+        renderGrid({
+            rows: [
+                ['Same', 7],
+                ['Same', 7],
+                ['Same', 7],
+            ],
+            editing: editing({
+                dialect: 'mysql',
+                rowIds: [dup, dup, dup],
+                locked: [[], [], []],
+                shortened: [[], [], []],
+            }),
+        });
+        const boxes = screen.getAllByRole('checkbox', { name: 'Select' });
+        fireEvent.click(boxes[0]);
+        fireEvent.click(boxes[2]);
+        const first = screen.getAllByRole('gridcell', { name: /^Same/ })[0];
+        fireEvent.mouseDown(first);
+        fireEvent.keyDown(first, { key: 'Delete' });
+        expect(usePending.getState().count(1, 'users')).toEqual({
+            inserted: 0,
+            updated: 0,
+            deleted: 2,
+        });
+        const rowsShown = screen
+            .getAllByRole('gridcell', { name: /^Same/ })
+            .map((c) => c.closest('[role="row"]')!);
+        expect(
+            rowsShown.map((r) => r.classList.contains('rdg-row-deleted')),
+        ).toEqual([true, false, true]);
+    });
+
+    it('outlines a row whose change failed to commit, with the error in its tooltip, until it is edited', () => {
+        renderGrid();
+        act(() => {
+            usePending.getState().markDelete(1, 'users', {
+                ref: ref1,
+                id: { key: { id: 1 } },
+                original: {},
+            });
+            usePending.getState().setErrors(1, 'users', {
+                [ref1]: 'row changed since you loaded it',
+            });
+        });
+        const row = cell(/Ada/).closest('[role="row"]')!;
+        expect(row).toHaveClass('rdg-row-error');
+        expect(
+            row.querySelector('[title*="row changed since you loaded it"]'),
+        ).not.toBeNull();
+        expect(row).toHaveTextContent('row changed since you loaded it');
+        act(() => usePending.getState().unmarkDelete(1, 'users', ref1));
+        expect(cell(/Ada/).closest('[role="row"]')).not.toHaveClass(
+            'rdg-row-error',
+        );
+    });
+
+    it('marks the active row with Delete when nothing is selected', () => {
+        renderGrid();
+        fireEvent.mouseDown(cell('Ada'));
+        fireEvent.keyDown(cell('Ada'), { key: 'Delete' });
+        expect(pending()[ref1]).toMatchObject({ kind: 'delete' });
+    });
+
+    it('deletes a row from the row menu', async () => {
+        renderGrid();
+        fireEvent.contextMenu(cell('Ada'));
+        fireEvent.click(
+            await screen.findByRole('menuitem', { name: 'Delete row' }),
+        );
+        expect(pending()[ref1]).toMatchObject({ kind: 'delete' });
+    });
+
+    it('shows new rows at the top with default placeholders and flags required columns', () => {
+        const ref = usePending.getState().addRow(1, 'users');
+        renderGrid();
+        const first = screen.getAllByRole('row')[1];
+        expect(first).toHaveClass('rdg-row-new');
+        expect(first).toHaveTextContent('new row');
+        // `name` is NOT NULL without a default.
+        expect(first).toHaveTextContent('required');
+        const input = edit(/required/);
+        expect(input).toHaveValue('');
+        fireEvent.change(input, { target: { value: 'New' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(pending()[ref]).toEqual({
+            kind: 'insert',
+            ref,
+            values: { name: 'New' },
+        });
+    });
+
+    it('edits booleans with a checkbox, stored as the engine writes them', () => {
+        renderGrid({
+            columns: [{ name: 'active', type: 'boolean', table: 'users' }],
+            rows: [[true], [false]],
+            editing: editing({
+                dialect: 'mysql',
+                tableColumns: [],
+                rowIds: [{ key: { id: 1 } }, { key: { id: 2 } }],
+                locked: [[], []],
+                shortened: [[], []],
+            }),
+        });
+        fireEvent.doubleClick(
+            screen.getAllByRole('gridcell', { name: /true/ })[0],
+        );
+        const box = screen.getByRole('checkbox', { name: 'active' });
+        expect(box).toBeChecked();
+        fireEvent.click(box);
+        fireEvent.keyDown(box, { key: 'Enter' });
+        expect(pending()[ref1]).toMatchObject({ values: { active: '0' } });
+    });
+
+    it('validates JSON before staging it', () => {
+        renderGrid({
+            columns: [{ name: 'meta', type: 'jsonb', table: 'users' }],
+            rows: [['{"a":1}'], ['{}']],
+            editing: editing({
+                tableColumns: [],
+                rowIds: [{ key: { id: 1 } }, { key: { id: 2 } }],
+                locked: [[], []],
+                shortened: [[], []],
+            }),
+        });
+        const input = edit(/"a":1/);
+        fireEvent.change(input, { target: { value: '{"a":' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(screen.getByRole('textbox')).toHaveAttribute(
+            'aria-invalid',
+            'true',
+        );
+        expect(screen.getByRole('alert')).toHaveTextContent(/Invalid JSON/);
+        expect(pending()).toEqual({});
+        fireEvent.change(screen.getByRole('textbox'), {
+            target: { value: '{"a":2}' },
+        });
+        fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+        expect(pending()[ref1]).toMatchObject({ values: { meta: '{"a":2}' } });
+    });
+
+    it('announces why a cell is locked, not only in its tooltip', () => {
+        renderGrid();
+        expect(cell(/^Grace/)).toHaveAccessibleName(
+            /Not editable: shortened for display/,
+        );
+    });
+
+    it('never edits a multi-line value inline (an input would join its lines)', () => {
+        renderGrid({
+            rows: [
+                ['line1\nline2', 1],
+                ['b\r\nc', 2],
+            ],
+        });
+        const multi = screen.getAllByRole('gridcell', { name: /line1/ })[0];
+        fireEvent.doubleClick(multi);
+        expect(screen.queryByRole('textbox')).toBeNull();
+        fireEvent.mouseDown(multi);
+        fireEvent.keyDown(multi, { key: 'Enter' });
+        expect(screen.queryByRole('textbox')).toBeNull();
+        expect(multi.querySelector('[data-locked]')).toHaveAttribute(
+            'title',
+            'Multi-line value: edit it in the row drawer',
+        );
+        expect(pending()).toEqual({});
+    });
+
+    it('keeps a selected new row selected when an older new row goes', async () => {
+        const store = usePending.getState();
+        const a = store.addRow(1, 'users');
+        const b = store.addRow(1, 'users');
+        const c = store.addRow(1, 'users');
+        renderGrid();
+        // Newest first: c, b, a.
+        const boxes = () => screen.getAllByRole('checkbox', { name: 'Select' });
+        fireEvent.click(boxes()[1]);
+        const rowOf = (i: number) => screen.getAllByRole('row')[i + 1];
+        // Remove a (the oldest, third row) from its menu.
+        fireEvent.contextMenu(
+            within(rowOf(2)).getAllByRole('gridcell').at(-1)!,
+        );
+        fireEvent.click(
+            await screen.findByRole('menuitem', { name: 'Delete row' }),
+        );
+        expect(Object.keys(pending())).toEqual([b, c]);
+        fireEvent.keyDown(document.body, { key: 'Escape' });
+        expect(boxes()[0]).not.toBeChecked();
+        expect(boxes()[1]).toBeChecked();
+        // Delete now removes b, the row still selected, never c.
+        const cCell = within(rowOf(0)).getAllByRole('gridcell').at(-1)!;
+        fireEvent.mouseDown(cCell);
+        fireEvent.keyDown(cCell, { key: 'Delete' });
+        expect(Object.keys(pending())).toEqual([c]);
+        expect(a).not.toBe(b);
+    });
+
+    it('shows an edit staged before a refetch on the same row afterwards, with its first original', () => {
+        const { rerender } = renderGrid();
+        const input = edit('Ada');
+        fireEvent.change(input, { target: { value: 'Ada L.' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        // Another page or sort: the row with id 1 comes back third, loaded with a newer value.
+        rerender(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid
+                    columns={editColumns}
+                    rows={[
+                        ['Grace', 2],
+                        ['Linus', 3],
+                        ['Ada (new)', 1],
+                    ]}
+                    rowMenu={{ dialect: 'pgsql', table: 'users' }}
+                    editing={editing({
+                        rowIds: [
+                            { key: { id: 2 } },
+                            { key: { id: 3 } },
+                            { key: { id: 1 } },
+                        ],
+                        locked: [[], [], []],
+                        shortened: [[], [], []],
+                    })}
+                />
+            </div>,
+        );
+        const edited = cell(/Ada L\./);
+        expect(edited.closest('[role="row"]')).toBe(
+            screen.getAllByRole('row')[3],
+        );
+        expect(edited.querySelector('[data-edited]')).toHaveAttribute(
+            'title',
+            'Original: Ada',
+        );
+    });
+
+    it('stages an edit of a key column under the row’s original identity', () => {
+        renderGrid({
+            columns: [editColumns[1], editColumns[0]],
+            rows: editRows.map(([name, id]) => [id, name]),
+        });
+        const input = edit('1');
+        fireEvent.change(input, { target: { value: '10' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(pending()).toEqual({
+            [ref1]: expect.objectContaining({
+                id: { key: { id: 1 } },
+                original: { id: 1, name: 'Ada' },
+                values: { id: '10' },
+            }),
+        });
     });
 });

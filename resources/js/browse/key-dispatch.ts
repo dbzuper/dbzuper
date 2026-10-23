@@ -1,5 +1,8 @@
 import { TABLE_FILTER_ID } from '@/components/browse/data-view';
 import { SIDEBAR_SEARCH_ID } from '@/components/browse/table-sidebar';
+import { flushOpenEdits } from '@/editing/flush-edits';
+import { usePending } from '@/editing/pending-store';
+import { useReview } from '@/editing/review-store';
 import { modalOpen, togglePalette } from '@/lib/workspace-shortcuts';
 import { useBrowse } from './browse-store';
 import { browseKeyAction, isTypingTarget } from './shortcuts';
@@ -47,6 +50,20 @@ export function dispatchBrowseKey(
                 browse.closeRecords(connectionId);
             else if (current.activeId !== 'universe')
                 browse.closeTab(connectionId, current.activeId);
+            break;
+        }
+        case 'review': {
+            // Focus in the SQL editor is not focus in the table tab.
+            if (e.repeat || document.activeElement?.closest('.monaco-editor'))
+                break;
+            const current = browse.get(connectionId);
+            const tab = current.tabs.find((t) => t.id === current.activeId);
+            if (tab?.kind !== 'table') break;
+            // A draft in an open editor counts: it is staged before the preview is built.
+            flushOpenEdits();
+            const c = usePending.getState().count(connectionId, tab.table);
+            if (c.inserted + c.updated + c.deleted > 0)
+                useReview.getState().openReview(connectionId, tab.table);
             break;
         }
         case 'jumpTab':
