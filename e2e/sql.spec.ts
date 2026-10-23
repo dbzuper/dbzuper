@@ -111,11 +111,15 @@ test('records: entry points (result row, table tab row) and tables without a pri
     await expect(
         drawer.getByRole('heading', { name: 'users · 3' }),
     ).toBeVisible();
-    const dockTop = (await dock.boundingBox())!.y;
-    for (const control of [drawer, page.getByLabel('Rows per page')]) {
-        const box = (await control.boundingBox())!;
-        expect(box.y + box.height).toBeLessThanOrEqual(dockTop);
-    }
+    // The pager sits above the dock; the drawer runs full height in its own column beside it.
+    const dockBox = (await dock.boundingBox())!;
+    const pagerBox = (await page.getByLabel('Rows per page').boundingBox())!;
+    expect(pagerBox.y + pagerBox.height).toBeLessThanOrEqual(dockBox.y);
+    const drawerBox = (await drawer.boundingBox())!;
+    expect(drawerBox.x).toBeGreaterThanOrEqual(dockBox.x + dockBox.width - 1);
+    expect(drawerBox.y + drawerBox.height).toBeGreaterThanOrEqual(
+        dockBox.y + dockBox.height - 1,
+    );
     // The grid fills the space down to the pager (react-data-grid's own 350px default must not win).
     const fill = await panel
         .locator('.rdg-dbsuperb')

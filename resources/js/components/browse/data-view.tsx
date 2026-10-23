@@ -8,6 +8,7 @@ import {
     useRef,
     useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import type { SortColumn } from 'react-data-grid';
 import { toast } from 'sonner';
 import { create } from 'zustand';
@@ -59,6 +60,7 @@ import type {
     SchemaSnapshot,
     TableSchema,
 } from '@/types/schema';
+import { useDrawerSlot } from './drawer-slot';
 import { Pagination } from './pagination';
 import { RowDrawer, RowDrawerLoading, type DrawerMotion } from './row-drawer';
 
@@ -481,6 +483,7 @@ function DataViewBody({
         [update],
     );
     const gridArea = useRef<HTMLDivElement>(null);
+    const drawerSlot = useDrawerSlot();
     const closeDrawer = useCallback(() => {
         update({ drawerRow: null });
         // Focus goes back to the row that was open, else the grid itself.
@@ -588,6 +591,33 @@ function DataViewBody({
           ? 'Loading rows…'
           : 'No rows';
 
+    const drawer =
+        drawerRow !== null &&
+        (drawerRowData ? (
+            <RowDrawer
+                key={`${page}:${drawerRow}`}
+                connectionId={connectionId}
+                snapshot={snapshot}
+                table={table}
+                columns={recordColumns}
+                row={drawerRowData}
+                rowNumber={(page - 1) * perPage + drawerRow + 1}
+                motion={drawerMotion.kind}
+                onClose={closeDrawer}
+                onStep={onStep}
+                onOpenTable={onOpenTable}
+                onExplore={onExplore}
+                editing={editing}
+                rowIndex={drawerRow}
+                readOnly={readOnly}
+            />
+        ) : loading ? (
+            <RowDrawerLoading
+                motion={drawerMotion.kind}
+                onClose={closeDrawer}
+            />
+        ) : null);
+
     return (
         <div className="flex h-full min-h-0 flex-col">
             <FilterBar
@@ -655,31 +685,7 @@ function DataViewBody({
                         </p>
                     )}
                 </div>
-                {drawerRow !== null &&
-                    (drawerRowData ? (
-                        <RowDrawer
-                            key={`${page}:${drawerRow}`}
-                            connectionId={connectionId}
-                            snapshot={snapshot}
-                            table={table}
-                            columns={recordColumns}
-                            row={drawerRowData}
-                            rowNumber={(page - 1) * perPage + drawerRow + 1}
-                            motion={drawerMotion.kind}
-                            onClose={closeDrawer}
-                            onStep={onStep}
-                            onOpenTable={onOpenTable}
-                            onExplore={onExplore}
-                            editing={editing}
-                            rowIndex={drawerRow}
-                            readOnly={readOnly}
-                        />
-                    ) : loading ? (
-                        <RowDrawerLoading
-                            motion={drawerMotion.kind}
-                            onClose={closeDrawer}
-                        />
-                    ) : null)}
+                {drawerSlot ? createPortal(drawer, drawerSlot) : drawer}
             </div>
             {/* Pending changes belong to the table: changes on other pages or in other views count too. */}
             <PendingBar connectionId={connectionId} table={name} />

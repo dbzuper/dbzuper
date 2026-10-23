@@ -16,6 +16,7 @@ import { dispatchBrowseKey } from '@/browse/key-dispatch';
 import { useSidebarPrefs } from '@/browse/sidebar-prefs';
 import { makeTableActions } from '@/browse/table-actions';
 import { useBrowseUrl } from '@/browse/use-browse-url';
+import { DrawerSlotContext } from '@/components/browse/drawer-slot';
 import { panelDomId, TabBar, tabDomId } from '@/components/browse/tab-bar';
 import { TableSidebar } from '@/components/browse/table-sidebar';
 import { TableTabView } from '@/components/browse/table-tab';
@@ -75,6 +76,7 @@ export default function WorkspaceShow({
     connection: ConnectionSummary;
 }) {
     const [data, setData] = useState<SchemaResponse | null>(null);
+    const [drawerSlot, setDrawerSlot] = useState<HTMLDivElement | null>(null);
     const [saved, setSaved] = useState<LayoutPositionEntry[] | null>(null);
     const [error, setError] = useState<DbErrorPayload | null>(null);
     const [loading, setLoading] = useState(true);
@@ -450,109 +452,154 @@ export default function WorkspaceShow({
                         />
                     )}
 
-                    <div
-                        role={snapshot ? 'tabpanel' : undefined}
-                        id={snapshot ? panelDomId : undefined}
-                        aria-labelledby={
-                            snapshot ? tabDomId(active.id) : undefined
-                        }
-                        className="relative min-h-0 flex-1"
-                    >
-                        {!snapshot && loading && (
-                            <div className={centered}>Loading schema…</div>
-                        )}
+                    {/* The active table tab's row drawer is portalled into the column on the right, so it
+                        runs full height beside the tab panel and the SQL dock. */}
+                    <DrawerSlotContext value={drawerSlot}>
+                        <div className="flex min-h-0 flex-1">
+                            <div className="relative flex min-w-0 flex-1 flex-col">
+                                <div
+                                    role={snapshot ? 'tabpanel' : undefined}
+                                    id={snapshot ? panelDomId : undefined}
+                                    aria-labelledby={
+                                        snapshot
+                                            ? tabDomId(active.id)
+                                            : undefined
+                                    }
+                                    className="relative min-h-0 flex-1"
+                                >
+                                    {!snapshot && loading && (
+                                        <div className={centered}>
+                                            Loading schema…
+                                        </div>
+                                    )}
 
-                        {snapshot && !hasTables && onUniverse && (
-                            <div className={centered}>
-                                This database has no tables yet.
-                            </div>
-                        )}
+                                    {snapshot && !hasTables && onUniverse && (
+                                        <div className={centered}>
+                                            This database has no tables yet.
+                                        </div>
+                                    )}
 
-                        {hasTables && onUniverse && !universeAvailable && (
-                            <div className={centered}>
-                                {webgl
-                                    ? 'The universe could not be rendered. Browse tables from the sidebar.'
-                                    : 'WebGL is not available in this browser. Browse tables from the sidebar.'}
-                            </div>
-                        )}
+                                    {hasTables &&
+                                        onUniverse &&
+                                        !universeAvailable && (
+                                            <div className={centered}>
+                                                {webgl
+                                                    ? 'The universe could not be rendered. Browse tables from the sidebar.'
+                                                    : 'WebGL is not available in this browser. Browse tables from the sidebar.'}
+                                            </div>
+                                        )}
 
-                        {hasTables && universeAvailable && universeVisited && (
-                            <div hidden={!onUniverse} className="h-full">
-                                {model && status === 'ready' && (
-                                    <UniverseBoundary onError={onRenderError}>
+                                    {hasTables &&
+                                        universeAvailable &&
+                                        universeVisited && (
+                                            <div
+                                                hidden={!onUniverse}
+                                                className="h-full"
+                                            >
+                                                {model &&
+                                                    status === 'ready' && (
+                                                        <UniverseBoundary
+                                                            onError={
+                                                                onRenderError
+                                                            }
+                                                        >
+                                                            <Suspense
+                                                                fallback={
+                                                                    <div
+                                                                        className={
+                                                                            centered
+                                                                        }
+                                                                    >
+                                                                        Loading
+                                                                        universe…
+                                                                    </div>
+                                                                }
+                                                            >
+                                                                <UniverseCanvas
+                                                                    connectionId={
+                                                                        connection.id
+                                                                    }
+                                                                    model={
+                                                                        model
+                                                                    }
+                                                                    snapshot={
+                                                                        snapshot
+                                                                    }
+                                                                    onRelayout={
+                                                                        relayout
+                                                                    }
+                                                                    onPositionsChanged={
+                                                                        saveDrag
+                                                                    }
+                                                                    onError={
+                                                                        onRenderError
+                                                                    }
+                                                                />
+                                                            </Suspense>
+                                                        </UniverseBoundary>
+                                                    )}
+                                                {status === 'layout' && (
+                                                    <div className={centered}>
+                                                        Laying out{' '}
+                                                        {snapshot.tables.length.toLocaleString(
+                                                            'en',
+                                                        )}{' '}
+                                                        tables…
+                                                    </div>
+                                                )}
+                                                {status === 'error' && (
+                                                    <div
+                                                        role="alert"
+                                                        className="flex h-full items-center justify-center text-sm text-destructive"
+                                                    >
+                                                        Layout failed. Browse
+                                                        tables from the sidebar
+                                                        or refresh the schema.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                    {snapshot && active.kind === 'records' && (
                                         <Suspense
                                             fallback={
                                                 <div className={centered}>
-                                                    Loading universe…
+                                                    Loading records…
                                                 </div>
                                             }
                                         >
-                                            <UniverseCanvas
-                                                connectionId={connection.id}
-                                                model={model}
+                                            <RecordsView
+                                                connection={connection}
                                                 snapshot={snapshot}
-                                                onRelayout={relayout}
-                                                onPositionsChanged={saveDrag}
-                                                onError={onRenderError}
                                             />
                                         </Suspense>
-                                    </UniverseBoundary>
-                                )}
-                                {status === 'layout' && (
-                                    <div className={centered}>
-                                        Laying out{' '}
-                                        {snapshot.tables.length.toLocaleString(
-                                            'en',
-                                        )}{' '}
-                                        tables…
-                                    </div>
-                                )}
-                                {status === 'error' && (
-                                    <div
-                                        role="alert"
-                                        className="flex h-full items-center justify-center text-sm text-destructive"
-                                    >
-                                        Layout failed. Browse tables from the
-                                        sidebar or refresh the schema.
-                                    </div>
+                                    )}
+
+                                    {snapshot &&
+                                        actions &&
+                                        active.kind === 'table' && (
+                                            <TableTabView
+                                                key={active.id}
+                                                connection={connection}
+                                                snapshot={snapshot}
+                                                tab={active}
+                                                actions={actions}
+                                            />
+                                        )}
+                                </div>
+
+                                {dockOpen && (
+                                    <Suspense fallback={null}>
+                                        <SqlDock
+                                            connection={connection}
+                                            snapshot={snapshot}
+                                        />
+                                    </Suspense>
                                 )}
                             </div>
-                        )}
-
-                        {snapshot && active.kind === 'records' && (
-                            <Suspense
-                                fallback={
-                                    <div className={centered}>
-                                        Loading records…
-                                    </div>
-                                }
-                            >
-                                <RecordsView
-                                    connection={connection}
-                                    snapshot={snapshot}
-                                />
-                            </Suspense>
-                        )}
-
-                        {snapshot && actions && active.kind === 'table' && (
-                            <TableTabView
-                                key={active.id}
-                                connection={connection}
-                                snapshot={snapshot}
-                                tab={active}
-                                actions={actions}
-                            />
-                        )}
-                    </div>
-
-                    {dockOpen && (
-                        <Suspense fallback={null}>
-                            <SqlDock
-                                connection={connection}
-                                snapshot={snapshot}
-                            />
-                        </Suspense>
-                    )}
+                            <div ref={setDrawerSlot} className="flex min-h-0" />
+                        </div>
+                    </DrawerSlotContext>
                     {snapshot && (
                         <PathDialog
                             snapshot={snapshot}
