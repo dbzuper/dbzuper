@@ -15,6 +15,9 @@ export const banned = [
     '@monaco-editor/',
     'react-data-grid',
     '@xyflow/',
+    'react-day-picker',
+    'date-fns',
+    '@date-fns/',
 ];
 
 /**

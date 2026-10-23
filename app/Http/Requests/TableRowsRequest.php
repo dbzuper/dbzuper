@@ -30,7 +30,9 @@ class TableRowsRequest extends FormRequest
             'filters.*.column' => ['required', 'string', 'max:255'],
             'filters.*.op' => ['required', Rule::in(TableRowsQuery::OPS)],
             // Comparison operators need a value: an empty one would be bound as '' and fail on typed columns.
-            'filters.*.value' => ['required_if:filters.*.op,eq,neq,lt,lte,gt,gte', 'nullable', 'string', 'max:1000', 'not_regex:/\x00/'],
+            'filters.*.value' => ['required_if:filters.*.op,eq,neq,lt,lte,gt,gte,on,between,after', 'nullable', 'string', 'max:1000', 'not_regex:/\x00/'],
+            // The end of a `between` range; DateFilters checks its form and rejects it on every other operator.
+            'filters.*.to' => ['nullable', 'string', 'max:40'],
         ];
     }
 

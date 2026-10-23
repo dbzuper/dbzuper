@@ -524,6 +524,29 @@ describe('titles and filter summaries', () => {
         ).toBe('status = paid · total > 100 · note is null');
         expect(filterSummary(state([]))).toBe('');
     });
+
+    it('summarises date filters as their chips read', () => {
+        expect(
+            filterSummary(
+                state([
+                    {
+                        column: 'created_at',
+                        op: 'between',
+                        value: '2026-10-01',
+                        to: '2026-10-15',
+                    },
+                    { column: 'paid_at', op: 'on', value: '2026-10-15' },
+                    {
+                        column: 'shipped_at',
+                        op: 'after',
+                        value: '2026-10-15 14:00:00',
+                    },
+                ]),
+            ),
+        ).toBe(
+            'created_at between 1 Oct 2026 → 15 Oct 2026 · paid_at on 15 Oct 2026 · shipped_at after 15 Oct 2026 14:00',
+        );
+    });
 });
 
 describe('saved tabs version 2', () => {
@@ -634,6 +657,61 @@ describe('saved tabs version 2', () => {
             ['t:c', 3],
         ]);
         expect(active()).toBe('t:c');
+    });
+
+    it('drops saved filters whose range end is not a string', async () => {
+        await rehydrate({
+            version: 2,
+            state: {
+                byConnection: {
+                    1: {
+                        tabs: [
+                            {
+                                id: 't:a',
+                                kind: 'table',
+                                table: 'events',
+                                ordinal: 1,
+                                activatedAt: 1,
+                                preview: false,
+                                state: {
+                                    filters: [
+                                        {
+                                            column: 'ts',
+                                            op: 'between',
+                                            value: '2026-10-01',
+                                            to: 7,
+                                        },
+                                        {
+                                            column: 'ts',
+                                            op: 'between',
+                                            value: '2026-10-01',
+                                            to: '2026-10-15',
+                                        },
+                                        {
+                                            column: 'ts',
+                                            op: 'on',
+                                            value: '2026-10-01',
+                                        },
+                                    ],
+                                },
+                            },
+                        ],
+                        activeId: 't:a',
+                        recents: [],
+                        perPage: 100,
+                    },
+                },
+            },
+        });
+        expect(tableTabs()[0].state.filters).toEqual([
+            {
+                column: 'ts',
+                op: 'between',
+                value: '2026-10-01',
+                to: '2026-10-15',
+            },
+            { column: 'ts', op: 'on', value: '2026-10-01' },
+        ]);
     });
 
     it('falls back to the Universe tab only on corrupt v2 data', async () => {

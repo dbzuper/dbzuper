@@ -1,8 +1,15 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+    within,
+} from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { DATE_OPS, type DateKind, quickRanges } from '@/lib/date-filter';
 import type { RowFilter } from '@/lib/workspace-api';
-import { FilterBar } from './filter-bar';
+import { FilterBar, filterChipText } from './filter-bar';
 
 const columns = ['id', 'status'];
 
@@ -216,5 +223,403 @@ describe('FilterBar', () => {
             'id',
             'the-filter',
         );
+    });
+    describe('date columns', () => {
+        const dateColumns = ['name', 'created_at'];
+        const dateKinds = { created_at: 'datetime' as const };
+        const operator = () =>
+            screen.getByLabelText('Filter operator') as HTMLSelectElement;
+
+        function renderDates(onChange = vi.fn()) {
+            render(
+                <FilterBar
+                    columns={dateColumns}
+                    filters={[]}
+                    onChange={onChange}
+                    dateKinds={dateKinds}
+                />,
+            );
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'created_at' },
+            });
+            return onChange;
+        }
+
+        async function openPicker() {
+            fireEvent.click(
+                screen.getByRole('button', { name: /^Filter value/ }),
+            );
+            return screen.findByRole('dialog');
+        }
+
+        it('defaults to on and lists the date operators', () => {
+            renderDates();
+            expect(operator()).toHaveValue('on');
+            expect([...operator().options].map((o) => o.value)).toEqual(
+                DATE_OPS,
+            );
+            expect(
+                within(operator()).getByRole('option', { name: 'before' }),
+            ).toHaveValue('lt');
+        });
+
+        it('keeps the date operators off text columns', () => {
+            renderDates();
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'name' },
+            });
+            const values = [...operator().options].map((o) => o.value);
+            expect(values).not.toContain('on');
+            expect(values).not.toContain('between');
+            expect(values).not.toContain('after');
+        });
+
+        it('shows a picker button for the value', () => {
+            renderDates();
+            const button = screen.getByRole('button', {
+                name: /^Filter value/,
+            });
+            expect(button.tagName).toBe('BUTTON');
+            expect(button).toHaveAttribute('aria-haspopup', 'dialog');
+            expect(button).toHaveTextContent('Pick a date…');
+        });
+
+        it('resets between to equals on a text column and sends no to', () => {
+            const onChange = renderDates();
+            fireEvent.change(operator(), { target: { value: 'between' } });
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'name' },
+            });
+            expect(operator()).toHaveValue('eq');
+            fireEvent.change(screen.getByLabelText('Filter value'), {
+                target: { value: 'ada' },
+            });
+            fireEvent.click(screen.getByRole('button', { name: 'Add filter' }));
+            expect(onChange).toHaveBeenCalledWith([
+                { column: 'name', op: 'eq', value: 'ada' },
+            ]);
+        });
+
+        it('keeps an operator the new kind offers and picks on otherwise', () => {
+            renderDates();
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'name' },
+            });
+            fireEvent.change(operator(), { target: { value: 'contains' } });
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'created_at' },
+            });
+            expect(operator()).toHaveValue('on');
+            fireEvent.change(operator(), { target: { value: 'is_null' } });
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'name' },
+            });
+            expect(operator()).toHaveValue('is_null');
+        });
+
+        it('adds a between filter from Apply in the picker', async () => {
+            const onChange = renderDates();
+            fireEvent.change(operator(), { target: { value: 'between' } });
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('From'), {
+                target: { value: '2026-10-01' },
+            });
+            fireEvent.change(screen.getByLabelText('To'), {
+                target: { value: '2026-10-15' },
+            });
+            fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+            expect(onChange).toHaveBeenCalledWith([
+                {
+                    column: 'created_at',
+                    op: 'between',
+                    value: '2026-10-01',
+                    to: '2026-10-15',
+                },
+            ]);
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            // Radix returns focus to the trigger on the next tick.
+            await waitFor(() =>
+                expect(
+                    screen.getByRole('button', { name: /^Filter value/ }),
+                ).toHaveFocus(),
+            );
+        });
+
+        it('adds a same-day date-only range as on', async () => {
+            const onChange = renderDates();
+            fireEvent.change(operator(), { target: { value: 'between' } });
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('From'), {
+                target: { value: '2026-10-23' },
+            });
+            fireEvent.change(screen.getByLabelText('To'), {
+                target: { value: '2026-10-23' },
+            });
+            fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+            expect(onChange).toHaveBeenCalledWith([
+                { column: 'created_at', op: 'on', value: '2026-10-23' },
+            ]);
+        });
+
+        it('rejects a typed time for on in the picker', async () => {
+            const onChange = renderDates();
+            expect(operator()).toHaveValue('on');
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('Date'), {
+                target: { value: '2026-10-01 14:00' },
+            });
+            expect(screen.getByRole('alert')).toBeInTheDocument();
+            expect(
+                screen.getByRole('button', { name: 'Apply' }),
+            ).toBeDisabled();
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
+        it('refuses on 9999-12-31 in the picker but takes it for before', async () => {
+            const onChange = renderDates();
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('Date'), {
+                target: { value: '9999-12-31' },
+            });
+            expect(screen.getByRole('alert')).toHaveTextContent(
+                'That date is too late to filter by',
+            );
+            expect(
+                screen.getByRole('button', { name: 'Apply' }),
+            ).toBeDisabled();
+            fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+            fireEvent.change(operator(), { target: { value: 'lt' } });
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('Date'), {
+                target: { value: '9999-12-31' },
+            });
+            fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+            expect(onChange).toHaveBeenCalledWith([
+                { column: 'created_at', op: 'lt', value: '9999-12-31' },
+            ]);
+        });
+
+        it('refuses a date-only between end of 9999-12-31 in the picker', async () => {
+            const onChange = renderDates();
+            fireEvent.change(operator(), { target: { value: 'between' } });
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('From'), {
+                target: { value: '2026-10-01' },
+            });
+            fireEvent.change(screen.getByLabelText('To'), {
+                target: { value: '9999-12-31' },
+            });
+            expect(screen.getByRole('alert')).toHaveTextContent(
+                'That date is too late to filter by',
+            );
+            fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
+        it('drops text typed for another column when a date column draft starts', () => {
+            const onChange = vi.fn();
+            const props = {
+                columns: dateColumns,
+                filters: [],
+                onChange,
+                dateKinds,
+            };
+            const { rerender } = render(<FilterBar {...props} draft={null} />);
+            fireEvent.change(screen.getByLabelText('Filter value'), {
+                target: { value: 'ada' },
+            });
+            rerender(
+                <FilterBar
+                    {...props}
+                    draft={{ column: 'created_at', nonce: 1 }}
+                />,
+            );
+            expect(operator()).toHaveValue('on');
+            expect(
+                screen.getByRole('button', { name: /^Filter value/ }),
+            ).toHaveTextContent('Pick a date…');
+            const add = screen.getByRole('button', { name: 'Add filter' });
+            expect(add).toBeDisabled();
+            fireEvent.click(add);
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
+        it('adds a single-date filter without to', async () => {
+            const onChange = renderDates();
+            fireEvent.change(operator(), { target: { value: 'after' } });
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('Date'), {
+                target: { value: '2026-10-15' },
+            });
+            fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+            expect(onChange).toHaveBeenCalledWith([
+                { column: 'created_at', op: 'after', value: '2026-10-15' },
+            ]);
+        });
+
+        it('applies a quick range as between and switches the operator', async () => {
+            const onChange = renderDates();
+            await openPicker();
+            fireEvent.click(
+                await screen.findByRole('button', { name: 'Last 7 days' }),
+            );
+            const range = quickRanges(new Date())[2];
+            expect(onChange).toHaveBeenCalledWith([
+                {
+                    column: 'created_at',
+                    op: 'between',
+                    value: range.from,
+                    to: range.to,
+                },
+            ]);
+            expect(operator()).toHaveValue('between');
+        });
+
+        it('applies a single-day quick range as on', async () => {
+            const onChange = renderDates();
+            await openPicker();
+            fireEvent.click(
+                await screen.findByRole('button', { name: 'Today' }),
+            );
+            const today = quickRanges(new Date())[0].from;
+            expect(onChange).toHaveBeenCalledWith([
+                { column: 'created_at', op: 'on', value: today },
+            ]);
+        });
+
+        function StatefulDates() {
+            const [filters, setFilters] = useState<RowFilter[]>([]);
+            return (
+                <FilterBar
+                    columns={dateColumns}
+                    filters={filters}
+                    onChange={setFilters}
+                    dateKinds={dateKinds}
+                />
+            );
+        }
+
+        it('shows on in the operator select after the Today quick range', async () => {
+            render(<StatefulDates />);
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'created_at' },
+            });
+            await openPicker();
+            fireEvent.click(
+                await screen.findByRole('button', { name: 'Today' }),
+            );
+            expect(screen.getByRole('listitem')).toHaveTextContent(
+                /^created_at on /,
+            );
+            expect(operator()).toHaveValue('on');
+        });
+
+        it('shows on in the operator select after a same-day range is applied', async () => {
+            render(<StatefulDates />);
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'created_at' },
+            });
+            fireEvent.change(operator(), { target: { value: 'between' } });
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('From'), {
+                target: { value: '2026-10-23' },
+            });
+            fireEvent.change(screen.getByLabelText('To'), {
+                target: { value: '2026-10-23' },
+            });
+            fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+            expect(screen.getByRole('listitem')).toHaveTextContent(
+                'created_at on 23 Oct 2026',
+            );
+            expect(operator()).toHaveValue('on');
+        });
+
+        it('closes on Escape without adding and refocuses the value button', async () => {
+            const onChange = renderDates();
+            const dialog = await openPicker();
+            await screen.findByLabelText('Date');
+            fireEvent.keyDown(dialog, { key: 'Escape' });
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(onChange).not.toHaveBeenCalled();
+            // Radix returns focus to the trigger on the next tick.
+            await waitFor(() =>
+                expect(
+                    screen.getByRole('button', { name: /^Filter value/ }),
+                ).toHaveFocus(),
+            );
+        });
+
+        it('shows date chips with formatted values', () => {
+            render(
+                <FilterBar
+                    columns={dateColumns}
+                    filters={[
+                        {
+                            column: 'created_at',
+                            op: 'between',
+                            value: '2026-10-01',
+                            to: '2026-10-15',
+                        },
+                    ]}
+                    onChange={vi.fn()}
+                    dateKinds={dateKinds}
+                />,
+            );
+            expect(
+                screen.getByText('created_at between 1 Oct 2026 → 15 Oct 2026'),
+            ).toBeInTheDocument();
+        });
+    });
+
+    describe('filterChipText', () => {
+        it.each<[RowFilter, DateKind | null, string]>([
+            [
+                {
+                    column: 'created_at',
+                    op: 'between',
+                    value: '2026-10-01',
+                    to: '2026-10-15',
+                },
+                'datetime',
+                'created_at between 1 Oct 2026 → 15 Oct 2026',
+            ],
+            [
+                { column: 'created_at', op: 'on', value: '2026-10-15' },
+                'datetime',
+                'created_at on 15 Oct 2026',
+            ],
+            [
+                { column: 'created_at', op: 'lt', value: '2026-10-15' },
+                'date',
+                'created_at before 15 Oct 2026',
+            ],
+            [
+                {
+                    column: 'created_at',
+                    op: 'after',
+                    value: '2026-10-15 14:00:00',
+                },
+                'datetime',
+                'created_at after 15 Oct 2026 14:00',
+            ],
+            [
+                { column: 'created_at', op: 'is_null' },
+                'datetime',
+                'created_at is null',
+            ],
+            [
+                { column: 'status', op: 'eq', value: 'paid' },
+                null,
+                'status equals paid',
+            ],
+            [{ column: 'total', op: 'lt', value: '100' }, null, 'total < 100'],
+            [
+                { column: 'created_at', op: 'eq', value: 'yesterday' },
+                'datetime',
+                'created_at equals yesterday',
+            ],
+        ])('%o as %s reads %s', (filter, kind, text) => {
+            expect(filterChipText(filter, kind)).toBe(text);
+        });
     });
 });

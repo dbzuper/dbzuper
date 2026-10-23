@@ -6,6 +6,7 @@ use App\Database\ConnectionFactory;
 use App\Database\DriverRegistry;
 use App\Database\Errors\DbErrorMapper;
 use App\Database\Exceptions\DatabaseOperationFailed;
+use App\Database\Query\DateFilters;
 use App\Database\Query\TableCountQuery;
 use App\Database\Schema\SnapshotService;
 use App\Http\Controllers\Controller;
@@ -32,6 +33,7 @@ class TableCountController extends Controller
                 throw ValidationException::withMessages(["filters.{$i}.column" => 'Unknown column.']);
             }
         }
+        DateFilters::validate($filters, $info['columns']);
         $exact = $request->boolean('exact');
         $timeout = $exact ? (int) config('dbsuperb.query_timeout') : (int) config('dbsuperb.count_cap_seconds');
 

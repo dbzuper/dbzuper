@@ -365,7 +365,7 @@ describe('linked editor tabs', () => {
     /** `orders` open in a table tab, its linked editor tab active, and another table tab active in the browser. */
     function setup(text: string) {
         useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
-        const id = openTableTabInSql(1, orders(), 'sqlite');
+        const id = openTableTabInSql(1, orders(), 'sqlite', []);
         useSqlTabs.getState().setSql(1, id, text);
         editorText.value = text;
         useBrowse.getState().openTable(1, 'users', { mode: 'permanent' });

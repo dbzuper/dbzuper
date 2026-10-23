@@ -8,6 +8,14 @@
  *   [ WHERE cond ( AND cond )* ]  [ ORDER BY col [ASC|DESC] [, …] ]
  *   [ LIMIT n [ OFFSET m ] | LIMIT m, n ]
  */
+import {
+    addDays,
+    dateKind,
+    isDateOnly,
+    normalizeDateInput,
+    rangeInOrder,
+} from '@/lib/date-filter';
+import type { DateKind } from '@/lib/date-filter';
 import type {
     FilterOp,
     PerPage,
@@ -96,6 +104,10 @@ export const MATCH_REASONS = {
         `page ${page} is past the last page a table can show (${MAX_PAGE})`,
     repeatedColumn: (name: string) => `selects \`${name}\` more than once`,
     repeatedSort: (name: string) => `sorts by \`${name}\` more than once`,
+    betweenDateOnly: (column: string) =>
+        `BETWEEN on ${column} with date-only ends stops at midnight of the last day; use the date filter instead`,
+    betweenMixed: (column: string) =>
+        `BETWEEN on ${column} isn't a range the date filter can show; use the date filter instead`,
     unsupported: (text: string) =>
         `unsupported syntax near \`${text.length > 40 ? `${text.slice(0, 40)}…` : text}\``,
 } as const;
@@ -454,6 +466,7 @@ class Matcher {
         if (this.isWord(this.peek(), 'WHERE')) {
             this.i++;
             this.conjunction(filters);
+            this.readDates(filters);
             if (filters.length > MAX_FILTERS)
                 throw new NoFit(MATCH_REASONS.tooManyConditions);
         }
@@ -620,6 +633,8 @@ class Matcher {
             return { column, op: not ? 'is_not_null' : 'is_null' };
         }
 
+        if (this.isWord(op, 'BETWEEN')) return this.between(column);
+
         const filterOp = this.comparison();
         const value = this.typedValue(
             this.columnSchema(column),
@@ -629,6 +644,117 @@ class Matcher {
         if (value === '') throw new NoFit(MATCH_REASONS.emptyValue);
         checkValue(value);
         return { column, op: filterOp, value };
+    }
+
+    /**
+     * `col BETWEEN 'A' AND 'B'` on a date column, in the shapes the server writes for a range: a date column with
+     * two dates, or a datetime column with two timed values. Anywhere else BETWEEN stays unsupported.
+     */
+    private between(column: string): RowFilter {
+        const kind = this.dateKindOf(column);
+        if (kind === null) this.fail();
+        this.i++;
+        const from = this.literal();
+        this.expectWord('AND');
+        const to = this.literal();
+        const mixed = new NoFit(MATCH_REASONS.betweenMixed(column));
+        if (
+            from.kind !== 'string' ||
+            to.kind !== 'string' ||
+            !isCanonicalDate(from.text) ||
+            !isCanonicalDate(to.text)
+        )
+            throw mixed;
+        const days = isDateOnly(from.text) && isDateOnly(to.text);
+        const timed = !isDateOnly(from.text) && !isDateOnly(to.text);
+        if (kind === 'datetime' && days)
+            throw new NoFit(MATCH_REASONS.betweenDateOnly(column));
+        if (
+            !(kind === 'date' ? days : timed) ||
+            !rangeInOrder(from.text, to.text)
+        )
+            throw mixed;
+        return { column, op: 'between', value: from.text, to: to.text };
+    }
+
+    /**
+     * Reads the server's date-operator shapes back as date filters (read-back rules 2–4). Only adjacent
+     * comparisons on the same date column with canonical values combine; everything else keeps its mapping.
+     * A comparison's value on a date column is always from a string literal: numbers and TRUE/FALSE don't fit.
+     */
+    private readDates(filters: RowFilter[]): void {
+        const out: RowFilter[] = [];
+        for (let k = 0; k < filters.length; k++) {
+            const f = filters[k];
+            const next = filters[k + 1];
+            const kind = this.dateKindOf(f.column);
+            const usable = (v: string | undefined): v is string =>
+                v !== undefined &&
+                isCanonicalDate(v) &&
+                (kind === 'datetime' || isDateOnly(v));
+            if (kind === null || !usable(f.value)) {
+                out.push(f);
+                continue;
+            }
+            const x = f.value;
+            if (
+                f.op === 'gte' &&
+                next?.column === f.column &&
+                usable(next.value)
+            ) {
+                const y = next.value;
+                // Rule 2: >= X then < Y (Y a day) is the days X .. Y-1.
+                if (
+                    next.op === 'lt' &&
+                    isDateOnly(y) &&
+                    rangeInOrder(x, addDays(y, -1))
+                ) {
+                    out.push(
+                        isDateOnly(x) && y === addDays(x, 1)
+                            ? { column: f.column, op: 'on', value: x }
+                            : {
+                                  column: f.column,
+                                  op: 'between',
+                                  value: x,
+                                  to: addDays(y, -1),
+                              },
+                    );
+                    k++;
+                    continue;
+                }
+                // Rule 3: >= X (a day) then <= Y (timed) is X .. Y.
+                if (
+                    next.op === 'lte' &&
+                    isDateOnly(x) &&
+                    !isDateOnly(y) &&
+                    rangeInOrder(x, y)
+                ) {
+                    out.push({
+                        column: f.column,
+                        op: 'between',
+                        value: x,
+                        to: y,
+                    });
+                    k++;
+                    continue;
+                }
+            }
+            // Rule 4: a lone >= on a day is after the day before; a lone > on a timed value is after it.
+            if (f.op === 'gte' && isDateOnly(x))
+                out.push({
+                    column: f.column,
+                    op: 'after',
+                    value: addDays(x, -1),
+                });
+            else if (f.op === 'gt' && !isDateOnly(x))
+                out.push({ column: f.column, op: 'after', value: x });
+            else out.push(f);
+        }
+        filters.splice(0, filters.length, ...out);
+    }
+
+    private dateKindOf(column: string): DateKind | null {
+        return dateKind({ type_name: this.columnSchema(column).type_name });
     }
 
     private comparison(): FilterOp {
@@ -983,6 +1109,12 @@ const TRIM_CHARS =
     '\\u2000-\\u200F\\u2028\\u2029\\u202F\\u205F-\\u2065\\u206A-\\u206F\\u2800\\u3000' +
     '\\u3164\\uFEFF\\uFFA0\\u{1D159}\\u{1D173}-\\u{1D17A}\\u{E0020}';
 const PADDED = new RegExp(`^[${TRIM_CHARS}]|[${TRIM_CHARS}]$`, 'u');
+
+/** A value in the canonical form the date filters send, naming a real date and time of day. */
+function isCanonicalDate(value: string): boolean {
+    const normalized = normalizeDateInput(value, 'datetime');
+    return 'value' in normalized && normalized.value === value;
+}
 
 /** Values the server's request validation would refuse, or its middleware would change, don't fit. */
 function checkValue(value: string): void {

@@ -21,8 +21,16 @@ export type FilterOp =
     | 'starts_with'
     | 'ends_with'
     | 'is_null'
-    | 'is_not_null';
-export type RowFilter = { column: string; op: FilterOp; value?: string };
+    | 'is_not_null'
+    | 'on'
+    | 'between'
+    | 'after';
+export type RowFilter = {
+    column: string;
+    op: FilterOp;
+    value?: string;
+    to?: string;
+};
 export type SortKey = { column: string; direction: 'asc' | 'desc' };
 export const PER_PAGE_OPTIONS = [50, 100, 500, 1000] as const;
 export type PerPage = (typeof PER_PAGE_OPTIONS)[number];
@@ -86,6 +94,9 @@ export const FILTER_OPS: {
     { value: 'ends_with', label: 'ends with', needsValue: true },
     { value: 'is_null', label: 'is null', needsValue: false },
     { value: 'is_not_null', label: 'is not null', needsValue: false },
+    { value: 'on', label: 'on', needsValue: true },
+    { value: 'between', label: 'between', needsValue: true },
+    { value: 'after', label: 'after', needsValue: true },
 ];
 
 const table = (id: number, name: string, what: string) =>

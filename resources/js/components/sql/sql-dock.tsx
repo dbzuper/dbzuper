@@ -466,6 +466,11 @@ export default function SqlDock({
                             connectionId={connection.id}
                             tab={active}
                             dialect={dialect}
+                            columns={
+                                snapshot?.tables.find(
+                                    (t) => t.name === active.link?.table,
+                                )?.columns
+                            }
                         />
                     )
                 }
