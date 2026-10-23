@@ -524,6 +524,29 @@ describe('titles and filter summaries', () => {
         ).toBe('status = paid · total > 100 · note is null');
         expect(filterSummary(state([]))).toBe('');
     });
+
+    it('summarises date filters as their chips read', () => {
+        expect(
+            filterSummary(
+                state([
+                    {
+                        column: 'created_at',
+                        op: 'between',
+                        value: '2026-10-01',
+                        to: '2026-10-15',
+                    },
+                    { column: 'paid_at', op: 'on', value: '2026-10-15' },
+                    {
+                        column: 'shipped_at',
+                        op: 'after',
+                        value: '2026-10-15 14:00:00',
+                    },
+                ]),
+            ),
+        ).toBe(
+            'created_at between 1 Oct 2026 → 15 Oct 2026 · paid_at on 15 Oct 2026 · shipped_at after 15 Oct 2026 14:00',
+        );
+    });
 });
 
 describe('saved tabs version 2', () => {

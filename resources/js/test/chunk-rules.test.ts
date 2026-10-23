@@ -45,6 +45,12 @@ describe('bannedPackage', () => {
             'react-data-grid',
         ],
         ['C:/app/node_modules/@xyflow/react/dist/esm/index.js', '@xyflow/'],
+        [
+            'C:/app/node_modules/react-day-picker/dist/esm/DayPicker.js',
+            'react-day-picker',
+        ],
+        ['C:/app/node_modules/date-fns/addDays.js', 'date-fns'],
+        ['C:/app/node_modules/@date-fns/tz/index.js', '@date-fns/'],
         ['C:\\app\\node_modules\\graphology-utils\\is-graph.js', 'graphology'],
         ['/a/node_modules/.pnpm/x@1/node_modules/sigma/index.js', 'sigma'],
         [

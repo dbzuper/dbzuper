@@ -1,4 +1,4 @@
-import { FILTER_OPS, type FilterOp } from './workspace-api';
+import { FILTER_OPS, type FilterOp, type RowFilter } from './workspace-api';
 
 /** Which date operators a column takes: a calendar date, or a date with a time of day. */
 export type DateKind = 'date' | 'datetime';
@@ -169,4 +169,27 @@ export function rangeInOrder(from: string, to: string): boolean {
     return isDateOnly(to)
         ? instant(from) < instant(addDays(to, 1))
         : instant(from) <= instant(to);
+}
+
+const CANONICAL = /^\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?)?$/;
+
+/** The operators that only date columns take (`before` is `lt`, shared with other columns). */
+export const isDateOp = (op: FilterOp): boolean =>
+    op === 'on' || op === 'between' || op === 'after';
+
+/**
+ * A filter as its chip reads: `created_at between 1 Oct 2026 → 15 Oct 2026`, `created_at before 15 Oct 2026`.
+ * Date values are shown as dates only on date columns (or with a date operator) and only when canonical;
+ * anything else is shown as typed.
+ */
+export function filterChipText(f: RowFilter, kind: DateKind | null): string {
+    const dated = kind !== null || isDateOp(f.op);
+    const show = (v: string) =>
+        dated && CANONICAL.test(v) ? formatDateValue(v) : v;
+    const label = dateOpLabel(f.op, dated ? (kind ?? 'datetime') : null);
+    if (!f.value) {
+        return `${f.column} ${label}`;
+    }
+    const range = f.to === undefined ? '' : ` → ${show(f.to)}`;
+    return `${f.column} ${label} ${show(f.value)}${range}`;
 }

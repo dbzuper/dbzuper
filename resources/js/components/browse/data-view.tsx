@@ -44,6 +44,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Spinner } from '@/components/ui/spinner';
+import { type DateKind, dateKind } from '@/lib/date-filter';
 import {
     dbErrorFrom,
     workspaceApi,
@@ -406,6 +407,14 @@ function DataViewBody({
         () => table.columns.map((c) => c.name),
         [table.columns],
     );
+    const filterDateKinds = useMemo(() => {
+        const kinds: Record<string, DateKind> = {};
+        for (const c of table.columns) {
+            const kind = dateKind(c);
+            if (kind) kinds[c.name] = kind;
+        }
+        return kinds;
+    }, [table.columns]);
 
     const columns = view?.rows.columns ?? NO_COLUMNS;
     // Rows of this tab all come from this table, whatever the driver reports for the column origin.
@@ -626,6 +635,7 @@ function DataViewBody({
                 filters={filters}
                 onChange={changeFilters}
                 draft={draft}
+                dateKinds={filterDateKinds}
             />
             <div className="flex min-h-0 flex-1">
                 <div ref={gridArea} className="relative min-h-0 min-w-0 flex-1">

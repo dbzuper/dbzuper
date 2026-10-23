@@ -4,6 +4,7 @@ import {
     type PersistStorage,
     type StorageValue,
 } from 'zustand/middleware';
+import { filterChipText, isDateOp } from '@/lib/date-filter';
 import {
     FILTER_OPS,
     PER_PAGE_OPTIONS,
@@ -69,10 +70,16 @@ const OP_SYMBOLS: Partial<Record<RowFilter['op'], string>> = {
     neq: '≠',
 };
 
-/** The filters of a tab in one line, e.g. `status = paid · total > 100`; empty when there are none. */
+/**
+ * The filters of a tab in one line, e.g. `status = paid · total > 100 · created_at on 1 Oct 2026`; empty when
+ * there are none.
+ */
 export function filterSummary(state: TableTabState): string {
     return state.filters
         .map((f) => {
+            // Date filters read as their chips do; the tab does not know the column kinds, but these operators
+            // only exist on date columns.
+            if (isDateOp(f.op)) return filterChipText(f, 'datetime');
             const op =
                 OP_SYMBOLS[f.op] ??
                 FILTER_OPS.find((o) => o.value === f.op)?.label ??
