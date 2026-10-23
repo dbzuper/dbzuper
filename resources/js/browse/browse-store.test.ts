@@ -659,6 +659,61 @@ describe('saved tabs version 2', () => {
         expect(active()).toBe('t:c');
     });
 
+    it('drops saved filters whose range end is not a string', async () => {
+        await rehydrate({
+            version: 2,
+            state: {
+                byConnection: {
+                    1: {
+                        tabs: [
+                            {
+                                id: 't:a',
+                                kind: 'table',
+                                table: 'events',
+                                ordinal: 1,
+                                activatedAt: 1,
+                                preview: false,
+                                state: {
+                                    filters: [
+                                        {
+                                            column: 'ts',
+                                            op: 'between',
+                                            value: '2026-10-01',
+                                            to: 7,
+                                        },
+                                        {
+                                            column: 'ts',
+                                            op: 'between',
+                                            value: '2026-10-01',
+                                            to: '2026-10-15',
+                                        },
+                                        {
+                                            column: 'ts',
+                                            op: 'on',
+                                            value: '2026-10-01',
+                                        },
+                                    ],
+                                },
+                            },
+                        ],
+                        activeId: 't:a',
+                        recents: [],
+                        perPage: 100,
+                    },
+                },
+            },
+        });
+        expect(tableTabs()[0].state.filters).toEqual([
+            {
+                column: 'ts',
+                op: 'between',
+                value: '2026-10-01',
+                to: '2026-10-15',
+            },
+            { column: 'ts', op: 'on', value: '2026-10-01' },
+        ]);
+    });
+
     it('falls back to the Universe tab only on corrupt v2 data', async () => {
         await rehydrate({ version: 2, state: { byConnection: { 1: 'x' } } });
         expect(tabs()).toEqual(['universe']);

@@ -291,7 +291,8 @@ const isFilter = (f: unknown): f is RowFilter =>
     isObj(f) &&
     typeof f.column === 'string' &&
     typeof f.op === 'string' &&
-    (f.value === undefined || typeof f.value === 'string');
+    (f.value === undefined || typeof f.value === 'string') &&
+    (f.to === undefined || typeof f.to === 'string');
 const isSortKey = (s: unknown): s is SortKey =>
     isObj(s) &&
     typeof s.column === 'string' &&

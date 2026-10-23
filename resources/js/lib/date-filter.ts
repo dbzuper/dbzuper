@@ -40,6 +40,10 @@ const MONTHS = [
 /** Mirrors the server's DateKind::classify: `date` exactly, or any type naming datetime/timestamp. */
 export function dateKind(column: { type_name: string }): DateKind | null {
     const t = column.type_name.trim().toLowerCase();
+    // PostgreSQL reports array columns as `_timestamp`, `_date`, … (or `timestamp[]`): not a single date.
+    if (t.startsWith('_') || t.includes('[]')) {
+        return null;
+    }
     if (t === 'date') {
         return 'date';
     }
@@ -166,10 +170,15 @@ function instant(value: string): string {
  * (start < end + 1 day), a timed end is inclusive (start <= end).
  */
 export function rangeInOrder(from: string, to: string): boolean {
+    // start < end + 1 day is start's day <= end's day, which needs no day after 9999-12-31.
     return isDateOnly(to)
-        ? instant(from) < instant(addDays(to, 1))
+        ? from.slice(0, 10) <= to
         : instant(from) <= instant(to);
 }
+
+/** The last day a date-only value can name where the filter compares against the day after (`on`, `after`, a range's end). */
+export const LAST_DAY = '9999-12-31';
+export const TOO_LATE_ERROR = 'That date is too late to filter by';
 
 const CANONICAL = /^\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?)?$/;
 

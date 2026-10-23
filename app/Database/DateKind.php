@@ -12,6 +12,11 @@ enum DateKind
     {
         $t = strtolower(trim($typeName));
 
+        // PostgreSQL reports array columns as `_timestamp`, `_date`, … (or `timestamp[]`): not a single date.
+        if (str_starts_with($t, '_') || str_contains($t, '[]')) {
+            return null;
+        }
+
         return match (true) {
             $t === 'date' => self::Date,
             str_contains($t, 'datetime'), str_contains($t, 'timestamp') => self::DateTime,

@@ -128,8 +128,12 @@ test('table tab: date range filter with the picker and linked SQL', async () => 
     await chooseCreatedAt('between');
     await valueButton().click();
     await picker().getByRole('button', { name: 'Today', exact: true }).click();
-    const now = new Date();
-    const today = `created_at on ${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+    // The page's calendar day (its time zone may differ from this Node process's).
+    const [year, month, day] = await page.evaluate(() => {
+        const d = new Date();
+        return [d.getFullYear(), d.getMonth(), d.getDate()];
+    });
+    const today = `created_at on ${day} ${MONTHS[month]} ${year}`;
     await expect(panel().getByText(today)).toBeVisible();
     await expect(picker()).toHaveCount(0);
     await panel()

@@ -240,3 +240,48 @@ it('filters date and date-time columns by on, between and after on every engine'
         $factory->release($db);
     }
 })->with(['mysql', 'mariadb', 'pgsql']);
+
+it('filters time-zone-aware timestamp columns by on and date-only between, as stored in the session time zone', function (string $engine) {
+    Engines::skipUnlessAvailable($engine);
+    $saved = Engines::savedConnection($engine);
+    $saved->user()->associate(User::factory()->create())->save();
+    $factory = app(ConnectionFactory::class);
+    $db = $factory->make($saved);
+    $drop = fn (Connection $db) => $db->statement('DROP TABLE IF EXISTS df_zoned');
+
+    try {
+        $drop($db);
+        // PostgreSQL timestamptz, MySQL/MariaDB TIMESTAMP: both store an instant and read it back in the session time zone.
+        $db->statement('CREATE TABLE df_zoned (id INT NOT NULL PRIMARY KEY, ts '.($engine === 'pgsql' ? 'TIMESTAMPTZ' : 'TIMESTAMP NULL DEFAULT NULL').')');
+        $db->table('df_zoned')->insert([
+            ['id' => 1, 'ts' => '2026-10-01 00:00:00'],
+            ['id' => 2, 'ts' => '2026-10-15 23:59:59'],
+            ['id' => 3, 'ts' => '2026-10-16 00:00:00'],
+            ['id' => 4, 'ts' => '2026-09-30 23:59:59'],
+        ]);
+        $factory->release($db);
+
+        foreach ([
+            [['column' => 'ts', 'op' => 'on', 'value' => '2026-10-15'], [2]],
+            [['column' => 'ts', 'op' => 'on', 'value' => '2026-10-16'], [3]],
+            [['column' => 'ts', 'op' => 'between', 'value' => '2026-10-01', 'to' => '2026-10-15'], [1, 2]],
+            [['column' => 'ts', 'op' => 'between', 'value' => '2026-10-15', 'to' => '2026-10-16'], [2, 3]],
+            [['column' => 'ts', 'op' => 'after', 'value' => '2026-10-15'], [3]],
+        ] as [$filter, $ids]) {
+            $res = $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, 'df_zoned']), ['filters' => [$filter]])->assertOk();
+            $ran = $factory->using($saved, fn ($db) => $db->select($res->json('sql')), 30);
+
+            expect(array_column($res->json('rows'), 0))->toBe($ids, json_encode($filter))
+                ->and(array_map(fn ($r) => (int) array_values((array) $r)[0], $ran))->toBe($ids);
+            $this->actingAs($saved->user)->postJson(route('api.tables.count', [$saved, 'df_zoned']), ['filters' => [$filter]])
+                ->assertOk()->assertJsonPath('count', count($ids));
+        }
+        // The stored value reads back unchanged in the session time zone: no conversion between insert and filter.
+        $res = $this->actingAs($saved->user)->postJson(route('api.tables.rows', [$saved, 'df_zoned']), ['filters' => [['column' => 'ts', 'op' => 'on', 'value' => '2026-10-15']]])->assertOk();
+        expect((string) $res->json('rows.0.1'))->toStartWith('2026-10-15 23:59:59');
+    } finally {
+        $db = $factory->make($saved);
+        $drop($db);
+        $factory->release($db);
+    }
+})->with(['mysql', 'mariadb', 'pgsql']);

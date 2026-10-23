@@ -14,4 +14,9 @@ it('classifies date and date-time column types', function (string $typeName, ?Da
     ['time', null],
     ['varchar', null],
     ['timetz', null],
+    ['_timestamp', null],
+    ['_timestamptz', null],
+    ['_date', null],
+    ['timestamp[]', null],
+    ['date[]', null],
 ]);

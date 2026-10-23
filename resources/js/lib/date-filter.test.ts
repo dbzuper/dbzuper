@@ -29,6 +29,11 @@ describe('dateKind', () => {
         ['time', null],
         ['varchar', null],
         ['int', null],
+        ['_timestamp', null],
+        ['_timestamptz', null],
+        ['_date', null],
+        ['timestamp[]', null],
+        ['date[]', null],
     ])('%s -> %s', (type_name, expected) => {
         expect(dateKind({ type_name })).toBe(expected);
     });
@@ -216,6 +221,8 @@ describe('rangeInOrder', () => {
         ['2026-10-15 10:00:00.6', '2026-10-15 10:00:00.5', false],
         ['2026-10-31', '2026-10-31', true],
         ['2026-11-01', '2026-10-31', false],
+        ['2026-10-01', '9999-12-31', true],
+        ['9999-12-31 23:59:59', '9999-12-31', true],
     ])('%s .. %s -> %s', (a, b, expected) => {
         expect(rangeInOrder(a, b)).toBe(expected);
     });

@@ -169,12 +169,14 @@ export function FilterBar({
         setTo('');
     };
 
-    // The picker's Apply and quick ranges add the filter at once.
+    // The picker's Apply and quick ranges add the filter at once; the operator select shows the one actually added.
     const addPicked = (nextOp: FilterOp, from: string, until?: string) => {
+        const picked = pickedFilter(selected, nextOp, from, until);
         setPickerOpen(false);
+        setOp(picked.op);
         setValue('');
         setTo('');
-        onChange([...filters, pickedFilter(selected, nextOp, from, until)]);
+        onChange([...filters, picked]);
     };
 
     // Enter in a select adds the filter once nothing more needs typing.
@@ -253,13 +255,13 @@ export function FilterBar({
                                     value={value}
                                     to={op === 'between' ? to : undefined}
                                     allowTime={op !== 'on'}
+                                    needsNextDay={isDateOp(op)}
                                     onApply={(from, until) =>
                                         addPicked(op, from, until)
                                     }
-                                    onQuickRange={(from, until) => {
-                                        setOp('between');
-                                        addPicked('between', from, until);
-                                    }}
+                                    onQuickRange={(from, until) =>
+                                        addPicked('between', from, until)
+                                    }
                                     onCancel={() => setPickerOpen(false)}
                                 />
                             </Suspense>

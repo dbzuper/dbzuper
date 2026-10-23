@@ -375,6 +375,47 @@ describe('FilterBar', () => {
             expect(onChange).not.toHaveBeenCalled();
         });
 
+        it('refuses on 9999-12-31 in the picker but takes it for before', async () => {
+            const onChange = renderDates();
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('Date'), {
+                target: { value: '9999-12-31' },
+            });
+            expect(screen.getByRole('alert')).toHaveTextContent(
+                'That date is too late to filter by',
+            );
+            expect(
+                screen.getByRole('button', { name: 'Apply' }),
+            ).toBeDisabled();
+            fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+            fireEvent.change(operator(), { target: { value: 'lt' } });
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('Date'), {
+                target: { value: '9999-12-31' },
+            });
+            fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+            expect(onChange).toHaveBeenCalledWith([
+                { column: 'created_at', op: 'lt', value: '9999-12-31' },
+            ]);
+        });
+
+        it('refuses a date-only between end of 9999-12-31 in the picker', async () => {
+            const onChange = renderDates();
+            fireEvent.change(operator(), { target: { value: 'between' } });
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('From'), {
+                target: { value: '2026-10-01' },
+            });
+            fireEvent.change(screen.getByLabelText('To'), {
+                target: { value: '9999-12-31' },
+            });
+            expect(screen.getByRole('alert')).toHaveTextContent(
+                'That date is too late to filter by',
+            );
+            fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
         it('drops text typed for another column when a date column draft starts', () => {
             const onChange = vi.fn();
             const props = {
@@ -444,6 +485,53 @@ describe('FilterBar', () => {
             expect(onChange).toHaveBeenCalledWith([
                 { column: 'created_at', op: 'on', value: today },
             ]);
+        });
+
+        function StatefulDates() {
+            const [filters, setFilters] = useState<RowFilter[]>([]);
+            return (
+                <FilterBar
+                    columns={dateColumns}
+                    filters={filters}
+                    onChange={setFilters}
+                    dateKinds={dateKinds}
+                />
+            );
+        }
+
+        it('shows on in the operator select after the Today quick range', async () => {
+            render(<StatefulDates />);
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'created_at' },
+            });
+            await openPicker();
+            fireEvent.click(
+                await screen.findByRole('button', { name: 'Today' }),
+            );
+            expect(screen.getByRole('listitem')).toHaveTextContent(
+                /^created_at on /,
+            );
+            expect(operator()).toHaveValue('on');
+        });
+
+        it('shows on in the operator select after a same-day range is applied', async () => {
+            render(<StatefulDates />);
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'created_at' },
+            });
+            fireEvent.change(operator(), { target: { value: 'between' } });
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('From'), {
+                target: { value: '2026-10-23' },
+            });
+            fireEvent.change(screen.getByLabelText('To'), {
+                target: { value: '2026-10-23' },
+            });
+            fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+            expect(screen.getByRole('listitem')).toHaveTextContent(
+                'created_at on 23 Oct 2026',
+            );
+            expect(operator()).toHaveValue('on');
         });
 
         it('closes on Escape without adding and refocuses the value button', async () => {

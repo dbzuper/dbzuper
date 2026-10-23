@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { PerPage, RowFilter, SortKey } from '@/lib/workspace-api';
 import type { ColumnSchema, Dialect, TableSchema } from '@/types/schema';
 import { MATCH_REASONS, matchTableQuery } from './match-table-query';
+import { buildTableSql } from './table-query-sql';
 
 const asciiLowerName = (s: string) =>
     s.replace(/[A-Z]+/g, (m) => m.toLowerCase());
@@ -1152,6 +1153,60 @@ describe('quoted special table names', () => {
             );
         }
     });
+});
+
+describe('app-generated after + before on one datetime column', () => {
+    // Ruling (kept on purpose): `after D` and `lt E` on the same column emit `ts >= 'D+1' AND ts < 'E'`, the very
+    // shape of a date-only range, so an unchanged linked run reads the pair back as one `between D+1 → E-1`.
+    for (const dialect of DIALECTS) {
+        it(`${dialect}: reads back as one range and rebuilds the same SQL`, () => {
+            const table = fixtureTable(dialect);
+            const state = {
+                filters: [
+                    { column: 'ts', op: 'after', value: '2026-10-01' },
+                    { column: 'ts', op: 'lt', value: '2026-10-10' },
+                ] as RowFilter[],
+                sort: [] as SortKey[],
+                page: 1,
+                perPage: 50 as PerPage,
+            };
+            const sql = buildTableSql(
+                dialect,
+                table.name,
+                state,
+                table.columns,
+            );
+            const ts =
+                dialect === 'mysql' || dialect === 'mariadb' ? '`ts`' : '"ts"';
+            expect(sql).toContain(
+                `WHERE ${ts} >= '2026-10-02' AND ${ts} < '2026-10-10'`,
+            );
+            const read = matchTableQuery(sql, dialect, table);
+            expect(read).toEqual({
+                ok: true,
+                state: {
+                    ...state,
+                    filters: [
+                        {
+                            column: 'ts',
+                            op: 'between',
+                            value: '2026-10-02',
+                            to: '2026-10-09',
+                        },
+                    ],
+                },
+            });
+            if (!read.ok) return;
+            expect(
+                buildTableSql(
+                    dialect,
+                    table.name,
+                    { ...read.state, perPage: read.state.perPage ?? 50 },
+                    table.columns,
+                ),
+            ).toBe(sql);
+        });
+    }
 });
 
 describe('date filters read back from hand-written SQL', () => {

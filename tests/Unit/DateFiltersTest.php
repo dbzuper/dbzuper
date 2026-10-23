@@ -54,6 +54,20 @@ it('accepts valid date filters and leaves other operators alone', function (arra
     'one-instant range' => [['column' => 'ts', 'op' => 'between', 'value' => '2026-10-15 10:00:00', 'to' => '2026-10-15 10:00:00']],
     'one-day range' => [['column' => 'd', 'op' => 'between', 'value' => '2026-10-15', 'to' => '2026-10-15']],
     'eq on text' => [['column' => 'name', 'op' => 'eq', 'value' => 'x', 'to' => null]],
+    'after the last second of 9999' => [['column' => 'ts', 'op' => 'after', 'value' => '9999-12-31 23:59:58']],
+    'range to a timed end in 9999-12-31' => [['column' => 'ts', 'op' => 'between', 'value' => '9999-12-31', 'to' => '9999-12-31 23:59:59']],
+    'lt on 9999-12-31' => [['column' => 'ts', 'op' => 'lt', 'value' => '9999-12-31']],
+]);
+
+it('rejects a date-only 9999-12-31 where the filter needs the day after', function (array $filter, string $key) {
+    expect(dateFilterErrors([$filter]))->toBe([$key => ['That date is too late to filter by.']]);
+})->with([
+    'on, datetime' => [['column' => 'ts', 'op' => 'on', 'value' => '9999-12-31'], 'filters.0.value'],
+    'on, date' => [['column' => 'd', 'op' => 'on', 'value' => '9999-12-31'], 'filters.0.value'],
+    'after, date' => [['column' => 'd', 'op' => 'after', 'value' => '9999-12-31'], 'filters.0.value'],
+    'after, datetime' => [['column' => 'ts', 'op' => 'after', 'value' => '9999-12-31'], 'filters.0.value'],
+    'between date-only end, datetime' => [['column' => 'ts', 'op' => 'between', 'value' => '2026-10-01', 'to' => '9999-12-31'], 'filters.0.to'],
+    'between date-only end, date' => [['column' => 'd', 'op' => 'between', 'value' => '2026-10-01', 'to' => '9999-12-31'], 'filters.0.to'],
 ]);
 
 it('rejects invalid date filters with a keyed message', function (array $filter, string $key, ?string $message = null) {

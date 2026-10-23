@@ -16,6 +16,11 @@ final class DateFilters
 {
     public const OPS = ['on', 'between', 'after'];
 
+    /** The last day a filter can name where it needs the day after (a date-only end, `on`, `after`). */
+    private const LAST_DAY = '9999-12-31';
+
+    private const TOO_LATE = 'That date is too late to filter by.';
+
     private const CANONICAL = '/^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}:\d{2})(?:\.\d{1,6})?)?$/';
 
     /**
@@ -49,6 +54,10 @@ final class DateFilters
             }
 
             $valueOk = self::checkValue($value, $kind, $f['op'] === 'on', $error, 'value');
+            // `on` and a date-only `after` compare against the next day, which 9999-12-31 does not have.
+            if ($valueOk && $f['op'] !== 'between' && $value === self::LAST_DAY) {
+                $error('value', self::TOO_LATE);
+            }
             if ($f['op'] !== 'between') {
                 if ($to !== null) {
                     $error('to', 'Only a range takes an end date.');
@@ -56,7 +65,13 @@ final class DateFilters
 
                 continue;
             }
-            if (self::checkValue($to, $kind, false, $error, 'to') && $valueOk && ! self::inOrder($value, $to)) {
+            if (! self::checkValue($to, $kind, false, $error, 'to')) {
+                continue;
+            }
+            // A date-only end means its whole day, up to the next one; 9999-12-31 has none.
+            if ($to === self::LAST_DAY) {
+                $error('to', self::TOO_LATE);
+            } elseif ($valueOk && ! self::inOrder($value, $to)) {
                 $error('to', 'The range ends before it starts.');
             }
         }

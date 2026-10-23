@@ -103,6 +103,87 @@ describe('DatePicker', () => {
         expect(onApply).not.toHaveBeenCalled();
     });
 
+    it('says on means a whole day when a time is typed for on', () => {
+        renderPicker({ mode: 'single', allowTime: false });
+        type('Date', '2026-10-01 14:00');
+        expect(screen.getByRole('alert')).toHaveTextContent(
+            '“on” means a whole day — enter a date without a time',
+        );
+    });
+
+    it('keeps the format hint for text that is not a date under on', () => {
+        renderPicker({ mode: 'single', allowTime: false });
+        type('Date', '2026-10-1x');
+        expect(screen.getByRole('alert')).toHaveTextContent(
+            'Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS',
+        );
+    });
+
+    it('refuses 9999-12-31 where the filter needs the day after', () => {
+        const { onApply } = renderPicker({
+            mode: 'single',
+            allowTime: false,
+            needsNextDay: true,
+        });
+        type('Date', '9999-12-31');
+        expect(screen.getByRole('alert')).toHaveTextContent(
+            'That date is too late to filter by',
+        );
+        expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+        fireEvent.keyDown(screen.getByLabelText('Date'), { key: 'Enter' });
+        expect(onApply).not.toHaveBeenCalled();
+    });
+
+    it('takes 9999-12-31 where no day after is needed (before, equals)', () => {
+        const { onApply } = renderPicker({ mode: 'single' });
+        type('Date', '9999-12-31');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+        expect(onApply).toHaveBeenCalledWith('9999-12-31', undefined);
+    });
+
+    it('takes a timed value on 9999-12-31 where the day after is needed', () => {
+        const { onApply } = renderPicker({
+            mode: 'single',
+            needsNextDay: true,
+        });
+        type('Date', '9999-12-31');
+        type('Time', '10:00');
+        fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+        expect(onApply).toHaveBeenCalledWith('9999-12-31 10:00:00', undefined);
+    });
+
+    it('refuses a date-only range end of 9999-12-31, typed in either field', () => {
+        const { onApply } = renderPicker({ needsNextDay: true });
+        type('From', '2026-10-01');
+        type('To', '9999-12-31');
+        expect(screen.getByRole('alert')).toHaveTextContent(
+            'That date is too late to filter by',
+        );
+        expect(screen.getByLabelText('To')).toHaveAttribute(
+            'aria-invalid',
+            'true',
+        );
+        expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+        // Reversed, the From field holds the end.
+        type('From', '9999-12-31');
+        type('To', '2026-10-01');
+        expect(screen.getByLabelText('From')).toHaveAttribute(
+            'aria-invalid',
+            'true',
+        );
+        expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+        // A timed end on that day is fine.
+        type('To', '9999-12-31');
+        type('To time', '23:00');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+        expect(onApply).toHaveBeenCalledWith(
+            '9999-12-31',
+            '9999-12-31 23:00:00',
+        );
+    });
+
     it('rejects a time on a date column', () => {
         renderPicker({ kind: 'date', mode: 'single' });
         type('Date', '2026-10-01 14:00');
@@ -134,7 +215,7 @@ describe('DatePicker', () => {
                 onCancel={vi.fn()}
             />,
         );
-        // The weekday row is aria-hidden; each day's own label names its weekday.
+        // The weekday header names the weekday; a day button's label names only the date.
         const first = container.querySelector('th[scope="col"]');
         expect(first).toHaveAttribute('aria-label', 'Monday');
         expect(

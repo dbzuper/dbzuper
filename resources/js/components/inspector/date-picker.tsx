@@ -3,9 +3,12 @@ import { type DateRange, DayPicker } from 'react-day-picker';
 import { Button } from '@/components/ui/button';
 import {
     type DateKind,
+    isDateOnly,
+    LAST_DAY,
     normalizeDateInput,
     quickRanges,
     rangeInOrder,
+    TOO_LATE_ERROR,
 } from '@/lib/date-filter';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +19,8 @@ type Props = {
     to?: string;
     /** False hides the time field even on a datetime column (`on` always means a whole day). */
     allowTime?: boolean;
+    /** The filter compares a date-only value (a range's end) against the day after (`on`, `after`, `between`), so 9999-12-31 can't be used. */
+    needsNextDay?: boolean;
     onApply: (value: string, to?: string) => void;
     onQuickRange: (from: string, to: string) => void;
     onCancel: () => void;
@@ -58,6 +63,9 @@ function parse(end: End, kind: DateKind): Parsed {
 }
 
 const valueOf = (p: Parsed) => ('value' in p ? p.value : null);
+
+const ON_TIME_ERROR = '“on” means a whole day — enter a date without a time';
+const tooLate: Parsed = { error: TOO_LATE_ERROR };
 
 const fieldClass =
     'h-7 rounded-md border bg-background px-2 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring aria-invalid:border-destructive';
@@ -119,6 +127,7 @@ export default function DatePicker({
     value,
     to,
     allowTime = true,
+    needsNextDay = false,
     onApply,
     onQuickRange,
     onCancel,
@@ -129,8 +138,28 @@ export default function DatePicker({
     const range = mode === 'range';
     const [from, setFrom] = useState<End>(() => split(value, withTime));
     const [until, setUntil] = useState<End>(() => split(to, withTime));
-    const fromParsed = parse(from, accepts);
-    const untilParsed = parse(until, accepts);
+    const parseEnd = (end: End): Parsed => {
+        const parsed = parse(end, accepts);
+        // Without a time field (`on`), a valid timed value gets the reason rather than the format hint.
+        if (!allowTime && 'error' in parsed) {
+            const timed = valueOf(parse(end, 'datetime'));
+            if (timed !== null && !isDateOnly(timed)) {
+                return { error: ON_TIME_ERROR };
+            }
+        }
+        return parsed;
+    };
+    let fromParsed = parseEnd(from);
+    let untilParsed = parseEnd(until);
+    if (needsNextDay) {
+        const f = valueOf(fromParsed);
+        const u = valueOf(untilParsed);
+        // The end is the later value once the two are in order: From on its own, or a reversed range.
+        const fromIsEnd =
+            !range || (f !== null && u !== null && !rangeInOrder(f, u));
+        if (fromIsEnd && f === LAST_DAY) fromParsed = tooLate;
+        if (!fromIsEnd && u === LAST_DAY) untilParsed = tooLate;
+    }
     const fromValue = valueOf(fromParsed);
     const untilValue = valueOf(untilParsed);
     const [month, setMonth] = useState<Date>(() =>
@@ -152,7 +181,7 @@ export default function DatePicker({
     // Typing a valid date brings its month into view.
     const typeDate = (set: typeof setFrom, end: End, date: string) => {
         set({ ...end, date });
-        const typed = valueOf(parse({ ...end, date }, accepts));
+        const typed = valueOf(parseEnd({ ...end, date }));
         if (typed) setMonth(calendarDay(typed));
     };
 
