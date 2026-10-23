@@ -363,6 +363,7 @@ it('filters a DATETIME column by on, between and after', function (array $filter
     'on' => [['column' => 'at', 'op' => 'on', 'value' => '2026-10-15'], [2]],
     'after a date' => [['column' => 'at', 'op' => 'after', 'value' => '2026-10-15'], [3, 4]],
     'between a date and a time' => [['column' => 'at', 'op' => 'between', 'value' => '2026-10-01', 'to' => '2026-10-15 23:59:58'], [1]],
+    'between a time and the same day' => [['column' => 'at', 'op' => 'between', 'value' => '2026-10-15 10:00:00', 'to' => '2026-10-15'], [2]],
 ]);
 
 it('shows date filters in the display sql in the matcher\'s shapes', function (array $filter, string $where) {

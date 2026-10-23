@@ -56,7 +56,7 @@ final class DateFilters
 
                 continue;
             }
-            if (self::checkValue($to, $kind, false, $error, 'to') && $valueOk && strcmp($value, $to) > 0) {
+            if (self::checkValue($to, $kind, false, $error, 'to') && $valueOk && ! self::inOrder($value, $to)) {
                 $error('to', 'The range ends before it starts.');
             }
         }
@@ -81,6 +81,28 @@ final class DateFilters
         }
 
         return $message === null;
+    }
+
+    /**
+     * Whether the range selects anything: the start comes before the effective end. A date-only end means its whole
+     * day (start < end+1), a timed end is inclusive (start <= end).
+     */
+    private static function inOrder(string $start, string $end): bool
+    {
+        return self::isDateOnly($end)
+            ? self::instant($start) < self::instant(self::addDays($end, 1))
+            : self::instant($start) <= self::instant($end);
+    }
+
+    /**
+     * A valid canonical value as a fixed-width string that compares in time order: a date-only value reads as its
+     * day's 00:00, and the fraction is padded to six digits so .5 and .50 compare equal.
+     */
+    private static function instant(string $value): string
+    {
+        [$seconds, $fraction] = array_pad(explode('.', $value, 2), 2, '');
+
+        return (self::isDateOnly($seconds) ? $seconds.' 00:00:00' : $seconds).'.'.str_pad($fraction, 6, '0');
     }
 
     /** Whether the value is in canonical form and names a real calendar date and time of day. */
