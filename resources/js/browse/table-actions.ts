@@ -67,12 +67,12 @@ export function showInUniverse(connectionId: number, table: string): void {
 }
 
 /**
- * The table actions shared by the sidebar, the tab bar and the table tab. The snapshot is part of the
- * signature so callers rebuild the actions when the schema changes.
+ * The table actions shared by the sidebar, the tab bar and the table tab. The snapshot gives "Open in SQL" the
+ * table's columns, and callers rebuild the actions when the schema changes.
  */
 export function makeTableActions(
     connection: ConnectionSummary,
-    _snapshot: SchemaSnapshot,
+    snapshot: SchemaSnapshot,
 ): TableActions {
     const c = connection.id;
     return {
@@ -86,7 +86,14 @@ export function makeTableActions(
         // On an open table, the editor tab linked to its latest tab; else an unlinked first-page SELECT.
         openInSql: (table) => {
             const latest = latestTableTab(c, table);
-            if (latest) openTableTabInSql(c, latest, connection.driver);
+            if (latest)
+                openTableTabInSql(
+                    c,
+                    latest,
+                    connection.driver,
+                    snapshot.tables.find((t) => t.name === table)?.columns ??
+                        [],
+                );
             else
                 useSqlTabs
                     .getState()

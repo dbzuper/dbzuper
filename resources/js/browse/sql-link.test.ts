@@ -45,7 +45,7 @@ function linked(sql = 'q1'): { table: TableTab; editorId: string } {
         total: null,
         scrollTop: 0,
     });
-    const editorId = openTableTabInSql(1, table, 'mysql');
+    const editorId = openTableTabInSql(1, table, 'mysql', []);
     return { table, editorId };
 }
 
@@ -104,7 +104,7 @@ describe('Open in SQL', () => {
         });
         useSqlTabs.getState().setSql(1, editorId, 'select 1 edited');
 
-        expect(openTableTabInSql(1, orders(), 'mysql')).toBe(editorId);
+        expect(openTableTabInSql(1, orders(), 'mysql', [])).toBe(editorId);
         expect(sqlTabs().filter((t) => t.link)).toHaveLength(1);
         expect(sqlTabs().find((t) => t.id === editorId)?.sql).toBe(
             'select 1 edited',
@@ -114,14 +114,14 @@ describe('Open in SQL', () => {
     it('links two views of one table to two editor tabs', () => {
         const { table, editorId } = linked();
         const second = useBrowse.getState().duplicateTab(1, table.id);
-        const other = openTableTabInSql(1, orders(2), 'mysql');
+        const other = openTableTabInSql(1, orders(2), 'mysql', []);
         expect(other).not.toBe(editorId);
         expect(linkedTo(second)?.title).toBe('orders (2)');
     });
 
     it('falls back to a first-page SELECT when no rows answer the current request', () => {
         useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
-        const id = openTableTabInSql(1, orders(), 'pgsql');
+        const id = openTableTabInSql(1, orders(), 'pgsql', []);
         expect(sqlTabs().find((t) => t.id === id)?.sql).toBe(
             'SELECT * FROM "orders" LIMIT 100',
         );
@@ -234,7 +234,7 @@ describe('closing the table tab', () => {
     it('marks every closed table tab of closeOthers / closeAll', () => {
         const { table } = linked('q1');
         const second = useBrowse.getState().duplicateTab(1, table.id);
-        openTableTabInSql(1, orders(2), 'mysql');
+        openTableTabInSql(1, orders(2), 'mysql', []);
         useBrowse.getState().closeAll(1);
         expect(linkedTo(table.id)?.link?.closed).toBe(true);
         expect(linkedTo(second)?.link?.closed).toBe(true);
@@ -383,7 +383,7 @@ describe('fix round 1', () => {
                 page: 2,
             },
         });
-        const id = openTableTabInSql(1, orders(), 'mysql');
+        const id = openTableTabInSql(1, orders(), 'mysql', []);
         const tab = sqlTabs().find((t) => t.id === id)!;
         expect(tab.sql).toBe(
             "SELECT * FROM `orders` WHERE `status` = 'paid' LIMIT 100 OFFSET 100",
@@ -430,7 +430,7 @@ describe('fix round 1', () => {
     it('opening a linked editor keeps a preview table tab', () => {
         useBrowse.getState().openTable(1, 'orders', { mode: 'preview' });
         expect(orders().preview).toBe(true);
-        openTableTabInSql(1, orders(), 'mysql');
+        openTableTabInSql(1, orders(), 'mysql', []);
         expect(orders().preview).toBe(false);
     });
 });
@@ -440,7 +440,7 @@ describe('task 6', () => {
 
     it('a built query edited before the first response adopts its request key and is not stale', () => {
         useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
-        const id = openTableTabInSql(1, orders(), 'mysql');
+        const id = openTableTabInSql(1, orders(), 'mysql', []);
         expect(editor(orders().id).link?.requestKey).toBeUndefined();
         useSqlTabs.getState().setSql(1, id, 'my edit');
 
@@ -457,7 +457,7 @@ describe('task 6', () => {
 
     it('a response to another request than the built query still marks edited text stale', () => {
         useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
-        const id = openTableTabInSql(1, orders(), 'mysql');
+        const id = openTableTabInSql(1, orders(), 'mysql', []);
         useSqlTabs.getState().setSql(1, id, 'my edit');
         reportTableRows(1, orders().id, 'another key', 'q2');
         expect(editor(orders().id).link?.stale).toBe(true);
@@ -487,9 +487,9 @@ describe('linked tabs follow each other', () => {
     function twoLinked() {
         useWorkspace.setState({ dockOpen: true });
         useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
-        const e1 = openTableTabInSql(1, orders(1), 'mysql');
+        const e1 = openTableTabInSql(1, orders(1), 'mysql', []);
         useBrowse.getState().openNewView(1, 'orders');
-        const e2 = openTableTabInSql(1, orders(2), 'mysql');
+        const e2 = openTableTabInSql(1, orders(2), 'mysql', []);
         return { t1: orders(1).id, t2: orders(2).id, e1, e2 };
     }
 

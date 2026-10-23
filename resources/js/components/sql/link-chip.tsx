@@ -1,6 +1,7 @@
 import { ChevronDown, Link2, Link2Off } from 'lucide-react';
 import { useBrowse } from '@/browse/browse-store';
 import { latestTableSql, updateSqlFromTable } from '@/browse/sql-link';
+import type { TableColumns } from '@/browse/table-query-sql';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -23,10 +24,13 @@ export function LinkChip({
     connectionId,
     tab,
     dialect,
+    columns = [],
 }: {
     connectionId: number;
     tab: SqlTab;
     dialect: Dialect;
+    /** The linked table's columns, for the date filters' shapes when its query is built. */
+    columns?: TableColumns;
 }) {
     const link = tab.link;
     // With its table tab open a query is always known (one is built from its state when none was reported).
@@ -84,6 +88,7 @@ export function LinkChip({
                                 connectionId,
                                 link.browseTabId,
                                 dialect,
+                                columns,
                             )
                         }
                     >

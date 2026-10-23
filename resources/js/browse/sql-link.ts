@@ -5,7 +5,7 @@ import { useWorkspace } from '@/universe/store';
 import { tabTitle, useBrowse, type TableTab } from './browse-store';
 import type { MatchedState } from './match-table-query';
 import { rowsCache, rowsRequestKey } from './rows-cache';
-import { buildTableSql } from './table-query-sql';
+import { buildTableSql, type TableColumns } from './table-query-sql';
 
 /**
  * Editor tabs linked to table tabs (spec 4): the table tab's query flows into the editor, and a fitting statement
@@ -94,6 +94,7 @@ function currentQuery(
     connectionId: number,
     tab: TableTab,
     dialect: Dialect,
+    columns: TableColumns,
 ): { sql: string; requestKey?: string } {
     const requestKey = rowsRequestKey(tab.state);
     const hit = rowsCache.get(tabKey(connectionId, tab.id));
@@ -102,7 +103,7 @@ function currentQuery(
     const known = lastSql.get(tabKey(connectionId, tab.id));
     if (known && known.requestKey === requestKey)
         return { sql: known.sql, requestKey };
-    return { sql: buildTableSql(dialect, tab.table, tab.state) };
+    return { sql: buildTableSql(dialect, tab.table, tab.state, columns) };
 }
 
 /** The tab's current query (Copy SELECT, Open in SQL). */
@@ -110,8 +111,9 @@ export function tableTabSql(
     connectionId: number,
     tab: TableTab,
     dialect: Dialect,
+    columns: TableColumns,
 ): string {
-    return currentQuery(connectionId, tab, dialect).sql;
+    return currentQuery(connectionId, tab, dialect, columns).sql;
 }
 
 /**
@@ -122,9 +124,15 @@ export function openTableTabInSql(
     connectionId: number,
     tab: TableTab,
     dialect: Dialect,
+    columns: TableColumns,
 ): string {
     useBrowse.getState().promote(connectionId, tab.id);
-    const { sql, requestKey } = currentQuery(connectionId, tab, dialect);
+    const { sql, requestKey } = currentQuery(
+        connectionId,
+        tab,
+        dialect,
+        columns,
+    );
     return useSqlTabs
         .getState()
         .openLinkedTab(
@@ -240,19 +248,20 @@ export function onBrowseTabClosed(
 
 /**
  * Stale ("Update SQL"): the editor takes the table tab's latest query, or with `dialect` one built from its state
- * when no query is known. False when there is none.
+ * (and the table's `columns`) when no query is known. False when there is none.
  */
 export function updateSqlFromTable(
     connectionId: number,
     browseTabId: string,
     dialect?: Dialect,
+    columns: TableColumns = [],
 ): boolean {
     const tab = useSqlTabs.getState().findLinked(connectionId, browseTabId);
     const table = tableTab(connectionId, browseTabId);
     const sql =
         latestTableSql(connectionId, browseTabId) ??
         (dialect && table
-            ? currentQuery(connectionId, table, dialect).sql
+            ? currentQuery(connectionId, table, dialect, columns).sql
             : undefined);
     if (!tab?.link || tab.link.closed || sql === undefined) return false;
     if (tab.sql !== sql) replaceText(connectionId, tab.id, sql);

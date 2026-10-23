@@ -105,11 +105,17 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
     const setView = (view: TableView) =>
         useBrowse.getState().updateTable(connectionId, tab.id, { view });
 
-    const selectSql = () => tableTabSql(connectionId, tab, connection.driver);
+    const selectSql = () =>
+        tableTabSql(connectionId, tab, connection.driver, table?.columns ?? []);
 
     // The editor tab stays linked to this tab: it follows the tab's query, and a fitting Run sets the tab.
     const openInSql = () => {
-        openTableTabInSql(connectionId, tab, connection.driver);
+        openTableTabInSql(
+            connectionId,
+            tab,
+            connection.driver,
+            table?.columns ?? [],
+        );
         useWorkspace.getState().setDockOpen(true);
     };
 

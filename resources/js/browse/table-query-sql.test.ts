@@ -11,6 +11,7 @@ type Case = {
     sort: SortKey[];
     page: number;
     perPage: PerPage;
+    sql: string;
 };
 const fixtures = JSON.parse(
     readFileSync(
@@ -79,6 +80,10 @@ const tableFor = (dialect: Dialect): TableSchema => ({
     ],
 });
 
+/** The WHERE clause's conditions, or '' without one. */
+const whereOf = (sql: string) =>
+    /\swhere\s(.*?)(?:\sorder by\s|\slimit\s)/i.exec(sql)?.[1] ?? '';
+
 describe('buildTableSql', () => {
     for (const dialect of ['sqlite', 'mysql', 'mariadb', 'pgsql'] as const)
         it(`maps back to the same state for every server fixture on ${dialect}`, () => {
@@ -89,49 +94,77 @@ describe('buildTableSql', () => {
                     page: c.page,
                     perPage: c.perPage,
                 };
-                const sql = buildTableSql(dialect, 'm7_sql_fixture', state);
+                const sql = buildTableSql(
+                    dialect,
+                    'm7_sql_fixture',
+                    state,
+                    tableFor(dialect).columns,
+                );
                 expect(
                     matchTableQuery(sql, dialect, tableFor(dialect)),
                     sql,
                 ).toEqual({ ok: true, state });
+                // The same conditions as the server wrote (it joins them with a lower-case `and`).
+                expect(whereOf(sql).toLowerCase(), sql).toBe(
+                    whereOf(c.sql).toLowerCase(),
+                );
             }
         });
 
     it('builds a plain first page without OFFSET', () => {
         expect(
-            buildTableSql('mysql', 'orders', {
-                filters: [],
-                sort: [],
-                page: 1,
-                perPage: 100,
-            }),
+            buildTableSql(
+                'mysql',
+                'orders',
+                {
+                    filters: [],
+                    sort: [],
+                    page: 1,
+                    perPage: 100,
+                },
+                [],
+            ),
         ).toBe('SELECT * FROM `orders` LIMIT 100');
     });
 
     it('builds filters, sort and page', () => {
         expect(
-            buildTableSql('pgsql', 'orders', {
-                filters: [
-                    { column: 'status', op: 'eq', value: "O'Brien" },
-                    { column: 'note', op: 'contains', value: '50%' },
-                ],
-                sort: [{ column: 'total', direction: 'desc' }],
-                page: 3,
-                perPage: 50,
-            }),
+            buildTableSql(
+                'pgsql',
+                'orders',
+                {
+                    filters: [
+                        { column: 'status', op: 'eq', value: "O'Brien" },
+                        { column: 'note', op: 'contains', value: '50%' },
+                    ],
+                    sort: [{ column: 'total', direction: 'desc' }],
+                    page: 3,
+                    perPage: 50,
+                },
+                [],
+            ),
         ).toBe(
             `SELECT * FROM "orders" WHERE "status" = 'O''Brien' AND CAST("note" AS TEXT) ILIKE '%50!%%' ESCAPE '!' ORDER BY "total" DESC LIMIT 50 OFFSET 100`,
         );
     });
 
     it('builds the date operators in the server shapes', () => {
+        const events = [
+            { name: 'd', type_name: 'date' },
+            { name: 'ts', type_name: 'datetime' },
+        ];
         const where = (filters: RowFilter[]) =>
-            buildTableSql('mysql', 'events', {
-                filters,
-                sort: [],
-                page: 1,
-                perPage: 50,
-            })
+            buildTableSql(
+                'mysql',
+                'events',
+                {
+                    filters,
+                    sort: [],
+                    page: 1,
+                    perPage: 50,
+                },
+                events,
+            )
                 .replace('SELECT * FROM `events` WHERE ', '')
                 .replace(' LIMIT 50', '');
         expect(where([{ column: 'ts', op: 'on', value: '2026-12-31' }])).toBe(
@@ -154,7 +187,27 @@ describe('buildTableSql', () => {
                     to: '2026-10-31',
                 },
             ]),
-        ).toBe("`d` >= '2026-10-01' AND `d` < '2026-11-01'");
+        ).toBe("`d` BETWEEN '2026-10-01' AND '2026-10-31'");
+        expect(
+            where([
+                {
+                    column: 'ts',
+                    op: 'between',
+                    value: '2026-10-01',
+                    to: '2026-10-31',
+                },
+            ]),
+        ).toBe("`ts` >= '2026-10-01' AND `ts` < '2026-11-01'");
+        expect(
+            where([
+                {
+                    column: 'ts',
+                    op: 'between',
+                    value: '2026-10-01 10:00:00',
+                    to: '2026-10-15',
+                },
+            ]),
+        ).toBe("`ts` >= '2026-10-01 10:00:00' AND `ts` < '2026-10-16'");
         expect(
             where([
                 {
@@ -175,5 +228,42 @@ describe('buildTableSql', () => {
                 },
             ]),
         ).toBe("`ts` BETWEEN '2026-10-01 10:00:00' AND '2026-10-15 18:30:00'");
+    });
+
+    it('round-trips a one-day range on a date column', () => {
+        const state = {
+            filters: [
+                {
+                    column: 'd',
+                    op: 'between',
+                    value: '2026-10-31',
+                    to: '2026-10-31',
+                } satisfies RowFilter,
+            ],
+            sort: [],
+            page: 1,
+            perPage: 50 as const,
+        };
+        for (const dialect of [
+            'sqlite',
+            'mysql',
+            'mariadb',
+            'pgsql',
+        ] as const) {
+            const table = tableFor(dialect);
+            const sql = buildTableSql(
+                dialect,
+                'm7_sql_fixture',
+                state,
+                table.columns,
+            );
+            expect(whereOf(sql)).toContain(
+                "BETWEEN '2026-10-31' AND '2026-10-31'",
+            );
+            expect(matchTableQuery(sql, dialect, table), sql).toEqual({
+                ok: true,
+                state,
+            });
+        }
     });
 });
