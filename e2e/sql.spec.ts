@@ -116,6 +116,14 @@ test('records: entry points (result row, table tab row) and tables without a pri
         const box = (await control.boundingBox())!;
         expect(box.y + box.height).toBeLessThanOrEqual(dockTop);
     }
+    // The grid fills the space down to the pager (react-data-grid's own 350px default must not win).
+    const fill = await panel
+        .locator('.rdg-dbsuperb')
+        .evaluate((grid) => [
+            grid.getBoundingClientRect().height,
+            grid.parentElement!.getBoundingClientRect().height,
+        ]);
+    expect(fill[0]).toBeCloseTo(fill[1], 0);
     await drawer.getByRole('button', { name: 'Explore graph' }).click();
     await expect(explorer.getByText('Grace Hopper').first()).toBeVisible();
 
