@@ -15,6 +15,7 @@ import {
     formatDateValue,
     isDateOnly,
     isDateOp,
+    normalizeDateInput,
 } from '@/lib/date-filter';
 import { FILTER_OPS, type FilterOp, type RowFilter } from '@/lib/workspace-api';
 
@@ -86,9 +87,13 @@ export function FilterBar({
               ? 'on'
               : 'eq';
     const needsValue = needsValueOf(op);
-    const canAdd =
-        selected !== '' &&
-        (!needsValue || (value !== '' && (op !== 'between' || to !== '')));
+    // On a date column only a canonical value counts (date-only for `on`), so the bar never sends one unchecked.
+    const isValue = (v: string) =>
+        v !== '' &&
+        (kind === null ||
+            'value' in normalizeDateInput(v, op === 'on' ? 'date' : kind));
+    const hasValue = isValue(value) && (op !== 'between' || isValue(to));
+    const canAdd = selected !== '' && (!needsValue || hasValue);
 
     const changeColumn = (next: string) => {
         const nextKind = kindOf(next);
@@ -116,6 +121,9 @@ export function FilterBar({
         setColumn(draftColumn);
         // A date column has no `contains`, so it shows its default operator instead.
         setOp('contains');
+        // A new filter on that column: text typed for another column (perhaps of another kind) is dropped.
+        setValue('');
+        setTo('');
         focusValue.current = true;
     }, [draftColumn, draftNonce]);
     // The value input may only appear once the operator has switched, so focus waits for that render.
@@ -214,7 +222,7 @@ export function FilterBar({
                                 className={`${fieldClass} inline-flex min-w-36 items-center gap-1.5 text-left`}
                             >
                                 <CalendarDays className="size-3.5 shrink-0 text-muted-foreground" />
-                                {value ? (
+                                {hasValue ? (
                                     <span>
                                         {formatDateValue(value)}
                                         {op === 'between' && to

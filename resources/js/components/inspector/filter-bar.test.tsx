@@ -355,6 +355,48 @@ describe('FilterBar', () => {
             ]);
         });
 
+        it('rejects a typed time for on in the picker', async () => {
+            const onChange = renderDates();
+            expect(operator()).toHaveValue('on');
+            await openPicker();
+            fireEvent.change(await screen.findByLabelText('Date'), {
+                target: { value: '2026-10-01 14:00' },
+            });
+            expect(screen.getByRole('alert')).toBeInTheDocument();
+            expect(
+                screen.getByRole('button', { name: 'Apply' }),
+            ).toBeDisabled();
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
+        it('drops text typed for another column when a date column draft starts', () => {
+            const onChange = vi.fn();
+            const props = {
+                columns: dateColumns,
+                filters: [],
+                onChange,
+                dateKinds,
+            };
+            const { rerender } = render(<FilterBar {...props} draft={null} />);
+            fireEvent.change(screen.getByLabelText('Filter value'), {
+                target: { value: 'ada' },
+            });
+            rerender(
+                <FilterBar
+                    {...props}
+                    draft={{ column: 'created_at', nonce: 1 }}
+                />,
+            );
+            expect(operator()).toHaveValue('on');
+            expect(screen.getByLabelText('Filter value')).toHaveTextContent(
+                'Pick a date…',
+            );
+            const add = screen.getByRole('button', { name: 'Add filter' });
+            expect(add).toBeDisabled();
+            fireEvent.click(add);
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
         it('adds a single-date filter without to', async () => {
             const onChange = renderDates();
             fireEvent.change(operator(), { target: { value: 'after' } });

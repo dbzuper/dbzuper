@@ -93,6 +93,16 @@ describe('DatePicker', () => {
         expect(screen.getByLabelText('To')).toHaveValue('2026-10-15');
     });
 
+    it('rejects a typed time when times are off (on)', () => {
+        const { onApply } = renderPicker({ mode: 'single', allowTime: false });
+        expect(screen.queryByLabelText('Time')).not.toBeInTheDocument();
+        type('Date', '2026-10-01 14:00');
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+        fireEvent.keyDown(screen.getByLabelText('Date'), { key: 'Enter' });
+        expect(onApply).not.toHaveBeenCalled();
+    });
+
     it('rejects a time on a date column', () => {
         renderPicker({ kind: 'date', mode: 'single' });
         type('Date', '2026-10-01 14:00');

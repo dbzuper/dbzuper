@@ -105,11 +105,13 @@ export default function DatePicker({
     onCancel,
 }: Props) {
     const withTime = kind === 'datetime' && allowTime;
+    // Without a time field a typed or pasted time is an error too, so `on` always gets a whole day.
+    const accepts: DateKind = withTime ? kind : 'date';
     const range = mode === 'range';
     const [from, setFrom] = useState<End>(() => split(value, withTime));
     const [until, setUntil] = useState<End>(() => split(to, withTime));
-    const fromParsed = parse(from, kind);
-    const untilParsed = parse(until, kind);
+    const fromParsed = parse(from, accepts);
+    const untilParsed = parse(until, accepts);
     const fromValue = valueOf(fromParsed);
     const untilValue = valueOf(untilParsed);
     const [month, setMonth] = useState<Date>(() =>
@@ -131,7 +133,7 @@ export default function DatePicker({
     // Typing a valid date brings its month into view.
     const typeDate = (set: typeof setFrom, end: End, date: string) => {
         set({ ...end, date });
-        const typed = valueOf(parse({ ...end, date }, kind));
+        const typed = valueOf(parse({ ...end, date }, accepts));
         if (typed) setMonth(calendarDay(typed));
     };
 
