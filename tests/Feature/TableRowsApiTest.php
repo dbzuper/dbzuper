@@ -346,3 +346,53 @@ it('resolves the edit plan once per snapshot and follows read-only changes', fun
     $this->connection->update(['read_only' => true]);
     $post()->assertJsonPath('editing.method', 'none');
 });
+
+it('filters a DATETIME column by on, between and after', function (array $filter, array $ids) {
+    $pdo = new PDO('sqlite:'.Engines::sqlitePath());
+    $pdo->exec('CREATE TABLE "events" ("id" integer primary key, "at" DATETIME)');
+    $pdo->exec("INSERT INTO \"events\" VALUES (1, '2026-10-01 00:00:00'), (2, '2026-10-15 23:59:59'), (3, '2026-10-16 00:00:00'), (4, '2026-10-31 12:00:00')");
+
+    $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'events']), ['filters' => [$filter]])->assertOk();
+
+    expect(array_column($res->json('rows'), 0))->toBe($ids)
+        ->and(array_column(fixtureRows($res->json('sql')), 0))->toBe($ids);
+    $this->actingAs($this->user)->postJson(route('api.tables.count', [$this->connection, 'events']), ['filters' => [$filter]])
+        ->assertOk()->assertJsonPath('count', count($ids));
+})->with([
+    'between dates' => [['column' => 'at', 'op' => 'between', 'value' => '2026-10-01', 'to' => '2026-10-15'], [1, 2]],
+    'on' => [['column' => 'at', 'op' => 'on', 'value' => '2026-10-15'], [2]],
+    'after a date' => [['column' => 'at', 'op' => 'after', 'value' => '2026-10-15'], [3, 4]],
+    'between a date and a time' => [['column' => 'at', 'op' => 'between', 'value' => '2026-10-01', 'to' => '2026-10-15 23:59:58'], [1]],
+]);
+
+it('shows date filters in the display sql in the matcher\'s shapes', function (array $filter, string $where) {
+    $pdo = new PDO('sqlite:'.Engines::sqlitePath());
+    $pdo->exec('CREATE TABLE "events" ("id" integer primary key, "day" date, "at" DATETIME)');
+
+    $sql = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'events']), ['filters' => [$filter]])->assertOk()->json('sql');
+
+    expect($sql)->toContain(' where '.$where.' order by');
+})->with([
+    'on' => [['column' => 'at', 'op' => 'on', 'value' => '2026-10-15'], "\"at\" >= '2026-10-15' and \"at\" < '2026-10-16'"],
+    'on a date' => [['column' => 'day', 'op' => 'on', 'value' => '2026-10-31'], "\"day\" >= '2026-10-31' and \"day\" < '2026-11-01'"],
+    'between dates on a date' => [['column' => 'day', 'op' => 'between', 'value' => '2026-10-01', 'to' => '2026-10-31'], "\"day\" BETWEEN '2026-10-01' AND '2026-10-31'"],
+    'between dates on a datetime' => [['column' => 'at', 'op' => 'between', 'value' => '2026-10-01', 'to' => '2026-12-31'], "\"at\" >= '2026-10-01' and \"at\" < '2027-01-01'"],
+    'between timed' => [['column' => 'at', 'op' => 'between', 'value' => '2026-10-01 10:00:00', 'to' => '2026-10-02 11:00:00.5'], "\"at\" BETWEEN '2026-10-01 10:00:00' AND '2026-10-02 11:00:00.5'"],
+    'between a time and a date' => [['column' => 'at', 'op' => 'between', 'value' => '2026-10-01 10:00:00', 'to' => '2026-10-02'], "\"at\" >= '2026-10-01 10:00:00' and \"at\" < '2026-10-03'"],
+    'between a date and a time' => [['column' => 'at', 'op' => 'between', 'value' => '2026-10-01', 'to' => '2026-10-02 11:00:00'], "\"at\" >= '2026-10-01' and \"at\" <= '2026-10-02 11:00:00'"],
+    'after a date' => [['column' => 'day', 'op' => 'after', 'value' => '2028-02-28'], "\"day\" >= '2028-02-29'"],
+    'after a time' => [['column' => 'at', 'op' => 'after', 'value' => '2026-10-01 10:00:00'], "\"at\" > '2026-10-01 10:00:00'"],
+]);
+
+it('rejects invalid date filters on the rows and count endpoints', function (array $filter, string $key) {
+    foreach (['api.tables.rows', 'api.tables.count'] as $route) {
+        $this->actingAs($this->user)->postJson(route($route, [$this->connection, 'users']), ['filters' => [$filter]])
+            ->assertUnprocessable()->assertJsonValidationErrors($key);
+    }
+})->with([
+    'text column' => [['column' => 'name', 'op' => 'on', 'value' => '2026-10-01'], 'filters.0.op'],
+    'reversed range' => [['column' => 'created_at', 'op' => 'between', 'value' => '2026-10-15', 'to' => '2026-10-01'], 'filters.0.to'],
+    'missing value' => [['column' => 'created_at', 'op' => 'after'], 'filters.0.value'],
+    'impossible date' => [['column' => 'created_at', 'op' => 'on', 'value' => '2026-02-30'], 'filters.0.value'],
+    'to on eq' => [['column' => 'name', 'op' => 'eq', 'value' => 'x', 'to' => '2026-10-01'], 'filters.0.to'],
+]);

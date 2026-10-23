@@ -7,6 +7,7 @@ use App\Database\DriverRegistry;
 use App\Database\Editing\EditPlanCache;
 use App\Database\Errors\DbErrorMapper;
 use App\Database\Exceptions\DatabaseOperationFailed;
+use App\Database\Query\DateFilters;
 use App\Database\Query\TableRowsQuery;
 use App\Database\Schema\SnapshotService;
 use App\Http\Controllers\Controller;
@@ -34,6 +35,7 @@ class TableRowsController extends Controller
                 throw ValidationException::withMessages(["filters.{$i}.column" => 'Unknown column.']);
             }
         }
+        DateFilters::validate($filters, $info['columns']);
         $sort = $request->validated('sort') ?? [];
         foreach ($sort as $i => $s) {
             if (! in_array($s['column'], $names, true)) {

@@ -5,6 +5,7 @@ namespace App\Database\Query;
 use App\Database\CellValue;
 use App\Database\ColumnKind;
 use App\Database\Contracts\Driver;
+use App\Database\DateKind;
 use App\Database\Editing\ColumnComparability;
 use App\Database\Editing\EditMethod;
 use App\Database\Editing\EditMethodResolver;
@@ -15,7 +16,7 @@ use Illuminate\Database\Query\Builder;
 
 final class TableRowsQuery
 {
-    public const OPS = ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'contains', 'starts_with', 'ends_with', 'is_null', 'is_not_null'];
+    public const OPS = ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'contains', 'starts_with', 'ends_with', 'is_null', 'is_not_null', 'on', 'between', 'after'];
 
     /** Alias prefix for the raw identity columns; extended when a real column starts with it. */
     private const ALIAS_PREFIX = '__dbsuperb_';
@@ -24,7 +25,7 @@ final class TableRowsQuery
 
     /**
      * @param  array{name: string, columns: list<array{name: string, type_name: string, type: string}>}  $table
-     * @param  list<array{column: string, op: string, value?: ?string}>  $filters
+     * @param  list<array{column: string, op: string, value?: ?string, to?: ?string}>  $filters
      * @param  list<array{column: string, direction: string}>  $sort
      * @param  ?EditPlan  $plan  how rows are pinned for editing; null means not editable
      * @return array{columns: list<array{name:string,type:?string,table:string}>, rows: list<list<mixed>>, has_more: bool, sql: string, editing: array{method:string,reason:?string,read_only_columns:list<string>}, row_ids: list<?array>, locked: list<list<int>>, shortened: list<list<int>>}
@@ -47,7 +48,7 @@ final class TableRowsQuery
 
         $build = function (array $select, int $limit, bool $literal) use ($db, $driver, $table, $filters, $order, $page, $perPage, $q): Builder {
             $query = $db->table($db->raw($q($table['name'])))->select($select);
-            self::applyFilters($query, $db, $driver, $filters, $literal);
+            self::applyFilters($query, $db, $driver, $filters, $literal, $table['columns']);
             foreach ($order as [$column, $direction]) {
                 $query->orderByRaw($q($column).' '.$direction);
             }
@@ -253,21 +254,29 @@ final class TableRowsQuery
         return [];
     }
 
-    /** @param  list<array{column: string, op: string, value?: ?string}>  $filters */
-    public static function applyFilters(Builder $query, Connection $db, Driver $driver, array $filters, bool $literal): void
+    /**
+     * @param  list<array{column: string, op: string, value?: ?string, to?: ?string}>  $filters  date filters already passed DateFilters::validate
+     * @param  list<array{name: string, type_name?: ?string}>  $columns  the table's columns, for the date operators' column kind
+     */
+    public static function applyFilters(Builder $query, Connection $db, Driver $driver, array $filters, bool $literal, array $columns): void
     {
+        $types = array_column($columns, 'type_name', 'name');
         foreach ($filters as $f) {
-            self::apply($query, $db, $driver, $driver->quoteIdentifier($f['column']), $f['op'], $f['value'] ?? null, $literal);
+            $kind = DateKind::classify((string) ($types[$f['column']] ?? ''));
+            self::apply($query, $db, $driver, $driver->quoteIdentifier($f['column']), $f['op'], $f['value'] ?? null, $f['to'] ?? null, $kind, $literal);
         }
     }
 
-    private static function apply(Builder $query, Connection $db, Driver $driver, string $column, string $op, ?string $value, bool $literal): void
+    private static function apply(Builder $query, Connection $db, Driver $driver, string $column, string $op, ?string $value, ?string $to, ?DateKind $kind, bool $literal): void
     {
-        // Inlines the value at the placeholder position only: a "?" inside a quoted column name is never touched.
-        $where = function (string $before, string $after, string $bound) use ($query, $db, $literal): void {
-            $literal
-                ? $query->whereRaw($before.$db->escape($bound).$after)
-                : $query->whereRaw($before.'?'.$after, [$bound]);
+        // $parts surround the values: the values are inlined at those positions only, so a "?" inside a quoted
+        // column name is never touched.
+        $where = function (array $parts, string ...$bound) use ($query, $db, $literal): void {
+            $sql = array_shift($parts);
+            foreach ($bound as $i => $v) {
+                $sql .= ($literal ? $db->escape($v) : '?').$parts[$i];
+            }
+            $literal ? $query->whereRaw($sql) : $query->whereRaw($sql, $bound);
         };
 
         if ($op === 'is_null' || $op === 'is_not_null') {
@@ -276,7 +285,12 @@ final class TableRowsQuery
             return;
         }
         if (isset(self::COMPARE[$op])) {
-            $where($column.' '.self::COMPARE[$op].' ', '', $value ?? '');
+            $where([$column.' '.self::COMPARE[$op].' ', ''], $value ?? '');
+
+            return;
+        }
+        if (in_array($op, DateFilters::OPS, true)) {
+            self::applyDate($where, $column, $op, (string) $value, (string) $to, $kind);
 
             return;
         }
@@ -286,6 +300,28 @@ final class TableRowsQuery
             'starts_with' => "{$escaped}%",
             'ends_with' => "%{$escaped}",
         };
-        $where($driver->likeColumn($column).' '.$driver->likeOperator().' ', " ESCAPE '!'", $pattern);
+        $where([$driver->likeColumn($column).' '.$driver->likeOperator().' ', " ESCAPE '!'"], $pattern);
+    }
+
+    /**
+     * The date operators, in the exact shapes the SQL editor's matcher reads back. A date-only bound means the whole
+     * day: on D is D <= col < D+1, after D starts at D+1, and a range ending on date-only B runs up to B+1.
+     */
+    private static function applyDate(callable $where, string $column, string $op, string $value, string $to, ?DateKind $kind): void
+    {
+        $dateOnly = DateFilters::isDateOnly($value);
+        $compare = fn (string $operator, string $bound) => $where([$column.' '.$operator.' ', ''], $bound);
+
+        if ($op === 'on') {
+            $compare('>=', $value);
+            $compare('<', DateFilters::addDays($value, 1));
+        } elseif ($op === 'after') {
+            $dateOnly ? $compare('>=', DateFilters::addDays($value, 1)) : $compare('>', $value);
+        } elseif ($kind === DateKind::Date || (! $dateOnly && ! DateFilters::isDateOnly($to))) {
+            $where([$column.' BETWEEN ', ' AND ', ''], $value, $to);
+        } else {
+            $compare('>=', $value);
+            DateFilters::isDateOnly($to) ? $compare('<', DateFilters::addDays($to, 1)) : $compare('<=', $to);
+        }
     }
 }
