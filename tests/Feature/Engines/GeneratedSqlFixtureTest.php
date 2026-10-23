@@ -18,6 +18,7 @@ function sqlFixtureCases(): array
     $f = fn (string $column, string $op, ?string $value = null) => $value === null && in_array($op, ['is_null', 'is_not_null'], true)
         ? ['column' => $column, 'op' => $op]
         : ['column' => $column, 'op' => $op, 'value' => $value];
+    $range = fn (string $column, string $from, string $to) => ['column' => $column, 'op' => 'between', 'value' => $from, 'to' => $to];
     $asc = fn (string $c) => ['column' => $c, 'direction' => 'asc'];
     $desc = fn (string $c) => ['column' => $c, 'direction' => 'desc'];
 
@@ -39,6 +40,18 @@ function sqlFixtureCases(): array
         [[], [$asc('total'), $desc('name')], 1, 50],
         [[], [], 3, 50],
         [[], [], 1, 1000],
+        // Date operators: each reads back to exactly its own filter.
+        [[$f('ts', 'on', '2026-10-15')], [], 1, 50],
+        [[$range('ts', '2026-10-01', '2026-10-15')], [], 1, 50],
+        [[$range('ts', '2026-10-01 10:00:00', '2026-10-15 18:30:00')], [], 1, 50],
+        [[$range('ts', '2026-10-01', '2026-10-15 18:30:00')], [], 1, 50],
+        [[$range('ts', '2026-10-01 10:00:00', '2026-10-15')], [], 1, 50],
+        [[$range('d', '2026-10-01', '2026-10-31')], [], 1, 50],
+        [[$f('ts', 'after', '2026-10-31')], [], 1, 50],
+        [[$f('ts', 'after', '2026-10-31 12:00:00')], [], 1, 50],
+        [[$f('ts', 'lt', '2026-10-15')], [], 1, 50],
+        [[$f('ts', 'on', '2026-12-31')], [], 1, 50],
+        [[$f('ts', 'on', '2026-10-15'), $f('name', 'contains', 'ab')], [], 1, 50],
     ];
 }
 
@@ -57,7 +70,12 @@ it('records the server-generated table SQL per engine for the matcher', function
             $t->string('name');
             $t->text('note')->nullable();
             $t->decimal('total', 10, 2);
+            $t->date('d')->nullable();
+            $t->dateTime('ts')->nullable();
         });
+        // The date columns as the engine reports them: their type decides the date operators' SQL.
+        $reported = collect($schema->getColumns('m7_sql_fixture'))->keyBy('name');
+        $dateColumn = fn (string $name) => ['name' => $name, 'type' => $reported[$name]['type'], 'type_name' => $reported[$name]['type_name']];
         $table = [
             'name' => 'm7_sql_fixture',
             'columns' => [
@@ -65,6 +83,8 @@ it('records the server-generated table SQL per engine for the matcher', function
                 ['name' => 'name', 'type' => 'varchar(255)', 'type_name' => 'varchar'],
                 ['name' => 'note', 'type' => 'text', 'type_name' => 'text'],
                 ['name' => 'total', 'type' => 'decimal(10,2)', 'type_name' => 'decimal'],
+                $dateColumn('d'),
+                $dateColumn('ts'),
             ],
             'indexes' => [['name' => 'PRIMARY', 'columns' => ['id'], 'primary' => true, 'unique' => true]],
         ];

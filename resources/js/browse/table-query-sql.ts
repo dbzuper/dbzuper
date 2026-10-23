@@ -1,4 +1,5 @@
 import { quoteIdent } from '@/grid/copy';
+import { addDays, isDateOnly } from '@/lib/date-filter';
 import type { PerPage, RowFilter, SortKey } from '@/lib/workspace-api';
 import type { Dialect } from '@/types/schema';
 
@@ -18,11 +19,39 @@ function literal(dialect: Dialect, value: string): string {
         : `'${value.replace(/'/g, "''")}'`;
 }
 
+/**
+ * The server's shapes for the date operators. A range of two days is written as `>= A AND < B+1` rather than the
+ * BETWEEN the server writes on a date column: the same rows on either column kind, and it reads back the same.
+ */
+function dateCondition(
+    dialect: Dialect,
+    col: string,
+    op: RowFilter['op'],
+    value: string,
+    to: string,
+): string | null {
+    const cmp = (o: string, v: string) => `${col} ${o} ${literal(dialect, v)}`;
+    if (op === 'on')
+        return `${cmp('>=', value)} AND ${cmp('<', addDays(value, 1))}`;
+    if (op === 'after')
+        return isDateOnly(value)
+            ? cmp('>=', addDays(value, 1))
+            : cmp('>', value);
+    if (op !== 'between') return null;
+    if (!isDateOnly(value) && !isDateOnly(to))
+        return `${col} BETWEEN ${literal(dialect, value)} AND ${literal(dialect, to)}`;
+    return `${cmp('>=', value)} AND ${
+        isDateOnly(to) ? cmp('<', addDays(to, 1)) : cmp('<=', to)
+    }`;
+}
+
 function condition(dialect: Dialect, f: RowFilter): string {
     const col = quoteIdent(dialect, f.column);
     if (f.op === 'is_null') return `${col} IS NULL`;
     if (f.op === 'is_not_null') return `${col} IS NOT NULL`;
     const value = f.value ?? '';
+    const date = dateCondition(dialect, col, f.op, value, f.to ?? '');
+    if (date !== null) return date;
     const op = COMPARE[f.op];
     if (op) return `${col} ${op} ${literal(dialect, value)}`;
     const escaped = value.replace(/[!%_]/g, (c) => `!${c}`);

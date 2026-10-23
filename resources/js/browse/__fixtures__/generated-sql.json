@@ -11,7 +11,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" = 'O''Brien' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"name\" = 'O''Brien' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -24,7 +24,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" <> 'a\\b' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"name\" <> 'a\\b' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -37,7 +37,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" < '10.5' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"total\" < '10.5' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -50,7 +50,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" <= '10.5' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"total\" <= '10.5' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -63,7 +63,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -76,7 +76,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" >= '10.5' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"total\" >= '10.5' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -89,7 +89,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" LIKE '%50!%%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"name\" LIKE '%50!%%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -102,7 +102,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" LIKE 'a!_b%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"name\" LIKE 'a!_b%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -115,7 +115,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" LIKE '%x!!y' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"name\" LIKE '%x!!y' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -127,7 +127,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"note\" IS NULL order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"note\" IS NULL order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -139,7 +139,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"note\" IS NOT NULL order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"note\" IS NOT NULL order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -152,7 +152,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" = '数据' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"name\" = '数据' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -170,7 +170,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" LIKE '%ab%' ESCAPE '!' and \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"name\" LIKE '%ab%' ESCAPE '!' and \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [],
@@ -182,7 +182,7 @@
             ],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"name\" desc, \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" order by \"name\" desc, \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [],
@@ -198,21 +198,174 @@
             ],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"total\" asc, \"name\" desc, \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" order by \"total\" asc, \"name\" desc, \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [],
             "sort": [],
             "page": 3,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"id\" asc limit 50 offset 100"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" order by \"id\" asc limit 50 offset 100"
         },
         {
             "filters": [],
             "sort": [],
             "page": 1,
             "perPage": 1000,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"id\" asc limit 1000 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" order by \"id\" asc limit 1000 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-10-15' and \"ts\" < '2026-10-16' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-10-01' and \"ts\" < '2026-10-16' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01 10:00:00",
+                    "to": "2026-10-15 18:30:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" BETWEEN '2026-10-01 10:00:00' AND '2026-10-15 18:30:00' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-15 18:30:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-10-01' and \"ts\" <= '2026-10-15 18:30:00' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01 10:00:00",
+                    "to": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-10-01 10:00:00' and \"ts\" < '2026-10-16' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "d",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"d\" BETWEEN '2026-10-01' AND '2026-10-31' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "after",
+                    "value": "2026-10-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-11-01' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "after",
+                    "value": "2026-10-31 12:00:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" > '2026-10-31 12:00:00' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "lt",
+                    "value": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" < '2026-10-15' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-12-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-12-31' and \"ts\" < '2027-01-01' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-10-15"
+                },
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "ab"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-10-15' and \"ts\" < '2026-10-16' and \"name\" LIKE '%ab%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
         }
     ],
     "mysql": [
@@ -227,7 +380,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` = 'O\\'Brien' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` = 'O\\'Brien' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -240,7 +393,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` <> 'a\\\\b' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` <> 'a\\\\b' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -253,7 +406,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` < '10.5' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `total` < '10.5' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -266,7 +419,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` <= '10.5' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `total` <= '10.5' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -279,7 +432,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` > '10.5' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `total` > '10.5' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -292,7 +445,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` >= '10.5' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `total` >= '10.5' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -305,7 +458,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%50!%%' ESCAPE '!' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` LIKE '%50!%%' ESCAPE '!' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -318,7 +471,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE 'a!_b%' ESCAPE '!' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` LIKE 'a!_b%' ESCAPE '!' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -331,7 +484,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%x!!y' ESCAPE '!' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` LIKE '%x!!y' ESCAPE '!' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -343,7 +496,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `note` IS NULL order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `note` IS NULL order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -355,7 +508,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `note` IS NOT NULL order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `note` IS NOT NULL order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -368,7 +521,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` = '数据' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` = '数据' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -386,7 +539,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%ab%' ESCAPE '!' and `total` > '10.5' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` LIKE '%ab%' ESCAPE '!' and `total` > '10.5' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [],
@@ -398,7 +551,7 @@
             ],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `name` desc, `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` order by `name` desc, `id` asc limit 50 offset 0"
         },
         {
             "filters": [],
@@ -414,21 +567,174 @@
             ],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `total` asc, `name` desc, `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` order by `total` asc, `name` desc, `id` asc limit 50 offset 0"
         },
         {
             "filters": [],
             "sort": [],
             "page": 3,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `id` asc limit 50 offset 100"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` order by `id` asc limit 50 offset 100"
         },
         {
             "filters": [],
             "sort": [],
             "page": 1,
             "perPage": 1000,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `id` asc limit 1000 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` order by `id` asc limit 1000 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-10-15' and `ts` < '2026-10-16' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-10-01' and `ts` < '2026-10-16' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01 10:00:00",
+                    "to": "2026-10-15 18:30:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` BETWEEN '2026-10-01 10:00:00' AND '2026-10-15 18:30:00' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-15 18:30:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-10-01' and `ts` <= '2026-10-15 18:30:00' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01 10:00:00",
+                    "to": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-10-01 10:00:00' and `ts` < '2026-10-16' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "d",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `d` BETWEEN '2026-10-01' AND '2026-10-31' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "after",
+                    "value": "2026-10-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-11-01' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "after",
+                    "value": "2026-10-31 12:00:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` > '2026-10-31 12:00:00' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "lt",
+                    "value": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` < '2026-10-15' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-12-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-12-31' and `ts` < '2027-01-01' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-10-15"
+                },
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "ab"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-10-15' and `ts` < '2026-10-16' and `name` LIKE '%ab%' ESCAPE '!' order by `id` asc limit 50 offset 0"
         }
     ],
     "mariadb": [
@@ -443,7 +749,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` = 'O\\'Brien' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` = 'O\\'Brien' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -456,7 +762,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` <> 'a\\\\b' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` <> 'a\\\\b' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -469,7 +775,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` < '10.5' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `total` < '10.5' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -482,7 +788,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` <= '10.5' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `total` <= '10.5' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -495,7 +801,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` > '10.5' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `total` > '10.5' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -508,7 +814,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `total` >= '10.5' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `total` >= '10.5' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -521,7 +827,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%50!%%' ESCAPE '!' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` LIKE '%50!%%' ESCAPE '!' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -534,7 +840,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE 'a!_b%' ESCAPE '!' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` LIKE 'a!_b%' ESCAPE '!' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -547,7 +853,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%x!!y' ESCAPE '!' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` LIKE '%x!!y' ESCAPE '!' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -559,7 +865,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `note` IS NULL order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `note` IS NULL order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -571,7 +877,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `note` IS NOT NULL order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `note` IS NOT NULL order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -584,7 +890,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` = '数据' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` = '数据' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -602,7 +908,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` where `name` LIKE '%ab%' ESCAPE '!' and `total` > '10.5' order by `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `name` LIKE '%ab%' ESCAPE '!' and `total` > '10.5' order by `id` asc limit 50 offset 0"
         },
         {
             "filters": [],
@@ -614,7 +920,7 @@
             ],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `name` desc, `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` order by `name` desc, `id` asc limit 50 offset 0"
         },
         {
             "filters": [],
@@ -630,21 +936,174 @@
             ],
             "page": 1,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `total` asc, `name` desc, `id` asc limit 50 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` order by `total` asc, `name` desc, `id` asc limit 50 offset 0"
         },
         {
             "filters": [],
             "sort": [],
             "page": 3,
             "perPage": 50,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `id` asc limit 50 offset 100"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` order by `id` asc limit 50 offset 100"
         },
         {
             "filters": [],
             "sort": [],
             "page": 1,
             "perPage": 1000,
-            "sql": "select `id`, `name`, `note`, `total` from `m7_sql_fixture` order by `id` asc limit 1000 offset 0"
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` order by `id` asc limit 1000 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-10-15' and `ts` < '2026-10-16' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-10-01' and `ts` < '2026-10-16' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01 10:00:00",
+                    "to": "2026-10-15 18:30:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` BETWEEN '2026-10-01 10:00:00' AND '2026-10-15 18:30:00' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-15 18:30:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-10-01' and `ts` <= '2026-10-15 18:30:00' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01 10:00:00",
+                    "to": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-10-01 10:00:00' and `ts` < '2026-10-16' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "d",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `d` BETWEEN '2026-10-01' AND '2026-10-31' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "after",
+                    "value": "2026-10-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-11-01' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "after",
+                    "value": "2026-10-31 12:00:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` > '2026-10-31 12:00:00' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "lt",
+                    "value": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` < '2026-10-15' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-12-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-12-31' and `ts` < '2027-01-01' order by `id` asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-10-15"
+                },
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "ab"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select `id`, `name`, `note`, `total`, `d`, `ts` from `m7_sql_fixture` where `ts` >= '2026-10-15' and `ts` < '2026-10-16' and `name` LIKE '%ab%' ESCAPE '!' order by `id` asc limit 50 offset 0"
         }
     ],
     "pgsql": [
@@ -659,7 +1118,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" = 'O''Brien' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"name\" = 'O''Brien' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -672,7 +1131,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" <> 'a\\b' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"name\" <> 'a\\b' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -685,7 +1144,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" < '10.5' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"total\" < '10.5' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -698,7 +1157,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" <= '10.5' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"total\" <= '10.5' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -711,7 +1170,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -724,7 +1183,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"total\" >= '10.5' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"total\" >= '10.5' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -737,7 +1196,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE '%50!%%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE '%50!%%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -750,7 +1209,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE 'a!_b%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE 'a!_b%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -763,7 +1222,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE '%x!!y' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE '%x!!y' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -775,7 +1234,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"note\" IS NULL order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"note\" IS NULL order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -787,7 +1246,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"note\" IS NOT NULL order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"note\" IS NOT NULL order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -800,7 +1259,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where \"name\" = '数据' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"name\" = '数据' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [
@@ -818,7 +1277,7 @@
             "sort": [],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE '%ab%' ESCAPE '!' and \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where CAST(\"name\" AS TEXT) ILIKE '%ab%' ESCAPE '!' and \"total\" > '10.5' order by \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [],
@@ -830,7 +1289,7 @@
             ],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"name\" desc, \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" order by \"name\" desc, \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [],
@@ -846,21 +1305,174 @@
             ],
             "page": 1,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"total\" asc, \"name\" desc, \"id\" asc limit 50 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" order by \"total\" asc, \"name\" desc, \"id\" asc limit 50 offset 0"
         },
         {
             "filters": [],
             "sort": [],
             "page": 3,
             "perPage": 50,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"id\" asc limit 50 offset 100"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" order by \"id\" asc limit 50 offset 100"
         },
         {
             "filters": [],
             "sort": [],
             "page": 1,
             "perPage": 1000,
-            "sql": "select \"id\", \"name\", \"note\", \"total\" from \"m7_sql_fixture\" order by \"id\" asc limit 1000 offset 0"
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" order by \"id\" asc limit 1000 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-10-15' and \"ts\" < '2026-10-16' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-10-01' and \"ts\" < '2026-10-16' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01 10:00:00",
+                    "to": "2026-10-15 18:30:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" BETWEEN '2026-10-01 10:00:00' AND '2026-10-15 18:30:00' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-15 18:30:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-10-01' and \"ts\" <= '2026-10-15 18:30:00' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "between",
+                    "value": "2026-10-01 10:00:00",
+                    "to": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-10-01 10:00:00' and \"ts\" < '2026-10-16' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "d",
+                    "op": "between",
+                    "value": "2026-10-01",
+                    "to": "2026-10-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"d\" BETWEEN '2026-10-01' AND '2026-10-31' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "after",
+                    "value": "2026-10-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-11-01' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "after",
+                    "value": "2026-10-31 12:00:00"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" > '2026-10-31 12:00:00' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "lt",
+                    "value": "2026-10-15"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" < '2026-10-15' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-12-31"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-12-31' and \"ts\" < '2027-01-01' order by \"id\" asc limit 50 offset 0"
+        },
+        {
+            "filters": [
+                {
+                    "column": "ts",
+                    "op": "on",
+                    "value": "2026-10-15"
+                },
+                {
+                    "column": "name",
+                    "op": "contains",
+                    "value": "ab"
+                }
+            ],
+            "sort": [],
+            "page": 1,
+            "perPage": 50,
+            "sql": "select \"id\", \"name\", \"note\", \"total\", \"d\", \"ts\" from \"m7_sql_fixture\" where \"ts\" >= '2026-10-15' and \"ts\" < '2026-10-16' and CAST(\"name\" AS TEXT) ILIKE '%ab%' ESCAPE '!' order by \"id\" asc limit 50 offset 0"
         }
     ]
 }

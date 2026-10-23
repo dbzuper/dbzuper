@@ -28,24 +28,32 @@ const TYPES: Record<Dialect, Record<string, [string, string]>> = {
         name: ['varchar', 'varchar(255)'],
         note: ['text', 'text'],
         total: ['decimal', 'decimal(10,2)'],
+        d: ['date', 'date'],
+        ts: ['datetime', 'datetime'],
     },
     mariadb: {
         id: ['int', 'int(11)'],
         name: ['varchar', 'varchar(255)'],
         note: ['text', 'text'],
         total: ['decimal', 'decimal(10,2)'],
+        d: ['date', 'date'],
+        ts: ['datetime', 'datetime'],
     },
     pgsql: {
         id: ['int4', 'integer'],
         name: ['varchar', 'character varying(255)'],
         note: ['text', 'text'],
         total: ['numeric', 'numeric(10,2)'],
+        d: ['date', 'date'],
+        ts: ['timestamp', 'timestamp(0) without time zone'],
     },
     sqlite: {
         id: ['integer', 'integer'],
         name: ['varchar', 'varchar'],
         note: ['text', 'text'],
         total: ['numeric', 'numeric'],
+        d: ['date', 'date'],
+        ts: ['datetime', 'datetime'],
     },
 };
 
@@ -114,5 +122,58 @@ describe('buildTableSql', () => {
         ).toBe(
             `SELECT * FROM "orders" WHERE "status" = 'O''Brien' AND CAST("note" AS TEXT) ILIKE '%50!%%' ESCAPE '!' ORDER BY "total" DESC LIMIT 50 OFFSET 100`,
         );
+    });
+
+    it('builds the date operators in the server shapes', () => {
+        const where = (filters: RowFilter[]) =>
+            buildTableSql('mysql', 'events', {
+                filters,
+                sort: [],
+                page: 1,
+                perPage: 50,
+            })
+                .replace('SELECT * FROM `events` WHERE ', '')
+                .replace(' LIMIT 50', '');
+        expect(where([{ column: 'ts', op: 'on', value: '2026-12-31' }])).toBe(
+            "`ts` >= '2026-12-31' AND `ts` < '2027-01-01'",
+        );
+        expect(
+            where([{ column: 'ts', op: 'after', value: '2026-10-31' }]),
+        ).toBe("`ts` >= '2026-11-01'");
+        expect(
+            where([
+                { column: 'ts', op: 'after', value: '2026-10-31 12:00:00' },
+            ]),
+        ).toBe("`ts` > '2026-10-31 12:00:00'");
+        expect(
+            where([
+                {
+                    column: 'd',
+                    op: 'between',
+                    value: '2026-10-01',
+                    to: '2026-10-31',
+                },
+            ]),
+        ).toBe("`d` >= '2026-10-01' AND `d` < '2026-11-01'");
+        expect(
+            where([
+                {
+                    column: 'ts',
+                    op: 'between',
+                    value: '2026-10-01',
+                    to: '2026-10-15 18:30:00',
+                },
+            ]),
+        ).toBe("`ts` >= '2026-10-01' AND `ts` <= '2026-10-15 18:30:00'");
+        expect(
+            where([
+                {
+                    column: 'ts',
+                    op: 'between',
+                    value: '2026-10-01 10:00:00',
+                    to: '2026-10-15 18:30:00',
+                },
+            ]),
+        ).toBe("`ts` BETWEEN '2026-10-01 10:00:00' AND '2026-10-15 18:30:00'");
     });
 });

@@ -3,12 +3,20 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { PerPage, RowFilter, SortKey } from '@/lib/workspace-api';
 import type { ColumnSchema, Dialect, TableSchema } from '@/types/schema';
-import { matchTableQuery } from './match-table-query';
+import { MATCH_REASONS, matchTableQuery } from './match-table-query';
 
 const asciiLowerName = (s: string) =>
     s.replace(/[A-Z]+/g, (m) => m.toLowerCase());
 
-type Kind = 'int' | 'varchar' | 'text' | 'decimal' | 'bool' | 'char';
+type Kind =
+    | 'int'
+    | 'varchar'
+    | 'text'
+    | 'decimal'
+    | 'bool'
+    | 'char'
+    | 'date'
+    | 'datetime';
 /** [type_name, type] as Laravel's Schema::getColumns reports them per engine. */
 const TYPES: Record<Dialect, Record<Kind, [string, string]>> = {
     mysql: {
@@ -18,6 +26,8 @@ const TYPES: Record<Dialect, Record<Kind, [string, string]>> = {
         decimal: ['decimal', 'decimal(10,2)'],
         bool: ['tinyint', 'tinyint(1)'],
         char: ['char', 'char(5)'],
+        date: ['date', 'date'],
+        datetime: ['datetime', 'datetime'],
     },
     mariadb: {
         int: ['int', 'int(11)'],
@@ -26,6 +36,8 @@ const TYPES: Record<Dialect, Record<Kind, [string, string]>> = {
         decimal: ['decimal', 'decimal(10,2)'],
         bool: ['tinyint', 'tinyint(1)'],
         char: ['char', 'char(5)'],
+        date: ['date', 'date'],
+        datetime: ['datetime', 'datetime'],
     },
     pgsql: {
         int: ['int4', 'integer'],
@@ -34,6 +46,8 @@ const TYPES: Record<Dialect, Record<Kind, [string, string]>> = {
         decimal: ['numeric', 'numeric(10,2)'],
         bool: ['bool', 'boolean'],
         char: ['bpchar', 'character(5)'],
+        date: ['date', 'date'],
+        datetime: ['timestamp', 'timestamp(0) without time zone'],
     },
     sqlite: {
         int: ['integer', 'integer'],
@@ -42,6 +56,8 @@ const TYPES: Record<Dialect, Record<Kind, [string, string]>> = {
         decimal: ['numeric', 'numeric'],
         bool: ['tinyint', 'tinyint(1)'],
         char: ['varchar', 'varchar'],
+        date: ['date', 'date'],
+        datetime: ['datetime', 'datetime'],
     },
 };
 
@@ -88,13 +104,15 @@ const typed = (dialect: Dialect, name: string, spec: [string, Kind][]) =>
         spec.map(([c, kind]) => column(c, TYPES[dialect][kind], c === 'note')),
     );
 
-/** Task 1's table: id int PK, name varchar, nullable note text, total decimal. */
+/** Task 1's table: id int PK, name varchar, nullable note text, total decimal, d date, ts datetime. */
 const fixtureTable = (dialect: Dialect) =>
     typed(dialect, 'm7_sql_fixture', [
         ['id', 'int'],
         ['name', 'varchar'],
         ['note', 'text'],
         ['total', 'decimal'],
+        ['d', 'date'],
+        ['ts', 'datetime'],
     ]);
 const ordersFor = (dialect: Dialect) =>
     typed(dialect, 'orders', [
@@ -1133,5 +1151,184 @@ describe('quoted special table names', () => {
                 'reads a different table: `bestellungen`',
             );
         }
+    });
+});
+
+describe('date filters read back from hand-written SQL', () => {
+    const events = (dialect: Dialect) =>
+        typed(dialect, 'events', [
+            ['id', 'int'],
+            ['name', 'varchar'],
+            ['d', 'date'],
+            ['ts', 'datetime'],
+        ]);
+    const filters = (where: string, dialect: Dialect = 'mysql') =>
+        ok(`SELECT * FROM events WHERE ${where}`, dialect, events(dialect))
+            .filters;
+    const noFit = (where: string, dialect: Dialect = 'mysql') =>
+        reason(`SELECT * FROM events WHERE ${where}`, dialect, events(dialect));
+
+    it('reads a day pair whose end is not the next day as a range', () => {
+        expect(filters("ts >= '2026-10-01' AND ts < '2026-10-16'")).toEqual([
+            {
+                column: 'ts',
+                op: 'between',
+                value: '2026-10-01',
+                to: '2026-10-15',
+            },
+        ]);
+    });
+
+    it('reads a pair across a month, a year and a leap-day end', () => {
+        expect(filters("ts >= '2026-10-31' AND ts < '2026-11-01'")).toEqual([
+            { column: 'ts', op: 'on', value: '2026-10-31' },
+        ]);
+        expect(
+            filters(`"ts" >= '2026-12-31' and "ts" < '2027-01-01'`, 'pgsql'),
+        ).toEqual([{ column: 'ts', op: 'on', value: '2026-12-31' }]);
+        expect(filters("ts >= '2028-02-28' AND ts < '2028-03-01'")).toEqual([
+            {
+                column: 'ts',
+                op: 'between',
+                value: '2028-02-28',
+                to: '2028-02-29',
+            },
+        ]);
+    });
+
+    it('reads a lone >= on a day as after the day before', () => {
+        expect(filters("ts >= '2026-10-16'")).toEqual([
+            { column: 'ts', op: 'after', value: '2026-10-15' },
+        ]);
+        expect(filters("d >= '2026-11-01'")).toEqual([
+            { column: 'd', op: 'after', value: '2026-10-31' },
+        ]);
+    });
+
+    it('reads a lone > on a timed value as after', () => {
+        expect(filters("ts > '2026-10-16 08:00:00.5'")).toEqual([
+            { column: 'ts', op: 'after', value: '2026-10-16 08:00:00.5' },
+        ]);
+    });
+
+    it('keeps comparisons that are not date-filter shapes', () => {
+        expect(filters("ts >= '2026-10-16 08:00:00'")).toEqual([
+            { column: 'ts', op: 'gte', value: '2026-10-16 08:00:00' },
+        ]);
+        expect(filters("ts > '2026-10-16'")).toEqual([
+            { column: 'ts', op: 'gt', value: '2026-10-16' },
+        ]);
+        expect(filters("ts < '2026-10-16'")).toEqual([
+            { column: 'ts', op: 'lt', value: '2026-10-16' },
+        ]);
+        // Not canonical, or not a real date: exactly today's mapping.
+        expect(filters("ts >= '2026-10-1'")).toEqual([
+            { column: 'ts', op: 'gte', value: '2026-10-1' },
+        ]);
+        expect(filters("ts >= '2026-02-30'")).toEqual([
+            { column: 'ts', op: 'gte', value: '2026-02-30' },
+        ]);
+        // Not a date column.
+        expect(filters("name >= '2026-10-16'")).toEqual([
+            { column: 'name', op: 'gte', value: '2026-10-16' },
+        ]);
+        // A date column's date filters take no times.
+        expect(filters("d > '2026-10-16 08:00:00'")).toEqual([
+            { column: 'd', op: 'gt', value: '2026-10-16 08:00:00' },
+        ]);
+        expect(
+            filters("d >= '2026-10-01 08:00:00' AND d < '2026-10-16'"),
+        ).toEqual([
+            { column: 'd', op: 'gte', value: '2026-10-01 08:00:00' },
+            { column: 'd', op: 'lt', value: '2026-10-16' },
+        ]);
+    });
+
+    it('does not combine a pair split by another condition', () => {
+        expect(
+            filters("ts >= '2026-10-01' AND name = 'x' AND ts < '2026-10-16'"),
+        ).toEqual([
+            { column: 'ts', op: 'after', value: '2026-09-30' },
+            { column: 'name', op: 'eq', value: 'x' },
+            { column: 'ts', op: 'lt', value: '2026-10-16' },
+        ]);
+    });
+
+    it('does not combine a pair that selects nothing', () => {
+        expect(filters("ts >= '2026-10-20' AND ts < '2026-10-16'")).toEqual([
+            { column: 'ts', op: 'after', value: '2026-10-19' },
+            { column: 'ts', op: 'lt', value: '2026-10-16' },
+        ]);
+    });
+
+    it('reads a day start with a timed inclusive end as a range', () => {
+        expect(
+            filters("ts >= '2026-10-01' AND ts <= '2026-10-15 18:30:00'"),
+        ).toEqual([
+            {
+                column: 'ts',
+                op: 'between',
+                value: '2026-10-01',
+                to: '2026-10-15 18:30:00',
+            },
+        ]);
+    });
+
+    it('reads BETWEEN in the shapes the server writes', () => {
+        expect(
+            filters(
+                "ts BETWEEN '2026-10-01 10:00:00' AND '2026-10-15 18:30:00'",
+            ),
+        ).toEqual([
+            {
+                column: 'ts',
+                op: 'between',
+                value: '2026-10-01 10:00:00',
+                to: '2026-10-15 18:30:00',
+            },
+        ]);
+        expect(
+            filters("d between '2026-10-01' and '2026-10-31' AND name = 'x'"),
+        ).toEqual([
+            {
+                column: 'd',
+                op: 'between',
+                value: '2026-10-01',
+                to: '2026-10-31',
+            },
+            { column: 'name', op: 'eq', value: 'x' },
+        ]);
+    });
+
+    it('explains BETWEEN shapes it does not read', () => {
+        expect(noFit("ts BETWEEN '2026-10-01' AND '2026-10-15'")).toBe(
+            MATCH_REASONS.betweenDateOnly('ts'),
+        );
+        expect(MATCH_REASONS.betweenDateOnly('ts')).toBe(
+            'BETWEEN on ts with date-only ends stops at midnight of the last day; use the date filter instead',
+        );
+        expect(noFit("ts BETWEEN '2026-10-01' AND '2026-10-15 18:00:00'")).toBe(
+            MATCH_REASONS.betweenMixed('ts'),
+        );
+        expect(
+            noFit("ts BETWEEN '2026-10-1 10:00:00' AND '2026-10-15 18:00:00'"),
+        ).toBe(MATCH_REASONS.betweenMixed('ts'));
+        expect(
+            noFit("d BETWEEN '2026-10-01 10:00:00' AND '2026-10-15 18:00:00'"),
+        ).toBe(MATCH_REASONS.betweenMixed('d'));
+        expect(noFit("d BETWEEN '2026-10-15' AND '2026-10-01'")).toBe(
+            MATCH_REASONS.betweenMixed('d'),
+        );
+        expect(noFit("name BETWEEN 'a' AND 'b'")).toBe('`BETWEEN`');
+        expect(
+            noFit(
+                "ts NOT BETWEEN '2026-10-01 10:00:00' AND '2026-10-15 18:00:00'",
+            ),
+        ).toBe(MATCH_REASONS.not);
+    });
+
+    it('counts a combined pair as one filter against the limit', () => {
+        const day = "ts >= '2026-10-01' AND ts < '2026-10-02'";
+        expect(filters(Array(20).fill(day).join(' AND '))).toHaveLength(20);
     });
 });
