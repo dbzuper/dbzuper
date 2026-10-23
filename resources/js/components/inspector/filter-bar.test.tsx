@@ -246,7 +246,9 @@ describe('FilterBar', () => {
         }
 
         async function openPicker() {
-            fireEvent.click(screen.getByLabelText('Filter value'));
+            fireEvent.click(
+                screen.getByRole('button', { name: /^Filter value/ }),
+            );
             return screen.findByRole('dialog');
         }
 
@@ -274,7 +276,9 @@ describe('FilterBar', () => {
 
         it('shows a picker button for the value', () => {
             renderDates();
-            const button = screen.getByLabelText('Filter value');
+            const button = screen.getByRole('button', {
+                name: /^Filter value/,
+            });
             expect(button.tagName).toBe('BUTTON');
             expect(button).toHaveAttribute('aria-haspopup', 'dialog');
             expect(button).toHaveTextContent('Pick a date…');
@@ -335,7 +339,9 @@ describe('FilterBar', () => {
             expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
             // Radix returns focus to the trigger on the next tick.
             await waitFor(() =>
-                expect(screen.getByLabelText('Filter value')).toHaveFocus(),
+                expect(
+                    screen.getByRole('button', { name: /^Filter value/ }),
+                ).toHaveFocus(),
             );
         });
 
@@ -388,9 +394,9 @@ describe('FilterBar', () => {
                 />,
             );
             expect(operator()).toHaveValue('on');
-            expect(screen.getByLabelText('Filter value')).toHaveTextContent(
-                'Pick a date…',
-            );
+            expect(
+                screen.getByRole('button', { name: /^Filter value/ }),
+            ).toHaveTextContent('Pick a date…');
             const add = screen.getByRole('button', { name: 'Add filter' });
             expect(add).toBeDisabled();
             fireEvent.click(add);
@@ -449,7 +455,9 @@ describe('FilterBar', () => {
             expect(onChange).not.toHaveBeenCalled();
             // Radix returns focus to the trigger on the next tick.
             await waitFor(() =>
-                expect(screen.getByLabelText('Filter value')).toHaveFocus(),
+                expect(
+                    screen.getByRole('button', { name: /^Filter value/ }),
+                ).toHaveFocus(),
             );
         });
 

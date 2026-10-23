@@ -93,6 +93,10 @@ export function FilterBar({
         (kind === null ||
             'value' in normalizeDateInput(v, op === 'on' ? 'date' : kind));
     const hasValue = isValue(value) && (op !== 'between' || isValue(to));
+    // What the date button shows; it is also part of the button's name (WCAG 2.5.3, label in name).
+    const valueText = hasValue
+        ? `${formatDateValue(value)}${op === 'between' && to ? ` → ${formatDateValue(to)}` : ''}`
+        : 'Pick a date…';
     const canAdd = selected !== '' && (!needsValue || hasValue);
 
     const changeColumn = (next: string) => {
@@ -217,23 +221,20 @@ export function FilterBar({
                             <button
                                 ref={valueInput}
                                 type="button"
-                                aria-label="Filter value"
+                                aria-label={`Filter value: ${valueText}`}
                                 aria-haspopup="dialog"
                                 className={`${fieldClass} inline-flex min-w-36 items-center gap-1.5 text-left`}
                             >
                                 <CalendarDays className="size-3.5 shrink-0 text-muted-foreground" />
-                                {hasValue ? (
-                                    <span>
-                                        {formatDateValue(value)}
-                                        {op === 'between' && to
-                                            ? ` → ${formatDateValue(to)}`
-                                            : ''}
-                                    </span>
-                                ) : (
-                                    <span className="text-muted-foreground">
-                                        Pick a date…
-                                    </span>
-                                )}
+                                <span
+                                    className={
+                                        hasValue
+                                            ? undefined
+                                            : 'text-muted-foreground'
+                                    }
+                                >
+                                    {valueText}
+                                </span>
                             </button>
                         </PopoverTrigger>
                         <PopoverContent

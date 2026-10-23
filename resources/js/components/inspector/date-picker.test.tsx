@@ -116,7 +116,7 @@ describe('DatePicker', () => {
             value: '2026-10-01',
         });
         fireEvent.click(
-            screen.getByRole('button', { name: /October 15th, 2026/ }),
+            screen.getByRole('button', { name: /^15 October 2026/ }),
         );
         expect(screen.getByLabelText('Date')).toHaveValue('2026-10-15');
         fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -139,7 +139,7 @@ describe('DatePicker', () => {
         expect(first).toHaveAttribute('aria-label', 'Monday');
         expect(
             screen.getByRole('button', {
-                name: /Monday, September 28th, 2026/,
+                name: /^28 September 2026/,
             }),
         ).toBeInTheDocument();
     });

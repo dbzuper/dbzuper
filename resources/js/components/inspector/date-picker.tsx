@@ -62,6 +62,25 @@ const valueOf = (p: Parsed) => ('value' in p ? p.value : null);
 const fieldClass =
     'h-7 rounded-md border bg-background px-2 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring aria-invalid:border-destructive';
 
+/** Day buttons are named from their visible number first ("25 October 2026"), as WCAG 2.5.3 asks. */
+const calendarLabels = {
+    labelDayButton: (
+        date: Date,
+        modifiers: { today?: boolean; selected?: boolean },
+    ) =>
+        [
+            date.toLocaleDateString('en-GB', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+            }),
+            modifiers.today ? 'today' : null,
+            modifiers.selected ? 'selected' : null,
+        ]
+            .filter(Boolean)
+            .join(', '),
+};
+
 const calendarClasses = {
     root: 'relative text-xs',
     months: 'flex',
@@ -82,7 +101,7 @@ const calendarClasses = {
     day_button:
         'size-8 rounded-md outline-none hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring',
     today: 'font-semibold underline underline-offset-2',
-    outside: 'text-muted-foreground opacity-60',
+    outside: 'text-muted-foreground',
     disabled: 'opacity-40',
     hidden: 'invisible',
     selected:
@@ -159,6 +178,7 @@ export default function DatePicker({
                 setUntil({ ...until, date: r?.to ? isoDay(r.to) : '' });
             }}
             classNames={calendarClasses}
+            labels={calendarLabels}
         />
     ) : (
         <DayPicker
@@ -171,6 +191,7 @@ export default function DatePicker({
             selected={fromDay}
             onSelect={(d) => setFrom({ ...from, date: isoDay(d) })}
             classNames={calendarClasses}
+            labels={calendarLabels}
         />
     );
 
