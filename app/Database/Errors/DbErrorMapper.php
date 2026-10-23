@@ -65,12 +65,30 @@ final class DbErrorMapper
             default => ['unknown', null],
         };
 
+        if ($reason === 'tls' && ($hint = $this->mySqlTlsHint($driverCode, $lower)) !== null) {
+            $message .= "\nHINT: ".$hint;
+        }
+
         return new DbError($kind, $message, $sqlstate, $reason, $position);
+    }
+
+    /** What to change in the MySQL/MariaDB connection form for a TLS failure (client codes 2002/2026, server 3159). */
+    private function mySqlTlsHint(mixed $driverCode, string $lower): ?string
+    {
+        if (str_contains($lower, 'support')) {
+            return null; // the server has no TLS at all: no SSL mode setting fixes the certificate check
+        }
+
+        return match ($driverCode) {
+            2002, 2026 => "If you connect through a tunnel or the certificate's host name differs, choose SSL mode Required.",
+            3159 => 'The server only accepts encrypted connections: choose SSL mode Required (or Verify identity with a CA file).',
+            default => null,
+        };
     }
 
     private function mentionsTls(string $lower): bool
     {
-        foreach (['ssl connection', 'sslmode', 'ssl error', 'server does not support ssl', 'ssl is required', 'ssl negotiation', 'tls'] as $phrase) {
+        foreach (['ssl connection', 'sslmode', 'ssl error', 'server does not support ssl', 'ssl is required', 'ssl negotiation', 'using ssl', 'tls'] as $phrase) {
             if (str_contains($lower, $phrase)) {
                 return true;
             }

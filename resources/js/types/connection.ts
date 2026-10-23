@@ -1,5 +1,8 @@
 export type DriverValue = 'mysql' | 'mariadb' | 'pgsql' | 'sqlite';
 
+/** TLS for MySQL and MariaDB (PostgreSQL uses sslmode). */
+export type MySqlSslMode = 'disabled' | 'required' | 'verify_identity';
+
 export interface ConnectionOptions {
     sslmode?:
         | 'disable'
@@ -8,7 +11,9 @@ export interface ConnectionOptions {
         | 'require'
         | 'verify-ca'
         | 'verify-full';
+    mysql_ssl?: MySqlSslMode;
     ssl_ca?: string;
+    /** Only on MySQL connections saved before mysql_ssl existed; see mysqlSslMode(). */
     ssl_verify?: boolean;
     schema?: string;
 }

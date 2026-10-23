@@ -94,3 +94,44 @@ it('still allows spaces and quotes in MySQL database names, which the MySQL DSN 
 
     expect($config['database'])->toBe("my shop's=db");
 });
+
+it('sets the MySQL TLS options for each SSL mode', function (DriverName $driver, array $options, array $expected) {
+    $pdo = app(DriverRegistry::class)->for($driver)->config(saved(['driver' => $driver, 'options' => $options]))['options'];
+
+    $tls = array_intersect_key($pdo, array_flip([Mysql::ATTR_SSL_CA, Mysql::ATTR_SSL_VERIFY_SERVER_CERT, Mysql::ATTR_SSL_CIPHER, Mysql::ATTR_SSL_CAPATH]));
+    ksort($tls);
+    ksort($expected);
+
+    expect($tls)->toBe($expected);
+})->with([DriverName::MySql, DriverName::MariaDb])->with([
+    'disabled' => [['mysql_ssl' => 'disabled', 'ssl_ca' => '/ca.pem'], []],
+    // An empty CA is what switches mysqlnd to TLS; with verification off the CA is never loaded.
+    'required' => [['mysql_ssl' => 'required'], [Mysql::ATTR_SSL_CA => '', Mysql::ATTR_SSL_VERIFY_SERVER_CERT => false]],
+    'required ignores a CA path' => [['mysql_ssl' => 'required', 'ssl_ca' => '/ca.pem'], [Mysql::ATTR_SSL_CA => '', Mysql::ATTR_SSL_VERIFY_SERVER_CERT => false]],
+    'verify identity' => [['mysql_ssl' => 'verify_identity', 'ssl_ca' => '/ca.pem'], [Mysql::ATTR_SSL_CA => '/ca.pem', Mysql::ATTR_SSL_VERIFY_SERVER_CERT => true]],
+    'verify identity ignores a legacy ssl_verify' => [['mysql_ssl' => 'verify_identity', 'ssl_ca' => '/ca.pem', 'ssl_verify' => false], [Mysql::ATTR_SSL_CA => '/ca.pem', Mysql::ATTR_SSL_VERIFY_SERVER_CERT => true]],
+    'legacy: no mode, no CA' => [[], []],
+    'legacy: no mode, empty CA' => [['ssl_ca' => ''], []],
+    'legacy: no mode, CA' => [['ssl_ca' => '/ca.pem'], [Mysql::ATTR_SSL_CA => '/ca.pem', Mysql::ATTR_SSL_VERIFY_SERVER_CERT => true]],
+    'legacy: no mode, CA, ssl_verify true' => [['ssl_ca' => '/ca.pem', 'ssl_verify' => true], [Mysql::ATTR_SSL_CA => '/ca.pem', Mysql::ATTR_SSL_VERIFY_SERVER_CERT => true]],
+    'legacy: no mode, CA, ssl_verify false' => [['ssl_ca' => '/ca.pem', 'ssl_verify' => false], [Mysql::ATTR_SSL_CA => '', Mysql::ATTR_SSL_VERIFY_SERVER_CERT => false]],
+]);
+
+it('refuses to connect without TLS when an SSL mode is unusable', function (array $options) {
+    app(DriverRegistry::class)->for(DriverName::MySql)->config(saved(['driver' => DriverName::MySql, 'options' => $options]));
+})->with([
+    'verify identity without a CA' => [['mysql_ssl' => 'verify_identity']],
+    'unknown mode' => [['mysql_ssl' => 'preferred']],
+])->throws(InvalidConnectionOption::class);
+
+it('rejects an unsafe CA path in verify identity mode', function () {
+    app(DriverRegistry::class)->for(DriverName::MySql)
+        ->config(saved(['driver' => DriverName::MySql, 'options' => ['mysql_ssl' => 'verify_identity', 'ssl_ca' => "/ca.pem\n;host=evil"]]));
+})->throws(InvalidConnectionOption::class);
+
+it('leaves the PostgreSQL TLS options untouched by the MySQL SSL mode', function () {
+    $config = app(DriverRegistry::class)->for(DriverName::Postgres)
+        ->config(saved(['driver' => DriverName::Postgres, 'options' => ['mysql_ssl' => 'required', 'sslmode' => 'verify-full', 'ssl_ca' => '/ca.pem']]));
+
+    expect($config)->toMatchArray(['sslmode' => 'verify-full', 'sslrootcert' => '/ca.pem']);
+});
