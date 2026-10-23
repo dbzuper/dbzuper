@@ -227,6 +227,9 @@
     --rdg-selection-color: var(--universe-accent);
     --rdg-font-size: 12px;
     color-scheme: light;
+    /* Fill the grid's container: rdg's own `block-size: 350px` sits in a cascade layer declared
+       after Tailwind's, so it would beat the `h-full` utility. Unlayered, this wins. */
+    block-size: 100%;
 }
 
 .dark .rdg-dbsuperb {
