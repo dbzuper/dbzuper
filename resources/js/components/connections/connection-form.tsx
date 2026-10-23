@@ -6,6 +6,8 @@ import {
     defaultsFor,
     firstErrors,
     isServerDriver,
+    MYSQL_SSL_MODES,
+    mysqlSslMode,
     testFailureMessage,
 } from '@/lib/connections';
 import { ApiError, apiFetch } from '@/lib/http';
@@ -15,6 +17,7 @@ import type {
     ConnectionTestResult,
     DriverChoice,
     DriverValue,
+    MySqlSslMode,
 } from '@/types/connection';
 import { useForm } from '@inertiajs/react';
 import { type FormEvent, useState } from 'react';
@@ -47,6 +50,7 @@ export function ConnectionForm({
     const [test, setTest] = useState<ConnectionTestResult | null>(null);
     const [testing, setTesting] = useState(false);
     const server = isServerDriver(form.data.driver);
+    const mysqlSsl = mysqlSslMode(form.data.options);
 
     const changeDriver = (driver: DriverValue) =>
         form.setData({ ...form.data, ...defaultsFor(driver), driver });
@@ -236,28 +240,73 @@ export function ConnectionForm({
                             </div>
                         </div>
                     ) : (
-                        <div className="grid gap-2">
-                            <Label htmlFor="ssl_ca">
-                                TLS CA certificate path (optional)
-                            </Label>
-                            <Input
-                                id="ssl_ca"
-                                value={form.data.options.ssl_ca ?? ''}
-                                onChange={(e) =>
-                                    form.setData('options', {
-                                        ...form.data.options,
-                                        ssl_ca: e.target.value,
-                                    })
-                                }
-                            />
-                            <InputError
-                                message={
-                                    form.errors[
-                                        'options.ssl_ca' as keyof ConnectionFormData
-                                    ]
-                                }
-                            />
-                        </div>
+                        <>
+                            <div className="grid gap-2">
+                                <Label htmlFor="mysql_ssl">SSL mode</Label>
+                                <select
+                                    id="mysql_ssl"
+                                    className={inputClass}
+                                    value={mysqlSsl}
+                                    aria-describedby="mysql_ssl_hint"
+                                    onChange={(e) =>
+                                        form.setData('options', {
+                                            ...form.data.options,
+                                            mysql_ssl: e.target
+                                                .value as MySqlSslMode,
+                                        })
+                                    }
+                                >
+                                    {MYSQL_SSL_MODES.map((m) => (
+                                        <option key={m.value} value={m.value}>
+                                            {m.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p
+                                    id="mysql_ssl_hint"
+                                    className="text-sm text-muted-foreground"
+                                >
+                                    {
+                                        MYSQL_SSL_MODES.find(
+                                            (m) => m.value === mysqlSsl,
+                                        )?.hint
+                                    }
+                                </p>
+                                <InputError
+                                    message={
+                                        form.errors[
+                                            'options.mysql_ssl' as keyof ConnectionFormData
+                                        ]
+                                    }
+                                />
+                            </div>
+                            {mysqlSsl === 'verify_identity' && (
+                                <div className="grid gap-2">
+                                    <Label htmlFor="ssl_ca">
+                                        CA certificate path
+                                    </Label>
+                                    <Input
+                                        id="ssl_ca"
+                                        required
+                                        placeholder="/etc/ssl/certs/rds-ca.pem"
+                                        value={form.data.options.ssl_ca ?? ''}
+                                        onChange={(e) =>
+                                            form.setData('options', {
+                                                ...form.data.options,
+                                                ssl_ca: e.target.value,
+                                            })
+                                        }
+                                    />
+                                    <InputError
+                                        message={
+                                            form.errors[
+                                                'options.ssl_ca' as keyof ConnectionFormData
+                                            ]
+                                        }
+                                    />
+                                </div>
+                            )}
+                        </>
                     )}
                 </>
             ) : (
@@ -301,7 +350,7 @@ export function ConnectionForm({
             {test && (
                 <div
                     role="status"
-                    className={`rounded-md border px-3 py-2 text-sm ${test.ok ? 'border-success/40 text-success' : 'border-destructive/40 text-destructive'}`}
+                    className={`rounded-md border px-3 py-2 text-sm whitespace-pre-line ${test.ok ? 'border-success/40 text-success' : 'border-destructive/40 text-destructive'}`}
                 >
                     {test.ok
                         ? `Connected · ${test.version} · ${test.latency_ms} ms`

@@ -112,3 +112,36 @@ it('maps the MariaDB statement timeout to timeout', function () {
     $e->errorInfo = ['70100', 1969, 'Query execution was interrupted (max_statement_time exceeded)'];
     expect((new DbErrorMapper)->map($e)->kind)->toBe('timeout');
 });
+
+it('points MySQL TLS failures at the SSL mode', function (PDOException $e, string $hint) {
+    $error = (new DbErrorMapper)->map($e);
+
+    expect($error->kind)->toBe('connection')
+        ->and($error->reason)->toBe('tls')
+        ->and($error->message)->toEndWith("\nHINT: ".$hint);
+})->with([
+    'certificate rejected' => [
+        pdoError('SQLSTATE[HY000] [2002] Cannot connect to MySQL using SSL', 2002),
+        "If you connect through a tunnel or the certificate's host name differs, choose SSL mode Required.",
+    ],
+    'libmysql handshake error' => [
+        pdoError('SQLSTATE[HY000] [2026] SSL connection error: unknown error number', 2026),
+        "If you connect through a tunnel or the certificate's host name differs, choose SSL mode Required.",
+    ],
+    'server requires secure transport' => [
+        pdoError('SQLSTATE[HY000] [3159] Connections using insecure transport are prohibited while --require_secure_transport=ON.', 3159),
+        'The server only accepts encrypted connections: choose SSL mode Required (or Verify identity with a CA file).',
+    ],
+]);
+
+it('does not add the MySQL SSL hint to PostgreSQL TLS errors', function () {
+    $error = (new DbErrorMapper)->map(pdoError('SQLSTATE[08006] [7] connection failed: FATAL:  no pg_hba.conf entry for host "x", user "y", database "z", no encryption'));
+
+    expect($error->reason)->toBe('tls')->and($error->message)->not->toContain('SSL mode Required');
+});
+
+it('does not suggest SSL mode Required when the MySQL server has no TLS at all', function () {
+    $error = (new DbErrorMapper)->map(pdoError('SQLSTATE[HY000] [2002] Server does not support SSL', 2002));
+
+    expect($error->reason)->toBe('tls')->and($error->message)->toBe('Server does not support SSL');
+});

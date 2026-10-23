@@ -3,6 +3,7 @@ import {
     defaultsFor,
     firstErrors,
     isServerDriver,
+    mysqlSslMode,
     testFailureMessage,
 } from './connections';
 
@@ -65,5 +66,26 @@ describe('testFailureMessage', () => {
         [null, 'Test request failed.'],
     ])('maps status %s', (status, expected) => {
         expect(testFailureMessage(status)).toBe(expected);
+    });
+});
+
+describe('mysqlSslMode', () => {
+    it('uses the explicit mode', () => {
+        expect(mysqlSslMode({ mysql_ssl: 'required', ssl_ca: '/ca.pem' })).toBe(
+            'required',
+        );
+        expect(mysqlSslMode({ mysql_ssl: 'disabled' })).toBe('disabled');
+    });
+
+    it('maps connections saved before the mode existed', () => {
+        expect(mysqlSslMode({})).toBe('disabled');
+        expect(mysqlSslMode({ ssl_ca: '' })).toBe('disabled');
+        expect(mysqlSslMode({ ssl_ca: '/ca.pem' })).toBe('verify_identity');
+        expect(mysqlSslMode({ ssl_ca: '/ca.pem', ssl_verify: true })).toBe(
+            'verify_identity',
+        );
+        expect(mysqlSslMode({ ssl_ca: '/ca.pem', ssl_verify: false })).toBe(
+            'required',
+        );
     });
 });

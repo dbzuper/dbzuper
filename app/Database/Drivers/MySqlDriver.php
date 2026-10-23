@@ -9,6 +9,7 @@ use App\Database\Contracts\SchemaInspector;
 use App\Database\Drivers\Concerns\AppliesTimeoutBestEffort;
 use App\Database\Sql\Classification;
 use App\Enums\DriverName;
+use App\Enums\MySqlSslMode;
 use App\Models\SavedConnection;
 use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Connection;
@@ -46,9 +47,21 @@ class MySqlDriver implements Driver
             $pdo[Mysql::ATTR_FOUND_ROWS] = true;
         }
 
-        if (! empty($options['ssl_ca'])) {
-            $pdo[Mysql::ATTR_SSL_CA] = $options['ssl_ca'];
-            $pdo[Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = (bool) ($options['ssl_verify'] ?? true);
+        switch (MySqlSslMode::fromOptions($options)) {
+            case MySqlSslMode::Required:
+                // mysqlnd only starts TLS when an SSL attribute is set. An empty CA switches it on without
+                // changing anything else; with verification off the CA is never loaded (checked on PHP 8.4,
+                // Windows and Linux), so a saved CA path would be ignored anyway.
+                $pdo[Mysql::ATTR_SSL_CA] = '';
+                $pdo[Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = false;
+                break;
+            case MySqlSslMode::VerifyIdentity:
+                // Verifies the chain against the CA and the host name against the certificate.
+                $pdo[Mysql::ATTR_SSL_CA] = $options['ssl_ca'];
+                $pdo[Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = true;
+                break;
+            case MySqlSslMode::Disabled:
+                break;
         }
 
         // Runs on every (re)connect, so these survive reconnects. Strings must lex the way SqlLexer reads them:

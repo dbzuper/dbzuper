@@ -292,3 +292,68 @@ it('keeps stored snapshots when only cosmetic settings change', function () {
 
     expect($connection->snapshots()->count())->toBe(1);
 });
+
+it('stores the MySQL SSL mode and drops the CA path and ssl_verify it makes irrelevant', function (string $driver, array $options, array $stored) {
+    $this->actingAs($this->user)->post(route('connections.store'), mysqlPayload(['driver' => $driver, 'options' => $options]))
+        ->assertSessionHasNoErrors();
+
+    $options = SavedConnection::sole()->options;
+    ksort($options);
+    ksort($stored);
+    expect($options)->toBe($stored);
+})->with(['mysql', 'mariadb'])->with([
+    'disabled' => [['mysql_ssl' => 'disabled', 'ssl_ca' => '/ca.pem', 'ssl_verify' => true], ['mysql_ssl' => 'disabled']],
+    'required' => [['mysql_ssl' => 'required', 'ssl_ca' => '/ca.pem'], ['mysql_ssl' => 'required']],
+    'verify identity' => [['mysql_ssl' => 'verify_identity', 'ssl_ca' => '/ca.pem', 'ssl_verify' => false], ['ssl_ca' => '/ca.pem', 'mysql_ssl' => 'verify_identity']],
+]);
+
+it('does not store a MySQL SSL mode on a PostgreSQL connection', function () {
+    $this->actingAs($this->user)->post(route('connections.store'), pgPayload(['options' => ['mysql_ssl' => 'required']]))
+        ->assertSessionHasNoErrors();
+
+    expect(SavedConnection::sole()->options)->toBe(['sslmode' => 'prefer', 'schema' => 'public']);
+});
+
+it('validates the MySQL SSL mode', function (array $options, string $field) {
+    $this->actingAs($this->user)->post(route('connections.store'), mysqlPayload(['options' => $options]))
+        ->assertSessionHasErrors($field);
+
+    expect(SavedConnection::count())->toBe(0);
+})->with([
+    'unknown mode' => [['mysql_ssl' => 'preferred'], 'options.mysql_ssl'],
+    'verify identity without a CA' => [['mysql_ssl' => 'verify_identity', 'ssl_ca' => ''], 'options.ssl_ca'],
+    'verify identity with an unsafe CA' => [['mysql_ssl' => 'verify_identity', 'ssl_ca' => '/ca.pem;host=evil'], 'options.ssl_ca'],
+]);
+
+it('requires a CA file for verify identity on the test endpoint too', function () {
+    $this->actingAs($this->user)->postJson(route('connections.test'), mysqlPayload(['options' => ['mysql_ssl' => 'verify_identity']]))
+        ->assertUnprocessable()->assertJsonValidationErrors('options.ssl_ca');
+});
+
+it('requires the password again when the MySQL SSL mode changes', function (array $saved, array $submitted) {
+    $connection = SavedConnection::factory()->for($this->user)->create(['host' => 'db.internal', 'port' => 3306, 'database' => 'shop', 'username' => 'app', 'password' => 'original', 'options' => $saved]);
+
+    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload(['password' => '', 'options' => $submitted]))
+        ->assertSessionHasErrors('password');
+    $this->actingAs($this->user)->postJson(route('connections.test'), mysqlPayload(['connection_id' => $connection->id, 'password' => '', 'options' => $submitted]))
+        ->assertUnprocessable()->assertJsonValidationErrors('password');
+})->with([
+    'disabled to required' => [[], ['mysql_ssl' => 'required']],
+    'legacy CA to required' => [['ssl_ca' => '/ca.pem'], ['mysql_ssl' => 'required', 'ssl_ca' => '/ca.pem']],
+    'required to disabled' => [['mysql_ssl' => 'required'], ['mysql_ssl' => 'disabled']],
+    'verify identity with another CA' => [['mysql_ssl' => 'verify_identity', 'ssl_ca' => '/ca.pem'], ['mysql_ssl' => 'verify_identity', 'ssl_ca' => '/other.pem']],
+]);
+
+it('keeps the stored password when the MySQL SSL mode only spells out how a saved connection already behaved', function (array $saved, array $submitted) {
+    $connection = SavedConnection::factory()->for($this->user)->create(['host' => 'db.internal', 'port' => 3306, 'database' => 'shop', 'username' => 'app', 'password' => 'original', 'options' => $saved]);
+
+    $this->actingAs($this->user)->put(route('connections.update', $connection), mysqlPayload(['password' => '', 'options' => $submitted]))
+        ->assertSessionHasNoErrors();
+
+    expect($connection->fresh()->password)->toBe('original');
+})->with([
+    'no CA is disabled' => [[], ['mysql_ssl' => 'disabled']],
+    'a CA is verify identity' => [['ssl_ca' => '/ca.pem'], ['mysql_ssl' => 'verify_identity', 'ssl_ca' => '/ca.pem']],
+    'a CA without verification is required' => [['ssl_ca' => '/ca.pem', 'ssl_verify' => false], ['mysql_ssl' => 'required', 'ssl_ca' => '/ca.pem']],
+    'a CA path left behind in required' => [['mysql_ssl' => 'required'], ['mysql_ssl' => 'required', 'ssl_ca' => '/ignored.pem']],
+]);
