@@ -209,10 +209,12 @@
     --rdg-summary-border-color: var(--border);
     --rdg-header-background-color: var(--muted);
     --rdg-header-draggable-background-color: var(--accent);
+    /* Row colours are opaque (mixed with the background, not transparent): frozen cells inherit the row's
+       colour and must hide the cells scrolling underneath them. */
     --rdg-row-hover-background-color: color-mix(
         in oklab,
         var(--muted) 60%,
-        transparent
+        var(--background)
     );
     --rdg-row-selected-background-color: color-mix(
         in oklab,
@@ -238,16 +240,20 @@
 
 .rdg-dbsuperb .rdg-row-active {
     /* Light enough that muted text (NULL cells) keeps 4.5:1 contrast on it. */
-    background: color-mix(in oklab, var(--universe-accent) 10%, transparent);
+    background: color-mix(
+        in oklab,
+        var(--universe-accent) 10%,
+        var(--background)
+    );
 }
 
 /* Staged editing (spec 4.1): every state also has a text label (marker column, sr-only "edited"). */
 .rdg-dbsuperb .rdg-row-new {
-    background: color-mix(in oklab, var(--success) 12%, transparent);
+    background: color-mix(in oklab, var(--success) 12%, var(--background));
 }
 
 .rdg-dbsuperb .rdg-row-deleted {
-    background: color-mix(in oklab, var(--destructive) 10%, transparent);
+    background: color-mix(in oklab, var(--destructive) 10%, var(--background));
     text-decoration: line-through;
     text-decoration-color: var(--destructive);
 }
