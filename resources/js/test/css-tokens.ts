@@ -48,6 +48,8 @@ export const SHELL_TOKENS = [
     '--panel-shadow',
     '--chrome-edge',
     '--sidebar-shadow',
+    '--grid-header',
+    '--grid-column-line',
 ];
 
 /**
