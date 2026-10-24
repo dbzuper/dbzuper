@@ -34,6 +34,7 @@ import { reportTableRows } from '@/browse/sql-link';
 import type { GridEditing } from '@/editing/row-edit';
 import { PendingBar } from '@/components/editing/pending-bar';
 import { FilterBar } from '@/components/inspector/filter-bar';
+import { preloadDatePicker } from '@/components/inspector/load-date-picker';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -415,6 +416,18 @@ function DataViewBody({
         }
         return kinds;
     }, [table.columns]);
+    // A table with a date column will likely want the date picker: fetch its chunk once the browser is idle, after
+    // the table has opened, so the first picker opens without a loading spinner.
+    const hasDateColumn = Object.keys(filterDateKinds).length > 0;
+    useEffect(() => {
+        if (!hasDateColumn) return;
+        if (typeof requestIdleCallback === 'function') {
+            const handle = requestIdleCallback(() => preloadDatePicker());
+            return () => cancelIdleCallback(handle);
+        }
+        const timer = setTimeout(() => preloadDatePicker(), 200);
+        return () => clearTimeout(timer);
+    }, [hasDateColumn]);
 
     const columns = view?.rows.columns ?? NO_COLUMNS;
     // Rows of this tab all come from this table, whatever the driver reports for the column origin.

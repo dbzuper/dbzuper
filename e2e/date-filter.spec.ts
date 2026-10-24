@@ -99,6 +99,56 @@ test('table tab: date range filter with the picker and linked SQL', async () => 
     });
     await openOrders();
 
+    // The picker's chunk is fetched once the browser is idle after the table opens (orders has date columns)...
+    await page.evaluate(
+        () =>
+            new Promise<void>((resolve) =>
+                requestIdleCallback(() => resolve()),
+            ),
+    );
+    await expect
+        .poll(() =>
+            page.evaluate(() =>
+                performance
+                    .getEntriesByType('resource')
+                    .some((e) =>
+                        /\/build\/.*date-picker-[^/]*\.js$/.test(e.name),
+                    ),
+            ),
+        )
+        .toBe(true);
+    await page.evaluate(
+        () =>
+            new Promise<void>((resolve) =>
+                requestIdleCallback(() => resolve()),
+            ),
+    );
+    // ...so the first picker opens on its calendar, never on the loading spinner.
+    await page.evaluate(() => {
+        const w = window as Window & { spinnerSeen?: boolean };
+        w.spinnerSeen = false;
+        const seen = () =>
+            document.querySelector(
+                '[role="dialog"] [role="status"][aria-label="Loading"]',
+            ) !== null;
+        new MutationObserver(() => {
+            if (seen()) w.spinnerSeen = true;
+        }).observe(document.body, { childList: true, subtree: true });
+    });
+    await chooseCreatedAt('on');
+    await valueButton().click();
+    await expect(picker().getByRole('status', { name: 'Loading' })).toHaveCount(
+        0,
+    );
+    await expect(picker().getByRole('grid')).toBeVisible();
+    expect(
+        await page.evaluate(
+            () => (window as Window & { spinnerSeen?: boolean }).spinnerSeen,
+        ),
+    ).toBe(false);
+    await page.keyboard.press('Escape');
+    await expect(picker()).toHaveCount(0);
+
     // A date column swaps the value control for the picker button.
     await chooseCreatedAt('between');
     await expect(valueButton()).toHaveText(/Pick a date/);

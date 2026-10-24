@@ -100,6 +100,12 @@ vi.mock('@/components/grid/result-grid', () => ({
 const reportTableRows = vi.hoisted(() => vi.fn());
 vi.mock('@/browse/sql-link', () => ({ reportTableRows }));
 
+const preloadDatePicker = vi.hoisted(() => vi.fn());
+vi.mock('@/components/inspector/load-date-picker', async (orig) => ({
+    ...(await orig<typeof import('@/components/inspector/load-date-picker')>()),
+    preloadDatePicker,
+}));
+
 import { DataView } from './data-view';
 import { tableTabOf } from '@/test/browse-tabs';
 
@@ -133,6 +139,22 @@ const snapshotWith = (rowCount: RowCountSchema, driver = 'mysql') =>
                 ],
             },
             { name: 'users', row_count: rowCount, columns: [nameColumn] },
+            {
+                name: 'events',
+                row_count: rowCount,
+                columns: [
+                    nameColumn,
+                    {
+                        name: 'happened_at',
+                        type: 'datetime',
+                        type_name: 'datetime',
+                        nullable: true,
+                        default: null,
+                        auto_increment: false,
+                        comment: null,
+                    },
+                ],
+            },
         ],
         [],
         driver,
@@ -241,6 +263,34 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.restoreAllMocks();
+});
+
+describe('DataView date picker preload', () => {
+    beforeEach(() => preloadDatePicker.mockReset());
+    const idle = () => new Promise((resolve) => setTimeout(resolve, 300));
+
+    it('preloads the picker once idle for a table with a date column', async () => {
+        open('events');
+        render(<Harness table="events" />);
+        expect(preloadDatePicker).not.toHaveBeenCalled();
+        await waitFor(() => expect(preloadDatePicker).toHaveBeenCalled());
+    });
+
+    it('does not preload it for a table without one', async () => {
+        open();
+        render(<Harness />);
+        expect(await screen.findByText('100 rows')).toBeInTheDocument();
+        await idle();
+        expect(preloadDatePicker).not.toHaveBeenCalled();
+    });
+
+    it('cancels the scheduled preload on unmount', async () => {
+        open('events');
+        const { unmount } = render(<Harness table="events" />);
+        unmount();
+        await idle();
+        expect(preloadDatePicker).not.toHaveBeenCalled();
+    });
 });
 
 describe('DataView editing', () => {

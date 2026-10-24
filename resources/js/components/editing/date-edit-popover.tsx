@@ -5,6 +5,10 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+    datePickerExport,
+    preloadDatePicker,
+} from '@/components/inspector/load-date-picker';
 import { Spinner } from '@/components/ui/spinner';
 import type { DateKind } from '@/lib/date-filter';
 import { cn } from '@/lib/utils';
@@ -24,12 +28,8 @@ export const opensPicker = (e: {
     !e.metaKey &&
     !e.shiftKey;
 
-// The calendar (react-day-picker) loads with the filter picker's chunk, only when a picker opens.
-const EditDatePicker = lazy(() =>
-    import('@/components/inspector/date-picker').then((m) => ({
-        default: m.EditDatePicker,
-    })),
-);
+// The calendar (react-day-picker) shares the filter picker's chunk, fetched ahead of need (see load-date-picker).
+const EditDatePicker = lazy(datePickerExport('EditDatePicker'));
 
 /**
  * The calendar button beside a date or datetime editor (grid cell, row drawer field) and its picker. Apply hands
@@ -70,6 +70,8 @@ export function DateEditPopover({
                     type="button"
                     aria-label="Choose date"
                     title="Choose date (Alt+↓)"
+                    onPointerEnter={preloadDatePicker}
+                    onFocus={preloadDatePicker}
                     className={cn(
                         'inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none',
                         className,

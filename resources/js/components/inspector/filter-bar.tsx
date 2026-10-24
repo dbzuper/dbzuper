@@ -18,11 +18,12 @@ import {
     normalizeDateInput,
 } from '@/lib/date-filter';
 import { FILTER_OPS, type FilterOp, type RowFilter } from '@/lib/workspace-api';
+import { datePickerExport, preloadDatePicker } from './load-date-picker';
 
 export { filterChipText };
 
-// The calendar (react-day-picker and date-fns) loads the first time a picker opens.
-const DatePicker = lazy(() => import('./date-picker'));
+// The calendar (react-day-picker and date-fns) is its own chunk, fetched ahead of need (see load-date-picker).
+const DatePicker = lazy(datePickerExport('default'));
 
 /** The operators offered for a column of this kind: the date ones, or the plain list without them. */
 const opsFor = (kind: DateKind | null): FilterOp[] =>
@@ -113,6 +114,11 @@ export function FilterBar({
         }
         setColumn(next);
     };
+
+    // A date column selected: its picker is likely next, so fetch it now.
+    useEffect(() => {
+        if (kind) preloadDatePicker();
+    }, [kind]);
 
     const columnSelect = useRef<HTMLSelectElement>(null);
     // The text input, or the picker button on a date column.
@@ -225,6 +231,8 @@ export function FilterBar({
                                 type="button"
                                 aria-label={`Filter value: ${valueText}`}
                                 aria-haspopup="dialog"
+                                onPointerEnter={preloadDatePicker}
+                                onFocus={preloadDatePicker}
                                 className={`${fieldClass} inline-flex min-w-36 items-center gap-1.5 text-left`}
                             >
                                 <CalendarDays className="size-3.5 shrink-0 text-muted-foreground" />

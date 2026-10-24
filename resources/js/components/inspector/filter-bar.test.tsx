@@ -10,6 +10,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { DATE_OPS, type DateKind, quickRanges } from '@/lib/date-filter';
 import type { RowFilter } from '@/lib/workspace-api';
 import { FilterBar, filterChipText } from './filter-bar';
+import { loadDatePicker } from './load-date-picker';
+
+const preloadDatePicker = vi.hoisted(() => vi.fn());
+vi.mock('./load-date-picker', async (orig) => ({
+    ...(await orig<typeof import('./load-date-picker')>()),
+    preloadDatePicker,
+}));
 
 const columns = ['id', 'status'];
 
@@ -282,6 +289,58 @@ describe('FilterBar', () => {
             expect(button.tagName).toBe('BUTTON');
             expect(button).toHaveAttribute('aria-haspopup', 'dialog');
             expect(button).toHaveTextContent('Pick a date…');
+        });
+
+        it('preloads the picker when a date column is selected', () => {
+            render(
+                <FilterBar
+                    columns={dateColumns}
+                    filters={[]}
+                    onChange={vi.fn()}
+                    dateKinds={dateKinds}
+                />,
+            );
+            preloadDatePicker.mockClear();
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'created_at' },
+            });
+            expect(preloadDatePicker).toHaveBeenCalled();
+        });
+
+        it('does not preload the picker for text columns only', () => {
+            preloadDatePicker.mockClear();
+            render(
+                <FilterBar columns={columns} filters={[]} onChange={vi.fn()} />,
+            );
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'status' },
+            });
+            expect(preloadDatePicker).not.toHaveBeenCalled();
+        });
+
+        it.each(['pointerEnter', 'focus'] as const)(
+            'preloads the picker on %s of the value button',
+            (event) => {
+                renderDates();
+                preloadDatePicker.mockClear();
+                fireEvent[event](
+                    screen.getByRole('button', { name: /^Filter value/ }),
+                );
+                expect(preloadDatePicker).toHaveBeenCalled();
+            },
+        );
+
+        it('opens a preloaded picker without a loading spinner', async () => {
+            await loadDatePicker();
+            renderDates();
+            fireEvent.click(
+                screen.getByRole('button', { name: /^Filter value/ }),
+            );
+            const dialog = screen.getByRole('dialog');
+            expect(
+                within(dialog).queryByRole('status', { name: 'Loading' }),
+            ).toBeNull();
+            expect(within(dialog).getByRole('grid')).toBeInTheDocument();
         });
 
         it('resets between to equals on a text column and sends no to', () => {
