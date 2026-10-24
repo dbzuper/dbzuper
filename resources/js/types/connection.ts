@@ -36,6 +36,22 @@ export interface ConnectionSummary {
     last_opened_at: string | null;
 }
 
+/** A connection on the connections page, with its latest snapshot summary. */
+export interface ConnectionCard extends ConnectionSummary {
+    tables: number | null;
+    views: number | null;
+    /** ISO time of the latest snapshot, or null if there is none. */
+    snapshot_at: string | null;
+    /** The first five pinned table names, in pin order. */
+    pins: string[];
+    /** Preview nodes in the unit square; `points` is null without a saved layout, and a null point is seeded on the client. */
+    star: {
+        points: ([number, number] | null)[] | null;
+        edges: [number, number][];
+        count: number;
+    } | null;
+}
+
 export interface ConnectionFormData {
     connection_id: number | null;
     name: string;

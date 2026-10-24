@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Database\Schema\StarMap;
 use App\Enums\DriverName;
 use App\Http\Requests\ConnectionRequest;
 use App\Models\SavedConnection;
+use App\Models\StoredSnapshot;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -15,9 +17,35 @@ class ConnectionController extends Controller
 {
     public function index(Request $request): Response
     {
+        $user = $request->user();
+        $connections = $user->connections()->orderBy('name')
+            ->with([
+                // Only the version stamp: StarMap reads the payload on a cache miss.
+                'layout' => fn ($q) => $q->select('id', 'connection_id', 'updated_at'),
+                'pins' => fn ($q) => $q->where('user_id', $user->id)->orderBy('position')->select('connection_id', 'table_name', 'position'),
+            ])
+            ->get();
+
+        // The latest snapshot of each connection, without its (large) payload.
+        $snapshots = StoredSnapshot::query()
+            ->select('id', 'connection_id', 'table_count', 'view_count', 'preview', 'created_at')
+            ->whereIn('id', StoredSnapshot::query()->selectRaw('max(id)')
+                ->whereIn('connection_id', $connections->modelKeys())->groupBy('connection_id'))
+            ->get()->keyBy('connection_id');
+
         return Inertia::render('connections/index', [
-            'connections' => $request->user()->connections()->orderBy('name')->get()
-                ->map->toClientArray()->values(),
+            'connections' => $connections->map(function (SavedConnection $connection) use ($snapshots) {
+                $latest = $snapshots->get($connection->id);
+
+                return [
+                    ...$connection->toClientArray(),
+                    'tables' => $latest?->table_count,
+                    'views' => $latest?->view_count,
+                    'snapshot_at' => $latest?->created_at->toIso8601String(),
+                    'pins' => $connection->pins->take(5)->pluck('table_name')->values()->all(),
+                    'star' => StarMap::for($connection, $latest),
+                ];
+            })->values(),
         ]);
     }
 
