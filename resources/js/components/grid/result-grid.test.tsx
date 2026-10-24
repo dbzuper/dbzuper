@@ -571,18 +571,26 @@ describe('table tab features', () => {
                 .forEach((box) => fireEvent.click(box));
 
         it('is hidden with no selection and counts the selected rows', () => {
-            renderSelectable();
+            const { container } = renderSelectable();
             expect(toolbar()).toBeNull();
+            // The live region is there before the first selection, so the first one is announced too.
+            const live = () =>
+                container.querySelectorAll('[aria-live="polite"]');
+            expect(live()).toHaveLength(1);
+            const region = live()[0];
+            expect(region).toHaveTextContent('');
             fireEvent.click(
                 screen.getAllByRole('checkbox', { name: 'Select' })[0],
             );
             expect(toolbar()).toHaveTextContent('1 selected');
+            expect(live()).toHaveLength(1);
+            expect(live()[0]).toBe(region);
+            expect(region).toHaveTextContent('1 selected');
             fireEvent.click(
                 screen.getAllByRole('checkbox', { name: 'Select' })[1],
             );
-            const bar = toolbar()!;
-            const count = within(bar).getByText('2 selected');
-            expect(count).toHaveAttribute('aria-live', 'polite');
+            expect(within(toolbar()!).getByText('2 selected')).toBeVisible();
+            expect(region).toHaveTextContent('2 selected');
         });
 
         it('is never shown without row checkboxes', () => {
@@ -1072,6 +1080,39 @@ describe('editing', () => {
         fireEvent.click(boxes()[1]);
         expect(
             within(toolbar()!).getByRole('button', { name: 'Delete 2 rows' }),
+        ).toBeInTheDocument();
+    });
+
+    it('counts only the rows it can stage, the same in the row menu and the bar', async () => {
+        renderGrid();
+        // Linus (the third row) has no row identity: nothing to stage.
+        for (const box of screen.getAllByRole('checkbox', { name: 'Select' }))
+            fireEvent.click(box);
+        const bar = screen.getByRole('toolbar', { name: 'Selected rows' });
+        expect(within(bar).getByText('3 selected')).toBeInTheDocument();
+        expect(
+            within(bar).getByRole('button', { name: 'Delete 2 rows' }),
+        ).toBeInTheDocument();
+        fireEvent.contextMenu(cell('Ada'));
+        expect(
+            await screen.findByRole('menuitem', { name: 'Delete 2 rows' }),
+        ).toBeInTheDocument();
+    });
+
+    it('keeps the selection when Escape cancels a cell edit', () => {
+        renderGrid();
+        const boxes = () => screen.getAllByRole('checkbox', { name: 'Select' });
+        fireEvent.click(boxes()[1]);
+        const input = edit('Ada');
+        fireEvent.change(input, { target: { value: 'nope' } });
+        fireEvent.keyDown(input, { key: 'Escape' });
+        expect(screen.queryByRole('textbox')).toBeNull();
+        expect(pending()).toEqual({});
+        expect(boxes()[1]).toBeChecked();
+        expect(
+            within(
+                screen.getByRole('toolbar', { name: 'Selected rows' }),
+            ).getByText('1 selected'),
         ).toBeInTheDocument();
     });
 

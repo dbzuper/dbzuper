@@ -1054,7 +1054,8 @@ export function ResultGrid({
                         store.revertCell(connectionId, table, row.ref!, name),
                 });
         }
-        const targets = actionRows(row.__i);
+        // Only rows with a target are staged; the label counts those, as the selection bar does.
+        const targets = actionRows(row.__i).filter((r) => model.target(r));
         items.push({
             label:
                 targets.length > 1
@@ -1307,6 +1308,12 @@ export function ResultGrid({
         <>
             {rowMenu ? (
                 <div className="flex h-full flex-col">
+                    {/* Always rendered, so the first selection is announced too (a region that mounts with its text isn't). */}
+                    <span aria-live="polite" className="sr-only">
+                        {selectedRows.length > 0
+                            ? `${selectedRows.length} selected`
+                            : ''}
+                    </span>
                     {selectionBar}
                     <div className="min-h-0 flex-1">
                         <ContextMenu

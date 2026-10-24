@@ -21,7 +21,7 @@ export function SelectionBar({
     remove,
     onClear,
 }: {
-    /** How many rows are selected. */
+    /** How many rows are selected (the grid announces it in its own live region). */
     count: number;
     /** What Copy as copies (new rows aren't in the table yet, so they are left out); none hides it. */
     copy: {
@@ -41,9 +41,7 @@ export function SelectionBar({
             aria-label="Selected rows"
             className="flex h-8 shrink-0 items-center gap-1 border-b bg-muted px-3 text-xs"
         >
-            <span aria-live="polite" className="mr-1 font-medium">
-                {`${count} selected`}
-            </span>
+            <span className="mr-1 font-medium">{`${count} selected`}</span>
             {copy && copy.rows.length > 0 && (
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
