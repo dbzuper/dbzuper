@@ -595,40 +595,64 @@ export function ResultGrid({
                       resizable: false,
                       sortable: false,
                       draggable: false,
-                      renderCell: ({ row }) => (
-                          <span className="flex h-full items-center gap-1">
-                              {model && (
-                                  <span className="w-3 shrink-0">
-                                      {marker(row)}
-                                  </span>
-                              )}
-                              {row.__i < 0 ? null : (
-                                  <button
-                                      type="button"
-                                      aria-label="Open row"
-                                      aria-expanded={row.__i === activeRow}
-                                      title={
-                                          row.__i === activeRow && onCloseRow
-                                              ? 'Close row'
-                                              : 'Open row'
-                                      }
-                                      data-row-index={row.__i}
-                                      onClick={() =>
-                                          row.__i === activeRow && onCloseRow
-                                              ? onCloseRow()
-                                              : onOpenRow(row.__i)
-                                      }
-                                      className={cn(
-                                          'rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none',
-                                          row.__i === activeRow &&
-                                              'text-[var(--universe-accent)]',
-                                      )}
-                                  >
-                                      <ChevronRight className="size-3.5" />
-                                  </button>
-                              )}
-                          </span>
-                      ),
+                      // The whole cell is the click target, not just the icon: the button fills the rest of the
+                      // cell, and a click on the pending mark beside it does the same (the mark keeps its tooltip).
+                      cellClass: 'rdg-row-button-cell',
+                      renderCell: ({ row }) => {
+                          const open = row.__i === activeRow;
+                          const toggle = () =>
+                              open && onCloseRow
+                                  ? onCloseRow()
+                                  : onOpenRow(row.__i);
+                          return (
+                              <span
+                                  className={cn(
+                                      'group flex h-full items-center',
+                                      row.__i >= 0 &&
+                                          'cursor-pointer hover:bg-muted',
+                                  )}
+                                  onClick={
+                                      row.__i < 0
+                                          ? undefined
+                                          : (e) => {
+                                                if (
+                                                    !(
+                                                        e.target as HTMLElement
+                                                    ).closest('button')
+                                                )
+                                                    toggle();
+                                            }
+                                  }
+                              >
+                                  {model && (
+                                      <span className="w-3 shrink-0 pl-1">
+                                          {marker(row)}
+                                      </span>
+                                  )}
+                                  {row.__i < 0 ? null : (
+                                      <button
+                                          type="button"
+                                          aria-label="Open row"
+                                          aria-expanded={open}
+                                          title={
+                                              open && onCloseRow
+                                                  ? 'Close row'
+                                                  : 'Open row'
+                                          }
+                                          data-row-index={row.__i}
+                                          onClick={toggle}
+                                          className={cn(
+                                              'flex h-full min-w-0 flex-1 items-center justify-center text-muted-foreground group-hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none focus-visible:ring-inset',
+                                              open &&
+                                                  'text-[var(--universe-accent)]',
+                                          )}
+                                      >
+                                          <ChevronRight className="size-3.5" />
+                                      </button>
+                                  )}
+                              </span>
+                          );
+                      },
                   },
               ]
             : [];

@@ -238,6 +238,11 @@
     color-scheme: dark;
 }
 
+/* The row button fills its cell (rdg's cell padding sits in a layer that would beat a utility). */
+.rdg-dbsuperb .rdg-row-button-cell {
+    padding-inline: 0;
+}
+
 .rdg-dbsuperb .rdg-row-active {
     /* Light enough that muted text (NULL cells) keeps 4.5:1 contrast on it. */
     background: color-mix(

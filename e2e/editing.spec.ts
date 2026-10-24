@@ -422,6 +422,23 @@ test('editing: set a datetime in a grid cell with the date picker, then discard'
     await expect(cell('2026-10-20 12:00:00')).toHaveCount(0);
 });
 
+test('browse: the whole row-button cell opens and closes the row drawer', async () => {
+    await expect(tab('orders')).toHaveAttribute('aria-selected', 'true');
+    const rowButton = panel().getByRole('button', { name: 'Open row' }).first();
+    const rowButtonCell = rowButton.locator(
+        'xpath=ancestor::*[@role="gridcell"][1]',
+    );
+    const drawer = page.getByRole('complementary', { name: 'Row details' });
+    // A corner of the cell, well away from the 14px icon.
+    await rowButtonCell.click({ position: { x: 3, y: 3 } });
+    await expect(drawer).toBeVisible();
+    await expect(rowButton).toHaveAttribute('aria-expanded', 'true');
+    const box = (await rowButtonCell.boundingBox())!;
+    await rowButtonCell.click({ position: { x: box.width - 3, y: 3 } });
+    await expect(drawer).toHaveCount(0);
+    await expect(rowButton).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('editing: clearing a nullable integer in the row drawer stages NULL, then discard', async () => {
     // users.group_id is a nullable unsignedBigInteger in the commerce demo.
     await openTable('users');
