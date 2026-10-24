@@ -67,7 +67,7 @@ describe('theme tokens', () => {
         expect(token(light, '--shell')).toBe('var(--background)');
         expect(token(light, '--shell-gap')).toBe('0px');
         expect(token(light, '--panel-radius')).toBe('0px');
-        expect(token(light, '--panel-shadow')).toBe('none');
+        expect(token(light, '--panel-shadow')).toBe('0 0 #0000');
         expect(css).toContain('--color-shell: var(--shell)');
     });
 

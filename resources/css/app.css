@@ -109,7 +109,7 @@
     --shell: var(--background);
     --shell-gap: 0px;
     --panel-radius: 0px;
-    --panel-shadow: none;
+    --panel-shadow: 0 0 #0000;
 }
 
 .dark,

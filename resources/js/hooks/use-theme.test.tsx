@@ -60,6 +60,36 @@ describe('initializeColorTheme', () => {
         expect(document.documentElement.dataset.theme).toBe('graphite');
     });
 
+    it('keeps the server-rendered theme when nothing is stored, and stores it', () => {
+        document.documentElement.dataset.theme = 'layered';
+
+        initializeColorTheme();
+
+        expect(document.documentElement.dataset.theme).toBe('layered');
+        expect(localStorage.getItem('theme')).toBe('layered');
+        expect(document.cookie).toContain('theme=layered');
+    });
+
+    it('prefers the server-rendered theme over an unknown stored one', () => {
+        localStorage.setItem('theme', 'neon');
+        document.documentElement.dataset.theme = 'graphite';
+
+        initializeColorTheme();
+
+        expect(document.documentElement.dataset.theme).toBe('graphite');
+        expect(localStorage.getItem('theme')).toBe('graphite');
+    });
+
+    it('falls back to classic when neither is valid', () => {
+        localStorage.setItem('theme', 'neon');
+        document.documentElement.dataset.theme = 'neon';
+
+        initializeColorTheme();
+
+        expect(document.documentElement.dataset.theme).toBe('classic');
+        expect(localStorage.getItem('theme')).toBe('classic');
+    });
+
     it('ignores an unknown stored theme', () => {
         localStorage.setItem('theme', 'neon');
 

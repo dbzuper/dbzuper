@@ -53,7 +53,18 @@ export function initializeColorTheme(): void {
         return;
     }
 
-    currentTheme = parseTheme(localStorage.getItem('theme'));
+    const stored = localStorage.getItem('theme');
+
+    if (parseTheme(stored) === stored) {
+        currentTheme = stored as ThemeName;
+    } else {
+        // Nothing usable stored: keep the theme the server rendered from the cookie, so the page does
+        // not flash to Classic, and store it so both sides agree from now on.
+        currentTheme = parseTheme(document.documentElement.dataset.theme);
+        localStorage.setItem('theme', currentTheme);
+        setCookie('theme', currentTheme);
+    }
+
     applyColorTheme(currentTheme);
 }
 
