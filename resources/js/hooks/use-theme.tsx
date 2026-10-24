@@ -59,8 +59,11 @@ export function initializeColorTheme(): void {
         // not flash to Classic, and store it so both sides agree from now on.
         currentTheme = parseTheme(document.documentElement.dataset.theme);
         localStorage.setItem('theme', currentTheme);
-        setCookie('theme', currentTheme);
     }
+
+    // Always re-sync the cookie: if it expired or was cleared, the server would keep rendering Classic
+    // and Blade would not link the theme's fonts.
+    setCookie('theme', currentTheme);
 
     applyColorTheme(currentTheme);
 }

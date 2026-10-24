@@ -100,6 +100,13 @@ const bodyFont = () =>
         return getComputedStyle(document.body).fontFamily;
     });
 
+/** The family is computed whether or not the woff2 arrived; check() is only true once it loaded. */
+const graphiteFontLoaded = () =>
+    page.evaluate(async () => {
+        await document.fonts.ready;
+        return document.fonts.check('12px "Schibsted Grotesk Variable"');
+    });
+
 const editorBackground = () =>
     dock()
         .locator('.monaco-editor .monaco-editor-background')
@@ -130,6 +137,7 @@ test('themes: Graphite loads its fonts, also when server-rendered', async () => 
         1,
     );
     expect(await bodyFont()).toContain('Schibsted');
+    expect(await graphiteFontLoaded()).toBe(true);
     await expectChrome();
 
     // After a reload Blade links the fonts itself, and the loader does not add a second link.
@@ -139,6 +147,7 @@ test('themes: Graphite loads its fonts, also when server-rendered', async () => 
     await page.reload();
     await expect(page.locator(GRAPHITE_FONTS)).toHaveCount(1);
     expect(await bodyFont()).toContain('Schibsted');
+    expect(await graphiteFontLoaded()).toBe(true);
     await expectChrome();
 });
 

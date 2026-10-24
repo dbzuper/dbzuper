@@ -60,6 +60,14 @@ describe('initializeColorTheme', () => {
         expect(document.documentElement.dataset.theme).toBe('graphite');
     });
 
+    it('re-syncs the cookie from the stored theme when the cookie is gone', () => {
+        localStorage.setItem('theme', 'graphite');
+
+        initializeColorTheme();
+
+        expect(document.cookie).toContain('theme=graphite');
+    });
+
     it('keeps the server-rendered theme when nothing is stored, and stores it', () => {
         document.documentElement.dataset.theme = 'layered';
 
