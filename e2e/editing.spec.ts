@@ -2,6 +2,7 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { expectNoA11yViolations, settleStyles } from './support/axe';
 import { addSqliteConnection, newSignedInContext } from './support/auth';
 
 /**
@@ -294,6 +295,99 @@ test('editing: a row changed elsewhere since it was loaded is not overwritten', 
     await expect(cell('cancelled')).toBeVisible();
     await expect(cell('returned')).toHaveCount(0);
     await expect(pendingBar()).toHaveCount(0);
+});
+
+async function switchTheme(appearance: 'dark' | 'light') {
+    const toggle = page.getByRole('button', { name: /^Theme: / }).first();
+    for (let i = 0; i < 3; i++) {
+        if (
+            (await toggle.getAttribute('aria-label'))?.startsWith(
+                `Theme: ${appearance} `,
+            )
+        ) {
+            await page.waitForFunction(
+                (dark) =>
+                    document.documentElement.classList.contains('dark') ===
+                    dark,
+                appearance === 'dark',
+            );
+            await settleStyles(page);
+            return;
+        }
+        await toggle.click();
+    }
+    throw new Error(`Could not switch to the ${appearance} theme`);
+}
+
+test('editing: set a datetime in the row drawer with the date picker, review, discard', async () => {
+    await expect(tab('orders')).toHaveAttribute('aria-selected', 'true');
+    await panel().getByRole('button', { name: 'Open row' }).first().click();
+    const drawer = page.getByRole('complementary', { name: 'Row details' });
+    await expect(
+        drawer.getByRole('heading', { name: 'orders · 1' }),
+    ).toBeVisible();
+    const field = drawer.getByRole('textbox', {
+        name: 'created_at',
+        exact: true,
+    });
+    await expect(field).toHaveValue('2026-10-01 12:00:00');
+    const picker = page.getByRole('dialog', { name: 'Choose a date' });
+    const open = drawer.getByRole('button', { name: 'Choose date' });
+    await expect(open).toHaveCount(1);
+
+    // Accessibility of the open picker, dark then light; Escape closes only the picker.
+    await open.click();
+    await expect(picker.getByLabel('Date', { exact: true })).toHaveValue(
+        '2026-10-01',
+    );
+    await expectNoA11yViolations(page, { label: 'edit date picker: dark' });
+    await page.keyboard.press('Escape');
+    await expect(picker).toHaveCount(0);
+    await expect(drawer).toBeVisible();
+    await expect(field).toBeFocused();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await switchTheme('light');
+    await open.click();
+    await expect(picker).toBeVisible();
+    await expectNoA11yViolations(page, { label: 'edit date picker: light' });
+    await page.keyboard.press('Escape');
+    await switchTheme('dark');
+    await page.emulateMedia({ reducedMotion: null });
+
+    // Pick 15 October 2026 at 09:30:15 and apply: staged, focus back on the field.
+    await open.click();
+    await picker.getByRole('button', { name: /^15 October 2026/ }).click();
+    await picker.getByLabel('Time', { exact: true }).fill('09:30:15');
+    await picker.getByRole('button', { name: 'Apply' }).click();
+    await expect(picker).toHaveCount(0);
+    await expect(field).toHaveValue('2026-10-15 09:30:15');
+    await expect(field).toBeFocused();
+    await expect(pendingBar()).toHaveText(
+        '1 pending change · 0 new · 1 edited · 0 deleted',
+    );
+    await expect(
+        panel().locator(
+            '.rdg-cell-edited [data-edited="true"][title="Original: 2026-10-01 12:00:00"]',
+        ),
+    ).toContainText('2026-10-15 09:30:15');
+
+    await panel().getByRole('button', { name: 'Review & commit…' }).click();
+    await expect(review().locator('pre')).toHaveText(
+        /^UPDATE "orders" SET "created_at" = '2026-10-15 09:30:15' WHERE "id" = 1/,
+    );
+    await review().getByRole('button', { name: 'Back' }).click();
+    await expect(review()).toHaveCount(0);
+
+    // Nothing is written: discard the change.
+    await panel().getByRole('button', { name: 'Discard', exact: true }).click();
+    await page
+        .getByRole('dialog', { name: /^Discard 1 pending change/ })
+        .getByRole('button', { name: 'Discard', exact: true })
+        .click();
+    await expect(pendingBar()).toHaveCount(0);
+    await expect(field).toHaveValue('2026-10-01 12:00:00');
+    await drawer.getByRole('button', { name: 'Close row details' }).click();
+    await expect(drawer).toHaveCount(0);
 });
 
 test('editing: a read-only connection shows no editing', async () => {
