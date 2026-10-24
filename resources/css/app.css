@@ -161,6 +161,15 @@
 @layer base {
     * {
         @apply border-border;
+        /* Thin scrollbars that blend into the surface they sit on: no track, and a soft thumb mixed from
+           the theme's muted text so it follows every theme and mode. */
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(
+                in oklab,
+                var(--muted-foreground) 35%,
+                transparent
+            )
+            transparent;
     }
 
     body {
