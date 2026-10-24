@@ -117,6 +117,7 @@ const connection = {
     read_only: true,
     color: null,
     store_history: true,
+    last_opened_at: null,
 };
 
 beforeEach(() => {

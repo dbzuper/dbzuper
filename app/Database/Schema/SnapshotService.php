@@ -34,9 +34,11 @@ final class SnapshotService
             throw new DatabaseOperationFailed($this->errors->map($e));
         }
 
+        $payload = $snapshot->toArray();
         $stored = $connection->snapshots()->create([
             'hash' => $snapshot->structureHash(),
-            'payload' => $snapshot->toArray(),
+            'payload' => $payload,
+            ...SnapshotSummary::of($payload),
         ]);
 
         $keep = (int) config('dbsuperb.snapshot_keep');

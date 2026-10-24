@@ -28,6 +28,7 @@ const connection = (id: number): ConnectionSummary => ({
     read_only: false,
     color: null,
     store_history: true,
+    last_opened_at: null,
 });
 
 describe('connections index', () => {

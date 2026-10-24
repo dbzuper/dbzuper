@@ -67,6 +67,7 @@ const conn = (id: number) => ({
     read_only: true,
     color: null,
     store_history: true,
+    last_opened_at: null,
 });
 
 const response = (...names: string[]): SchemaResponse => ({

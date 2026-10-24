@@ -32,6 +32,8 @@ export interface ConnectionSummary {
     read_only: boolean;
     color: string | null;
     store_history: boolean;
+    /** ISO time of the last workspace visit, or null if never opened. */
+    last_opened_at: string | null;
 }
 
 export interface ConnectionFormData {

@@ -10,11 +10,11 @@ class StoredSnapshot extends Model
 
     protected $table = 'schema_snapshots';
 
-    protected $fillable = ['connection_id', 'hash', 'payload'];
+    protected $fillable = ['connection_id', 'hash', 'payload', 'table_count', 'view_count', 'preview'];
 
     protected function casts(): array
     {
-        return ['payload' => 'array', 'created_at' => 'immutable_datetime'];
+        return ['payload' => 'array', 'preview' => 'array', 'table_count' => 'integer', 'view_count' => 'integer', 'created_at' => 'immutable_datetime'];
     }
 
     public function toApiArray(): array

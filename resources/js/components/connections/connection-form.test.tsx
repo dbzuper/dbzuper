@@ -47,6 +47,7 @@ function saved(overrides: Partial<ConnectionSummary>): ConnectionSummary {
         read_only: false,
         color: null,
         store_history: true,
+        last_opened_at: null,
         ...overrides,
     };
 }
