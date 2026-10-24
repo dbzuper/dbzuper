@@ -116,6 +116,8 @@
     --panel-shadow: 0 0 #0000;
     --chrome-edge: var(--border);
     --sidebar-shadow: var(--panel-shadow);
+    --grid-header: var(--muted);
+    --grid-column-line: var(--border);
 }
 
 .dark,
@@ -267,6 +269,9 @@
     /* Version A: the header, rail and sidebar sit flat on the canvas, with no edges or shadow */
     --chrome-edge: transparent;
     --sidebar-shadow: 0 0 #0000;
+    /* Version A: the grid is one white sheet, a header the colour of the panel and no column lines */
+    --grid-header: var(--background);
+    --grid-column-line: transparent;
 
     --universe-bg: #fbfaf6;
     --universe-grid: rgba(15, 23, 42, 0.07);
@@ -323,6 +328,9 @@
     /* Version A: the header, rail and sidebar sit flat on the canvas, with no edges or shadow */
     --chrome-edge: transparent;
     --sidebar-shadow: 0 0 #0000;
+    /* Version A: the grid is one white sheet, a header the colour of the panel and no column lines */
+    --grid-header: var(--background);
+    --grid-column-line: transparent;
 
     --universe-bg: #10141b;
     --universe-grid: rgba(148, 163, 184, 0.08);
@@ -385,6 +393,8 @@
     --panel-shadow: 0 0 #0000;
     --chrome-edge: var(--border);
     --sidebar-shadow: var(--panel-shadow);
+    --grid-header: var(--muted);
+    --grid-column-line: var(--border);
 
     --universe-bg: #e9ebef;
     --universe-grid: rgba(21, 24, 29, 0.07);
@@ -440,6 +450,8 @@
     --panel-shadow: 0 0 #0000;
     --chrome-edge: var(--border);
     --sidebar-shadow: var(--panel-shadow);
+    --grid-header: var(--muted);
+    --grid-column-line: var(--border);
 
     --universe-bg: #0e1014;
     --universe-grid: rgba(169, 176, 189, 0.08);
@@ -465,7 +477,7 @@
     --rdg-color: var(--foreground);
     --rdg-border-color: var(--border);
     --rdg-summary-border-color: var(--border);
-    --rdg-header-background-color: var(--muted);
+    --rdg-header-background-color: var(--grid-header);
     --rdg-header-draggable-background-color: var(--accent);
     /* Row colours are opaque (mixed with the background, not transparent): frozen cells inherit the row's
        colour and must hide the cells scrolling underneath them. */
@@ -508,6 +520,55 @@
         var(--universe-accent) 10%,
         var(--background)
     );
+}
+
+/* Column lines come from the theme (Layered has none); row lines stay. */
+.rdg-dbsuperb .rdg-cell {
+    border-inline-end-color: var(--grid-column-line);
+}
+
+/* Row checkboxes: a small outlined box, filled with the primary colour once ticked. The tick is dark on a
+   dark theme's light primary, and white on a light theme's dark primary. */
+.rdg-dbsuperb .rdg-checkbox-input {
+    appearance: none;
+    inline-size: 14px;
+    block-size: 14px;
+    border: 1.5px solid
+        color-mix(in oklab, var(--muted-foreground) 80%, var(--background));
+    border-radius: 4px;
+    background: transparent no-repeat center / 10px 10px;
+
+    &:enabled:hover {
+        border-color: var(--primary);
+    }
+
+    &:focus-visible {
+        outline-offset: 2px;
+    }
+
+    &:checked,
+    &:indeterminate {
+        border-color: var(--primary);
+        background-color: var(--primary);
+    }
+
+    &:checked {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-6.5'/%3E%3C/svg%3E");
+    }
+
+    &:indeterminate {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M4 8h8'/%3E%3C/svg%3E");
+    }
+}
+
+.dark .rdg-dbsuperb .rdg-checkbox-input {
+    &:checked {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%230b0e14' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-6.5'/%3E%3C/svg%3E");
+    }
+
+    &:indeterminate {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%230b0e14' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M4 8h8'/%3E%3C/svg%3E");
+    }
 }
 
 /* Staged editing (spec 4.1): every state also has a text label (marker column, sr-only "edited"). */

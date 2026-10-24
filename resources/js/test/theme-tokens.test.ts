@@ -115,11 +115,22 @@ describe('theme tokens', () => {
                     expect(token(body, '--panel-radius')).toBe('0px');
                     expect(token(body, '--panel-shadow')).toBe('0 0 #0000');
                     expect(token(body, '--chrome-edge')).toBe('var(--border)');
+                    expect(token(body, '--grid-header')).toBe('var(--muted)');
+                    expect(token(body, '--grid-column-line')).toBe(
+                        'var(--border)',
+                    );
                 } else {
-                    // Panels lifted off a canvas: 8px gap, 12px radius, a shadow. The sidebar stays flat on
-                    // the canvas (version A): no edge and no shadow.
+                    // Panels lifted off a canvas: 8px gap, 12px radius, a shadow. As in version A, the
+                    // header, rail and sidebar sit flat on the canvas (no edges, no sidebar shadow), and the
+                    // grid is one sheet: a header the colour of the panel and no column lines.
                     expect(token(body, '--chrome-edge')).toBe('transparent');
                     expect(token(body, '--sidebar-shadow')).toBe('0 0 #0000');
+                    expect(token(body, '--grid-header')).toBe(
+                        'var(--background)',
+                    );
+                    expect(token(body, '--grid-column-line')).toBe(
+                        'transparent',
+                    );
                     expect(token(body, '--shell')).not.toBe(
                         'var(--background)',
                     );
