@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     readGridLayout,
+    readGroupingEnabled,
+    readGroupPrefs,
     readSidebarPrefs,
     SIDEBAR_DEFAULT,
     writeGridLayout,
+    writeGroupingEnabled,
+    writeGroupPrefs,
     writeSidebarPrefs,
 } from './local-prefs';
 
@@ -46,5 +50,24 @@ describe('local prefs', () => {
             width: SIDEBAR_DEFAULT,
             collapsed: false,
         });
+    });
+});
+
+describe('group prefs', () => {
+    it('round-trips open groups per connection', () => {
+        writeGroupPrefs(1, { open: ['courier_'] });
+        expect(readGroupPrefs(1)).toEqual({ open: ['courier_'] });
+        expect(readGroupPrefs(2)).toEqual({ open: [] });
+    });
+
+    it('reads corrupt JSON as nothing open', () => {
+        localStorage.setItem('dbsuperb.sidebar-groups', '{nope');
+        expect(readGroupPrefs(1)).toEqual({ open: [] });
+    });
+
+    it('defaults grouping to on and persists the toggle', () => {
+        expect(readGroupingEnabled()).toBe(true);
+        writeGroupingEnabled(false);
+        expect(readGroupingEnabled()).toBe(false);
     });
 });

@@ -86,3 +86,40 @@ export function writeSidebarPrefs(p: SidebarPrefs): void {
         }),
     );
 }
+
+export type GroupPrefs = { open: string[] };
+
+const GROUPS_KEY = 'dbsuperb.sidebar-groups';
+const GROUPING_KEY = 'dbsuperb.sidebar-grouping';
+
+export function readGroupPrefs(connectionId: number): GroupPrefs {
+    const all = readJson(GROUPS_KEY);
+    const found =
+        all && typeof all === 'object'
+            ? (all as Record<string, unknown>)[String(connectionId)]
+            : null;
+    const open = (found as Partial<GroupPrefs> | null)?.open;
+    return {
+        open: Array.isArray(open)
+            ? open.filter((p): p is string => typeof p === 'string')
+            : [],
+    };
+}
+
+export function writeGroupPrefs(connectionId: number, p: GroupPrefs): void {
+    const all = readJson(GROUPS_KEY);
+    const map: Record<string, GroupPrefs> =
+        all && typeof all === 'object'
+            ? { ...(all as Record<string, GroupPrefs>) }
+            : {};
+    map[String(connectionId)] = { open: p.open };
+    safeStorage.setItem(GROUPS_KEY, JSON.stringify(map));
+}
+
+export function readGroupingEnabled(): boolean {
+    return readJson(GROUPING_KEY) !== false;
+}
+
+export function writeGroupingEnabled(on: boolean): void {
+    safeStorage.setItem(GROUPING_KEY, JSON.stringify(on));
+}
