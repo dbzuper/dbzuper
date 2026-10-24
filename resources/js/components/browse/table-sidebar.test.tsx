@@ -348,6 +348,24 @@ describe('TableSidebar', () => {
         ).toHaveAttribute('aria-current', 'true');
     });
 
+    it('sets the active table apart from a hovered one', () => {
+        useBrowse.getState().openTable(1, 'orders');
+        renderSidebar();
+        const all = screen.getByRole('group', { name: /All tables/ });
+        const active = within(all).getByRole('treeitem', { name: /^orders/ });
+        const other = within(all).getByRole('treeitem', { name: /^users/ });
+
+        // A primary tint and edge bar, not the hover's accent grey.
+        expect(active).toHaveClass('bg-primary/12', 'font-medium');
+        expect(active.className).toContain('var(--primary)');
+        expect(active).not.toHaveClass('bg-accent');
+        expect(within(active).getByRole('img')).toHaveClass('text-primary');
+        expect(other).not.toHaveClass('bg-primary/12');
+        expect(within(other).getByRole('img')).toHaveClass(
+            'text-muted-foreground',
+        );
+    });
+
     it('pins the focused table with the asterisk key', () => {
         renderSidebar();
         const row = screen.getByRole('treeitem', { name: /^orders/ });
