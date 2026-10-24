@@ -20,7 +20,7 @@ export function WorkspaceHeader({ connection, loading, onRefresh }: Props) {
     const setPaletteOpen = useWorkspace((s) => s.setPaletteOpen);
 
     return (
-        <header className="flex h-11 shrink-0 items-center gap-3 border-b px-3">
+        <header className="flex h-11 shrink-0 items-center gap-3 border-b border-[var(--chrome-edge)] px-3">
             <Link
                 href="/connections"
                 className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

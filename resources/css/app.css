@@ -114,6 +114,8 @@
     --shell-gap: 0px;
     --panel-radius: 0px;
     --panel-shadow: 0 0 #0000;
+    --chrome-edge: var(--border);
+    --sidebar-shadow: var(--panel-shadow);
 }
 
 .dark,
@@ -253,6 +255,9 @@
     --shell-gap: 8px;
     --panel-radius: 12px;
     --panel-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px rgb(0 0 0 / 0.05);
+    /* Version A: the header, rail and sidebar sit flat on the canvas, with no edges or shadow */
+    --chrome-edge: transparent;
+    --sidebar-shadow: 0 0 #0000;
 
     --universe-bg: #fbfaf6;
     --universe-grid: rgba(15, 23, 42, 0.07);
@@ -306,6 +311,9 @@
     --shell-gap: 8px;
     --panel-radius: 12px;
     --panel-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.35);
+    /* Version A: the header, rail and sidebar sit flat on the canvas, with no edges or shadow */
+    --chrome-edge: transparent;
+    --sidebar-shadow: 0 0 #0000;
 
     --universe-bg: #10141b;
     --universe-grid: rgba(148, 163, 184, 0.08);
@@ -366,6 +374,8 @@
     --shell-gap: 0px;
     --panel-radius: 0px;
     --panel-shadow: 0 0 #0000;
+    --chrome-edge: var(--border);
+    --sidebar-shadow: var(--panel-shadow);
 
     --universe-bg: #e9ebef;
     --universe-grid: rgba(21, 24, 29, 0.07);
@@ -419,6 +429,8 @@
     --shell-gap: 0px;
     --panel-radius: 0px;
     --panel-shadow: 0 0 #0000;
+    --chrome-edge: var(--border);
+    --sidebar-shadow: var(--panel-shadow);
 
     --universe-bg: #0e1014;
     --universe-grid: rgba(169, 176, 189, 0.08);

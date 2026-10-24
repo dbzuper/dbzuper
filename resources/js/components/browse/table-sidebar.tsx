@@ -752,7 +752,7 @@ export function TableSidebar({
         <aside
             aria-label="Table sidebar"
             style={{ width: shownWidth }}
-            className="relative flex h-full shrink-0 flex-col rounded-[var(--panel-radius)] border-r bg-sidebar text-sidebar-foreground shadow-[var(--panel-shadow)]"
+            className="relative flex h-full shrink-0 flex-col rounded-[var(--panel-radius)] border-r border-[var(--chrome-edge)] bg-sidebar text-sidebar-foreground shadow-[var(--sidebar-shadow)]"
         >
             <div className="relative shrink-0 p-2">
                 <Search className="pointer-events-none absolute top-1/2 left-4 size-3.5 -translate-y-1/2 text-muted-foreground" />

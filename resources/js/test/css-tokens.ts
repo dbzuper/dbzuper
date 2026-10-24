@@ -46,6 +46,8 @@ export const SHELL_TOKENS = [
     '--shell-gap',
     '--panel-radius',
     '--panel-shadow',
+    '--chrome-edge',
+    '--sidebar-shadow',
 ];
 
 /**
