@@ -128,6 +128,12 @@ test('records: entry points (result row, table tab row) and tables without a pri
             grid.parentElement!.getBoundingClientRect().height,
         ]);
     expect(fill[0]).toBeCloseTo(fill[1], 0);
+    // The open row's frozen cells are opaque, so cells scrolled underneath them don't show through.
+    const frozenBackground = await panel
+        .locator('.rdg-row-active > .rdg-cell-frozen-start')
+        .first()
+        .evaluate((cell) => getComputedStyle(cell).backgroundColor);
+    expect(frozenBackground).not.toMatch(/(\/\s*0?\.\d+|,\s*0?\.\d+)\)$/);
     await drawer.getByRole('button', { name: 'Explore graph' }).click();
     await expect(explorer.getByText('Grace Hopper').first()).toBeVisible();
 
