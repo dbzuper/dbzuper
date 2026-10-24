@@ -51,6 +51,14 @@ describe('bannedPackage', () => {
         ],
         ['C:/app/node_modules/date-fns/addDays.js', 'date-fns'],
         ['C:/app/node_modules/@date-fns/tz/index.js', '@date-fns/'],
+        [
+            'C:/app/node_modules/@fontsource-variable/schibsted-grotesk/index.css',
+            '@fontsource-variable/schibsted-grotesk',
+        ],
+        [
+            'C:/app/node_modules/@fontsource-variable/jetbrains-mono/index.css',
+            '@fontsource-variable/jetbrains-mono',
+        ],
         ['C:\\app\\node_modules\\graphology-utils\\is-graph.js', 'graphology'],
         ['/a/node_modules/.pnpm/x@1/node_modules/sigma/index.js', 'sigma'],
         [
@@ -67,6 +75,7 @@ describe('bannedPackage', () => {
         'C:/app/node_modules/sigmoid/index.js',
         'C:/app/node_modules/graphologyish/index.js',
         'C:/app/node_modules/@radix-ui/react-dialog/dist/index.mjs',
+        'C:/app/node_modules/@fontsource-variable/geist/index.css',
         'C:/app/resources/js/sigma/node_modules.ts',
     ])('ignores %s', (id) => {
         expect(bannedPackage(id)).toBeNull();

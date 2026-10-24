@@ -12,13 +12,17 @@ const PAIRS = [
     ['warning-foreground', 'background'],
 ] as const;
 
-/** Each block, with the blocks it falls back to for tokens it leaves out (nearest first). */
+/**
+ * Each block, with the blocks it falls back to for tokens it leaves out (nearest first), as the cascade
+ * resolves them. A dark-themed element also matches the theme's light selector, which ties `.dark` on
+ * specificity and comes later, so the light theme block wins over `.dark`.
+ */
 const BLOCKS: { name: string; chain: string[] }[] = [
     { name: ':root', chain: [':root'] },
     { name: '.dark', chain: ['.dark', ':root'] },
     ...THEMES.flatMap((theme) => [
         { name: theme.light, chain: [theme.light, ':root'] },
-        { name: theme.dark, chain: [theme.dark, '.dark', ':root'] },
+        { name: theme.dark, chain: [theme.dark, theme.light, ':root'] },
     ]),
 ];
 
@@ -98,9 +102,14 @@ describe('contrast', () => {
             text: parse(resolve(chain, text)),
             surface: parse(resolve(chain, surface)),
         })),
-    ).filter(({ text, surface }) => text.alpha === 1 && surface.alpha === 1);
+    );
 
     it.each(cases)('$block $pair reaches 4.5:1', ({ text, surface }) => {
+        // A translucent colour's contrast depends on what lies beneath it, which this check cannot know.
+        expect(
+            [text.alpha, surface.alpha],
+            'text pairs must use opaque colours',
+        ).toEqual([1, 1]);
         expect(ratio(text, surface)).toBeGreaterThanOrEqual(4.5);
     });
 });

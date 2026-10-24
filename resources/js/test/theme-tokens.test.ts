@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { css, declarations, properties, THEMES, token } from './css-tokens';
+import {
+    css,
+    declarations,
+    properties,
+    SHELL_TOKENS,
+    THEMES,
+    token,
+} from './css-tokens';
 
 describe('theme tokens', () => {
     const light = declarations(':root');
@@ -68,13 +75,41 @@ describe('theme tokens', () => {
             ).toEqual([]);
         });
 
-        it('defines every custom property Classic dark defines', () => {
+        it('defines every custom property Classic dark defines, and the shell tokens', () => {
             const defined = properties(themeDark);
 
             expect(
-                properties(dark).filter((p) => !defined.includes(p)),
+                [...properties(dark), ...SHELL_TOKENS].filter(
+                    (p) => !defined.includes(p),
+                ),
             ).toEqual([]);
         });
+
+        it.each([
+            ['light', theme.light],
+            ['dark', theme.dark],
+        ])(
+            `keeps the ${theme.shell} shell look in %s mode`,
+            (_mode, selector) => {
+                const body = declarations(selector);
+
+                if (theme.shell === 'flat') {
+                    // Classic's edge-to-edge panels.
+                    expect(token(body, '--shell')).toBe('var(--background)');
+                    expect(token(body, '--shell-gap')).toBe('0px');
+                    expect(token(body, '--panel-radius')).toBe('0px');
+                    expect(token(body, '--panel-shadow')).toBe('0 0 #0000');
+                } else {
+                    // Panels lifted off a canvas: 8px gap, 12px radius, a shadow.
+                    expect(token(body, '--shell')).not.toBe(
+                        'var(--background)',
+                    );
+                    expect(token(body, '--shell-gap')).toBe('8px');
+                    expect(token(body, '--panel-radius')).toBe('12px');
+                    expect(token(body, '--panel-shadow')).not.toBe('0 0 #0000');
+                }
+            },
+        );
 
         it('lets a nested swatch show the dark variant inside a dark page', () => {
             expect(declarations(theme.nestedDark)).toBe(themeDark);
@@ -90,18 +125,17 @@ describe('theme tokens', () => {
         });
     });
 
-    it('lifts Layered panels off a canvas: 8px gap, 12px radius, a shadow in both modes', () => {
-        for (const selector of [
-            "[data-theme='layered']",
-            "[data-theme='layered'].dark",
-        ]) {
-            const body = declarations(selector);
+    it('gives Graphite its own fonts as plain custom properties that @theme reads', () => {
+        const body = declarations("[data-theme='graphite']");
 
-            expect(token(body, '--shell')).not.toBe('var(--background)');
-            expect(token(body, '--shell-gap')).toBe('8px');
-            expect(token(body, '--panel-radius')).toBe('12px');
-            expect(token(body, '--panel-shadow')).not.toBe('0 0 #0000');
-        }
+        expect(token(body, '--font-sans')).toBe(
+            "'Schibsted Grotesk Variable', ui-sans-serif, system-ui, sans-serif",
+        );
+        expect(token(body, '--font-mono')).toBe(
+            "'JetBrains Mono Variable', ui-monospace, monospace",
+        );
+        // A plain (not inline) @theme emits --font-* as variables, so the theme block can override them.
+        expect(css).toMatch(/^@theme \{/m);
     });
 
     it('has a reduced-motion rule', () => {

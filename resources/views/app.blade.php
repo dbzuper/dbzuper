@@ -50,6 +50,14 @@
             html[data-theme="layered"].dark {
                 background-color: #07090f;
             }
+
+            html[data-theme="graphite"] {
+                background-color: #f6f7f9;
+            }
+
+            html[data-theme="graphite"].dark {
+                background-color: #14171c;
+            }
         </style>
 
         <link rel="icon" href="/favicon.ico" sizes="any">
@@ -58,6 +66,10 @@
 
         @viteReactRefresh
         @vite(['resources/css/app.css', 'resources/js/app.tsx', "resources/js/pages/{$page['component']}.tsx"])
+        @if (($theme ?? 'classic') === 'graphite')
+            {{-- Graphite's fonts, only for Graphite; switching to it later loads them from use-theme --}}
+            @vite('resources/css/fonts-graphite.css')
+        @endif
         <x-inertia::head>
             <title>{{ config('app.name', 'Laravel') }}</title>
         </x-inertia::head>

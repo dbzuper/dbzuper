@@ -28,14 +28,11 @@ export function declarations(selector: string): string {
     return bodies.join('\n');
 }
 
-/** The value of one custom property in a rule body. */
+/** The value of one custom property in a rule body (the formatter may wrap a long value onto more lines). */
 export function token(body: string, name: string): string | undefined {
-    const line = body
-        .split('\n')
-        .map((l) => l.trim())
-        .find((l) => l.startsWith(`${name}:`));
+    const declaration = new RegExp(`^\\s*${name}:([^;]*);`, 'm').exec(body);
 
-    return line?.slice(name.length + 1, -1).trim();
+    return declaration?.[1].replace(/\s+/g, ' ').trim();
 }
 
 /** Every custom property name a rule body defines. */
@@ -43,12 +40,37 @@ export function properties(body: string): string[] {
     return [...body.matchAll(/^\s*(--[\w-]+):/gm)].map((m) => m[1]);
 }
 
-/** The colour themes beyond Classic: each one's light and dark selector. Later themes add a row. */
-export const THEMES = [
+/** The shell tokens: the canvas behind the workspace panels and how the panels sit on it. */
+export const SHELL_TOKENS = [
+    '--shell',
+    '--shell-gap',
+    '--panel-radius',
+    '--panel-shadow',
+];
+
+/**
+ * The colour themes beyond Classic: each one's light and dark selector, and its shell look (`flat` keeps
+ * Classic's edge-to-edge panels, `lifted` raises them off a canvas).
+ */
+export const THEMES: {
+    name: string;
+    light: string;
+    dark: string;
+    nestedDark: string;
+    shell: 'flat' | 'lifted';
+}[] = [
     {
         name: 'layered',
         light: "[data-theme='layered']",
         dark: "[data-theme='layered'].dark",
         nestedDark: ".dark [data-theme='layered']",
+        shell: 'lifted',
+    },
+    {
+        name: 'graphite',
+        light: "[data-theme='graphite']",
+        dark: "[data-theme='graphite'].dark",
+        nestedDark: ".dark [data-theme='graphite']",
+        shell: 'flat',
     },
 ];

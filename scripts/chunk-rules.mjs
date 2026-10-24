@@ -18,6 +18,9 @@ export const banned = [
     'react-day-picker',
     'date-fns',
     '@date-fns/',
+    // Graphite's fonts load through their own CSS entry, only while Graphite is active (Geist stays eager).
+    '@fontsource-variable/schibsted-grotesk',
+    '@fontsource-variable/jetbrains-mono',
 ];
 
 /**

@@ -34,10 +34,7 @@ const applyColorTheme = (theme: ThemeName): void => {
     }
 
     document.documentElement.dataset.theme = theme;
-
-    if (theme === 'graphite') {
-        loadThemeFonts(theme);
-    }
+    loadThemeFonts(theme);
 };
 
 const subscribe = (callback: () => void) => {
