@@ -4,6 +4,7 @@ import {
     fireEvent,
     render,
     screen,
+    waitFor,
     within,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1096,5 +1097,139 @@ describe('editing', () => {
                 values: { id: '10' },
             }),
         });
+    });
+});
+
+describe('editing a date cell', () => {
+    const dateColumns: QueryColumn[] = [
+        { name: 'created_at', type: 'timestamptz', table: 'orders' },
+        { name: 'note', type: 'text', table: 'orders' },
+    ];
+    const meta = (name: string, type_name: string) => ({
+        name,
+        type: type_name,
+        type_name,
+        nullable: true,
+        default: null,
+        auto_increment: false,
+        comment: null,
+    });
+    const dateEditing = (): GridEditing => ({
+        connectionId: 1,
+        table: 'orders',
+        dialect: 'pgsql',
+        rowIds: [{ key: { id: 1 } }],
+        locked: [[]],
+        shortened: [[]],
+        readOnlyColumns: [],
+        rowReason: null,
+        tableColumns: [
+            meta('created_at', 'timestamp with time zone'),
+            meta('note', 'text'),
+        ],
+    });
+    const ref = refOf({ key: { id: 1 } });
+    const pending = () => usePending.getState().byTable['1:orders'] ?? {};
+    const renderGrid = (columns = dateColumns) =>
+        render(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid
+                    columns={columns}
+                    rows={[
+                        columns[0] === dateColumns[0]
+                            ? ['2026-10-01 12:00:00+08', 'hello']
+                            : ['hello', '2026-10-01 12:00:00+08'],
+                    ]}
+                    editing={dateEditing()}
+                />
+            </div>,
+        );
+    const edit = (text: string | RegExp) => {
+        fireEvent.doubleClick(screen.getByRole('gridcell', { name: text }));
+        return screen.getByRole('textbox');
+    };
+    const openPicker = async () => {
+        const button = screen.getByRole('button', { name: 'Choose date' });
+        expect(button).toHaveAttribute('aria-haspopup', 'dialog');
+        fireEvent.click(button);
+        // The picker is lazy: the first import can be slow in a cold test run.
+        return screen.findByRole(
+            'button',
+            { name: /^15 October 2026/ },
+            { timeout: 5000 },
+        );
+    };
+
+    beforeEach(() => usePending.setState({ byTable: {}, errors: {} }));
+
+    it('offers the calendar button only on date columns', () => {
+        renderGrid();
+        const input = edit(/^2026-10-01/);
+        expect(input).toHaveValue('2026-10-01 12:00:00+08');
+        expect(
+            screen.getByRole('button', { name: 'Choose date' }),
+        ).toBeInTheDocument();
+        fireEvent.keyDown(input, { key: 'Escape' });
+        cleanup();
+        // Only the first columns render in jsdom: the text column comes first here.
+        renderGrid([dateColumns[1], dateColumns[0]]);
+        edit(/^hello/);
+        expect(
+            screen.queryByRole('button', { name: 'Choose date' }),
+        ).not.toBeInTheDocument();
+    });
+
+    it('stages the picked value and closes the editor on Apply', async () => {
+        renderGrid();
+        edit(/^2026-10-01/);
+        fireEvent.click(await openPicker());
+        fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+        expect(pending()[ref]).toMatchObject({
+            kind: 'update',
+            values: { created_at: '2026-10-15 12:00:00+08' },
+        });
+        expect(screen.queryByRole('textbox')).toBeNull();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        await waitFor(() =>
+            expect(document.activeElement).toHaveAttribute('role', 'gridcell'),
+        );
+    });
+
+    it('closes only the picker on Escape, keeping the editor and its draft', async () => {
+        renderGrid();
+        const input = edit(/^2026-10-01/);
+        fireEvent.change(input, { target: { value: '2026-10-02 08:00:00' } });
+        await openPicker();
+        expect(screen.getByLabelText('Date')).toHaveValue('2026-10-02');
+        fireEvent.keyDown(screen.getByLabelText('Date'), { key: 'Escape' });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.getByRole('textbox')).toHaveValue('2026-10-02 08:00:00');
+        expect(pending()).toEqual({});
+        await waitFor(() => expect(screen.getByRole('textbox')).toHaveFocus());
+    });
+
+    it('opens the picker from the keyboard with Alt+ArrowDown', async () => {
+        renderGrid();
+        const input = edit(/^2026-10-01/);
+        expect(input).toHaveAttribute('aria-keyshortcuts', 'Alt+ArrowDown');
+        fireEvent.keyDown(input, { key: 'ArrowDown', altKey: true });
+        expect(
+            await screen.findByRole(
+                'button',
+                { name: /^15 October 2026/ },
+                { timeout: 5000 },
+            ),
+        ).toBeInTheDocument();
+        expect(screen.getByRole('textbox', { name: 'created_at' })).toBe(input);
+    });
+
+    it('keeps the editor open when the picker is cancelled', async () => {
+        renderGrid();
+        edit(/^2026-10-01/);
+        await openPicker();
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.getByRole('textbox')).toBeInTheDocument();
+        expect(pending()).toEqual({});
     });
 });

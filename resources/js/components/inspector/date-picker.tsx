@@ -210,17 +210,11 @@ export default function DatePicker({
             labels={calendarLabels}
         />
     ) : (
-        <DayPicker
-            mode="single"
-            required
-            weekStartsOn={1}
-            showOutsideDays
+        <SingleCalendar
             month={month}
             onMonthChange={setMonth}
             selected={fromDay}
             onSelect={(d) => setFrom({ ...from, date: isoDay(d) })}
-            classNames={calendarClasses}
-            labels={calendarLabels}
         />
     );
 
@@ -271,23 +265,205 @@ export default function DatePicker({
                     />
                 )}
                 <div className="flex justify-end gap-1.5">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={onCancel}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        type="button"
-                        size="sm"
-                        disabled={!canApply}
-                        onClick={apply}
-                    >
-                        Apply
-                    </Button>
+                    <PickerActions
+                        canApply={canApply}
+                        onApply={apply}
+                        onCancel={onCancel}
+                    />
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function SingleCalendar({
+    month,
+    onMonthChange,
+    selected,
+    onSelect,
+}: {
+    month: Date;
+    onMonthChange: (month: Date) => void;
+    selected: Date | undefined;
+    onSelect: (day: Date) => void;
+}) {
+    return (
+        <DayPicker
+            mode="single"
+            required
+            weekStartsOn={1}
+            showOutsideDays
+            month={month}
+            onMonthChange={onMonthChange}
+            selected={selected}
+            onSelect={onSelect}
+            classNames={calendarClasses}
+            labels={calendarLabels}
+        />
+    );
+}
+
+function PickerActions({
+    canApply,
+    onApply,
+    onCancel,
+}: {
+    canApply: boolean;
+    onApply: () => void;
+    onCancel: () => void;
+}) {
+    return (
+        <>
+            <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+                Cancel
+            </Button>
+            <Button
+                type="button"
+                size="sm"
+                disabled={!canApply}
+                onClick={onApply}
+            >
+                Apply
+            </Button>
+        </>
+    );
+}
+
+/** A trailing zone (`Z`, `+08`, `+0800`, `+08:00`) after a time, as PostgreSQL returns timestamptz values. */
+const ZONE_SUFFIX =
+    /^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(\s*(?:Z|[+-]\d{2}(?::?\d{2})?))$/i;
+
+/** A value split into the part the picker edits and a zone suffix kept verbatim. */
+function splitZone(value: string): { local: string; zone: string } {
+    const m = ZONE_SUFFIX.exec(value.trim());
+    return m ? { local: m[1], zone: m[2] } : { local: value, zone: '' };
+}
+
+/** A zone suffix's offset from UTC in minutes (`Z` is 0; `+08`, `+0800`, `+08:00`, `-05:30`). */
+function zoneOffset(zone: string): number {
+    const m = /([+-])(\d{2}):?(\d{2})?$/.exec(zone.trim());
+    if (!m) return 0;
+    const minutes = Number(m[2]) * 60 + Number(m[3] ?? '0');
+    return m[1] === '-' ? -minutes : minutes;
+}
+
+/**
+ * Now as Date and Time fields: the browser's local wall time, or, when a zone is kept, the current moment in that
+ * zone's offset (the suffix written back must describe the same instant).
+ */
+function nowFields(zone: string | null): End {
+    const d = new Date();
+    if (zone === null) {
+        return {
+            date: isoDay(d),
+            time: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`,
+        };
+    }
+    const z = new Date(d.getTime() + zoneOffset(zone) * 60_000);
+    return {
+        date: `${String(z.getUTCFullYear()).padStart(4, '0')}-${pad(z.getUTCMonth() + 1)}-${pad(z.getUTCDate())}`,
+        time: `${pad(z.getUTCHours())}:${pad(z.getUTCMinutes())}:${pad(z.getUTCSeconds())}`,
+    };
+}
+
+/** What may follow the date in the Date field and survive a picked day: a time, with seconds and a fraction. */
+const TIME_REST = /^[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?$/;
+
+/**
+ * The picker for editing a date or datetime cell: a calendar, the typeable Date (and Time) field, Now or Today,
+ * Cancel and Apply. It opens on the value when it parses, else empty; a zone suffix is kept as is, never converted.
+ */
+export function EditDatePicker({
+    kind,
+    value,
+    onApply,
+    onCancel,
+}: {
+    kind: DateKind;
+    /** The cell's draft or value; NULL, empty or unparseable text opens the picker empty. */
+    value: string | null;
+    onApply: (value: string) => void;
+    onCancel: () => void;
+}) {
+    const withTime = kind === 'datetime';
+    const [{ zone, start }] = useState(() => {
+        const parts = splitZone(value ?? '');
+        const initial = normalizeDateInput(parts.local, kind);
+        return {
+            // A zone only goes with a time: a date column never keeps one.
+            zone: withTime ? parts.zone : '',
+            start: 'value' in initial ? split(initial.value, withTime) : null,
+        };
+    });
+    const [end, setEnd] = useState<End>(start ?? { date: '', time: '' });
+    const parsed = parse(end, kind);
+    const current = valueOf(parsed);
+    const [month, setMonth] = useState<Date>(() =>
+        current ? calendarDay(current) : new Date(),
+    );
+
+    const apply = () => {
+        if (current === null) return;
+        // A kept zone needs a time: a date-only value becomes midnight in that zone.
+        const timed =
+            zone && isDateOnly(current) ? `${current} 00:00:00` : current;
+        onApply(`${timed}${zone}`);
+    };
+    const typeDate = (date: string) => {
+        setEnd({ ...end, date });
+        const typed = valueOf(parse({ ...end, date }, kind));
+        if (typed) setMonth(calendarDay(typed));
+    };
+    const now = () => {
+        const fields = nowFields(zone ? zone : null);
+        setEnd(withTime ? fields : { date: fields.date, time: '' });
+        setMonth(calendarDay(fields.date));
+    };
+
+    return (
+        <div className="flex flex-col gap-2">
+            <SingleCalendar
+                month={month}
+                onMonthChange={setMonth}
+                selected={current ? calendarDay(current) : undefined}
+                // A fractional time stays in the Date field: the day changes, the time (and fraction) stays.
+                // Anything else after the date is replaced by the day.
+                onSelect={(d) => {
+                    const rest = end.date.slice(10);
+                    setEnd({
+                        ...end,
+                        date: isoDay(d) + (TIME_REST.test(rest) ? rest : ''),
+                    });
+                }}
+            />
+            <EndField
+                label="Date"
+                end={end}
+                parsed={parsed}
+                withTime={withTime}
+                onDate={typeDate}
+                onTime={(time) => setEnd({ ...end, time })}
+                onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    apply();
+                }}
+            />
+            <div className="flex items-center gap-1.5">
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mr-auto"
+                    onClick={now}
+                >
+                    {withTime ? 'Now' : 'Today'}
+                </Button>
+                <PickerActions
+                    canApply={current !== null}
+                    onApply={apply}
+                    onCancel={onCancel}
+                />
             </div>
         </div>
     );

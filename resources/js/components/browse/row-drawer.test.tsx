@@ -792,3 +792,87 @@ describe('RowDrawer editing', () => {
         ).not.toBeInTheDocument();
     });
 });
+
+describe('RowDrawer date fields', () => {
+    const ref = refOf({ key: { id: 1 } });
+    const pending = () => usePending.getState().byTable['1:orders'] ?? {};
+    const setupDate = () =>
+        setup({
+            columns: [
+                col('orders', 'id', 'integer'),
+                col('orders', 'created_at', 'timestamp'),
+            ],
+            row: [1, '2026-10-01 12:00:00'],
+            editing: {
+                connectionId: 1,
+                table: 'orders',
+                dialect: 'pgsql',
+                rowIds: [{ key: { id: 1 } }],
+                locked: [[]],
+                shortened: [[]],
+                readOnlyColumns: [],
+                rowReason: null,
+                tableColumns: [],
+            },
+            rowIndex: 0,
+        });
+    const openPicker = async () => {
+        const buttons = screen.getAllByRole('button', { name: 'Choose date' });
+        // Only the date column has one.
+        expect(buttons).toHaveLength(1);
+        expect(buttons[0]).toHaveAttribute('aria-haspopup', 'dialog');
+        fireEvent.click(buttons[0]);
+        // The picker is lazy: the first import can be slow in a cold test run.
+        return screen.findByRole(
+            'button',
+            { name: /^15 October 2026/ },
+            { timeout: 5000 },
+        );
+    };
+
+    beforeEach(() => usePending.setState({ byTable: {}, errors: {} }));
+
+    it('stages the picked value on Apply and returns focus to the field', async () => {
+        setupDate();
+        fireEvent.click(await openPicker());
+        fireEvent.change(screen.getByLabelText('Time'), {
+            target: { value: '09:30:15' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+        expect(pending()[ref]).toMatchObject({
+            kind: 'update',
+            values: { created_at: '2026-10-15 09:30:15' },
+        });
+        const field = screen.getByRole('textbox', { name: 'created_at' });
+        expect(field).toHaveValue('2026-10-15 09:30:15');
+        await waitFor(() => expect(field).toHaveFocus());
+    });
+
+    it('opens the picker from the field with Alt+ArrowDown', async () => {
+        setupDate();
+        const field = screen.getByRole('textbox', { name: 'created_at' });
+        expect(field).toHaveAttribute('aria-keyshortcuts', 'Alt+ArrowDown');
+        fireEvent.keyDown(field, { key: 'ArrowDown', altKey: true });
+        expect(
+            await screen.findByRole(
+                'button',
+                { name: /^15 October 2026/ },
+                { timeout: 5000 },
+            ),
+        ).toBeInTheDocument();
+    });
+
+    it('closes only the picker on Escape, not the drawer', async () => {
+        const { props } = setupDate();
+        await openPicker();
+        fireEvent.keyDown(screen.getByLabelText('Date'), { key: 'Escape' });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(props.onClose).not.toHaveBeenCalled();
+        expect(pending()).toEqual({});
+        await waitFor(() =>
+            expect(
+                screen.getByRole('textbox', { name: 'created_at' }),
+            ).toHaveFocus(),
+        );
+    });
+});
