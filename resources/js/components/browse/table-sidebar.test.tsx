@@ -256,6 +256,22 @@ describe('TableSidebar', () => {
         expect(actions.open).not.toHaveBeenCalled();
     });
 
+    it('leaves pinned tables out of Recent and shows at most five recent tables', () => {
+        const names = ['t1', 't2', 't3', 't4', 't5', 't6', 't7'];
+        const many = { ...snapshot, tables: names.map((n) => table(n)) };
+        names.forEach((n) => useBrowse.getState().openTable(1, n));
+        usePins.setState({
+            byConnection: { 1: [{ id: 1, table: 't6', position: 1 }] },
+        });
+        render(
+            <TableSidebar connectionId={1} snapshot={many} actions={actions} />,
+        );
+        const recent = within(screen.getByRole('group', { name: 'Recent' }))
+            .getAllByRole('treeitem')
+            .flatMap((el) => el.getAttribute('data-table') ?? []);
+        expect(recent).toEqual(['t7', 't5', 't4', 't3', 't2']);
+    });
+
     it('shows pinned tables first and a missing pin as removable', () => {
         usePins.setState({
             byConnection: {
