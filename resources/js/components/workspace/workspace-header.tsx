@@ -28,19 +28,22 @@ export function WorkspaceHeader({ connection, loading, onRefresh }: Props) {
                 <ArrowLeft className="size-4" /> Connections
             </Link>
             <span className="text-muted-foreground/40">/</span>
-            <span
-                className="size-2 rounded-full"
-                style={{
-                    background: connection.color ?? 'var(--universe-accent)',
-                }}
-                aria-hidden
-            />
-            <h1 className="truncate text-sm font-semibold">
-                {connection.name}
-            </h1>
-            <span className="rounded border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                {connection.driver_label}
-            </span>
+            <div className="inline-flex min-w-0 items-center gap-2 rounded-full border bg-card px-2.5 py-0.5">
+                <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{
+                        background:
+                            connection.color ?? 'var(--universe-accent)',
+                    }}
+                    aria-hidden
+                />
+                <h1 className="truncate text-sm font-semibold">
+                    {connection.name}
+                </h1>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                    {connection.driver_label}
+                </span>
+            </div>
             {connection.read_only && (
                 <span className="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">
                     read-only

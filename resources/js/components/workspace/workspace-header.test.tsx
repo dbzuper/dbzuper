@@ -49,3 +49,28 @@ describe('WorkspaceHeader snapshot age', () => {
         expect(document.querySelector('time')).toBeNull();
     });
 });
+
+describe('WorkspaceHeader connection pill', () => {
+    it('wraps the connection name in a rounded pill', () => {
+        render(
+            <WorkspaceHeader
+                connection={
+                    {
+                        id: 1,
+                        name: 'x',
+                        driver_label: 'MySQL',
+                        read_only: false,
+                        color: null,
+                    } as never
+                }
+                loading={false}
+                onRefresh={() => {}}
+            />,
+        );
+        const pill = screen
+            .getByRole('heading', { level: 1, name: 'x' })
+            .closest('.rounded-full');
+        expect(pill).not.toBeNull();
+        expect(pill).toHaveTextContent('MySQL');
+    });
+});

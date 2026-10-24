@@ -315,3 +315,18 @@ describe('TableTabView', () => {
         expect(api.rows).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('TableTabView toolbar', () => {
+    it('keeps Open in SQL as the one filled button and the rest icon-only', async () => {
+        useBrowse.getState().openTable(1, 'orders');
+        render(<Harness />);
+        const primary = screen.getByRole('button', { name: 'Open in SQL' });
+        expect(primary.className).toContain('bg-primary');
+        expect(primary).toHaveTextContent('Open in SQL');
+        for (const name of ['Refresh', 'Copy SELECT']) {
+            const btn = screen.getByRole('button', { name });
+            expect(btn).toHaveAttribute('title', name);
+            expect(btn.textContent).toBe('');
+        }
+    });
+});
