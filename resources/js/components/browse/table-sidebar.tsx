@@ -42,6 +42,8 @@ import { TableContextMenu, type TableActions } from './table-context-menu';
 export const SIDEBAR_SEARCH_ID = 'table-sidebar-search';
 const ROW_HEIGHT = 28;
 const TYPE_AHEAD_MS = 500;
+/** How long Recent holds still after a click: long enough for the second click of a double-click. */
+const DOUBLE_CLICK_MS = 500;
 const PIN_DRAG_TYPE = 'text/x-dbsuperb-pin';
 
 const NO_PINS: Pin[] = [];
@@ -370,15 +372,31 @@ export function TableSidebar({
         const tab = c?.tabs.find((t) => t.id === c.activeId);
         return tab?.kind === 'table' ? tab.table : null;
     });
-    // Opening a table moves it to the top of Recent and out of it (Recent skips the open table). While the
-    // pointer is in the tree the rows stay where they are, so the second click of a double-click lands on the
-    // same table as the first; the list catches up when the pointer leaves.
+    // Opening a table changes Recent (the open table leaves it, the one before comes in), which can move the
+    // rows below it. For a moment after a click Recent holds still, so the second click of a double-click
+    // lands on the same table as the first; then it catches up, wherever the pointer is.
     const [frozen, setFrozen] = useState<{
         recents: string[];
         active: string | null;
     } | null>(null);
     const recents = frozen?.recents ?? liveRecents;
     const recentSkips = frozen ? frozen.active : activeTable;
+    const thaw = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const holdRecent = () => {
+        // A second click keeps the snapshot taken at the first, so nothing moves between them.
+        setFrozen((f) => f ?? { recents: liveRecents, active: activeTable });
+        if (thaw.current) clearTimeout(thaw.current);
+        thaw.current = setTimeout(() => {
+            thaw.current = null;
+            setFrozen(null);
+        }, DOUBLE_CLICK_MS);
+    };
+    useEffect(
+        () => () => {
+            if (thaw.current) clearTimeout(thaw.current);
+        },
+        [],
+    );
     const scrollRef = useRef<HTMLDivElement>(null);
     const pendingFocus = useRef<string | null>(null);
     const typed = useRef<{ text: string; at: number }>({ text: '', at: 0 });
@@ -485,15 +503,14 @@ export function TableSidebar({
 
     const showPinned = !searching && pins.length > 0;
     const showRecent = !searching && recentTables.length > 0;
-    // The open table is highlighted once, in the first section that lists it.
+    // The open table is highlighted once: in Pinned when pinned, otherwise in All tables. Never in Recent,
+    // which lists where you have been (it may still hold the open table while it holds still after a click).
     const activeSection: Section | null =
         activeTable === null
             ? null
             : showPinned && pinnedSet.has(activeTable)
               ? 'pinned'
-              : showRecent && recentTables.includes(activeTable)
-                ? 'recent'
-                : 'all';
+              : 'all';
 
     const items = useMemo<Item[]>(() => {
         const out: Item[] = [];
@@ -817,10 +834,7 @@ export function TableSidebar({
                 aria-label="Tables"
                 data-sidebar-tree
                 onKeyDown={onTreeKeyDown}
-                onPointerEnter={() =>
-                    setFrozen({ recents: liveRecents, active: activeTable })
-                }
-                onPointerLeave={() => setFrozen(null)}
+                onPointerDownCapture={holdRecent}
                 className="flex min-h-0 flex-1 flex-col"
             >
                 {showPinned && (

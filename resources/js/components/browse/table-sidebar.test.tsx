@@ -6,7 +6,7 @@ import {
     waitFor,
     within,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse } from '@/browse/browse-store';
 import {
     readGroupPrefs,
@@ -182,26 +182,65 @@ describe('TableSidebar', () => {
         expect(useBrowse.getState().get(1).activeId).toBe('universe');
     });
 
-    it('keeps the recent rows still under the pointer, so a double-click lands on one table', () => {
-        useBrowse.getState().openTable(1, 'users');
-        useBrowse.getState().openTable(1, 'orders');
-        renderSidebar();
-        const tree = screen.getByRole('tree', { name: 'Tables' });
+    describe('Recent after a click', () => {
+        beforeEach(() => vi.useFakeTimers());
+        afterEach(() => vi.useRealTimers());
+
         const recentNames = () =>
             within(screen.getByRole('group', { name: 'Recent' }))
                 .getAllByRole('treeitem')
                 .flatMap((el) => el.getAttribute('data-table') ?? []);
-        fireEvent.pointerEnter(tree);
-        // Opening tables while the pointer is in the tree neither reorders, grows nor shrinks Recent: the
-        // clicked row stays put even though the open table is otherwise left out.
-        act(() => {
-            useBrowse.getState().openTable(1, 'order items');
+
+        it('holds still for a double-click, then catches up without the pointer moving', () => {
             useBrowse.getState().openTable(1, 'users');
+            useBrowse.getState().openTable(1, 'orders');
+            renderSidebar();
+            const row = within(
+                screen.getByRole('group', { name: 'Recent' }),
+            ).getByRole('treeitem', { name: /^users/ });
+            // Both clicks of a double-click on the Recent row: the rows do not move in between.
+            fireEvent.pointerDown(row);
+            act(() => {
+                useBrowse.getState().openTable(1, 'users');
+            });
+            expect(recentNames()).toEqual(['users']);
+            act(() => {
+                vi.advanceTimersByTime(200);
+            });
+            fireEvent.pointerDown(row);
+            expect(recentNames()).toEqual(['users']);
+            // Then Recent catches up, though the pointer never left: users is open, orders is where we were.
+            act(() => {
+                vi.advanceTimersByTime(500);
+            });
+            expect(recentNames()).toEqual(['orders']);
         });
-        expect(recentNames()).toEqual(['users']);
-        fireEvent.pointerLeave(tree);
-        // Recent now lists where you have been; the open table (users) is left out.
-        expect(recentNames()).toEqual(['order items', 'orders']);
+
+        it('highlights a table clicked in All tables there at once, and drops it from Recent', () => {
+            useBrowse.getState().openTable(1, 'users');
+            useBrowse.getState().openTable(1, 'orders');
+            renderSidebar();
+            const all = screen.getByRole('group', { name: /All tables/ });
+            const clicked = within(all).getByRole('treeitem', {
+                name: /^users/,
+            });
+            fireEvent.pointerDown(clicked);
+            act(() => {
+                useBrowse.getState().openTable(1, 'users');
+            });
+            // Highlighted where it was clicked, never in Recent, even while Recent holds still.
+            expect(clicked).toHaveAttribute('aria-current', 'true');
+            expect(
+                within(screen.getByRole('group', { name: 'Recent' })).getByRole(
+                    'treeitem',
+                    { name: /^users/ },
+                ),
+            ).not.toHaveAttribute('aria-current');
+            act(() => {
+                vi.advanceTimersByTime(500);
+            });
+            expect(recentNames()).toEqual(['orders']);
+        });
     });
 
     it('filters by search and hides the pinned and recent sections while searching', () => {
