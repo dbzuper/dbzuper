@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse } from '@/browse/browse-store';
+import { readGroupPrefs, writeGroupingEnabled } from '@/browse/local-prefs';
 import { usePins } from '@/browse/pins-store';
 import type { SchemaSnapshot } from '@/types/schema';
 import { tableTabOf } from '@/test/browse-tabs';
@@ -83,8 +84,17 @@ const renderSidebar = () =>
         <TableSidebar connectionId={1} snapshot={snapshot} actions={actions} />,
     );
 
+/** Moves focus as Tab would: to the next element in the tab order after `from`. */
+const tabFrom = (from: HTMLElement) => {
+    const stops = [
+        ...document.querySelectorAll<HTMLElement>('input, button, [tabindex]'),
+    ].filter((el) => el.tabIndex >= 0);
+    stops[stops.indexOf(from) + 1]?.focus();
+};
+
 beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     useBrowse.setState({ byConnection: {} });
     usePins.setState({ byConnection: {} });
 });
@@ -353,5 +363,167 @@ describe('TableSidebar', () => {
                 .getAllByRole('treeitem')
                 .filter((r) => r.getAttribute('tabindex') === '0'),
         ).toHaveLength(1);
+    });
+});
+
+describe('TableSidebar prefix groups', () => {
+    const grouped = {
+        ...snapshot,
+        tables: ['courier_rates', 'courier_zones', 'orders'].map((n) =>
+            table(n),
+        ),
+    } as SchemaSnapshot;
+    const renderGrouped = () =>
+        render(
+            <TableSidebar
+                connectionId={1}
+                snapshot={grouped}
+                actions={actions}
+            />,
+        );
+    const group = () =>
+        screen.getByRole('treeitem', { name: 'courier_ group, 2 tables' });
+    const groupRows = () =>
+        screen
+            .queryAllByRole('treeitem')
+            .filter((r) => r.getAttribute('data-key')?.startsWith('group:'));
+    const tableRows = () =>
+        screen
+            .getAllByRole('treeitem')
+            .flatMap((r) => r.getAttribute('data-table') ?? []);
+
+    it('shows a collapsed group row for tables sharing a prefix', () => {
+        renderGrouped();
+        expect(group()).toHaveAttribute('aria-expanded', 'false');
+        expect(group()).toHaveAttribute('aria-level', '2');
+        expect(group()).toHaveAttribute('data-key', 'group:courier_');
+        expect(within(group()).getByText('2')).toHaveClass(
+            'font-mono',
+            'text-[11px]',
+            'text-muted-foreground',
+        );
+        expect(
+            screen.queryByRole('treeitem', { name: /^courier_rates/ }),
+        ).not.toBeInTheDocument();
+        expect(tableRows()).toEqual(['orders']);
+    });
+
+    it('expands a group with Enter and keeps it open across a remount', () => {
+        const first = renderGrouped();
+        group().focus();
+        fireEvent.keyDown(group(), { key: 'Enter' });
+        expect(group()).toHaveAttribute('aria-expanded', 'true');
+        expect(tableRows()).toEqual([
+            'courier_rates',
+            'courier_zones',
+            'orders',
+        ]);
+        const child = screen.getByRole('treeitem', { name: /^courier_rates/ });
+        expect(child).toHaveAttribute('aria-level', '3');
+        // The prefix is muted; the accessible name keeps the full table name.
+        expect(within(child).getByText('courier_')).toHaveClass(
+            'text-muted-foreground',
+        );
+        expect(actions.open).not.toHaveBeenCalled();
+        first.unmount();
+        renderGrouped();
+        expect(group()).toHaveAttribute('aria-expanded', 'true');
+        expect(
+            screen.getByRole('treeitem', { name: /^courier_zones/ }),
+        ).toBeInTheDocument();
+    });
+
+    it('opens, enters, leaves and closes a group with the arrow keys', () => {
+        renderGrouped();
+        group().focus();
+        fireEvent.keyDown(group(), { key: 'ArrowRight' });
+        expect(group()).toHaveAttribute('aria-expanded', 'true');
+        expect(document.activeElement).toBe(group());
+        fireEvent.keyDown(group(), { key: 'ArrowRight' });
+        expect(document.activeElement).toHaveAttribute(
+            'data-table',
+            'courier_rates',
+        );
+        fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
+        expect(document.activeElement).toBe(group());
+        fireEvent.keyDown(group(), { key: 'ArrowLeft' });
+        expect(group()).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.keyDown(group(), { key: ' ' });
+        expect(group()).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it("opens the active table's group without remembering it", () => {
+        renderGrouped();
+        expect(group()).toHaveAttribute('aria-expanded', 'false');
+        act(() => {
+            useBrowse.getState().openTable(1, 'courier_zones');
+        });
+        expect(group()).toHaveAttribute('aria-expanded', 'true');
+        const all = screen.getByRole('group', { name: /All tables/ });
+        expect(
+            within(all).getByRole('treeitem', { name: /^courier_zones/ }),
+        ).toHaveAttribute('aria-current', 'true');
+        expect(readGroupPrefs(1).open).toEqual([]);
+    });
+
+    it('opens the active table group on mount', () => {
+        useBrowse.getState().openTable(1, 'courier_zones');
+        renderGrouped();
+        expect(group()).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('shows a flat list while searching', () => {
+        renderGrouped();
+        fireEvent.change(
+            screen.getByRole('searchbox', { name: 'Search tables' }),
+            { target: { value: 'cour' } },
+        );
+        expect(groupRows()).toHaveLength(0);
+        expect(tableRows()).toEqual(['courier_rates', 'courier_zones']);
+        expect(
+            screen.queryByRole('button', { name: 'Group by prefix' }),
+        ).not.toBeInTheDocument();
+    });
+
+    it('turns grouping off from the All tables header and remembers it', () => {
+        const first = renderGrouped();
+        const toggle = screen.getByRole('button', { name: 'Group by prefix' });
+        expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        expect(toggle).not.toHaveAttribute('role', 'treeitem');
+        fireEvent.click(toggle);
+        expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        // The click is the toggle's alone: the section stays open.
+        expect(
+            screen.getByRole('treeitem', { name: 'All tables (3)' }),
+        ).toHaveAttribute('aria-expanded', 'true');
+        expect(groupRows()).toHaveLength(0);
+        expect(tableRows()).toEqual([
+            'courier_rates',
+            'courier_zones',
+            'orders',
+        ]);
+        first.unmount();
+        renderGrouped();
+        expect(
+            screen.getByRole('button', { name: 'Group by prefix' }),
+        ).toHaveAttribute('aria-pressed', 'false');
+        expect(groupRows()).toHaveLength(0);
+    });
+
+    it('keeps a tab stop on the group when the tabbable table is hidden in it', () => {
+        writeGroupingEnabled(false);
+        renderGrouped();
+        fireEvent.click(
+            screen.getByRole('treeitem', { name: /^courier_rates/ }),
+        );
+        // Turning grouping on hides the tab stop's table inside the closed group.
+        const toggle = screen.getByRole('button', { name: 'Group by prefix' });
+        fireEvent.click(toggle);
+        expect(group()).toHaveAttribute('aria-expanded', 'false');
+        tabFrom(toggle);
+        expect(document.activeElement).toHaveAttribute(
+            'data-key',
+            'group:courier_',
+        );
     });
 });

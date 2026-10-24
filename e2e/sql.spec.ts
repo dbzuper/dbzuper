@@ -546,7 +546,7 @@ test('accessibility: no serious or critical axe violations on the main screens',
     await expect(
         page
             .getByRole('tree', { name: 'Tables' })
-            .getByRole('treeitem', { name: /^order_items,/ }),
+            .getByRole('treeitem', { name: /^products,/ }),
     ).toBeVisible();
     await expectNoA11yViolations(page, { label: 'workspace: sidebar' });
 

@@ -12,7 +12,10 @@ function bucket(names: readonly string[], skip: number) {
     const members = new Map<string, string[]>();
     for (const name of names) {
         const key = groupKey(name.slice(skip));
-        if (key) members.set(key, [...(members.get(key) ?? []), name]);
+        if (!key) continue;
+        const list = members.get(key);
+        if (list) list.push(name);
+        else members.set(key, [name]);
     }
     return members;
 }
