@@ -67,7 +67,7 @@ export function initializeColorTheme(): void {
 
 export function useColorTheme(): {
     theme: ThemeName;
-    updateTheme(t: ThemeName): void;
+    updateTheme: (t: ThemeName) => void;
 } {
     const theme = useSyncExternalStore(
         subscribe,

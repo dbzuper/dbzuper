@@ -14,7 +14,11 @@
     --radius-lg: var(--radius);
     --radius-md: calc(var(--radius) - 2px);
     --radius-sm: calc(var(--radius) - 4px);
+}
 
+/* Inline: each colour utility reads `var(--x)` on its own element, so a nested `[data-theme]` (the theme
+   swatches and cards) draws its own colours instead of the page theme's, resolved once on :root. */
+@theme inline {
     --color-background: var(--background);
     --color-shell: var(--shell);
     --color-foreground: var(--foreground);

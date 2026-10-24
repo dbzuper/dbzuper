@@ -37,6 +37,21 @@ describe('theme tokens', () => {
         expect(declarations(".dark [data-theme='classic']")).toBe(dark);
     });
 
+    it('maps the colour utilities inline, so a nested data-theme swatch draws its own colours', () => {
+        // A plain @theme declares `--color-x: var(--x)` once on :root, where var() resolves to the page
+        // theme's value and is inherited as such; `bg-primary` inside `[data-theme='layered']` would then
+        // still paint the page theme. Inline, the utility reads `var(--x)` on the element itself.
+        const inline = /^@theme inline \{([^}]*)\}/m.exec(css);
+
+        expect(inline).not.toBeNull();
+        const colours = [...css.matchAll(/^\s*(--color-[\w-]+):/gm)].map(
+            (m) => m[1],
+        );
+
+        expect(colours.length).toBeGreaterThan(0);
+        expect(properties(inline![1])).toEqual(colours);
+    });
+
     it('defines the shell tokens with Classic values and exposes --shell to Tailwind', () => {
         expect(token(light, '--shell')).toBe('var(--background)');
         expect(token(light, '--shell-gap')).toBe('0px');

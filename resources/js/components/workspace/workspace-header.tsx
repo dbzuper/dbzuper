@@ -2,7 +2,7 @@ import { Link } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Keyboard, RefreshCw, Search } from 'lucide-react';
 import { SHORTCUTS } from '@/browse/shortcuts';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { AppearanceMenu } from '@/components/appearance-menu';
 import { Button } from '@/components/ui/button';
 import { paletteShortcutHint } from '@/lib/platform';
 import type { ConnectionSummary } from '@/types/connection';
@@ -85,7 +85,7 @@ export function WorkspaceHeader({ connection, loading, onRefresh }: Props) {
                     {loading ? 'Loading…' : 'Refresh schema'}
                 </Button>
                 <ShortcutHelp />
-                <ThemeToggle />
+                <AppearanceMenu />
             </div>
         </header>
     );

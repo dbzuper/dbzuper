@@ -44,7 +44,7 @@ describe('connections page layout', () => {
         ).toHaveLength(1);
     });
 
-    it('renders exactly one sidebar, one heading and one theme toggle inside the app layout', () => {
+    it('renders exactly one sidebar, one heading and one appearance menu inside the app layout', () => {
         const { container } = render(
             <TooltipProvider>
                 <AppLayout breadcrumbs={[]}>
@@ -60,7 +60,7 @@ describe('connections page layout', () => {
         ).toHaveLength(1);
         expect(container.querySelectorAll('h1')).toHaveLength(1);
         expect(
-            container.querySelectorAll('[aria-label^="Theme:"]'),
+            container.querySelectorAll('[aria-label="Appearance"]'),
         ).toHaveLength(1);
     });
 });
