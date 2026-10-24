@@ -365,16 +365,20 @@ export function TableSidebar({
     const liveRecents = useBrowse(
         (s) => s.byConnection[connectionId]?.recents ?? NO_RECENTS,
     );
-    // Opening a table moves it to the top of Recent (and may add the section). While the pointer is
-    // in the tree the rows stay where they are, so the second click of a double-click lands on the
-    // same table as the first; the list catches up when the pointer leaves.
-    const [frozenRecents, setFrozenRecents] = useState<string[] | null>(null);
-    const recents = frozenRecents ?? liveRecents;
     const activeTable = useBrowse((s) => {
         const c = s.byConnection[connectionId];
         const tab = c?.tabs.find((t) => t.id === c.activeId);
         return tab?.kind === 'table' ? tab.table : null;
     });
+    // Opening a table moves it to the top of Recent and out of it (Recent skips the open table). While the
+    // pointer is in the tree the rows stay where they are, so the second click of a double-click lands on the
+    // same table as the first; the list catches up when the pointer leaves.
+    const [frozen, setFrozen] = useState<{
+        recents: string[];
+        active: string | null;
+    } | null>(null);
+    const recents = frozen?.recents ?? liveRecents;
+    const recentSkips = frozen ? frozen.active : activeTable;
     const scrollRef = useRef<HTMLDivElement>(null);
     const pendingFocus = useRef<string | null>(null);
     const typed = useRef<{ text: string; at: number }>({ text: '', at: 0 });
@@ -466,17 +470,30 @@ export function TableSidebar({
     }, [tableGroups, searching, allNames, openGroups]);
     const pinnedTables = useMemo(() => pins.map((p) => p.table), [pins]);
     const pinnedSet = useMemo(() => new Set(pinnedTables), [pinnedTables]);
-    // Pinned tables are already one click away, so Recent skips them; it stays short so All tables keeps its room.
+    // Pinned tables are already one click away and the open table is on screen, so Recent skips both: it
+    // lists where you have just been, and stays short so All tables keeps its room.
     const recentTables = useMemo(
         () =>
             recents
-                .filter((t) => byName.has(t) && !pinnedSet.has(t))
+                .filter(
+                    (t) =>
+                        byName.has(t) && !pinnedSet.has(t) && t !== recentSkips,
+                )
                 .slice(0, SIDEBAR_RECENTS),
-        [recents, byName, pinnedSet],
+        [recents, byName, pinnedSet, recentSkips],
     );
 
     const showPinned = !searching && pins.length > 0;
     const showRecent = !searching && recentTables.length > 0;
+    // The open table is highlighted once, in the first section that lists it.
+    const activeSection: Section | null =
+        activeTable === null
+            ? null
+            : showPinned && pinnedSet.has(activeTable)
+              ? 'pinned'
+              : showRecent && recentTables.includes(activeTable)
+                ? 'recent'
+                : 'all';
 
     const items = useMemo<Item[]>(() => {
         const out: Item[] = [];
@@ -720,7 +737,7 @@ export function TableSidebar({
         section,
         actions,
         onFocusRow: setFocusKey,
-        active: activeTable === table.name,
+        active: activeTable === table.name && section === activeSection,
         pinned: pinnedSet.has(table.name),
         tabbable: tabbableKey === itemKey(section, table.name),
     });
@@ -800,8 +817,10 @@ export function TableSidebar({
                 aria-label="Tables"
                 data-sidebar-tree
                 onKeyDown={onTreeKeyDown}
-                onPointerEnter={() => setFrozenRecents(liveRecents)}
-                onPointerLeave={() => setFrozenRecents(null)}
+                onPointerEnter={() =>
+                    setFrozen({ recents: liveRecents, active: activeTable })
+                }
+                onPointerLeave={() => setFrozen(null)}
                 className="flex min-h-0 flex-1 flex-col"
             >
                 {showPinned && (
