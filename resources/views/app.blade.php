@@ -42,6 +42,14 @@
             html[data-theme="classic"].dark {
                 background-color: #0b0e14;
             }
+
+            html[data-theme="layered"] {
+                background-color: #efede5;
+            }
+
+            html[data-theme="layered"].dark {
+                background-color: #07090f;
+            }
         </style>
 
         <link rel="icon" href="/favicon.ico" sizes="any">

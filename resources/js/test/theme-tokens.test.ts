@@ -1,38 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-
-const css = readFileSync('resources/css/app.css', 'utf8');
-
-/** The declarations of every top-level rule whose selector list contains this selector. */
-function declarations(selector: string): string {
-    const bodies: string[] = [];
-    // A top-level rule starts at the beginning of a line; nested rules are indented.
-    const rule = /^([^\s@}][^{]*)\{/gm;
-
-    for (const match of css.matchAll(rule)) {
-        const selectors = match[1].split(',').map((s) => s.trim());
-
-        if (!selectors.includes(selector)) {
-            continue;
-        }
-
-        const open = match.index + match[0].length - 1;
-        const close = css.indexOf('}', open);
-
-        bodies.push(css.slice(open + 1, close));
-    }
-
-    return bodies.join('\n');
-}
-
-function token(body: string, name: string): string | undefined {
-    const line = body
-        .split('\n')
-        .map((l) => l.trim())
-        .find((l) => l.startsWith(`${name}:`));
-
-    return line?.slice(name.length + 1, -1).trim();
-}
+import { css, declarations, properties, THEMES, token } from './css-tokens';
 
 describe('theme tokens', () => {
     const light = declarations(':root');
@@ -87,6 +54,54 @@ describe('theme tokens', () => {
         const inner = tail.indexOf('}');
 
         expect(tail.indexOf('}', inner + 1)).toBe(tail.trimEnd().length - 1);
+    });
+
+    describe.each(THEMES)('$name', (theme) => {
+        const themeLight = declarations(theme.light);
+        const themeDark = declarations(theme.dark);
+
+        it('defines every custom property Classic light defines', () => {
+            const defined = properties(themeLight);
+
+            expect(
+                properties(light).filter((p) => !defined.includes(p)),
+            ).toEqual([]);
+        });
+
+        it('defines every custom property Classic dark defines', () => {
+            const defined = properties(themeDark);
+
+            expect(
+                properties(dark).filter((p) => !defined.includes(p)),
+            ).toEqual([]);
+        });
+
+        it('lets a nested swatch show the dark variant inside a dark page', () => {
+            expect(declarations(theme.nestedDark)).toBe(themeDark);
+        });
+
+        it('comes after the Classic blocks', () => {
+            const lastClassic = css.lastIndexOf(".dark [data-theme='classic']");
+
+            expect(css.indexOf(`${theme.light} {`)).toBeGreaterThan(
+                lastClassic,
+            );
+            expect(css.indexOf(`${theme.dark},`)).toBeGreaterThan(lastClassic);
+        });
+    });
+
+    it('lifts Layered panels off a canvas: 8px gap, 12px radius, a shadow in both modes', () => {
+        for (const selector of [
+            "[data-theme='layered']",
+            "[data-theme='layered'].dark",
+        ]) {
+            const body = declarations(selector);
+
+            expect(token(body, '--shell')).not.toBe('var(--background)');
+            expect(token(body, '--shell-gap')).toBe('8px');
+            expect(token(body, '--panel-radius')).toBe('12px');
+            expect(token(body, '--panel-shadow')).not.toBe('0 0 #0000');
+        }
     });
 
     it('has a reduced-motion rule', () => {

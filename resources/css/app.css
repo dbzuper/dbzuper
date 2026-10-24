@@ -204,6 +204,115 @@
     --universe-label: #e2e8f0;
 }
 
+/* Layered: raised panels on a slightly darker canvas (UI direction A). Comes after Classic, so on an
+   equal-specificity tie with `:root` or `.dark` the theme wins. */
+[data-theme='layered'] {
+    --background: oklch(0.985 0.005 90);
+    --foreground: oklch(0.25 0.02 265);
+    --card: oklch(0.985 0.005 90);
+    --card-foreground: oklch(0.25 0.02 265);
+    --popover: oklch(0.985 0.005 90);
+    --popover-foreground: oklch(0.25 0.02 265);
+    /* A's teal (L 0.6), darkened to 0.54 so white text on it reaches 4.5:1 */
+    --primary: oklch(0.54 0.104 184.704);
+    --primary-foreground: oklch(0.985 0.005 90);
+    --secondary: oklch(0.94 0.01 90);
+    --secondary-foreground: oklch(0.25 0.02 265);
+    --muted: oklch(0.94 0.01 90);
+    --muted-foreground: oklch(0.52 0.015 265);
+    --accent: oklch(0.93 0.012 90);
+    --accent-foreground: oklch(0.25 0.02 265);
+    --destructive: oklch(0.55 0.22 27);
+    --destructive-foreground: oklch(0.55 0.22 27);
+    --success: oklch(0.5 0.14 150);
+    --warning: oklch(0.6 0.14 65);
+    --warning-foreground: oklch(0.45 0.09 65);
+    --border: oklch(0.9 0.01 90);
+    --input: oklch(0.9 0.01 90);
+    --ring: oklch(0.6 0.104 184.704);
+    --chart-1: oklch(0.6 0.104 184.704);
+    --chart-2: oklch(0.666 0.157 58.318);
+    --chart-3: oklch(0.546 0.215 262.881);
+    --chart-4: oklch(0.541 0.247 293.009);
+    --chart-5: oklch(0.592 0.218 0.584);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.945 0.01 90);
+    --sidebar-foreground: oklch(0.25 0.02 265);
+    --sidebar-primary: oklch(0.54 0.104 184.704);
+    --sidebar-primary-foreground: oklch(0.985 0.005 90);
+    --sidebar-accent: oklch(0.985 0.005 90);
+    --sidebar-accent-foreground: oklch(0.25 0.02 265);
+    --sidebar-border: oklch(0.9 0.01 90);
+    --sidebar-ring: oklch(0.6 0.104 184.704);
+
+    --shell: oklch(0.945 0.01 90);
+    --shell-gap: 8px;
+    --panel-radius: 12px;
+    --panel-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px rgb(0 0 0 / 0.05);
+
+    --universe-bg: #fbfaf6;
+    --universe-grid: rgba(15, 23, 42, 0.07);
+    --universe-accent: #0d9488;
+    --universe-node-dim: #d6d3cc;
+    --universe-edge: rgba(71, 85, 105, 0.35);
+    --universe-edge-inferred: rgba(71, 85, 105, 0.16);
+    --universe-edge-dim: rgba(71, 85, 105, 0.07);
+    --universe-label: #1f2937;
+}
+
+[data-theme='layered'].dark,
+.dark [data-theme='layered'] {
+    --background: oklch(0.19 0.016 265);
+    --foreground: oklch(0.93 0.01 265);
+    --card: oklch(0.19 0.016 265);
+    --card-foreground: oklch(0.93 0.01 265);
+    --popover: oklch(0.19 0.016 265);
+    --popover-foreground: oklch(0.93 0.01 265);
+    --primary: oklch(0.785 0.133 181.912);
+    --primary-foreground: oklch(0.277 0.045 192.524);
+    --secondary: oklch(0.245 0.018 265);
+    --secondary-foreground: oklch(0.93 0.01 265);
+    --muted: oklch(0.245 0.018 265);
+    --muted-foreground: oklch(0.7 0.015 265);
+    --accent: oklch(0.275 0.02 265);
+    --accent-foreground: oklch(0.93 0.01 265);
+    --destructive: oklch(0.66 0.2 25);
+    --destructive-foreground: oklch(0.66 0.2 25);
+    --success: oklch(0.75 0.17 155);
+    --warning: oklch(0.78 0.13 80);
+    --warning-foreground: oklch(0.86 0.1 85);
+    --border: oklch(0.29 0.018 265);
+    --input: oklch(0.29 0.018 265);
+    --ring: oklch(0.785 0.133 181.912);
+    --chart-1: oklch(0.6 0.104 184.704);
+    --chart-2: oklch(0.666 0.157 58.318);
+    --chart-3: oklch(0.546 0.215 262.881);
+    --chart-4: oklch(0.541 0.247 293.009);
+    --chart-5: oklch(0.592 0.218 0.584);
+    --sidebar: oklch(0.14 0.014 265);
+    --sidebar-foreground: oklch(0.93 0.01 265);
+    --sidebar-primary: oklch(0.785 0.133 181.912);
+    --sidebar-primary-foreground: oklch(0.277 0.045 192.524);
+    --sidebar-accent: oklch(0.19 0.016 265);
+    --sidebar-accent-foreground: oklch(0.93 0.01 265);
+    --sidebar-border: oklch(0.29 0.018 265);
+    --sidebar-ring: oklch(0.785 0.133 181.912);
+
+    --shell: oklch(0.14 0.014 265);
+    --shell-gap: 8px;
+    --panel-radius: 12px;
+    --panel-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.35);
+
+    --universe-bg: #10141b;
+    --universe-grid: rgba(148, 163, 184, 0.08);
+    --universe-accent: #2dd4bf;
+    --universe-node-dim: #1f2633;
+    --universe-edge: rgba(148, 163, 184, 0.32);
+    --universe-edge-inferred: rgba(148, 163, 184, 0.14);
+    --universe-edge-dim: rgba(148, 163, 184, 0.05);
+    --universe-label: #e2e8f0;
+}
+
 .universe-grid-dots {
     background-image: radial-gradient(
         var(--universe-grid) 1px,
