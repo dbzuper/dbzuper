@@ -40,6 +40,8 @@ export function columnFamily(type: string | null): CellKindFamily | null {
     const t = (type ?? '').trim().toLowerCase();
     if (t === '') return null;
     if (BOOLEAN_TYPE.test(t)) return 'boolean';
+    // MySQL reports TEXT columns in SQL results as a bare `blob`: the family is unknown, so no glyph.
+    if (t === 'blob') return null;
     if (/blob|binary|bytea|varbinary|image/.test(t)) return 'binary';
     if (/json/.test(t)) return 'json';
     if (/date|time/.test(t)) return 'date';

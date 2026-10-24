@@ -48,7 +48,7 @@ export function StatusBar({
     return (
         <footer
             aria-label="Status bar"
-            className="flex h-[26px] shrink-0 items-center border-t bg-sidebar text-xs text-muted-foreground"
+            className="flex h-[26px] shrink-0 items-center overflow-hidden border-t bg-sidebar text-xs text-muted-foreground"
         >
             <span className={ITEM}>
                 <span
@@ -144,7 +144,12 @@ function TableItems({
         <>
             {status && (
                 <>
-                    <span className={cn(ITEM, 'tabular-nums')}>
+                    <span
+                        className={cn(
+                            ITEM,
+                            'min-w-0 shrink truncate tabular-nums',
+                        )}
+                    >
                         {statusRangeLabel(status.from, status.to, status.total)}
                     </span>
                     <span className={cn(ITEM, 'hidden tabular-nums md:flex')}>

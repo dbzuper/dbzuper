@@ -554,3 +554,37 @@ describe('TableSidebar prefix groups', () => {
         );
     });
 });
+
+describe('TableSidebar type-ahead and levels', () => {
+    const grouped = {
+        ...snapshot,
+        tables: ['courier_rates', 'courier_zones', 'orders'].map((n) =>
+            table(n),
+        ),
+    } as SchemaSnapshot;
+    const renderGrouped = () =>
+        render(
+            <TableSidebar
+                connectionId={1}
+                snapshot={grouped}
+                actions={actions}
+            />,
+        );
+
+    it('type-aheads from a focused group row to the next matching table', () => {
+        renderGrouped();
+        const group = screen.getByRole('treeitem', {
+            name: 'courier_ group, 2 tables',
+        });
+        group.focus();
+        fireEvent.keyDown(group, { key: 'o' });
+        expect(document.activeElement).toHaveAttribute('data-table', 'orders');
+    });
+
+    it('gives loose rows in All tables the same level as group rows', () => {
+        renderGrouped();
+        expect(
+            screen.getByRole('treeitem', { name: /^orders/ }),
+        ).toHaveAttribute('aria-level', '2');
+    });
+});

@@ -202,3 +202,18 @@ describe('StatusBar', () => {
         expect(dock).toHaveAttribute('aria-pressed', 'true');
     });
 });
+
+describe('StatusBar overflow', () => {
+    it('clips instead of spilling and lets the row range truncate first', () => {
+        openOrders({
+            from: 1,
+            to: 50,
+            total: { count: 1234, exact: true },
+            ms: 38,
+        });
+        renderBar();
+        expect(screen.getByRole('contentinfo')).toHaveClass('overflow-hidden');
+        const range = screen.getByText('Rows 1–50 of 1,234');
+        expect(range).toHaveClass('min-w-0', 'truncate');
+    });
+});

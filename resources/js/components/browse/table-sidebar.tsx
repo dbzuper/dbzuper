@@ -145,7 +145,7 @@ function SidebarRow({
                     role="treeitem"
                     aria-selected={active}
                     aria-current={active ? 'true' : undefined}
-                    aria-level={prefix ? 3 : undefined}
+                    aria-level={prefix ? 3 : 2}
                     aria-label={rowLabel(name, count)}
                     data-table={name}
                     data-key={itemKey(section, name)}
@@ -252,6 +252,7 @@ function SectionHeader({
     return (
         <div
             role="treeitem"
+            aria-level={1}
             aria-expanded={open}
             aria-label={label}
             data-key={headerKey(section)}
@@ -620,7 +621,8 @@ export function TableSidebar({
                 return moveTo(items.length - 1);
         }
         const table = item.table;
-        if (table === null) return;
+        // Group and section header rows type ahead too; they have no other single-character keys.
+        if (table === null) return typeAhead(event, index);
         if (item.missing) {
             // A pin of a dropped table can only be removed; focus moves on to its neighbour.
             if (!['Delete', 'Backspace', '*'].includes(event.key)) return;
@@ -644,6 +646,10 @@ export function TableSidebar({
                 return void usePins.getState().toggle(connectionId, table);
         }
 
+        return typeAhead(event, index);
+    };
+
+    const typeAhead = (event: KeyboardEvent<HTMLDivElement>, index: number) => {
         if (
             event.key.length !== 1 ||
             event.ctrlKey ||
@@ -816,6 +822,7 @@ export function TableSidebar({
                                             <div
                                                 key={pin.id}
                                                 role="treeitem"
+                                                aria-level={2}
                                                 aria-disabled="true"
                                                 aria-label={`${pin.table} (no longer exists)`}
                                                 aria-keyshortcuts="Delete *"
