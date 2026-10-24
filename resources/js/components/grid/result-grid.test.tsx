@@ -342,7 +342,11 @@ describe('CellView object values', () => {
                 onOpen={() => {}}
             />,
         );
-        expect(container).toHaveTextContent('{"a":1,"b":[2]}');
+        expect(container).toHaveTextContent('{…} 2 keys');
+        expect(container.querySelector('[data-kind="json"]')).toHaveAttribute(
+            'title',
+            '{"a":1,"b":[2]}',
+        );
         expect(container).not.toHaveTextContent('[object Object]');
         expect(
             screen.getByRole('button', { name: 'View' }),
@@ -691,15 +695,21 @@ describe('cell display', () => {
         expect(container.querySelector('[data-null="true"]')).toBeNull();
     });
 
-    it('renders booleans as check and cross marks', () => {
+    it('renders booleans as true and false chips', () => {
         render(
             <>
                 <CellView value={true} type="bool" onOpen={() => {}} />
                 <CellView value={false} type="bool" onOpen={() => {}} />
             </>,
         );
-        expect(screen.getByLabelText('true')).toHaveTextContent('✓');
-        expect(screen.getByLabelText('false')).toHaveTextContent('✗');
+        expect(screen.getByText('true')).toHaveAttribute(
+            'data-kind',
+            'boolean',
+        );
+        expect(screen.getByText('false')).toHaveAttribute(
+            'data-kind',
+            'boolean',
+        );
     });
 
     it('renders the binary placeholder as a blob size', () => {
@@ -722,6 +732,112 @@ describe('cell display', () => {
             'title',
             'y'.repeat(500),
         );
+    });
+});
+
+describe('type-aware grid', () => {
+    it('badges a primary-key column and titles its header with the SQL type', () => {
+        render(
+            <ResultGrid
+                columns={[{ name: 'id', type: 'int(11)', table: 'orders' }]}
+                rows={[[1]]}
+                snapshot={snapshot}
+            />,
+        );
+        const header = screen.getByRole('columnheader', { name: /id/ });
+        expect(within(header).getByText('PK')).toBeInTheDocument();
+        expect(header.querySelector('[title*="int(11)"]')).not.toBeNull();
+        expect(within(header).queryByText('FK')).toBeNull();
+    });
+
+    it('badges a foreign-key column with its target', () => {
+        render(<ResultGrid {...one(1)} snapshot={snapshot} />);
+        const header = screen.getByRole('columnheader', { name: /user_id/ });
+        expect(within(header).getByText('FK')).toHaveAttribute(
+            'title',
+            '→ users.id',
+        );
+        expect(within(header).queryByText('PK')).toBeNull();
+    });
+
+    it('degrades without a snapshot or a type: no badges, still the name', () => {
+        render(
+            <ResultGrid
+                columns={[{ name: 'id', type: null, table: null }]}
+                rows={[[1]]}
+            />,
+        );
+        const header = screen.getByRole('columnheader', { name: /id/ });
+        expect(within(header).queryByText('PK')).toBeNull();
+        expect(within(header).queryByText('FK')).toBeNull();
+    });
+
+    it('renders NULL as a dashed pill', () => {
+        const { container } = render(
+            <CellView value={null} type="text" onOpen={() => {}} />,
+        );
+        const el = container.querySelector('[data-null="true"]');
+        expect(el).toHaveTextContent('NULL');
+        expect(el).toHaveClass('border-dashed');
+    });
+
+    it.each([
+        [1, 'tinyint(1)'],
+        [true, 'bool'],
+        [true, 'boolean'],
+    ] as const)('renders %s in a %s column as a true chip', (value, type) => {
+        render(<CellView value={value} type={type} onOpen={() => {}} />);
+        expect(screen.getByText('true')).toHaveClass('bg-success/14');
+    });
+
+    it('renders false as a muted chip titled with the raw value', () => {
+        render(<CellView value={0} type="tinyint(1)" onOpen={() => {}} />);
+        const chip = screen.getByText('false');
+        expect(chip).toHaveClass('bg-muted');
+        expect(chip).toHaveAttribute('title', '0');
+    });
+
+    it('summarises JSON objects and arrays', () => {
+        const onOpen = vi.fn();
+        const { rerender } = render(
+            <CellView value='{"a":1,"b":2}' type="json" onOpen={onOpen} />,
+        );
+        expect(screen.getByText('{…} 2 keys')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'View' }));
+        expect(onOpen).toHaveBeenCalledOnce();
+        rerender(<CellView value="[1,2,3]" type="json" onOpen={onOpen} />);
+        expect(screen.getByText('[…] 3 items')).toBeInTheDocument();
+    });
+
+    it('splits a datetime into the date and a muted time', () => {
+        const { container } = render(
+            <CellView
+                value="2026-10-24 13:05:00"
+                type="datetime"
+                onOpen={() => {}}
+            />,
+        );
+        const el = container.querySelector('[data-kind="date"]')!;
+        const parts = el.querySelectorAll('span');
+        expect(parts).toHaveLength(2);
+        expect(parts[0]).toHaveTextContent('2026-10-24');
+        expect(parts[1]).toHaveTextContent('13:05:00');
+        expect(parts[1]).toHaveClass('text-muted-foreground');
+    });
+
+    it('copies a boolean cell as its raw value', () => {
+        render(
+            <ResultGrid
+                columns={[{ name: 'active', type: 'tinyint(1)', table: null }]}
+                rows={[[1]]}
+            />,
+        );
+        const cell = screen.getByRole('gridcell', { name: 'true' });
+        fireEvent.mouseDown(cell);
+        fireEvent.click(cell);
+        const setData = vi.fn();
+        fireEvent.copy(cell, { clipboardData: { setData } });
+        expect(setData).toHaveBeenCalledWith('text/plain', '1');
     });
 });
 
@@ -1212,7 +1328,7 @@ describe('editing', () => {
                 shortened: [[], []],
             }),
         });
-        const input = edit(/"a":1/);
+        const input = edit(/1 key/);
         fireEvent.change(input, { target: { value: '{"a":' } });
         fireEvent.keyDown(input, { key: 'Enter' });
         expect(screen.getByRole('textbox')).toHaveAttribute(
