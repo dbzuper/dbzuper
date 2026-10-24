@@ -210,17 +210,11 @@ export default function DatePicker({
             labels={calendarLabels}
         />
     ) : (
-        <DayPicker
-            mode="single"
-            required
-            weekStartsOn={1}
-            showOutsideDays
+        <SingleCalendar
             month={month}
             onMonthChange={setMonth}
             selected={fromDay}
             onSelect={(d) => setFrom({ ...from, date: isoDay(d) })}
-            classNames={calendarClasses}
-            labels={calendarLabels}
         />
     );
 
@@ -271,23 +265,169 @@ export default function DatePicker({
                     />
                 )}
                 <div className="flex justify-end gap-1.5">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={onCancel}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        type="button"
-                        size="sm"
-                        disabled={!canApply}
-                        onClick={apply}
-                    >
-                        Apply
-                    </Button>
+                    <PickerActions
+                        canApply={canApply}
+                        onApply={apply}
+                        onCancel={onCancel}
+                    />
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function SingleCalendar({
+    month,
+    onMonthChange,
+    selected,
+    onSelect,
+}: {
+    month: Date;
+    onMonthChange: (month: Date) => void;
+    selected: Date | undefined;
+    onSelect: (day: Date) => void;
+}) {
+    return (
+        <DayPicker
+            mode="single"
+            required
+            weekStartsOn={1}
+            showOutsideDays
+            month={month}
+            onMonthChange={onMonthChange}
+            selected={selected}
+            onSelect={onSelect}
+            classNames={calendarClasses}
+            labels={calendarLabels}
+        />
+    );
+}
+
+function PickerActions({
+    canApply,
+    onApply,
+    onCancel,
+}: {
+    canApply: boolean;
+    onApply: () => void;
+    onCancel: () => void;
+}) {
+    return (
+        <>
+            <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+                Cancel
+            </Button>
+            <Button
+                type="button"
+                size="sm"
+                disabled={!canApply}
+                onClick={onApply}
+            >
+                Apply
+            </Button>
+        </>
+    );
+}
+
+/** A trailing zone (`Z`, `+08`, `+0800`, `+08:00`) after a time, as PostgreSQL returns timestamptz values. */
+const ZONE_SUFFIX =
+    /^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(\s*(?:Z|[+-]\d{2}(?::?\d{2})?))$/i;
+
+/** A value split into the part the picker edits and a zone suffix kept verbatim. */
+function splitZone(value: string): { local: string; zone: string } {
+    const m = ZONE_SUFFIX.exec(value.trim());
+    return m ? { local: m[1], zone: m[2] } : { local: value, zone: '' };
+}
+
+/** The current local time as `HH:MM:SS`. */
+const clock = (d: Date) =>
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
+/**
+ * The picker for editing a date or datetime cell: a calendar, the typeable Date (and Time) field, Now or Today,
+ * Cancel and Apply. It opens on the value when it parses, else empty; a zone suffix is kept as is, never converted.
+ */
+export function EditDatePicker({
+    kind,
+    value,
+    onApply,
+    onCancel,
+}: {
+    kind: DateKind;
+    /** The cell's draft or value; NULL, empty or unparseable text opens the picker empty. */
+    value: string | null;
+    onApply: (value: string) => void;
+    onCancel: () => void;
+}) {
+    const withTime = kind === 'datetime';
+    const [{ zone, start }] = useState(() => {
+        const parts = splitZone(value ?? '');
+        const initial = normalizeDateInput(parts.local, kind);
+        return {
+            zone: parts.zone,
+            start: 'value' in initial ? split(initial.value, withTime) : null,
+        };
+    });
+    const [end, setEnd] = useState<End>(start ?? { date: '', time: '' });
+    const parsed = parse(end, kind);
+    const current = valueOf(parsed);
+    const [month, setMonth] = useState<Date>(() =>
+        current ? calendarDay(current) : new Date(),
+    );
+
+    const apply = () => {
+        if (current !== null) onApply(`${current}${zone}`);
+    };
+    const typeDate = (date: string) => {
+        setEnd({ ...end, date });
+        const typed = valueOf(parse({ ...end, date }, kind));
+        if (typed) setMonth(calendarDay(typed));
+    };
+    const now = () => {
+        const d = new Date();
+        setEnd({ date: isoDay(d), time: withTime ? clock(d) : '' });
+        setMonth(d);
+    };
+
+    return (
+        <div className="flex flex-col gap-2">
+            <SingleCalendar
+                month={month}
+                onMonthChange={setMonth}
+                selected={current ? calendarDay(current) : undefined}
+                // A fractional time stays in the Date field: the day changes, the time (and fraction) stays.
+                onSelect={(d) =>
+                    setEnd({ ...end, date: isoDay(d) + end.date.slice(10) })
+                }
+            />
+            <EndField
+                label="Date"
+                end={end}
+                parsed={parsed}
+                withTime={withTime}
+                onDate={typeDate}
+                onTime={(time) => setEnd({ ...end, time })}
+                onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    apply();
+                }}
+            />
+            <div className="flex items-center gap-1.5">
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mr-auto"
+                    onClick={now}
+                >
+                    {withTime ? 'Now' : 'Today'}
+                </Button>
+                <PickerActions
+                    canApply={current !== null}
+                    onApply={apply}
+                    onCancel={onCancel}
+                />
             </div>
         </div>
     );

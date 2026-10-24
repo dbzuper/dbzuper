@@ -1,6 +1,13 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 
+import {
+    DateEditPopover,
+    OPEN_PICKER_KEYS,
+    opensPicker,
+} from '@/components/editing/date-edit-popover';
 import { jsonError } from '@/editing/row-edit';
+import type { DateKind } from '@/lib/date-filter';
+import { cn } from '@/lib/utils';
 
 // The editing rules live with the pending store, shared with the row drawer.
 export {
@@ -18,6 +25,8 @@ type EditorProps = {
     draft: string | undefined;
     onDraft: (value: string) => void;
     json: boolean;
+    /** A date or datetime column gets a calendar button; Apply hands the picked value to `onPick`. */
+    date?: { kind: DateKind; onPick: (value: string) => void } | null;
 };
 
 /**
@@ -30,10 +39,19 @@ export function TextCellEditor({
     draft,
     onDraft,
     json,
+    date,
 }: EditorProps) {
     const [error, setError] = useState<string | null>(null);
+    const input = useRef<HTMLInputElement>(null);
+    const trigger = useRef<HTMLButtonElement>(null);
     const value = draft ?? initial;
     const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+        if (date && opensPicker(event)) {
+            event.preventDefault();
+            event.stopPropagation();
+            trigger.current?.click();
+            return;
+        }
         if (!json || (event.key !== 'Enter' && event.key !== 'Tab')) return;
         const problem = draft === undefined ? null : jsonError(draft);
         setError(problem);
@@ -45,11 +63,16 @@ export function TextCellEditor({
     return (
         <span className="relative block h-full">
             <input
+                ref={input}
                 // The grid opens the editor for this cell on purpose; focus belongs in it.
                 autoFocus
                 aria-label={label}
                 aria-invalid={error ? true : undefined}
-                className="h-full w-full bg-background px-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:ring-inset aria-invalid:ring-2 aria-invalid:ring-destructive"
+                aria-keyshortcuts={date ? OPEN_PICKER_KEYS : undefined}
+                className={cn(
+                    'h-full w-full bg-background px-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:ring-inset aria-invalid:ring-2 aria-invalid:ring-destructive',
+                    date && 'pr-7',
+                )}
                 value={value}
                 onChange={(e) => {
                     setError(null);
@@ -58,6 +81,16 @@ export function TextCellEditor({
                 onKeyDown={onKeyDown}
                 onFocus={(e) => e.target.select()}
             />
+            {date && (
+                <DateEditPopover
+                    kind={date.kind}
+                    value={value}
+                    inputRef={input}
+                    triggerRef={trigger}
+                    onApply={date.onPick}
+                    className="absolute top-1/2 right-0.5 -translate-y-1/2"
+                />
+            )}
             {error && (
                 <span
                     role="alert"

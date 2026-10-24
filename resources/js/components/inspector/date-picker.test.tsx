@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { quickRanges } from '@/lib/date-filter';
-import DatePicker from './date-picker';
+import DatePicker, { EditDatePicker } from './date-picker';
 
 const type = (label: string, value: string) =>
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
@@ -234,6 +234,155 @@ describe('DatePicker', () => {
 
     it('cancels without applying', () => {
         const { onApply, onCancel } = renderPicker();
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(onCancel).toHaveBeenCalled();
+        expect(onApply).not.toHaveBeenCalled();
+    });
+});
+
+describe('EditDatePicker', () => {
+    function renderEdit(
+        props: Partial<Parameters<typeof EditDatePicker>[0]> = {},
+    ) {
+        const handlers = { onApply: vi.fn(), onCancel: vi.fn() };
+        render(
+            <EditDatePicker
+                kind="datetime"
+                value={null}
+                {...handlers}
+                {...props}
+            />,
+        );
+        return handlers;
+    }
+    const apply = () =>
+        fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    afterEach(() => vi.useRealTimers());
+
+    it('offers no quick ranges', () => {
+        renderEdit();
+        expect(
+            screen.queryByRole('list', { name: 'Quick ranges' }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole('button', { name: 'Last 7 days' }),
+        ).not.toBeInTheDocument();
+    });
+
+    it('fills the date and time from the value', () => {
+        renderEdit({ value: '2026-10-01 12:30:45' });
+        expect(screen.getByLabelText('Date')).toHaveValue('2026-10-01');
+        expect(screen.getByLabelText('Time')).toHaveValue('12:30:45');
+        expect(screen.getByLabelText('Time')).toHaveAttribute('step', '1');
+        expect(
+            screen.getByRole('button', { name: /^1 October 2026.*selected/ }),
+        ).toBeInTheDocument();
+    });
+
+    it.each([null, '', '0000-00-00 00:00:00', 'not a date', '2026-02-30'])(
+        'opens empty, without an error, for %j',
+        (value) => {
+            renderEdit({ value });
+            expect(screen.getByLabelText('Date')).toHaveValue('');
+            expect(screen.getByLabelText('Time')).toHaveValue('');
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+            expect(
+                screen.getByRole('button', { name: 'Apply' }),
+            ).toBeDisabled();
+        },
+    );
+
+    it('sets the local date and time to the second with Now', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(2026, 9, 24, 13, 5, 9, 600));
+        const { onApply } = renderEdit({ value: '2026-10-01 12:00:00' });
+        expect(
+            screen.queryByRole('button', { name: 'Today' }),
+        ).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Now' }));
+        expect(screen.getByLabelText('Date')).toHaveValue('2026-10-24');
+        expect(screen.getByLabelText('Time')).toHaveValue('13:05:09');
+        apply();
+        expect(onApply).toHaveBeenCalledWith('2026-10-24 13:05:09');
+    });
+
+    it('sets today with Today on a date column, with no time field', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(2026, 9, 24, 13, 5, 9));
+        const { onApply } = renderEdit({ kind: 'date', value: '2026-10-01' });
+        expect(screen.queryByLabelText('Time')).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole('button', { name: 'Now' }),
+        ).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Today' }));
+        apply();
+        expect(onApply).toHaveBeenCalledWith('2026-10-24');
+    });
+
+    it('picks a day and keeps the time', () => {
+        const { onApply } = renderEdit({ value: '2026-10-01 12:00:00' });
+        fireEvent.click(
+            screen.getByRole('button', { name: /^15 October 2026/ }),
+        );
+        apply();
+        expect(onApply).toHaveBeenCalledWith('2026-10-15 12:00:00');
+    });
+
+    it.each([
+        ['2026-10-01 12:00:00+08', '2026-10-15 12:00:00+08'],
+        ['2026-10-01 12:00:00+0800', '2026-10-15 12:00:00+0800'],
+        ['2026-10-01 12:00:00+08:00', '2026-10-15 12:00:00+08:00'],
+        ['2026-10-01 12:00:00-05:30', '2026-10-15 12:00:00-05:30'],
+        ['2026-10-01T12:00:00Z', '2026-10-15 12:00:00Z'],
+    ])('keeps the zone suffix of %s verbatim', (value, applied) => {
+        const { onApply } = renderEdit({ value });
+        expect(screen.getByLabelText('Date')).toHaveValue('2026-10-01');
+        expect(screen.getByLabelText('Time')).toHaveValue('12:00:00');
+        fireEvent.click(
+            screen.getByRole('button', { name: /^15 October 2026/ }),
+        );
+        apply();
+        expect(onApply).toHaveBeenCalledWith(applied);
+    });
+
+    it('keeps fractional seconds (and the zone) when only the day changes', () => {
+        const { onApply } = renderEdit({
+            value: '2026-10-01 12:00:00.123456+00',
+        });
+        fireEvent.click(
+            screen.getByRole('button', { name: /^15 October 2026/ }),
+        );
+        apply();
+        expect(onApply).toHaveBeenCalledWith('2026-10-15 12:00:00.123456+00');
+    });
+
+    it('adds no suffix to a value without one', () => {
+        const { onApply } = renderEdit({ kind: 'date', value: '2026-10-01' });
+        fireEvent.click(
+            screen.getByRole('button', { name: /^15 October 2026/ }),
+        );
+        apply();
+        expect(onApply).toHaveBeenCalledWith('2026-10-15');
+    });
+
+    it('validates typed text inline and disables Apply', () => {
+        renderEdit({ kind: 'date', value: '2026-10-01' });
+        type('Date', '2026-10-01 10:00');
+        expect(screen.getByRole('alert')).toHaveTextContent('YYYY-MM-DD');
+        expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+    });
+
+    it('takes 9999-12-31', () => {
+        const { onApply } = renderEdit({ kind: 'date' });
+        type('Date', '9999-12-31');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        apply();
+        expect(onApply).toHaveBeenCalledWith('9999-12-31');
+    });
+
+    it('cancels without applying', () => {
+        const { onApply, onCancel } = renderEdit();
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
         expect(onCancel).toHaveBeenCalled();
         expect(onApply).not.toHaveBeenCalled();

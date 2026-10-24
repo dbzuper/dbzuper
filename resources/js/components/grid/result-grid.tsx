@@ -57,6 +57,7 @@ import {
     truthy,
     type GridEditing,
 } from '@/editing/row-edit';
+import { dateKind } from '@/lib/date-filter';
 import { cn } from '@/lib/utils';
 import type {
     Dialect,
@@ -326,6 +327,8 @@ function editModel(
         boolValue,
         isBool: (index: number) => isBooleanType(typeOf(index)),
         isJson: (index: number) => isJsonType(typeOf(index)),
+        dateKind: (index: number) =>
+            dateKind({ type_name: typeOf(index) ?? '' }),
     };
 }
 
@@ -744,6 +747,7 @@ export function ResultGrid({
                                               </EditFlush>
                                           );
                                       const value = row.cells[index];
+                                      const kind = model.dateKind(index);
                                       return (
                                           <EditFlush onClose={onClose}>
                                               <TextCellEditor
@@ -760,6 +764,27 @@ export function ResultGrid({
                                                   }
                                                   onDraft={change}
                                                   json={model.isJson(index)}
+                                                  date={
+                                                      kind
+                                                          ? {
+                                                                kind,
+                                                                // Commits as Enter does: staged, editor closed, cell focused.
+                                                                onPick: (
+                                                                    picked,
+                                                                ) =>
+                                                                    onRowChange(
+                                                                        {
+                                                                            ...row,
+                                                                            draft: {
+                                                                                column: column.name,
+                                                                                value: picked,
+                                                                            },
+                                                                        },
+                                                                        true,
+                                                                    ),
+                                                            }
+                                                          : null
+                                                  }
                                               />
                                           </EditFlush>
                                       );

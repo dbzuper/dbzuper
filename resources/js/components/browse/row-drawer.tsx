@@ -20,6 +20,11 @@ import {
     type KeyboardEvent,
 } from 'react';
 import { toast } from 'sonner';
+import {
+    DateEditPopover,
+    OPEN_PICKER_KEYS,
+    opensPicker,
+} from '@/components/editing/date-edit-popover';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { blobLabel, cellKind, cellText, type CellValue } from '@/grid/cells';
@@ -42,6 +47,7 @@ import {
     type GridEditing,
 } from '@/editing/row-edit';
 import { toJSON, writeClipboard } from '@/grid/copy';
+import { dateKind, type DateKind } from '@/lib/date-filter';
 import type { RowFilter } from '@/lib/workspace-api';
 import {
     explorableTable,
@@ -264,6 +270,8 @@ type FieldEdit = {
     staged: boolean;
     json: boolean;
     bool: boolean;
+    /** A date or datetime column, which gets a calendar button beside its input. */
+    date: DateKind | null;
     dialect: GridEditing['dialect'];
     stage: (value: string | null) => void;
     revert: () => void;
@@ -290,6 +298,8 @@ function EditableField({
     const id = useId();
     const [draft, setDraft] = useState<string | undefined>(undefined);
     const [error, setError] = useState<string | null>(null);
+    const input = useRef<HTMLInputElement>(null);
+    const trigger = useRef<HTMLButtonElement>(null);
     const base = editorText(edit.value);
     const multiline =
         edit.json ||
@@ -341,7 +351,10 @@ function EditableField({
     const onKeyDown = (
         e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
     ) => {
-        if (e.key === 'Escape' && hasDraft) {
+        if (edit.date && !multiline && opensPicker(e)) {
+            e.preventDefault();
+            trigger.current?.click();
+        } else if (e.key === 'Escape' && hasDraft) {
             // The first Escape drops the draft; the next one closes the drawer.
             e.stopPropagation();
             e.preventDefault();
@@ -402,10 +415,28 @@ function EditableField({
             className="block w-full resize-y rounded border bg-background px-2 py-1 font-mono text-xs outline-none placeholder:italic focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive"
         />
     ) : (
-        <input
-            {...textProps}
-            className="block h-7 w-full rounded border bg-background px-2 font-mono text-xs outline-none placeholder:italic focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive"
-        />
+        <span className="flex items-center gap-1">
+            <input
+                {...textProps}
+                ref={input}
+                aria-keyshortcuts={edit.date ? OPEN_PICKER_KEYS : undefined}
+                className="block h-7 w-full min-w-0 rounded border bg-background px-2 font-mono text-xs outline-none placeholder:italic focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive"
+            />
+            {edit.date && (
+                <DateEditPopover
+                    kind={edit.date}
+                    value={draft ?? base}
+                    inputRef={input}
+                    triggerRef={trigger}
+                    // Staged as blur or Enter would stage it; focus returns to the input.
+                    onApply={(picked) => {
+                        setDraft(undefined);
+                        setError(null);
+                        edit.stage(picked);
+                    }}
+                />
+            )}
+        </span>
     );
 
     return (
@@ -625,6 +656,7 @@ export function RowDrawer({
             staged,
             json: isJsonType(type),
             bool: isBooleanType(type),
+            date: dateKind({ type_name: type ?? '' }),
             dialect: rowEditing.dialect,
             stage: (next) =>
                 usePending
