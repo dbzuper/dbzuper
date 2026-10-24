@@ -920,6 +920,28 @@ describe('editing', () => {
         expect(pending()[ref1]).toMatchObject({ kind: 'delete' });
     });
 
+    it('puts the pending mark in the row button cell instead of its own column', () => {
+        renderGrid({ onOpenRow: vi.fn() });
+        const columnsBefore = screen.getAllByRole('columnheader').length;
+        act(() =>
+            usePending.getState().markDelete(1, 'users', {
+                ref: ref1,
+                id: { key: { id: 1 } },
+                original: {},
+            }),
+        );
+        const openButton = within(
+            cell(/Ada/).closest('[role="row"]')!,
+        ).getByRole('button', { name: 'Open row' });
+        expect(openButton.closest('[role="gridcell"]')).toHaveTextContent(
+            'deleted',
+        );
+        expect(screen.getAllByRole('columnheader')).toHaveLength(columnsBefore);
+        expect(
+            screen.queryByRole('columnheader', { name: 'Pending change' }),
+        ).toBeNull();
+    });
+
     it('shows new rows at the top with default placeholders and flags required columns', () => {
         const ref = usePending.getState().addRow(1, 'users');
         renderGrid();
