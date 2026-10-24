@@ -23,3 +23,18 @@ describe('starPoints', () => {
         expect(starPoints(1, 20, null)).not.toEqual(starPoints(2, 20, null));
     });
 });
+
+describe('starPoints spread', () => {
+    it('a wider spread scatters points further, still inside the unit square', () => {
+        const dev = (pts: [number, number][]) =>
+            pts.reduce(
+                (s, [x, y]) => s + Math.abs(x - 0.5) + Math.abs(y - 0.5),
+                0,
+            );
+        const narrow = starPoints(4, 60, null, 1);
+        const wide = starPoints(4, 60, null, 1.6);
+
+        expect(wide.flat().every((n) => n >= 0 && n <= 1)).toBe(true);
+        expect(dev(wide)).not.toBe(dev(narrow));
+    });
+});

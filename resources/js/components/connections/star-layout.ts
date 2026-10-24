@@ -22,6 +22,7 @@ export function starPoints(
     seed: number,
     count: number,
     given: ([number, number] | null)[] | null,
+    spread = 1,
 ): [number, number][] {
     const rand = mulberry32(seed);
     const clusters = 2 + Math.floor(rand() * 3);
@@ -34,7 +35,7 @@ export function starPoints(
     for (let i = 0; i < count; i++) {
         const [cx, cy] = centres[i % clusters];
         const angle = rand() * Math.PI * 2;
-        const dist = Math.sqrt(rand()) * 0.2;
+        const dist = Math.sqrt(rand()) * 0.2 * spread;
         const generated: [number, number] = [
             clamp01(cx + Math.cos(angle) * dist * 1.6),
             clamp01(cy + Math.sin(angle) * dist * 0.8),

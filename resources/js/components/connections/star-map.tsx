@@ -59,11 +59,16 @@ export function StarMap({
                         .getPropertyValue(match[1])
                         .trim() ||
                     match[2]?.trim() ||
-                    '#888';
+                    getComputedStyle(canvas).color;
             }
 
             const count = star ? star.count : hero ? 90 : 24;
-            const pts = starPoints(seed, count, star?.points ?? null);
+            const pts = starPoints(
+                seed,
+                count,
+                star?.points ?? null,
+                hero ? 1.6 : 1,
+            );
             const rand = mulberry32(seed + 1);
             const edges: [number, number][] = star
                 ? star.edges
