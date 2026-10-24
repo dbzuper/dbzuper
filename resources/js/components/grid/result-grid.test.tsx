@@ -430,6 +430,33 @@ describe('table tab features', () => {
         expect(screen.queryByRole('menuitem')).toBeNull();
     });
 
+    it('toggles: the open row’s button closes it, another row’s button opens that row', () => {
+        const onOpenRow = vi.fn();
+        const onCloseRow = vi.fn();
+        render(
+            wrap(
+                <ResultGrid
+                    columns={tabColumns}
+                    rows={data}
+                    onOpenRow={onOpenRow}
+                    onCloseRow={onCloseRow}
+                    activeRow={1}
+                />,
+            ),
+        );
+        const [first, open] = screen.getAllByRole('button', {
+            name: 'Open row',
+        });
+        expect(open).toHaveAttribute('aria-expanded', 'true');
+        expect(open).toHaveAttribute('title', 'Close row');
+        expect(first).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(open);
+        expect(onCloseRow).toHaveBeenCalledTimes(1);
+        expect(onOpenRow).not.toHaveBeenCalled();
+        fireEvent.click(first);
+        expect(onOpenRow).toHaveBeenCalledWith(0);
+    });
+
     it('opens rows from the row button and highlights the active row', () => {
         const onOpenRow = vi.fn();
         render(

@@ -694,6 +694,7 @@ function DataViewBody({
                                     layout={gridLayout}
                                     onFilterColumn={onFilterColumn}
                                     onOpenRow={onOpenRow}
+                                    onCloseRow={closeDrawer}
                                     activeRow={drawerRow}
                                     rowMenu={rowMenu}
                                     scrollTop={view.scrollTop}

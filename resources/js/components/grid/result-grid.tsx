@@ -125,6 +125,8 @@ type Props = {
     onFilterColumn?: (column: string) => void;
     /** Enter on a cell, the row button, or "Open row" in the row menu. */
     onOpenRow?: (rowIndex: number) => void;
+    /** Closes the open row: its row button toggles (a second click closes it). */
+    onCloseRow?: () => void;
     /** Highlights this row (the drawer's row). */
     activeRow?: number | null;
     /** Enables row checkboxes and the copy menu (Copy as JSON / INSERT / CSV). */
@@ -346,6 +348,7 @@ export function ResultGrid({
     layout,
     onFilterColumn,
     onOpenRow,
+    onCloseRow,
     activeRow = null,
     rowMenu,
     scrollTop,
@@ -603,10 +606,23 @@ export function ResultGrid({
                                   <button
                                       type="button"
                                       aria-label="Open row"
-                                      title="Open row"
+                                      aria-expanded={row.__i === activeRow}
+                                      title={
+                                          row.__i === activeRow && onCloseRow
+                                              ? 'Close row'
+                                              : 'Open row'
+                                      }
                                       data-row-index={row.__i}
-                                      onClick={() => onOpenRow(row.__i)}
-                                      className="rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+                                      onClick={() =>
+                                          row.__i === activeRow && onCloseRow
+                                              ? onCloseRow()
+                                              : onOpenRow(row.__i)
+                                      }
+                                      className={cn(
+                                          'rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none',
+                                          row.__i === activeRow &&
+                                              'text-[var(--universe-accent)]',
+                                      )}
                                   >
                                       <ChevronRight className="size-3.5" />
                                   </button>
@@ -936,6 +952,8 @@ export function ResultGrid({
         layout,
         rowMenu,
         onOpenRow,
+        onCloseRow,
+        activeRow,
         onFilterColumn,
         model,
         rows,
