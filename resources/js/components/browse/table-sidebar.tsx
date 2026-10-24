@@ -168,10 +168,10 @@ function SidebarRow({
                         // A grouped table sits pl-5 further in than a loose one.
                         prefix ? 'pl-7' : 'pl-2',
                         'hover:bg-accent/60 focus-visible:ring-1 focus-visible:ring-ring',
-                        // The open table stands apart from a hovered one: a primary tint, a bar on its edge
+                        // The open table stands apart from a hovered one: a primary tint, a primary icon
                         // and a heavier name.
                         active &&
-                            'bg-primary/12 font-medium text-foreground shadow-[inset_2px_0_0_var(--primary)] hover:bg-primary/16',
+                            'bg-primary/12 font-medium text-foreground hover:bg-primary/16',
                     )}
                 >
                     <Icon

@@ -355,9 +355,8 @@ describe('TableSidebar', () => {
         const active = within(all).getByRole('treeitem', { name: /^orders/ });
         const other = within(all).getByRole('treeitem', { name: /^users/ });
 
-        // A primary tint and edge bar, not the hover's accent grey.
+        // A primary tint, not the hover's accent grey.
         expect(active).toHaveClass('bg-primary/12', 'font-medium');
-        expect(active.className).toContain('var(--primary)');
         expect(active).not.toHaveClass('bg-accent');
         expect(within(active).getByRole('img')).toHaveClass('text-primary');
         expect(other).not.toHaveClass('bg-primary/12');
