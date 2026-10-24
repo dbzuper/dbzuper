@@ -168,13 +168,19 @@ function SidebarRow({
                         // A grouped table sits pl-5 further in than a loose one.
                         prefix ? 'pl-7' : 'pl-2',
                         'hover:bg-accent/60 focus-visible:ring-1 focus-visible:ring-ring',
-                        active && 'bg-accent text-accent-foreground',
+                        // The open table stands apart from a hovered one: a primary tint, a bar on its edge
+                        // and a heavier name.
+                        active &&
+                            'bg-primary/12 font-medium text-foreground shadow-[inset_2px_0_0_var(--primary)] hover:bg-primary/16',
                     )}
                 >
                     <Icon
                         role="img"
                         aria-label={table.kind === 'view' ? 'View' : 'Table'}
-                        className="size-3.5 shrink-0 text-muted-foreground"
+                        className={cn(
+                            'size-3.5 shrink-0',
+                            active ? 'text-primary' : 'text-muted-foreground',
+                        )}
                     />
                     {/* The space keeps name and count apart in the row's text. */}
                     <span className="min-w-0 flex-1 truncate">
