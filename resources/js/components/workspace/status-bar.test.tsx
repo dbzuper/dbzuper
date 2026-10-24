@@ -195,6 +195,7 @@ describe('StatusBar', () => {
     it('toggles the SQL dock', () => {
         renderBar();
         const dock = screen.getByRole('button', { name: /^SQL/ });
+        expect(dock).toHaveTextContent('SQL Ctrl J');
         expect(dock).toHaveAttribute('aria-pressed', 'false');
         fireEvent.click(dock);
         expect(useWorkspace.getState().dockOpen).toBe(true);

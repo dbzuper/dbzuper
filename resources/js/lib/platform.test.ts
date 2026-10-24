@@ -48,9 +48,9 @@ describe('tabFocusShortcutHint', () => {
 describe('dockShortcutHint', () => {
     afterEach(() => vi.unstubAllGlobals());
 
-    it('reads ⌃J off a Mac and ⌘J on one', () => {
+    it('reads Ctrl J off a Mac and ⌘J on one', () => {
         stubNavigator({ platform: 'Win32' });
-        expect(dockShortcutHint()).toBe('⌃J');
+        expect(dockShortcutHint()).toBe('Ctrl J');
         stubNavigator({ platform: 'MacIntel' });
         expect(dockShortcutHint()).toBe('⌘J');
     });
