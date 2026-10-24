@@ -33,6 +33,7 @@ import { pendingKey, usePending } from '@/editing/pending-store';
 import {
     boolValue,
     columnType,
+    committedValue,
     editorText,
     isBooleanType,
     isJsonType,
@@ -273,6 +274,8 @@ type FieldEdit = {
     /** A date or datetime column, which gets a calendar button beside its input. */
     date: DateKind | null;
     dialect: GridEditing['dialect'];
+    /** What committing `text` stages, or why it can't (an emptied NOT NULL column); see `committedValue`. */
+    committed: (text: string) => { value: string | null } | { error: string };
     stage: (value: string | null) => void;
     revert: () => void;
     /** Keeps an open draft flushable (Review & commit, stepping rows); returns the unregister. */
@@ -307,19 +310,25 @@ function EditableField({
         /[\r\n]/.test(base) ||
         base.length > MULTI_LINE_CHARS;
 
+    /** Why the last commit left the draft unstaged, for the toast when the field goes with it. */
+    const problemRef = useRef<string | null>(null);
     /** Stages the draft; false when it is invalid and stays a draft. */
     const commit = (): boolean => {
         if (draft === undefined) return true;
         // A textarea hands back every line end as \n: the value keeps the line ends it had.
         const value = restoreLineEnds(base, draft);
-        const problem = edit.json ? jsonError(value) : null;
-        if (problem) {
+        const committed = edit.committed(value);
+        const problem =
+            (edit.json ? jsonError(value) : null) ??
+            ('error' in committed ? committed.error : null);
+        problemRef.current = problem;
+        if (problem || 'error' in committed) {
             setError(problem);
             return false;
         }
         setDraft(undefined);
         setError(null);
-        edit.stage(value);
+        edit.stage(committed.value);
         return true;
     };
     const commitRef = useRef(commit);
@@ -333,11 +342,15 @@ function EditableField({
         [hasDraft, register],
     );
     // A draft still open when the field goes (the drawer closes or moves on) is staged; one that can't be (invalid
-    // JSON) is gone with the field, so say so rather than drop it silently.
+    // JSON, an emptied NOT NULL column) is gone with the field, so say so rather than drop it silently.
     useEffect(
         () => () => {
             if (!commitRef.current())
-                toast.error(`${column}: invalid JSON, not staged`);
+                toast.error(
+                    edit.json
+                        ? `${column}: invalid JSON, not staged`
+                        : `${column}: ${problemRef.current}`,
+                );
         },
         // The field is keyed by its column: `column` never changes while it is mounted.
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -658,6 +671,7 @@ export function RowDrawer({
             bool: isBooleanType(type),
             date: dateKind({ type_name: type ?? '' }),
             dialect: rowEditing.dialect,
+            committed: (text) => committedValue(rowEditing, name, text),
             stage: (next) =>
                 usePending
                     .getState()

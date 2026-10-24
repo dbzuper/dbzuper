@@ -876,3 +876,83 @@ describe('RowDrawer date fields', () => {
         );
     });
 });
+
+describe('RowDrawer clearing a field', () => {
+    const ref = refOf({ key: { id: 1 } });
+    const pending = () => usePending.getState().byTable['1:orders'] ?? {};
+    const setupClear = () =>
+        setup({
+            columns: [
+                col('orders', 'id', 'integer'),
+                col('orders', 'created_by', 'integer'),
+                col('orders', 'qty', 'integer'),
+                col('orders', 'label', 'varchar'),
+            ],
+            row: [1, 7, 3, 'x'],
+            editing: {
+                connectionId: 1,
+                table: 'orders',
+                dialect: 'mysql',
+                rowIds: [{ key: { id: 1 } }],
+                locked: [[]],
+                shortened: [[]],
+                readOnlyColumns: [],
+                rowReason: null,
+                tableColumns: [
+                    idColumn,
+                    plain('created_by', 'integer'),
+                    { ...plain('qty', 'integer'), nullable: false },
+                    plain('label', 'varchar'),
+                ],
+            },
+            rowIndex: 0,
+        });
+    const field = (name: string) => screen.getByRole('textbox', { name });
+
+    beforeEach(() => {
+        usePending.setState({ byTable: {}, errors: {} });
+        toast.error.mockReset();
+    });
+
+    it('stages NULL for a nullable integer', () => {
+        setupClear();
+        fireEvent.change(field('created_by'), { target: { value: '' } });
+        fireEvent.blur(field('created_by'));
+        expect(pending()[ref]).toMatchObject({
+            kind: 'update',
+            values: { created_by: null },
+        });
+    });
+
+    it('keeps an emptied NOT NULL integer unstaged with the error tied to the field', () => {
+        setupClear();
+        const qty = field('qty');
+        fireEvent.change(qty, { target: { value: '' } });
+        fireEvent.keyDown(qty, { key: 'Enter' });
+        expect(pending()).toEqual({});
+        expect(qty).toHaveValue('');
+        expect(qty).toHaveAttribute('aria-invalid', 'true');
+        const error = screen.getByRole('alert');
+        expect(error).toHaveTextContent(
+            "This column can't be empty: enter a value or revert",
+        );
+        expect(qty.getAttribute('aria-describedby')).toContain(error.id);
+    });
+
+    it('says an emptied NOT NULL field was not staged when the drawer leaves the row', () => {
+        const { unmount } = setupClear();
+        fireEvent.change(field('qty'), { target: { value: '' } });
+        unmount();
+        expect(pending()).toEqual({});
+        expect(toast.error).toHaveBeenCalledWith(
+            "qty: This column can't be empty: enter a value or revert",
+        );
+    });
+
+    it('stages an empty string for a varchar', () => {
+        setupClear();
+        fireEvent.change(field('label'), { target: { value: '' } });
+        fireEvent.blur(field('label'));
+        expect(pending()[ref]).toMatchObject({ values: { label: '' } });
+    });
+});

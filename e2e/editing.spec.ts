@@ -422,6 +422,44 @@ test('editing: set a datetime in a grid cell with the date picker, then discard'
     await expect(cell('2026-10-20 12:00:00')).toHaveCount(0);
 });
 
+test('editing: clearing a nullable integer in the row drawer stages NULL, then discard', async () => {
+    // users.group_id is a nullable unsignedBigInteger in the commerce demo.
+    await openTable('users');
+    await panel().getByRole('button', { name: 'Open row' }).first().click();
+    const drawer = page.getByRole('complementary', { name: 'Row details' });
+    await expect(
+        drawer.getByRole('heading', { name: 'users · 1' }),
+    ).toBeVisible();
+    const field = drawer.getByRole('textbox', {
+        name: 'group_id',
+        exact: true,
+    });
+    await expect(field).toHaveValue('1');
+    await field.fill('');
+    await page.keyboard.press('Enter');
+    await expect(pendingBar()).toHaveText(
+        '1 pending change · 0 new · 1 edited · 0 deleted',
+    );
+    await expect(field).toHaveAttribute('placeholder', 'NULL');
+
+    await panel().getByRole('button', { name: 'Review & commit…' }).click();
+    await expect(review().locator('pre')).toHaveText(
+        /^UPDATE "users" SET "group_id" = NULL WHERE "id" = 1/i,
+    );
+    await review().getByRole('button', { name: 'Back' }).click();
+    await expect(review()).toHaveCount(0);
+
+    await panel().getByRole('button', { name: 'Discard', exact: true }).click();
+    await page
+        .getByRole('dialog', { name: /^Discard 1 pending change/ })
+        .getByRole('button', { name: 'Discard', exact: true })
+        .click();
+    await expect(pendingBar()).toHaveCount(0);
+    await expect(field).toHaveValue('1');
+    await drawer.getByRole('button', { name: 'Close row details' }).click();
+    await expect(drawer).toHaveCount(0);
+});
+
 test('editing: a read-only connection shows no editing', async () => {
     await page.goto('/connections/create');
     await page.getByLabel('Name', { exact: true }).fill('Editing read-only');

@@ -1233,3 +1233,107 @@ describe('editing a date cell', () => {
         expect(pending()).toEqual({});
     });
 });
+
+describe('clearing a cell', () => {
+    const meta = (name: string, type_name: string, nullable = true) => ({
+        name,
+        type: type_name,
+        type_name,
+        nullable,
+        default: null,
+        auto_increment: false,
+        comment: null,
+    });
+    const ref = refOf({ key: { id: 1 } });
+    const pending = () => usePending.getState().byTable['1:things'] ?? {};
+    /** A grid of one column (jsdom renders only the first few) holding `value` in its one row. */
+    const renderColumn = (column: ReturnType<typeof meta>, value: QueryCell) =>
+        render(
+            <div style={{ blockSize: 400 }}>
+                <ResultGrid
+                    columns={[
+                        {
+                            name: column.name,
+                            type: column.type_name,
+                            table: 'things',
+                        },
+                    ]}
+                    rows={[[value]]}
+                    editing={{
+                        connectionId: 1,
+                        table: 'things',
+                        dialect: 'mysql',
+                        rowIds: [{ key: { id: 1 } }],
+                        locked: [[]],
+                        shortened: [[]],
+                        readOnlyColumns: [],
+                        rowReason: null,
+                        tableColumns: [column],
+                    }}
+                />
+            </div>,
+        );
+    const clear = (text: string | RegExp) => {
+        fireEvent.doubleClick(screen.getByRole('gridcell', { name: text }));
+        const input = screen.getByRole('textbox');
+        fireEvent.change(input, { target: { value: '' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        return input;
+    };
+
+    beforeEach(() => usePending.setState({ byTable: {}, errors: {} }));
+
+    it('stages NULL for a nullable integer', () => {
+        renderColumn(meta('created_by', 'int'), 7);
+        clear('7');
+        expect(screen.queryByRole('textbox')).toBeNull();
+        expect(pending()[ref]).toMatchObject({
+            kind: 'update',
+            values: { created_by: null },
+        });
+    });
+
+    it('stages NULL for a nullable date', () => {
+        renderColumn(meta('due', 'date'), '2026-10-01');
+        clear('2026-10-01');
+        expect(pending()[ref]).toMatchObject({ values: { due: null } });
+    });
+
+    it('keeps the editor open with an error for a NOT NULL integer, staging nothing', () => {
+        renderColumn(meta('qty', 'int', false), 3);
+        const input = clear('3');
+        expect(screen.getByRole('textbox')).toBe(input);
+        expect(input).toHaveAttribute('aria-invalid', 'true');
+        expect(screen.getByRole('alert')).toHaveTextContent(
+            "This column can't be empty: enter a value or revert",
+        );
+        expect(pending()).toEqual({});
+    });
+
+    it.each([
+        ['varchar', 'label', 'x'],
+        ['enum', 'status', 'open'],
+    ])('stages an empty string for a %s', (type, name, value) => {
+        renderColumn(meta(name, type), value);
+        clear(value);
+        expect(pending()[ref]).toMatchObject({ values: { [name]: '' } });
+    });
+
+    it('stages NULL for a typed integer cleared in a new row', () => {
+        const added = usePending.getState().addRow(1, 'things');
+        renderColumn(meta('created_by', 'int'), 7);
+        fireEvent.doubleClick(
+            screen.getByRole('gridcell', { name: /\(default\)/ }),
+        );
+        const input = screen.getByRole('textbox');
+        fireEvent.change(input, { target: { value: '5' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(pending()[added]).toMatchObject({ values: { created_by: '5' } });
+        clear('5');
+        expect(pending()[added]).toEqual({
+            kind: 'insert',
+            ref: added,
+            values: { created_by: null },
+        });
+    });
+});

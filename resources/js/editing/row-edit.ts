@@ -39,6 +39,36 @@ export const isJsonType = (type: string | null) => /json/i.test(type ?? '');
 export const isBinaryType = (type: string | null) =>
     /blob|binary|bytea|varbinary|image/i.test(type ?? '');
 
+/**
+ * Columns where empty text is a value, the empty string: the server's text kind (ColumnKind::Text) plus MySQL's
+ * enum and set. Anywhere else (numbers, dates, uuid…) empty text means nothing, so it can't be staged as is.
+ */
+export const isTextLikeType = (type: string | null) => {
+    const t = (type ?? '').trim().toLowerCase();
+    return (
+        /char|text|json|xml|clob|citext/.test(t) || t === 'enum' || t === 'set'
+    );
+};
+
+export const EMPTY_NOT_NULL =
+    "This column can't be empty: enter a value or revert";
+
+/**
+ * What an editor's committed text stages in `column` (grid cell or drawer field, existing or new row): the text,
+ * except that emptied text in a column that isn't text-like means NULL, or an error when the column is NOT NULL.
+ * A column the table's schema doesn't list keeps its text.
+ */
+export function committedValue(
+    editing: GridEditing,
+    column: string,
+    text: string | null,
+): { value: string | null } | { error: string } {
+    const schema = editing.tableColumns.find((c) => c.name === column);
+    if (text !== '' || !schema || isTextLikeType(schema.type_name))
+        return { value: text };
+    return schema.nullable ? { value: null } : { error: EMPTY_NOT_NULL };
+}
+
 /** Why a JSON value can't be staged, or null when it parses. */
 export function jsonError(text: string): string | null {
     try {
@@ -114,7 +144,7 @@ export const truthy = (value: QueryCell | undefined) =>
     value === 1 ||
     (typeof value === 'string' && /^(1|t|true)$/i.test(value));
 
-/** The text an editor starts from (NULL edits as empty text; empty text stages an empty string). */
+/** The text an editor starts from (NULL edits as empty text; what empty text stages is `committedValue`'s rule). */
 export const editorText = (value: QueryCell | undefined) =>
     value === null || value === undefined ? '' : cellText(value);
 
