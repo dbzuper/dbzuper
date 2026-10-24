@@ -8,7 +8,11 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse } from '@/browse/browse-store';
-import { readGroupPrefs, writeGroupingEnabled } from '@/browse/local-prefs';
+import {
+    readGroupPrefs,
+    writeGroupingEnabled,
+    writeGroupPrefs,
+} from '@/browse/local-prefs';
 import { usePins } from '@/browse/pins-store';
 import type { SchemaSnapshot } from '@/types/schema';
 import { tableTabOf } from '@/test/browse-tabs';
@@ -464,6 +468,29 @@ describe('TableSidebar prefix groups', () => {
             within(all).getByRole('treeitem', { name: /^courier_zones/ }),
         ).toHaveAttribute('aria-current', 'true');
         expect(readGroupPrefs(1).open).toEqual([]);
+    });
+
+    it("starts another connection from its own groups, not the previous connection's", () => {
+        const two = {
+            ...snapshot,
+            tables: ['courier_rates', 'courier_zones', 'ship_a', 'ship_b'].map(
+                (n) => table(n),
+            ),
+        } as SchemaSnapshot;
+        writeGroupPrefs(1, { open: ['courier_'] });
+        useBrowse.getState().openTable(2, 'ship_a');
+        const view = render(
+            <TableSidebar connectionId={1} snapshot={two} actions={actions} />,
+        );
+        expect(group()).toHaveAttribute('aria-expanded', 'true');
+        view.rerender(
+            <TableSidebar connectionId={2} snapshot={two} actions={actions} />,
+        );
+        expect(group()).toHaveAttribute('aria-expanded', 'false');
+        expect(
+            screen.getByRole('treeitem', { name: 'ship_ group, 2 tables' }),
+        ).toHaveAttribute('aria-expanded', 'true');
+        expect(readGroupPrefs(2).open).toEqual([]);
     });
 
     it('opens the active table group on mount', () => {

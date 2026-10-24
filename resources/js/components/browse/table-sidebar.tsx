@@ -345,12 +345,12 @@ export function TableSidebar({
         connectionId,
         open: new Set(readGroupPrefs(connectionId).open),
     }));
-    if (groups.connectionId !== connectionId)
-        setGroups({
-            connectionId,
-            open: new Set(readGroupPrefs(connectionId).open),
-        });
-    const openGroups = groups.open;
+    // Another connection starts from its own saved groups, in this render too (not the old set).
+    const groupsStale = groups.connectionId !== connectionId;
+    const openGroups = groupsStale
+        ? new Set(readGroupPrefs(connectionId).open)
+        : groups.open;
+    if (groupsStale) setGroups({ connectionId, open: openGroups });
     const [dragWidth, setDragWidth] = useState<number | null>(null);
     const width = useSidebarPrefs((s) => s.width);
     const collapsed = useSidebarPrefs((s) => s.collapsed);
@@ -415,11 +415,15 @@ export function TableSidebar({
     }, [tableGroups]);
 
     // On mount and whenever the active table changes, its group opens (not saved to the prefs).
-    const [seenActive, setSeenActive] = useState<string | null | undefined>(
-        undefined,
-    );
-    if (seenActive !== activeTable) {
-        setSeenActive(activeTable);
+    const [seenActive, setSeenActive] = useState<{
+        connectionId: number;
+        table: string | null;
+    } | null>(null);
+    if (
+        seenActive?.connectionId !== connectionId ||
+        seenActive.table !== activeTable
+    ) {
+        setSeenActive({ connectionId, table: activeTable });
         const prefix = activeTable ? groupOf.get(activeTable) : undefined;
         if (prefix && !openGroups.has(prefix))
             setGroups({
