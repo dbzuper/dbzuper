@@ -98,3 +98,54 @@ export function findProblems(manifest, modules) {
     }
     return [...problems];
 }
+
+/** Graphite's font entry: the one place its fonts may be. Every other entry must stay free of them. */
+export const lazyFontEntry = 'resources/css/fonts-graphite.css';
+
+/** A Graphite font file (as a CSS url() or an emitted asset name). Family names in tokens do not match. */
+const lazyFontFile = /(?:schibsted-grotesk|jetbrains-mono)-[\w-]*\.woff2/;
+
+/**
+ * The module rules above only see JavaScript modules, so CSS gets its own check. For every entry but the font
+ * entry, collects the stylesheets that load eagerly (a CSS entry's own file, and the `css` of every chunk its
+ * static imports reach) and fails when one is the font stylesheet or its content references a Graphite font
+ * file (an `@import` into app.css, or a plain JS import of the font CSS merged into a chunk's stylesheet).
+ * `assets` are not followed: a JS chunk lists the `?url` reference there without loading it.
+ */
+export function findFontProblems(manifest, readCss) {
+    const problems = new Set();
+    for (const key of entryKeys(manifest)) {
+        // The `?url` import adds a second manifest key for the same entry, by absolute path.
+        const entry = key.replaceAll(String.fromCharCode(92), '/');
+        if (entry === lazyFontEntry || entry.endsWith(`/${lazyFontEntry}`))
+            continue;
+        const seen = new Set();
+        const walk = (k) => {
+            if (seen.has(k) || !manifest[k]) return;
+            seen.add(k);
+            for (const next of manifest[k].imports ?? []) walk(next);
+        };
+        walk(key);
+        const stylesheets = new Set();
+        for (const k of seen) {
+            const chunk = manifest[k];
+            if (chunk.file.endsWith('.css')) stylesheets.add(chunk.file);
+            for (const css of chunk.css ?? []) stylesheets.add(css);
+        }
+        for (const file of stylesheets) {
+            if (file.includes('fonts-graphite')) {
+                problems.add(
+                    `${key} eagerly loads ${file}, Graphite's font stylesheet`,
+                );
+                continue;
+            }
+            const font = lazyFontFile.exec(readCss(file));
+            if (font) {
+                problems.add(
+                    `${key} eagerly loads ${file}, which references the Graphite font ${font[0]}`,
+                );
+            }
+        }
+    }
+    return [...problems];
+}

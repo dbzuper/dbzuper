@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     bannedPackage,
     chunkModulesFile,
+    findFontProblems,
     findProblems,
 } from '../../../scripts/chunk-rules.mjs';
 
@@ -117,6 +118,104 @@ describe('findProblems', () => {
         const modules = { 'assets/app.js': [] };
         expect(findProblems(manifest, modules)).toEqual([
             expect.stringContaining('no entry in chunk-modules.json'),
+        ]);
+    });
+});
+
+describe('findFontProblems', () => {
+    const fontFace =
+        "@font-face{font-family:'Schibsted Grotesk Variable';src:url(/build/assets/schibsted-grotesk-latin-wght-normal-Bb8.woff2)}";
+
+    /** The real build's shape: Graphite's CSS is its own entry, app.tsx only holds its `?url` reference. */
+    const manifest = (overrides: Record<string, object> = {}) => ({
+        'resources/css/app.css': { file: 'assets/app.css', isEntry: true },
+        'resources/js/app.tsx': {
+            file: 'assets/app.js',
+            isEntry: true,
+            imports: ['_shared.js'],
+            css: ['assets/app-js.css'],
+            assets: [
+                'assets/fonts-graphite.css',
+                'assets/schibsted-grotesk-latin-wght-normal-Bb8.woff2',
+            ],
+        },
+        '_shared.js': { file: 'assets/shared.js' },
+        'resources/js/pages/login.tsx': {
+            file: 'assets/login.js',
+            imports: ['_shared.js'],
+        },
+        'resources/css/fonts-graphite.css': {
+            file: 'assets/fonts-graphite.css',
+            isEntry: true,
+            assets: ['assets/schibsted-grotesk-latin-wght-normal-Bb8.woff2'],
+        },
+        // The `?url` import's second key for the same entry, by absolute path.
+        'C:/app/resources/css/fonts-graphite.css': {
+            file: 'assets/fonts-graphite.css',
+            isEntry: true,
+        },
+        ...overrides,
+    });
+
+    const files: Record<string, string> = {
+        'assets/app.css':
+            "[data-theme=graphite]{--font-sans:'Schibsted Grotesk Variable',sans-serif}",
+        'assets/app-js.css':
+            '@font-face{src:url(/build/assets/geist-latin-wght-normal-Bg.woff2)}',
+        'assets/fonts-graphite.css': fontFace,
+        'assets/shared.css': '',
+    };
+    const read = (file: string) => files[file] ?? '';
+
+    it('passes on the real shape: the fonts only in their own entry, a ?url reference in app.tsx', () => {
+        expect(findFontProblems(manifest(), read)).toEqual([]);
+    });
+
+    it("fails when the font stylesheet is in app.tsx's css list", () => {
+        const m = manifest();
+        m['resources/js/app.tsx'] = {
+            ...m['resources/js/app.tsx'],
+            css: ['assets/app-js.css', 'assets/fonts-graphite.css'],
+        };
+
+        expect(findFontProblems(m, read)).toEqual([
+            expect.stringContaining(
+                "resources/js/app.tsx eagerly loads assets/fonts-graphite.css, Graphite's font stylesheet",
+            ),
+        ]);
+    });
+
+    it('fails when app.css imports a Graphite font', () => {
+        expect(
+            findFontProblems(manifest(), (file) =>
+                file === 'assets/app.css' ? fontFace : read(file),
+            ),
+        ).toEqual([
+            expect.stringContaining(
+                'resources/css/app.css eagerly loads assets/app.css, which references the Graphite font schibsted-grotesk-latin-wght-normal-Bb8.woff2',
+            ),
+        ]);
+    });
+
+    it("fails when a page's static import merges the font CSS into its stylesheet", () => {
+        const m = manifest({
+            '_shared.js': {
+                file: 'assets/shared.js',
+                css: ['assets/shared.css'],
+            },
+        });
+        const fonts = (file: string) =>
+            file === 'assets/shared.css'
+                ? '@font-face{src:url(./jetbrains-mono-latin-wght-normal-B9.woff2)}'
+                : read(file);
+
+        expect(findFontProblems(m, fonts)).toEqual([
+            expect.stringContaining(
+                'resources/js/app.tsx eagerly loads assets/shared.css',
+            ),
+            expect.stringContaining(
+                'resources/js/pages/login.tsx eagerly loads assets/shared.css',
+            ),
         ]);
     });
 });
