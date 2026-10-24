@@ -381,6 +381,54 @@ describe('EditDatePicker', () => {
         expect(onApply).toHaveBeenCalledWith('9999-12-31');
     });
 
+    it.each([
+        ['2026-10-01 12:00:00+00', '2026-10-23 07:00:00+00'],
+        ['2026-10-01 12:00:00Z', '2026-10-23 07:00:00Z'],
+        ['2026-10-01 12:00:00+08:00', '2026-10-23 15:00:00+08:00'],
+        ['2026-10-01 12:00:00+0800', '2026-10-23 15:00:00+0800'],
+        ['2026-10-01 12:00:00-05:30', '2026-10-23 01:30:00-05:30'],
+    ])('sets Now as the current moment in the zone of %s', (value, applied) => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        // An instant: the result must not depend on the runner's time zone.
+        vi.setSystemTime(new Date('2026-10-23T07:00:00Z'));
+        const { onApply } = renderEdit({ value });
+        fireEvent.click(screen.getByRole('button', { name: 'Now' }));
+        apply();
+        expect(onApply).toHaveBeenCalledWith(applied);
+    });
+
+    it('gives a date-only value midnight before a kept zone, never a bare date with a zone', () => {
+        const { onApply } = renderEdit({ value: '2026-10-01 12:00:00+08' });
+        type('Date', '2026-10-15');
+        fireEvent.change(screen.getByLabelText('Time'), {
+            target: { value: '' },
+        });
+        apply();
+        expect(onApply).toHaveBeenCalledWith('2026-10-15 00:00:00+08');
+    });
+
+    it('drops the zone on a date column', () => {
+        const { onApply } = renderEdit({
+            kind: 'date',
+            value: '2026-10-01 12:00:00+08',
+        });
+        type('Date', '2026-10-15');
+        apply();
+        expect(onApply).toHaveBeenCalledWith('2026-10-15');
+    });
+
+    it('replaces junk after the date with the picked day', () => {
+        const { onApply } = renderEdit();
+        type('Date', '2026-10-01xyz');
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+        fireEvent.click(
+            screen.getByRole('button', { name: /^15 October 2026/ }),
+        );
+        expect(screen.getByLabelText('Date')).toHaveValue('2026-10-15');
+        apply();
+        expect(onApply).toHaveBeenCalledWith('2026-10-15');
+    });
+
     it('cancels without applying', () => {
         const { onApply, onCancel } = renderEdit();
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));

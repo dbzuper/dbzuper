@@ -339,9 +339,35 @@ function splitZone(value: string): { local: string; zone: string } {
     return m ? { local: m[1], zone: m[2] } : { local: value, zone: '' };
 }
 
-/** The current local time as `HH:MM:SS`. */
-const clock = (d: Date) =>
-    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+/** A zone suffix's offset from UTC in minutes (`Z` is 0; `+08`, `+0800`, `+08:00`, `-05:30`). */
+function zoneOffset(zone: string): number {
+    const m = /([+-])(\d{2}):?(\d{2})?$/.exec(zone.trim());
+    if (!m) return 0;
+    const minutes = Number(m[2]) * 60 + Number(m[3] ?? '0');
+    return m[1] === '-' ? -minutes : minutes;
+}
+
+/**
+ * Now as Date and Time fields: the browser's local wall time, or, when a zone is kept, the current moment in that
+ * zone's offset (the suffix written back must describe the same instant).
+ */
+function nowFields(zone: string | null): End {
+    const d = new Date();
+    if (zone === null) {
+        return {
+            date: isoDay(d),
+            time: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`,
+        };
+    }
+    const z = new Date(d.getTime() + zoneOffset(zone) * 60_000);
+    return {
+        date: `${String(z.getUTCFullYear()).padStart(4, '0')}-${pad(z.getUTCMonth() + 1)}-${pad(z.getUTCDate())}`,
+        time: `${pad(z.getUTCHours())}:${pad(z.getUTCMinutes())}:${pad(z.getUTCSeconds())}`,
+    };
+}
+
+/** What may follow the date in the Date field and survive a picked day: a time, with seconds and a fraction. */
+const TIME_REST = /^[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?$/;
 
 /**
  * The picker for editing a date or datetime cell: a calendar, the typeable Date (and Time) field, Now or Today,
@@ -364,7 +390,8 @@ export function EditDatePicker({
         const parts = splitZone(value ?? '');
         const initial = normalizeDateInput(parts.local, kind);
         return {
-            zone: parts.zone,
+            // A zone only goes with a time: a date column never keeps one.
+            zone: withTime ? parts.zone : '',
             start: 'value' in initial ? split(initial.value, withTime) : null,
         };
     });
@@ -376,7 +403,11 @@ export function EditDatePicker({
     );
 
     const apply = () => {
-        if (current !== null) onApply(`${current}${zone}`);
+        if (current === null) return;
+        // A kept zone needs a time: a date-only value becomes midnight in that zone.
+        const timed =
+            zone && isDateOnly(current) ? `${current} 00:00:00` : current;
+        onApply(`${timed}${zone}`);
     };
     const typeDate = (date: string) => {
         setEnd({ ...end, date });
@@ -384,9 +415,9 @@ export function EditDatePicker({
         if (typed) setMonth(calendarDay(typed));
     };
     const now = () => {
-        const d = new Date();
-        setEnd({ date: isoDay(d), time: withTime ? clock(d) : '' });
-        setMonth(d);
+        const fields = nowFields(zone ? zone : null);
+        setEnd(withTime ? fields : { date: fields.date, time: '' });
+        setMonth(calendarDay(fields.date));
     };
 
     return (
@@ -396,9 +427,14 @@ export function EditDatePicker({
                 onMonthChange={setMonth}
                 selected={current ? calendarDay(current) : undefined}
                 // A fractional time stays in the Date field: the day changes, the time (and fraction) stays.
-                onSelect={(d) =>
-                    setEnd({ ...end, date: isoDay(d) + end.date.slice(10) })
-                }
+                // Anything else after the date is replaced by the day.
+                onSelect={(d) => {
+                    const rest = end.date.slice(10);
+                    setEnd({
+                        ...end,
+                        date: isoDay(d) + (TIME_REST.test(rest) ? rest : ''),
+                    });
+                }}
             />
             <EndField
                 label="Date"

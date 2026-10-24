@@ -69,7 +69,7 @@ export function DateEditPopover({
                     ref={triggerRef}
                     type="button"
                     aria-label="Choose date"
-                    title="Choose date"
+                    title="Choose date (Alt+↓)"
                     className={cn(
                         'inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none',
                         className,

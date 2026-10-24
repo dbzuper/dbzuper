@@ -390,6 +390,38 @@ test('editing: set a datetime in the row drawer with the date picker, review, di
     await expect(drawer).toHaveCount(0);
 });
 
+test('editing: set a datetime in a grid cell with the date picker, then discard', async () => {
+    await expect(tab('orders')).toHaveAttribute('aria-selected', 'true');
+    await cell('2026-10-01 12:00:00').first().dblclick();
+    const input = panel().getByRole('textbox', {
+        name: 'created_at',
+        exact: true,
+    });
+    await expect(input).toBeFocused();
+    await panel().getByRole('button', { name: 'Choose date' }).click();
+    const picker = page.getByRole('dialog', { name: 'Choose a date' });
+    await picker.getByRole('button', { name: /^20 October 2026/ }).click();
+    await picker.getByRole('button', { name: 'Apply' }).click();
+    await expect(picker).toHaveCount(0);
+    await expect(input).toHaveCount(0);
+    await expect(
+        panel().locator(
+            '.rdg-cell-edited [data-edited="true"][title="Original: 2026-10-01 12:00:00"]',
+        ),
+    ).toContainText('2026-10-20 12:00:00');
+    await expect(pendingBar()).toHaveText(
+        '1 pending change · 0 new · 1 edited · 0 deleted',
+    );
+
+    await panel().getByRole('button', { name: 'Discard', exact: true }).click();
+    await page
+        .getByRole('dialog', { name: /^Discard 1 pending change/ })
+        .getByRole('button', { name: 'Discard', exact: true })
+        .click();
+    await expect(pendingBar()).toHaveCount(0);
+    await expect(cell('2026-10-20 12:00:00')).toHaveCount(0);
+});
+
 test('editing: a read-only connection shows no editing', async () => {
     await page.goto('/connections/create');
     await page.getByLabel('Name', { exact: true }).fill('Editing read-only');
