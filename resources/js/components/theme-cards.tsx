@@ -17,7 +17,7 @@ function ThemeMiniature({ theme }: { theme: ThemeName }) {
             aria-hidden
             className="flex h-24 gap-[calc(var(--shell-gap)/3)] overflow-hidden rounded-md border border-border bg-shell p-[calc(var(--shell-gap)/3)]"
         >
-            <span className="w-1/4 rounded-[calc(var(--panel-radius)/3)] border-r border-sidebar-border bg-sidebar shadow-[var(--panel-shadow)]">
+            <span className="w-1/4 rounded-[calc(var(--panel-radius)/3)] border-r border-[var(--chrome-edge)] bg-sidebar shadow-[var(--sidebar-shadow)]">
                 <span className="m-1.5 block h-1 w-2/3 rounded-full bg-sidebar-primary" />
                 <span className="mx-1.5 block h-1 w-1/2 rounded-full bg-sidebar-accent" />
             </span>

@@ -114,8 +114,12 @@ describe('theme tokens', () => {
                     expect(token(body, '--shell-gap')).toBe('0px');
                     expect(token(body, '--panel-radius')).toBe('0px');
                     expect(token(body, '--panel-shadow')).toBe('0 0 #0000');
+                    expect(token(body, '--chrome-edge')).toBe('var(--border)');
                 } else {
-                    // Panels lifted off a canvas: 8px gap, 12px radius, a shadow.
+                    // Panels lifted off a canvas: 8px gap, 12px radius, a shadow. The sidebar stays flat on
+                    // the canvas (version A): no edge and no shadow.
+                    expect(token(body, '--chrome-edge')).toBe('transparent');
+                    expect(token(body, '--sidebar-shadow')).toBe('0 0 #0000');
                     expect(token(body, '--shell')).not.toBe(
                         'var(--background)',
                     );

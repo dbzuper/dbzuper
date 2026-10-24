@@ -51,7 +51,7 @@ export function LeftRail({ connectionId }: { connectionId: number }) {
         <TooltipProvider delayDuration={0}>
             <nav
                 aria-label="Workspace views"
-                className="flex w-12 shrink-0 flex-col items-center gap-1 border-r py-2"
+                className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-[var(--chrome-edge)] py-2"
             >
                 {item('Universe', Orbit, universeActive, () =>
                     useBrowse.getState().activate(connectionId, 'universe'),
