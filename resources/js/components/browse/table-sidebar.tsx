@@ -36,6 +36,8 @@ const PIN_DRAG_TYPE = 'text/x-dbsuperb-pin';
 
 const NO_PINS: Pin[] = [];
 const NO_RECENTS: string[] = [];
+/** Recent shows the latest few unpinned tables; the store keeps more (MAX_RECENTS) so pins can be skipped. */
+const SIDEBAR_RECENTS = 5;
 
 type Section = 'pinned' | 'recent' | 'all';
 /** A tree row: a table, or (table null) a section header. `missing` marks a pin whose table no longer exists. */
@@ -292,11 +294,15 @@ export function TableSidebar({
         [matches, snapshot],
     );
     const pinnedTables = useMemo(() => pins.map((p) => p.table), [pins]);
-    const recentTables = useMemo(
-        () => recents.filter((t) => byName.has(t)),
-        [recents, byName],
-    );
     const pinnedSet = useMemo(() => new Set(pinnedTables), [pinnedTables]);
+    // Pinned tables are already one click away, so Recent skips them; it stays short so All tables keeps its room.
+    const recentTables = useMemo(
+        () =>
+            recents
+                .filter((t) => byName.has(t) && !pinnedSet.has(t))
+                .slice(0, SIDEBAR_RECENTS),
+        [recents, byName, pinnedSet],
+    );
 
     const showPinned = !searching && pins.length > 0;
     const showRecent = !searching && recentTables.length > 0;
