@@ -16,6 +16,7 @@
     --radius-sm: calc(var(--radius) - 4px);
 
     --color-background: var(--background);
+    --color-shell: var(--shell);
     --color-foreground: var(--foreground);
 
     --color-card: var(--card);
@@ -64,7 +65,8 @@
     --color-sidebar-ring: var(--sidebar-ring);
 }
 
-:root {
+:root,
+[data-theme='classic'] {
     /* Warm paper */
     --background: oklch(0.97 0.008 90);
     --foreground: oklch(0.22 0.015 80);
@@ -102,9 +104,16 @@
     --sidebar-accent-foreground: oklch(0.25 0.015 80);
     --sidebar-border: oklch(0.88 0.012 85);
     --sidebar-ring: oklch(0.6 0.1 185);
+
+    /* Workspace shell: the canvas behind the panels, and how the panels sit on it */
+    --shell: var(--background);
+    --shell-gap: 0px;
+    --panel-radius: 0px;
+    --panel-shadow: none;
 }
 
-.dark {
+.dark,
+.dark [data-theme='classic'] {
     /* Deep ink (matches --universe-bg #0b0e14) */
     --background: oklch(0.165 0.014 265);
     --foreground: oklch(0.95 0.008 260);
@@ -171,7 +180,8 @@
     }
 }
 
-:root {
+:root,
+[data-theme='classic'] {
     --universe-bg: #f7f5f0;
     --universe-grid: rgba(15, 23, 42, 0.07);
     --universe-accent: #0d9488;
@@ -182,7 +192,8 @@
     --universe-label: #1f2937;
 }
 
-.dark {
+.dark,
+.dark [data-theme='classic'] {
     --universe-bg: #0b0e14;
     --universe-grid: rgba(148, 163, 184, 0.08);
     --universe-accent: #2dd4bf;
@@ -367,5 +378,15 @@
     }
     .row-drawer[data-motion='change'] > .row-drawer-header {
         animation-duration: 600ms !important;
+    }
+}
+
+/* Narrow screens get the full width in every theme. Keep this the last rule: its specificity ties or
+   beats every theme block, and coming last decides the ties. */
+@media (width < 48rem) {
+    :root[data-theme],
+    :root[data-theme].dark {
+        --shell-gap: 0px;
+        --panel-radius: 0px;
     }
 }

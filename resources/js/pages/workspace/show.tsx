@@ -381,7 +381,7 @@ export default function WorkspaceShow({
     const onUniverse = active.kind === 'universe';
 
     return (
-        <div className="flex h-dvh flex-col bg-background text-foreground">
+        <div className="flex h-dvh flex-col bg-shell text-foreground">
             <Head title={connection.name} />
             <SkipLink />
             <PendingGuard />
@@ -413,7 +413,9 @@ export default function WorkspaceShow({
                 </div>
             )}
 
-            <div className="flex min-h-0 flex-1">
+            {/* The shell tokens let a theme float the sidebar and main panel on a canvas; Classic keeps
+                them flush (no gap, radius or shadow). */}
+            <div className="flex min-h-0 flex-1 gap-[var(--shell-gap)] p-[var(--shell-gap)]">
                 <LeftRail connectionId={connection.id} />
                 {!sidebarCollapsed && snapshot && actions && (
                     <TableSidebar
@@ -427,7 +429,7 @@ export default function WorkspaceShow({
                     id="main"
                     tabIndex={-1}
                     data-testid="workspace-main"
-                    className="relative flex min-w-0 flex-1 flex-col focus:outline-none"
+                    className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[var(--panel-radius)] bg-background shadow-[var(--panel-shadow)] focus:outline-none"
                 >
                     {error && (
                         <div className="absolute inset-x-0 top-0 z-10 m-4 flex items-center gap-3 rounded-md border border-destructive/40 bg-background px-3 py-2 text-sm">

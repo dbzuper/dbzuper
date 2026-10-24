@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => ($appearance ?? 'dark') == 'dark'])>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => ($appearance ?? 'dark') == 'dark']) data-theme="{{ $theme ?? 'classic' }}">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -22,16 +22,24 @@
                         document.documentElement.classList.add('dark');
                     }
                 }
+
+                try {
+                    const theme = localStorage.getItem('theme');
+
+                    if (['classic', 'layered', 'graphite'].includes(theme)) {
+                        document.documentElement.dataset.theme = theme;
+                    }
+                } catch (e) {}
             })();
         </script>
 
         {{-- Inline style to set the HTML background color based on our theme in app.css --}}
         <style>
-            html {
+            html[data-theme="classic"] {
                 background-color: #f7f5f0;
             }
 
-            html.dark {
+            html[data-theme="classic"].dark {
                 background-color: #0b0e14;
             }
         </style>
