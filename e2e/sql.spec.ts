@@ -176,7 +176,9 @@ test('records: entry points (result row, table tab row) and tables without a pri
 test('sql: write, run, confirm, inspect results and history', async () => {
     await addSqliteConnection(page, 'SQL flow demo', DEMO);
     await page.getByRole('link', { name: /SQL flow demo/ }).click();
-    await expect(page.getByRole('button', { name: 'SQL' })).toBeVisible();
+    await expect(
+        page.getByRole('button', { name: 'SQL', exact: true }),
+    ).toBeVisible();
 
     await page.keyboard.press('Control+j');
     const dock = page.getByRole('region', { name: 'SQL editor' });
@@ -305,7 +307,9 @@ const b64url = (text: string) =>
 test('records: Back/Forward restore the trail without remounting or refetching', async () => {
     await addSqliteConnection(page, 'Records history demo', DEMO);
     await page.getByRole('link', { name: /Records history demo/ }).click();
-    await expect(page.getByRole('button', { name: 'SQL' })).toBeVisible();
+    await expect(
+        page.getByRole('button', { name: 'SQL', exact: true }),
+    ).toBeVisible();
     const workspace = new URL(page.url()).pathname;
 
     // users #1 as the root, built the way the app encodes it.

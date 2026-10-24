@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatRowCount, formatSnapshotAge } from './format';
+import {
+    formatBytes,
+    formatConnectionTarget,
+    formatRowCount,
+    formatSnapshotAge,
+} from './format';
+import type { ConnectionSummary } from '@/types/connection';
 
 describe('formatRowCount', () => {
     it.each([
@@ -40,5 +46,52 @@ describe('formatBytes', () => {
         [5 * 1024 * 1024, '5 MB'],
     ] as const)('formats %s as %s', (input, expected) => {
         expect(formatBytes(input)).toBe(expected);
+    });
+});
+
+describe('formatConnectionTarget', () => {
+    const conn = (c: Partial<ConnectionSummary>) =>
+        ({
+            driver: 'mysql',
+            host: '127.0.0.1',
+            port: 3307,
+            database: 'shop',
+            ...c,
+        }) as ConnectionSummary;
+
+    it('reads host:port/database for a server', () => {
+        expect(formatConnectionTarget(conn({}))).toBe('127.0.0.1:3307/shop');
+    });
+
+    it('reads the file name for SQLite', () => {
+        expect(
+            formatConnectionTarget(
+                conn({
+                    driver: 'sqlite',
+                    host: null,
+                    port: null,
+                    database: '/data/app.sqlite',
+                }),
+            ),
+        ).toBe('app.sqlite');
+        expect(
+            formatConnectionTarget(
+                conn({
+                    driver: 'sqlite',
+                    host: null,
+                    database: 'C:\\db\\x.db',
+                }),
+            ),
+        ).toBe('x.db');
+    });
+
+    it('reads just the database without a host', () => {
+        expect(formatConnectionTarget(conn({ host: null }))).toBe('shop');
+    });
+
+    it('leaves the port out when there is none', () => {
+        expect(formatConnectionTarget(conn({ port: null }))).toBe(
+            '127.0.0.1/shop',
+        );
     });
 });

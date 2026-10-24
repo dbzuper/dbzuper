@@ -15,7 +15,6 @@ describe('WorkspaceHeader shortcut help', () => {
                         color: null,
                     } as never
                 }
-                storedAt={null}
                 loading={false}
                 onRefresh={() => {}}
             />,
@@ -26,5 +25,27 @@ describe('WorkspaceHeader shortcut help', () => {
         expect(btn).toHaveAttribute('aria-expanded', 'true');
         expect(screen.queryByRole('menu')).toBeNull();
         expect(screen.getByText('Close tab')).toBeInTheDocument();
+    });
+});
+
+describe('WorkspaceHeader snapshot age', () => {
+    it('leaves the snapshot age to the status bar', () => {
+        render(
+            <WorkspaceHeader
+                connection={
+                    {
+                        id: 1,
+                        name: 'x',
+                        driver_label: 'MySQL',
+                        read_only: false,
+                        color: null,
+                    } as never
+                }
+                loading={false}
+                onRefresh={() => {}}
+            />,
+        );
+        expect(screen.queryByText(/Snapshot/)).toBeNull();
+        expect(document.querySelector('time')).toBeNull();
     });
 });

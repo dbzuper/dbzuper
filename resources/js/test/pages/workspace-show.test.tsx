@@ -4,6 +4,7 @@ import {
     render,
     screen,
     waitFor,
+    within,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse } from '@/browse/browse-store';
@@ -234,7 +235,15 @@ describe('workspace page', () => {
         expect(
             screen.getByRole('treeitem', { name: /orders/ }),
         ).toBeInTheDocument();
-        expect(screen.getByText('read-only')).toBeInTheDocument();
+        // The header marks it, and so does the status bar.
+        expect(
+            within(screen.getByRole('banner')).getByText('read-only'),
+        ).toBeInTheDocument();
+        expect(
+            within(
+                screen.getByRole('contentinfo', { name: 'Status bar' }),
+            ).getByText('read-only'),
+        ).toBeInTheDocument();
         expect(screen.getByRole('tabpanel')).toHaveAttribute(
             'aria-labelledby',
             screen.getByRole('tab', { name: /Universe/ }).id,

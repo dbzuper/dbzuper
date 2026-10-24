@@ -15,6 +15,8 @@ export type CacheEntry = {
     /** The count failed for a reason other than its cap; the footer says "count unavailable". */
     countFailed?: boolean;
     scrollTop: number;
+    /** The rows request's round trip, in ms (the status bar shows it). */
+    ms?: number;
 };
 
 /** The cache key of the rows request a tab's state asks for. */

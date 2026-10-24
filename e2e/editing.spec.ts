@@ -96,6 +96,14 @@ test('editing: edit a cell, review the UPDATE, commit; the value persists', asyn
         panel().locator('[data-edited="true"][title="Original: pending"]'),
     ).toContainText('shipped');
 
+    // The status bar counts the staged change, and its button opens the same review; Back keeps it staged.
+    const statusBar = page.getByRole('contentinfo', { name: 'Status bar' });
+    await expect(statusBar).toContainText('1 pending change');
+    await statusBar.getByRole('button', { name: '1 pending change' }).click();
+    await expect(review()).toBeVisible();
+    await review().getByRole('button', { name: 'Back' }).click();
+    await expect(review()).toHaveCount(0);
+
     await panel().getByRole('button', { name: 'Review & commit…' }).click();
     await expect(review()).toBeVisible();
     await expect(review().locator('pre')).toHaveText(
