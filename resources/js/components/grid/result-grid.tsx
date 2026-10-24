@@ -69,6 +69,7 @@ import type {
 import { CellDrawer, type DrawerState } from './cell-drawer';
 import { BoolCellEditor, TextCellEditor } from './cell-editors';
 import { RowMenu } from './row-menu';
+import { SelectionBar } from './selection-bar';
 
 /**
  * One grid row. `__i` is the row's index in `rows` (negative for new, not yet inserted rows, shown first); `ref` keys
@@ -1064,6 +1065,62 @@ export function ResultGrid({
         return items;
     })();
 
+    const clearSelection = () => setSelection({ rows, selected: new Set() });
+    /** The bar's buttons go when the selection does: focus returns to the grid. */
+    const clearAndRefocus = () => {
+        clearSelection();
+        const element = gridRef.current?.element;
+        (
+            element?.querySelector<HTMLElement>('[tabindex="0"]') ?? element
+        )?.focus();
+    };
+    const selectedRows = [...selected]
+        .sort((a, b) => a - b)
+        .map((i) => rowByIndex.get(i))
+        .filter((r): r is Row => !!r);
+    // Delete and Restore where the row menu offers them: rows the editor can pin down.
+    const removable =
+        editing && model ? selectedRows.filter((r) => model.target(r)) : [];
+    const restore =
+        removable.length > 0 &&
+        removable.every((r) => model?.pendingOf(r)?.kind === 'delete');
+    const selectionBar =
+        rowMenu && selectedRows.length > 0 ? (
+            <SelectionBar
+                count={selectedRows.length}
+                copy={{
+                    dialect: rowMenu.dialect,
+                    table: rowMenu.table,
+                    columns,
+                    // New rows aren't in the table yet: nothing to copy.
+                    rows: selectedRows
+                        .filter((r) => r.__i >= 0)
+                        .map((r) => r.cells),
+                }}
+                remove={
+                    removable.length > 0 && editing
+                        ? {
+                              restore,
+                              count: removable.length,
+                              onSelect: () => {
+                                  if (restore) {
+                                      const store = usePending.getState();
+                                      for (const r of removable)
+                                          store.unmarkDelete(
+                                              editing.connectionId,
+                                              editing.table,
+                                              r.ref!,
+                                          );
+                                  } else markDelete(removable);
+                                  clearAndRefocus();
+                              },
+                          }
+                        : null
+                }
+                onClear={clearAndRefocus}
+            />
+        ) : null;
+
     /** Commits what the inline editor staged (Enter, Tab, a click outside). */
     const onRowsChange = (next: Row[], change: { indexes: number[] }) => {
         if (!editing || !model) return;
@@ -1152,9 +1209,22 @@ export function ResultGrid({
                     : undefined
             }
             onCellKeyDown={
-                onOpenRow || model
+                onOpenRow || model || rowMenu
                     ? (args, event) => {
-                          if (args.mode !== 'ACTIVE' || !args.row) return;
+                          if (args.mode !== 'ACTIVE') return;
+                          // Escape drops the selection; an open cell editor (EDIT mode) keeps Escape to cancel.
+                          if (
+                              event.key === 'Escape' &&
+                              rowMenu &&
+                              selected.size > 0
+                          ) {
+                              clearSelection();
+                              event.preventGridDefault();
+                              // The workspace's own Escape (closing the history panel) waits for the next press.
+                              event.preventDefault();
+                              return;
+                          }
+                          if (!args.row) return;
                           const onButton =
                               event.target instanceof HTMLButtonElement;
                           if (model) {
@@ -1236,44 +1306,53 @@ export function ResultGrid({
     return (
         <>
             {rowMenu ? (
-                <ContextMenu
-                    onOpenChange={(open) => {
-                        if (!open) setMenuRow(null);
-                    }}
-                >
-                    <ContextMenuTrigger asChild>
-                        <div
-                            className="h-full"
-                            onContextMenu={(event) => {
-                                // Only body cells have rows to act on; headers and empty space get no menu.
-                                if (
-                                    !(event.target as HTMLElement).closest(
-                                        '[role="row"]:not([aria-rowindex="1"]) [role="gridcell"]',
-                                    )
-                                ) {
-                                    setMenuRow(null);
-                                    event.preventDefault();
-                                }
+                <div className="flex h-full flex-col">
+                    {selectionBar}
+                    <div className="min-h-0 flex-1">
+                        <ContextMenu
+                            onOpenChange={(open) => {
+                                if (!open) setMenuRow(null);
                             }}
                         >
-                            {grid}
-                        </div>
-                    </ContextMenuTrigger>
-                    {(menuRows.length > 0 || editItems.length > 0) && (
-                        <RowMenu
-                            dialect={rowMenu.dialect}
-                            table={rowMenu.table}
-                            columns={columns}
-                            rows={menuRows}
-                            editItems={editItems}
-                            onOpenRow={
-                                onOpenRow && menuRow !== null && menuRow >= 0
-                                    ? () => onOpenRow(menuRow)
-                                    : undefined
-                            }
-                        />
-                    )}
-                </ContextMenu>
+                            <ContextMenuTrigger asChild>
+                                <div
+                                    className="h-full"
+                                    onContextMenu={(event) => {
+                                        // Only body cells have rows to act on; headers and empty space get no menu.
+                                        if (
+                                            !(
+                                                event.target as HTMLElement
+                                            ).closest(
+                                                '[role="row"]:not([aria-rowindex="1"]) [role="gridcell"]',
+                                            )
+                                        ) {
+                                            setMenuRow(null);
+                                            event.preventDefault();
+                                        }
+                                    }}
+                                >
+                                    {grid}
+                                </div>
+                            </ContextMenuTrigger>
+                            {(menuRows.length > 0 || editItems.length > 0) && (
+                                <RowMenu
+                                    dialect={rowMenu.dialect}
+                                    table={rowMenu.table}
+                                    columns={columns}
+                                    rows={menuRows}
+                                    editItems={editItems}
+                                    onOpenRow={
+                                        onOpenRow &&
+                                        menuRow !== null &&
+                                        menuRow >= 0
+                                            ? () => onOpenRow(menuRow)
+                                            : undefined
+                                    }
+                                />
+                            )}
+                        </ContextMenu>
+                    </div>
+                </div>
             ) : (
                 grid
             )}

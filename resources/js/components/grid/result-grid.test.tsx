@@ -552,6 +552,107 @@ describe('table tab features', () => {
         );
     });
 
+    describe('selection bar', () => {
+        const renderSelectable = () =>
+            render(
+                wrap(
+                    <ResultGrid
+                        columns={tabColumns}
+                        rows={data}
+                        rowMenu={{ dialect: 'pgsql', table: 'users' }}
+                    />,
+                ),
+            );
+        const toolbar = () =>
+            screen.queryByRole('toolbar', { name: 'Selected rows' });
+        const selectAll = () =>
+            screen
+                .getAllByRole('checkbox', { name: 'Select' })
+                .forEach((box) => fireEvent.click(box));
+
+        it('is hidden with no selection and counts the selected rows', () => {
+            renderSelectable();
+            expect(toolbar()).toBeNull();
+            fireEvent.click(
+                screen.getAllByRole('checkbox', { name: 'Select' })[0],
+            );
+            expect(toolbar()).toHaveTextContent('1 selected');
+            fireEvent.click(
+                screen.getAllByRole('checkbox', { name: 'Select' })[1],
+            );
+            const bar = toolbar()!;
+            const count = within(bar).getByText('2 selected');
+            expect(count).toHaveAttribute('aria-live', 'polite');
+        });
+
+        it('is never shown without row checkboxes', () => {
+            render(wrap(<ResultGrid columns={tabColumns} rows={data} />));
+            expect(screen.queryByRole('checkbox')).toBeNull();
+            expect(toolbar()).toBeNull();
+        });
+
+        it('copies as JSON exactly what the row menu copies', async () => {
+            const write = vi.fn().mockResolvedValue(undefined);
+            Object.assign(navigator, { clipboard: { writeText: write } });
+            renderSelectable();
+            selectAll();
+            fireEvent.contextMenu(screen.getByRole('gridcell', { name: '2' }));
+            fireEvent.click(
+                await screen.findByRole('menuitem', { name: 'Copy as JSON' }),
+            );
+            await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+            const fromMenu = write.mock.calls[0][0];
+            expect(fromMenu).toContain('Grace');
+            fireEvent.keyDown(document.body, { key: 'Escape' });
+            await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+
+            fireEvent.keyDown(
+                within(toolbar()!).getByRole('button', { name: /Copy as/ }),
+                { key: 'Enter' },
+            );
+            fireEvent.click(
+                await screen.findByRole('menuitem', { name: 'JSON' }),
+            );
+            await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(2));
+            expect(write.mock.calls[1][0]).toBe(fromMenu);
+            const menuItems = () =>
+                screen.queryAllByRole('menuitem').map((i) => i.textContent);
+            fireEvent.keyDown(
+                within(toolbar()!).getByRole('button', { name: /Copy as/ }),
+                { key: 'Enter' },
+            );
+            await waitFor(() =>
+                expect(menuItems()).toEqual(['JSON', 'INSERT', 'CSV']),
+            );
+        });
+
+        it('clears the selection with Clear, and offers no Delete without editing', () => {
+            renderSelectable();
+            selectAll();
+            expect(
+                within(toolbar()!).queryByRole('button', { name: /^Delete/ }),
+            ).toBeNull();
+            fireEvent.click(
+                within(toolbar()!).getByRole('button', { name: 'Clear' }),
+            );
+            expect(toolbar()).toBeNull();
+            for (const box of screen.getAllByRole('checkbox', {
+                name: 'Select',
+            }))
+                expect(box).not.toBeChecked();
+        });
+
+        it('clears the selection with Escape in the grid', () => {
+            renderSelectable();
+            selectAll();
+            const cell = screen.getByRole('gridcell', { name: '2' });
+            fireEvent.mouseDown(cell);
+            expect(toolbar()).not.toBeNull();
+            fireEvent.keyDown(cell, { key: 'Escape' });
+            expect(toolbar()).toBeNull();
+        });
+    });
+
     it('calls onOpenRow on Enter', () => {
         const onOpenRow = vi.fn();
         render(
@@ -936,6 +1037,55 @@ describe('editing', () => {
         fireEvent.mouseDown(cell('Ada'));
         fireEvent.keyDown(cell('Ada'), { key: 'Delete' });
         expect(pending()[ref1]).toMatchObject({ kind: 'delete' });
+    });
+
+    it('stages the selected rows for deletion from the selection bar, then restores them', () => {
+        renderGrid();
+        const boxes = () => screen.getAllByRole('checkbox', { name: 'Select' });
+        fireEvent.click(boxes()[0]);
+        fireEvent.click(boxes()[1]);
+        const toolbar = () =>
+            screen.queryByRole('toolbar', { name: 'Selected rows' });
+        fireEvent.click(
+            within(toolbar()!).getByRole('button', { name: 'Delete 2 rows' }),
+        );
+        expect(usePending.getState().count(1, 'users')).toEqual({
+            inserted: 0,
+            updated: 0,
+            deleted: 2,
+        });
+        expect(toolbar()).toBeNull();
+        expect(boxes()[0]).not.toBeChecked();
+
+        // Every selected row already marked: the bar restores instead.
+        fireEvent.click(boxes()[0]);
+        expect(
+            within(toolbar()!).queryByRole('button', { name: /^Delete/ }),
+        ).toBeNull();
+        fireEvent.click(
+            within(toolbar()!).getByRole('button', { name: 'Restore 1 row' }),
+        );
+        expect(usePending.getState().count(1, 'users').deleted).toBe(1);
+        expect(toolbar()).toBeNull();
+        // A mix of marked and unmarked rows still offers Delete.
+        fireEvent.click(boxes()[0]);
+        fireEvent.click(boxes()[1]);
+        expect(
+            within(toolbar()!).getByRole('button', { name: 'Delete 2 rows' }),
+        ).toBeInTheDocument();
+    });
+
+    it('offers no Delete in the selection bar without editing', () => {
+        renderGrid({ editing: undefined });
+        fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select' })[0]);
+        const bar = screen.getByRole('toolbar', { name: 'Selected rows' });
+        expect(within(bar).getByText('1 selected')).toBeInTheDocument();
+        expect(
+            within(bar).queryByRole('button', { name: /^Delete/ }),
+        ).toBeNull();
+        expect(
+            within(bar).queryByRole('button', { name: /^Restore/ }),
+        ).toBeNull();
     });
 
     it('deletes a row from the row menu', async () => {
