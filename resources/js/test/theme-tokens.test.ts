@@ -160,4 +160,11 @@ describe('theme tokens', () => {
     it('has a reduced-motion rule', () => {
         expect(css).toContain('@media (prefers-reduced-motion: reduce)');
     });
+
+    it('draws thin scrollbars from theme tokens, with no track', () => {
+        expect(css).toContain('scrollbar-width: thin;');
+        expect(css.replace(/\s+/g, ' ')).toMatch(
+            /scrollbar-color: color-mix\( ?in oklab, var\(--muted-foreground\) \d+%, transparent ?\) transparent;/,
+        );
+    });
 });
