@@ -3,7 +3,9 @@ import type { QueryColumn } from '@/types/schema';
 import { refOf } from './pending-store';
 import {
     boolValue,
+    committedValue,
     editorText,
+    EMPTY_NOT_NULL,
     jsonError,
     lineEndProblem,
     lockedFor,
@@ -128,5 +130,84 @@ describe('line ends', () => {
         expect(lineEndProblem('a\rb\nc')).toMatch(/mixed line ends/);
         expect(lineEndProblem('a\r\nb')).toBeNull();
         expect(lineEndProblem(42)).toBeNull();
+    });
+});
+
+describe('committedValue', () => {
+    const meta = (name: string, type_name: string, nullable = true) => ({
+        name,
+        type: type_name,
+        type_name,
+        nullable,
+        default: null,
+        auto_increment: false,
+        comment: null,
+    });
+    const things = editing({
+        tableColumns: [
+            meta('created_by', 'integer'),
+            meta('qty', 'int', false),
+            meta('due', 'date'),
+            meta('price', 'decimal'),
+            meta('ref', 'uuid'),
+            meta('label', 'varchar'),
+            meta('code', 'character varying'),
+            meta('body', 'longtext'),
+            meta('doc', 'jsonb'),
+            meta('ci', 'citext'),
+            meta('x', 'xml'),
+            meta('c', 'clob'),
+            meta('status', 'enum', false),
+            meta('tags', 'set'),
+            meta('title', 'nvarchar', false),
+            meta('names', '_text'),
+            meta('counts', '_int4', false),
+            meta('labels', 'varchar[]'),
+        ],
+    });
+
+    it.each(['created_by', 'due', 'price', 'ref', 'names', 'labels'])(
+        'stages NULL for an emptied nullable %s',
+        (column) => {
+            expect(committedValue(things, column, '')).toEqual({
+                value: null,
+            });
+        },
+    );
+
+    it('refuses an emptied NOT NULL non-text column', () => {
+        expect(committedValue(things, 'qty', '')).toEqual({
+            error: EMPTY_NOT_NULL,
+        });
+        expect(committedValue(things, 'counts', '')).toEqual({
+            error: EMPTY_NOT_NULL,
+        });
+        expect(EMPTY_NOT_NULL).toBe(
+            "This column can't be empty: enter a value or revert",
+        );
+    });
+
+    it.each([
+        'label',
+        'code',
+        'body',
+        'doc',
+        'ci',
+        'x',
+        'c',
+        'status',
+        'tags',
+        'title',
+    ])('keeps an empty string for the text-like %s', (column) => {
+        expect(committedValue(things, column, '')).toEqual({ value: '' });
+    });
+
+    it('keeps any other text, NULL, and columns of unknown type as they are', () => {
+        expect(committedValue(things, 'qty', '0')).toEqual({ value: '0' });
+        expect(committedValue(things, 'qty', ' ')).toEqual({ value: ' ' });
+        expect(committedValue(things, 'created_by', null)).toEqual({
+            value: null,
+        });
+        expect(committedValue(things, 'unknown', '')).toEqual({ value: '' });
     });
 });

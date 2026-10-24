@@ -25,13 +25,15 @@ type EditorProps = {
     draft: string | undefined;
     onDraft: (value: string) => void;
     json: boolean;
+    /** Why a committed draft can't be staged (beyond invalid JSON), or null; Enter and Tab then stay in the editor. */
+    invalid?: (text: string) => string | null;
     /** A date or datetime column gets a calendar button; Apply hands the picked value to `onPick`. */
     date?: { kind: DateKind; onPick: (value: string) => void } | null;
 };
 
 /**
- * The inline text editor. Enter and Tab keep the value (react-data-grid commits), Escape cancels. Invalid JSON for
- * a JSON column stops Enter and Tab and says why, so it is never staged.
+ * The inline text editor. Enter and Tab keep the value (react-data-grid commits), Escape cancels. A draft that can't
+ * be staged (invalid JSON for a JSON column, see `invalid`) stops Enter and Tab and says why, so it is never staged.
  */
 export function TextCellEditor({
     label,
@@ -39,6 +41,7 @@ export function TextCellEditor({
     draft,
     onDraft,
     json,
+    invalid,
     date,
 }: EditorProps) {
     const [error, setError] = useState<string | null>(null);
@@ -52,8 +55,13 @@ export function TextCellEditor({
             trigger.current?.click();
             return;
         }
-        if (!json || (event.key !== 'Enter' && event.key !== 'Tab')) return;
-        const problem = draft === undefined ? null : jsonError(draft);
+        if (event.key !== 'Enter' && event.key !== 'Tab') return;
+        const problem =
+            draft === undefined
+                ? null
+                : ((json ? jsonError(draft) : null) ??
+                  invalid?.(draft) ??
+                  null);
         setError(problem);
         if (problem) {
             event.preventDefault();

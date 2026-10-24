@@ -130,6 +130,32 @@ describe('ReviewDialog', () => {
         ).toBeEnabled();
     });
 
+    it('sends a cleared integer as NULL and shows the server SQL for it', async () => {
+        usePending.setState({ byTable: {}, errors: {} });
+        usePending
+            .getState()
+            .setCell(
+                C,
+                T,
+                { ref: ref1, id: id1, original: { created_by: 7 } },
+                'created_by',
+                null,
+            );
+        const sql = 'UPDATE `orders` SET `created_by` = NULL WHERE `id` = 1';
+        api.preview.mockResolvedValue({
+            statements: [{ index: 0, op: 'update', sql, target: 'id = 1' }],
+        });
+        openDialog();
+        const items = await screen.findAllByRole('listitem');
+        expect(items[0].querySelector('pre')).toHaveTextContent(sql);
+        expect(api.preview.mock.calls[0][2]).toEqual([
+            expect.objectContaining({
+                op: 'update',
+                values: { created_by: null },
+            }),
+        ]);
+    });
+
     it('copies all statements', async () => {
         openDialog();
         await screen.findAllByRole('listitem');

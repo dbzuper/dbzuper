@@ -47,6 +47,7 @@ import {
 import { registerEditFlush } from '@/editing/flush-edits';
 import {
     boolValue as boolValue_,
+    committedValue,
     isBinaryType,
     isBooleanType,
     isJsonType,
@@ -329,6 +330,9 @@ function editModel(
         isJson: (index: number) => isJsonType(typeOf(index)),
         dateKind: (index: number) =>
             dateKind({ type_name: typeOf(index) ?? '' }),
+        /** What committing `text` in column `index` stages, or why it can't (an emptied NOT NULL column). */
+        committed: (index: number, text: string | null) =>
+            committedValue(editing, columns[index].name, text),
     };
 }
 
@@ -764,6 +768,16 @@ export function ResultGrid({
                                                   }
                                                   onDraft={change}
                                                   json={model.isJson(index)}
+                                                  invalid={(text) => {
+                                                      const result =
+                                                          model.committed(
+                                                              index,
+                                                              text,
+                                                          );
+                                                      return 'error' in result
+                                                          ? result.error
+                                                          : null;
+                                                  }}
                                                   date={
                                                       kind
                                                           ? {
@@ -1018,6 +1032,12 @@ export function ResultGrid({
                     continue;
                 }
             }
+            // A click outside closes the editor however its draft reads: one that can't be staged is said and dropped.
+            const committed = model.committed(index, value);
+            if ('error' in committed) {
+                toast.error(`${columns[index].name}: ${committed.error}`);
+                continue;
+            }
             usePending
                 .getState()
                 .setCell(
@@ -1025,7 +1045,7 @@ export function ResultGrid({
                     editing.table,
                     target,
                     r.draft.column,
-                    value,
+                    committed.value,
                 );
         }
     };
