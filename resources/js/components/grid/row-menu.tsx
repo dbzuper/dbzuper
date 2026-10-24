@@ -20,6 +20,36 @@ type Props = {
 
 const plural = (n: number) => `${n} row${n === 1 ? '' : 's'}`;
 
+/** What rows can be copied as; the row menu and the selection bar offer the same formats. */
+export const COPY_FORMATS = ['JSON', 'INSERT', 'CSV'] as const;
+export type CopyFormat = (typeof COPY_FORMATS)[number];
+
+/** Copies `rows` in `format` to the clipboard and says how it went in a toast. */
+export async function copyRows(
+    format: CopyFormat,
+    {
+        dialect,
+        table,
+        columns,
+        rows,
+    }: {
+        dialect: Dialect;
+        table: string;
+        columns: QueryColumn[];
+        rows: QueryCell[][];
+    },
+) {
+    const text =
+        format === 'JSON'
+            ? toJSON(columns, rows)
+            : format === 'INSERT'
+              ? toInsert(dialect, table, columns, rows)
+              : toCSV(columns, rows);
+    if (await writeClipboard(text))
+        toast.success(`Copied ${plural(rows.length)}`);
+    else toast.error('Could not copy');
+}
+
 export function RowMenu({
     dialect,
     table,
@@ -28,11 +58,6 @@ export function RowMenu({
     onOpenRow,
     editItems = [],
 }: Props) {
-    const copy = async (text: string) => {
-        if (await writeClipboard(text))
-            toast.success(`Copied ${plural(rows.length)}`);
-        else toast.error('Could not copy');
-    };
     return (
         <ContextMenuContent>
             {editItems.length > 0 && (
@@ -56,27 +81,22 @@ export function RowMenu({
                     {rows.length > 0 && <ContextMenuSeparator />}
                 </>
             )}
-            {rows.length > 0 && (
-                <>
+            {rows.length > 0 &&
+                COPY_FORMATS.map((format) => (
                     <ContextMenuItem
-                        onSelect={() => copy(toJSON(columns, rows))}
-                    >
-                        Copy as JSON
-                    </ContextMenuItem>
-                    <ContextMenuItem
+                        key={format}
                         onSelect={() =>
-                            copy(toInsert(dialect, table, columns, rows))
+                            void copyRows(format, {
+                                dialect,
+                                table,
+                                columns,
+                                rows,
+                            })
                         }
                     >
-                        Copy as INSERT
+                        {`Copy as ${format}`}
                     </ContextMenuItem>
-                    <ContextMenuItem
-                        onSelect={() => copy(toCSV(columns, rows))}
-                    >
-                        Copy as CSV
-                    </ContextMenuItem>
-                </>
-            )}
+                ))}
         </ContextMenuContent>
     );
 }

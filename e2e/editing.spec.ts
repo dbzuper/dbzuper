@@ -477,6 +477,37 @@ test('editing: clearing a nullable integer in the row drawer stages NULL, then d
     await expect(drawer).toHaveCount(0);
 });
 
+test('editing: the selection bar deletes the ticked rows, then discard', async () => {
+    await openTable('orders');
+    const toolbar = panel().getByRole('toolbar', { name: 'Selected rows' });
+    await expect(toolbar).toHaveCount(0);
+    const boxes = panel().getByRole('checkbox', {
+        name: 'Select',
+        exact: true,
+    });
+    await boxes.nth(0).check();
+    await boxes.nth(1).check();
+    await expect(toolbar).toBeVisible();
+    await expect(toolbar.getByText('2 selected')).toBeVisible();
+    await expect(
+        toolbar.getByRole('button', { name: /^Copy as/ }),
+    ).toBeVisible();
+    await toolbar.getByRole('button', { name: 'Delete 2 rows' }).click();
+    await expect(pendingBar()).toHaveText(
+        '2 pending changes · 0 new · 0 edited · 2 deleted',
+    );
+    await expect(toolbar).toHaveCount(0);
+    await expect(panel().locator('.rdg-row-deleted')).toHaveCount(2);
+
+    await panel().getByRole('button', { name: 'Discard', exact: true }).click();
+    await page
+        .getByRole('dialog', { name: /^Discard 2 pending changes/ })
+        .getByRole('button', { name: 'Discard', exact: true })
+        .click();
+    await expect(pendingBar()).toHaveCount(0);
+    await expect(panel().locator('.rdg-row-deleted')).toHaveCount(0);
+});
+
 test('editing: a read-only connection shows no editing', async () => {
     await page.goto('/connections/create');
     await page.getByLabel('Name', { exact: true }).fill('Editing read-only');
