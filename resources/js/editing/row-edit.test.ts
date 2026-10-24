@@ -160,10 +160,13 @@ describe('committedValue', () => {
             meta('status', 'enum', false),
             meta('tags', 'set'),
             meta('title', 'nvarchar', false),
+            meta('names', '_text'),
+            meta('counts', '_int4', false),
+            meta('labels', 'varchar[]'),
         ],
     });
 
-    it.each(['created_by', 'due', 'price', 'ref'])(
+    it.each(['created_by', 'due', 'price', 'ref', 'names', 'labels'])(
         'stages NULL for an emptied nullable %s',
         (column) => {
             expect(committedValue(things, column, '')).toEqual({
@@ -174,6 +177,9 @@ describe('committedValue', () => {
 
     it('refuses an emptied NOT NULL non-text column', () => {
         expect(committedValue(things, 'qty', '')).toEqual({
+            error: EMPTY_NOT_NULL,
+        });
+        expect(committedValue(things, 'counts', '')).toEqual({
             error: EMPTY_NOT_NULL,
         });
         expect(EMPTY_NOT_NULL).toBe(

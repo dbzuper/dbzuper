@@ -115,9 +115,12 @@ export function FilterBar({
         setColumn(next);
     };
 
-    // A date column selected: its picker is likely next, so fetch it now.
+    // Switching to a date column: its picker is likely next, so fetch it now. Not on mount: a table whose first
+    // column is a date leaves the fetch to the data view's idle preload, out of the table-open window.
+    const previousKind = useRef(kind);
     useEffect(() => {
-        if (kind) preloadDatePicker();
+        if (kind && kind !== previousKind.current) preloadDatePicker();
+        previousKind.current = kind;
     }, [kind]);
 
     const columnSelect = useRef<HTMLSelectElement>(null);

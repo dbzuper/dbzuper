@@ -41,10 +41,12 @@ export const isBinaryType = (type: string | null) =>
 
 /**
  * Columns where empty text is a value, the empty string: the server's text kind (ColumnKind::Text) plus MySQL's
- * enum and set. Anywhere else (numbers, dates, uuid…) empty text means nothing, so it can't be staged as is.
+ * enum and set. Anywhere else (numbers, dates, uuid, arrays…) empty text means nothing, so it can't be staged as is.
+ * PostgreSQL names array types `_elem` (`_text`, `_int4`) or `elem[]`: an empty array literal is `{}`, never ''.
  */
 export const isTextLikeType = (type: string | null) => {
     const t = (type ?? '').trim().toLowerCase();
+    if (t.startsWith('_') || t.includes('[]')) return false;
     return (
         /char|text|json|xml|clob|citext/.test(t) || t === 'enum' || t === 'set'
     );

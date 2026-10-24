@@ -7,7 +7,10 @@ type DatePickerModule = typeof import('./date-picker');
 let loaded: DatePickerModule | undefined;
 let loading: Promise<DatePickerModule> | undefined;
 
-/** Loads the picker chunk; repeat calls share one promise. A failed load is forgotten, so a later call retries. */
+/**
+ * Loads the picker chunk; repeat calls share one promise. A failed load is forgotten so a later call can try again
+ * (a failed preload doesn't poison the first open); a React.lazy that already rejected keeps its error.
+ */
 export function loadDatePicker(): Promise<DatePickerModule> {
     loading ??= import('./date-picker').then(
         (module) => (loaded = module),

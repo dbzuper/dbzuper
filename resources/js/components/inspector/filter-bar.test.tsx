@@ -307,6 +307,27 @@ describe('FilterBar', () => {
             expect(preloadDatePicker).toHaveBeenCalled();
         });
 
+        it('does not preload the picker on mount when the first column is a date', () => {
+            preloadDatePicker.mockClear();
+            render(
+                <FilterBar
+                    columns={['created_at', 'name']}
+                    filters={[]}
+                    onChange={vi.fn()}
+                    dateKinds={dateKinds}
+                />,
+            );
+            expect(preloadDatePicker).not.toHaveBeenCalled();
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'name' },
+            });
+            expect(preloadDatePicker).not.toHaveBeenCalled();
+            fireEvent.change(screen.getByLabelText('Filter column'), {
+                target: { value: 'created_at' },
+            });
+            expect(preloadDatePicker).toHaveBeenCalled();
+        });
+
         it('does not preload the picker for text columns only', () => {
             preloadDatePicker.mockClear();
             render(
