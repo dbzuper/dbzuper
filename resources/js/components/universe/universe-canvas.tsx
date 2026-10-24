@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Sigma from 'sigma';
 import type { CameraState, NodeDisplayData } from 'sigma/types';
 import { openTableTab } from '@/browse/table-actions';
+import { watchThemeChanges } from '@/lib/theme-watch';
 import type { LayoutPositionEntry, SchemaSnapshot } from '@/types/schema';
 import { registerUniverse } from '@/universe/controller';
 import type {
@@ -200,18 +201,17 @@ export function UniverseCanvas({
         const readyFrame = requestAnimationFrame(() => setReady(true));
 
         // Styles are fixed at construction; a theme switch re-creates the instance with the new colours.
-        // Only the `dark` class matters; other class changes on <html> must not rebuild the renderer.
+        // Only the `dark` class and the colour theme matter; other class changes on <html> must not
+        // rebuild the renderer.
         const root = document.documentElement;
-        let dark = root.classList.contains('dark');
-        const themeObserver = new MutationObserver(() => {
-            const nowDark = root.classList.contains('dark');
-            if (nowDark === dark) return;
-            dark = nowDark;
+        const themeSignature = () =>
+            `${root.classList.contains('dark')}|${root.dataset.theme}`;
+        let signature = themeSignature();
+        const stopWatchingTheme = watchThemeChanges(() => {
+            const now = themeSignature();
+            if (now === signature) return;
+            signature = now;
             setThemeNonce((n) => n + 1);
-        });
-        themeObserver.observe(root, {
-            attributes: true,
-            attributeFilter: ['class'],
         });
 
         // Sigma only listens to window resize, so a layout change (the inspector opening or closing)
@@ -307,7 +307,7 @@ export function UniverseCanvas({
             cancelAnimationFrame(readyFrame);
             cameraRef.current = { graph, state: camera.getState() };
             registerUniverse(null);
-            themeObserver.disconnect();
+            stopWatchingTheme();
             resizeObserver?.disconnect();
             cancelAnimationFrame(resizeFrame);
             unsubscribe();

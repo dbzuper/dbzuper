@@ -1,5 +1,10 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import path from 'node:path';
+import {
+    chooseMode,
+    closeAppearanceMenu,
+    openAppearanceMenu,
+} from './support/appearance';
 import { expectNoA11yViolations, settleStyles } from './support/axe';
 import { addSqliteConnection, newSignedInContext } from './support/auth';
 
@@ -70,25 +75,12 @@ async function applyRange(from: string, to: string) {
 }
 
 async function switchTheme(appearance: 'dark' | 'light') {
-    const toggle = page.getByRole('button', { name: /^Theme: / }).first();
-    for (let i = 0; i < 3; i++) {
-        if (
-            (await toggle.getAttribute('aria-label'))?.startsWith(
-                `Theme: ${appearance} `,
-            )
-        ) {
-            await page.waitForFunction(
-                (dark) =>
-                    document.documentElement.classList.contains('dark') ===
-                    dark,
-                appearance === 'dark',
-            );
-            await settleStyles(page);
-            return;
-        }
-        await toggle.click();
-    }
-    throw new Error(`Could not switch to the ${appearance} theme`);
+    await chooseMode(page, appearance);
+    await page.waitForFunction(
+        (dark) => document.documentElement.classList.contains('dark') === dark,
+        appearance === 'dark',
+    );
+    await settleStyles(page);
 }
 
 test('table tab: date range filter with the picker and linked SQL', async () => {
@@ -248,4 +240,92 @@ test('accessibility: the opened date picker, dark and light', async () => {
     await page.keyboard.press('Escape');
     await switchTheme('dark');
     await page.emulateMedia({ reducedMotion: null });
+});
+
+test('appearance menu: each swatch draws its own theme in both modes, whatever the page theme', async () => {
+    const THEMES = ['classic', 'layered', 'graphite'] as const;
+    const LABELS = {
+        classic: 'Classic',
+        layered: 'Layered',
+        graphite: 'Graphite',
+    };
+
+    type Look = Record<string, string>;
+    // What the tokens draw: on the page itself (a probe under <body>, which follows <html>'s theme), or
+    // on each swatch's dots. Shell tokens are read as the custom properties the element sees.
+    const looks = (where: 'page' | 'swatches') =>
+        page.evaluate((where) => {
+            const look = (root: Element) => {
+                const dot = (cls: string) =>
+                    getComputedStyle(root.querySelector(`.${cls}`)!)
+                        .backgroundColor;
+                const style = getComputedStyle(root);
+                return {
+                    background: dot('bg-background'),
+                    sidebar: dot('bg-sidebar'),
+                    primary: dot('bg-primary'),
+                    shellGap: style.getPropertyValue('--shell-gap').trim(),
+                    panelRadius: style
+                        .getPropertyValue('--panel-radius')
+                        .trim(),
+                };
+            };
+            if (where === 'swatches') {
+                return Object.fromEntries(
+                    ['classic', 'layered', 'graphite'].map((name) => [
+                        name,
+                        look(
+                            document.querySelector(
+                                `[role="radiogroup"] [data-theme="${name}"]`,
+                            )!,
+                        ),
+                    ]),
+                );
+            }
+            const probe = document.createElement('span');
+            probe.innerHTML =
+                '<i class="bg-background"></i><i class="bg-sidebar"></i><i class="bg-primary"></i>';
+            document.body.append(probe);
+            const result = look(probe);
+            probe.remove();
+            return { page: result };
+        }, where) as Promise<Record<string, Look>>;
+
+    for (const mode of ['dark', 'light'] as const) {
+        await switchTheme(mode);
+        const menu = await openAppearanceMenu(page);
+        const themeGroup = menu.getByRole('radiogroup', { name: 'Theme' });
+
+        // Each theme's own look, read from the page while that theme is active.
+        const own: Record<string, Look> = {};
+        for (const name of THEMES) {
+            await themeGroup.getByRole('radio', { name: LABELS[name] }).click();
+            await expect(page.locator('html')).toHaveAttribute(
+                'data-theme',
+                name,
+            );
+            own[name] = (await looks('page')).page;
+        }
+        expect(own.classic).not.toEqual(own.layered);
+        expect(own.layered).not.toEqual(own.graphite);
+
+        // Under every page theme, every swatch still shows its own theme.
+        for (const pageTheme of THEMES) {
+            await themeGroup
+                .getByRole('radio', { name: LABELS[pageTheme] })
+                .click();
+            await expect(page.locator('html')).toHaveAttribute(
+                'data-theme',
+                pageTheme,
+            );
+            expect(
+                await looks('swatches'),
+                `${mode}, page ${pageTheme}`,
+            ).toEqual(own);
+        }
+
+        await themeGroup.getByRole('radio', { name: 'Classic' }).click();
+        await closeAppearanceMenu(page);
+    }
+    await switchTheme('dark');
 });

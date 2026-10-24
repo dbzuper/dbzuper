@@ -46,7 +46,12 @@ const chunkModules = {
 export default defineConfig({
     plugins: lazyPlugins(() => [
         laravel({
-            input: ['resources/css/app.css', 'resources/js/app.tsx'],
+            input: [
+                'resources/css/app.css',
+                'resources/js/app.tsx',
+                // Graphite's fonts: their own entry, so no other theme downloads them.
+                'resources/css/fonts-graphite.css',
+            ],
             refresh: true,
         }),
         inertia(),

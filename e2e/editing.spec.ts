@@ -2,6 +2,7 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { chooseMode } from './support/appearance';
 import { expectNoA11yViolations, settleStyles } from './support/axe';
 import { addSqliteConnection, newSignedInContext } from './support/auth';
 
@@ -306,25 +307,12 @@ test('editing: a row changed elsewhere since it was loaded is not overwritten', 
 });
 
 async function switchTheme(appearance: 'dark' | 'light') {
-    const toggle = page.getByRole('button', { name: /^Theme: / }).first();
-    for (let i = 0; i < 3; i++) {
-        if (
-            (await toggle.getAttribute('aria-label'))?.startsWith(
-                `Theme: ${appearance} `,
-            )
-        ) {
-            await page.waitForFunction(
-                (dark) =>
-                    document.documentElement.classList.contains('dark') ===
-                    dark,
-                appearance === 'dark',
-            );
-            await settleStyles(page);
-            return;
-        }
-        await toggle.click();
-    }
-    throw new Error(`Could not switch to the ${appearance} theme`);
+    await chooseMode(page, appearance);
+    await page.waitForFunction(
+        (dark) => document.documentElement.classList.contains('dark') === dark,
+        appearance === 'dark',
+    );
+    await settleStyles(page);
 }
 
 test('editing: set a datetime in the row drawer with the date picker, review, discard', async () => {

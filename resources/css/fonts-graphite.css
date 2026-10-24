@@ -1,0 +1,4 @@
+/* Graphite's self-hosted fonts. Its own Vite entry, loaded only while Graphite is active: by Blade on first
+   paint, and by loadThemeFonts() when the user switches to it. */
+@import '@fontsource-variable/schibsted-grotesk';
+@import '@fontsource-variable/jetbrains-mono';

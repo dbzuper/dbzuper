@@ -1,9 +1,9 @@
 import { Link } from '@inertiajs/react';
 import { History, LayoutGrid } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
+import { AppearanceMenu } from '@/components/appearance-menu';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
-import { ThemeToggle } from '@/components/theme-toggle';
 import {
     Sidebar,
     SidebarContent,
@@ -50,7 +50,7 @@ export function AppSidebar() {
             <SidebarFooter>
                 <SidebarMenu className="mt-auto">
                     <SidebarMenuItem>
-                        <ThemeToggle />
+                        <AppearanceMenu />
                     </SidebarMenuItem>
                 </SidebarMenu>
                 <NavUser />

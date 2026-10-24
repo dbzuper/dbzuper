@@ -9,3 +9,16 @@ export function findProblems(
     >,
     modules: Record<string, string[]>,
 ): string[];
+export const lazyFontEntry: string;
+export function findFontProblems(
+    manifest: Record<
+        string,
+        {
+            file: string;
+            isEntry?: boolean;
+            imports?: string[];
+            css?: string[];
+        }
+    >,
+    readCss: (file: string) => string,
+): string[];

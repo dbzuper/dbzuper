@@ -6,6 +6,7 @@ import {
     type Request,
 } from '@playwright/test';
 import path from 'node:path';
+import { chooseMode } from './support/appearance';
 import { expectNoA11yViolations, settleStyles } from './support/axe';
 import { addSqliteConnection, ensureSignedIn } from './support/auth';
 
@@ -472,9 +473,8 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
     ).toBeVisible({ timeout: 15_000 });
 });
 
-/** Clicks the real theme toggle until the theme label reads `appearance` (dark -> light -> system). */
+/** Picks a mode in the real Appearance menu and waits until the page has fully repainted in it. */
 async function switchTheme(appearance: 'dark' | 'light') {
-    const toggle = page.getByRole('button', { name: /^Theme: / }).first();
     // The foreground colour of the theme being left: once the switch has fully repainted, no element
     // may still be drawn in it (axe sampling a half-restyled page reported dark text on light).
     const foreground = () =>
@@ -487,39 +487,28 @@ async function switchTheme(appearance: 'dark' | 'light') {
             return colour;
         });
     const previous = await foreground();
-    for (let i = 0; i < 3; i++) {
-        if (
-            (await toggle.getAttribute('aria-label'))?.startsWith(
-                `Theme: ${appearance} `,
-            )
-        ) {
-            // The class and colour-scheme the toggle sets are the signal that the theme applied.
-            await page.waitForFunction(
-                (dark) =>
-                    document.documentElement.classList.contains('dark') ===
-                        dark &&
-                    document.documentElement.style.colorScheme ===
-                        (dark ? 'dark' : 'light'),
-                appearance === 'dark',
-            );
-            if ((await foreground()) !== previous) {
-                await settleStyles(page);
-                await page.waitForFunction(
-                    (stale) =>
-                        ![...document.querySelectorAll('body *')].some(
-                            (el) =>
-                                el.getClientRects().length > 0 &&
-                                getComputedStyle(el).color === stale,
-                        ),
-                    previous,
-                    { polling: 'raf', timeout: 5_000 },
-                );
-            }
-            return;
-        }
-        await toggle.click();
+    await chooseMode(page, appearance);
+    // The class and colour-scheme the menu sets are the signal that the theme applied.
+    await page.waitForFunction(
+        (dark) =>
+            document.documentElement.classList.contains('dark') === dark &&
+            document.documentElement.style.colorScheme ===
+                (dark ? 'dark' : 'light'),
+        appearance === 'dark',
+    );
+    if ((await foreground()) !== previous) {
+        await settleStyles(page);
+        await page.waitForFunction(
+            (stale) =>
+                ![...document.querySelectorAll('body *')].some(
+                    (el) =>
+                        el.getClientRects().length > 0 &&
+                        getComputedStyle(el).color === stale,
+                ),
+            previous,
+            { polling: 'raf', timeout: 5_000 },
+        );
     }
-    throw new Error(`Could not switch to the ${appearance} theme`);
 }
 
 const b64urlTrail = (text: string) =>

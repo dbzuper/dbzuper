@@ -1,6 +1,7 @@
 import { Head } from '@inertiajs/react';
 import AppearanceTabs from '@/components/appearance-tabs';
 import Heading from '@/components/heading';
+import { ThemeCards } from '@/components/theme-cards';
 import { edit as editAppearance } from '@/routes/appearance';
 
 export default function Appearance() {
@@ -16,6 +17,7 @@ export default function Appearance() {
                     title="Appearance settings"
                     description="Update the appearance settings for your account"
                 />
+                <ThemeCards />
                 <AppearanceTabs />
             </div>
         </>

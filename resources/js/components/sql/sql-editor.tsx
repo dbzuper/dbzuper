@@ -1,6 +1,7 @@
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { useEffect, useState } from 'react';
+import { watchThemeChanges } from '@/lib/theme-watch';
 import { defineThemes, languageFor, setupMonaco } from '@/sql/monaco-setup';
 
 type Props = {
@@ -20,20 +21,22 @@ export function SqlEditor({ path, value, dialect, onChange, onMount }: Props) {
     const [dark, setDark] = useState(() =>
         document.documentElement.classList.contains('dark'),
     );
+    // Bumps on every mode or colour-theme change, so the Monaco themes are re-read from the CSS tokens.
+    const [themeNonce, setThemeNonce] = useState(0);
 
     useEffect(() => {
         void setupMonaco().then(() => setReady(true));
     }, []);
 
     useEffect(() => {
-        const observer = new MutationObserver(() =>
-            setDark(document.documentElement.classList.contains('dark')),
-        );
-        observer.observe(document.documentElement, {
-            attributes: true,
-            attributeFilter: ['class'],
+        let theme = document.documentElement.dataset.theme;
+        return watchThemeChanges(() => {
+            setDark(document.documentElement.classList.contains('dark'));
+            const now = document.documentElement.dataset.theme;
+            if (now === theme) return;
+            theme = now;
+            setThemeNonce((n) => n + 1);
         });
-        return () => observer.disconnect();
     }, []);
 
     useEffect(() => {
@@ -42,7 +45,7 @@ export function SqlEditor({ path, value, dialect, onChange, onMount }: Props) {
             defineThemes(monaco);
             monaco.editor.setTheme(dark ? 'dbsuperb-dark' : 'dbsuperb-light');
         });
-    }, [ready, dark]);
+    }, [ready, dark, themeNonce]);
 
     if (!ready)
         return (
