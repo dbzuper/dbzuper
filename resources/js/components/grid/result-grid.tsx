@@ -531,81 +531,88 @@ export function ResultGrid({
         const hidden = new Set(layout?.value.hidden);
         const widths = layout?.value.widths;
         const selectColumn: Column<Row>[] = rowMenu ? [SelectColumn] : [];
-        const stateColumn: Column<Row>[] = model
-            ? [
-                  {
-                      key: '__state',
-                      name: '',
-                      width: 28,
-                      minWidth: 28,
-                      maxWidth: 28,
-                      frozen: true,
-                      resizable: false,
-                      sortable: false,
-                      draggable: false,
-                      renderHeaderCell: () => (
-                          <span className="sr-only">Pending change</span>
-                      ),
-                      renderCell: ({ row }) => {
-                          const p = model.pendingOf(row);
-                          if (!p) return null;
-                          const [mark, label] =
-                              p.kind === 'insert'
-                                  ? ['+', 'new row']
-                                  : p.kind === 'delete'
-                                    ? ['−', 'deleted']
-                                    : ['•', 'edited row'];
-                          const error = row.ref
-                              ? rowErrors[row.ref]
-                              : undefined;
-                          return (
-                              <span
-                                  title={error ? `${label}: ${error}` : label}
-                                  data-state={p.kind}
-                                  className={cn(
-                                      'block text-center font-semibold',
-                                      error && 'text-destructive',
-                                  )}
-                              >
-                                  <span aria-hidden="true">
-                                      {error ? '!' : mark}
-                                  </span>
-                                  <span className="sr-only">
-                                      {error
-                                          ? `${label}, failed: ${error}`
-                                          : label}
-                                  </span>
-                              </span>
-                          );
+        // The pending-change mark (•, +, −, ! on a failed commit), with its label for screen readers.
+        const marker = (row: Row) => {
+            const p = model?.pendingOf(row);
+            if (!p) return null;
+            const [mark, label] =
+                p.kind === 'insert'
+                    ? ['+', 'new row']
+                    : p.kind === 'delete'
+                      ? ['−', 'deleted']
+                      : ['•', 'edited row'];
+            const error = row.ref ? rowErrors[row.ref] : undefined;
+            return (
+                <span
+                    title={error ? `${label}: ${error}` : label}
+                    data-state={p.kind}
+                    className={cn(
+                        'block text-center font-semibold',
+                        error && 'text-destructive',
+                    )}
+                >
+                    <span aria-hidden="true">{error ? '!' : mark}</span>
+                    <span className="sr-only">
+                        {error ? `${label}, failed: ${error}` : label}
+                    </span>
+                </span>
+            );
+        };
+        // Next to the row button the mark shares its cell; a grid without one gives it its own column.
+        const stateColumn: Column<Row>[] =
+            model && !onOpenRow
+                ? [
+                      {
+                          key: '__state',
+                          name: '',
+                          width: 28,
+                          minWidth: 28,
+                          maxWidth: 28,
+                          frozen: true,
+                          resizable: false,
+                          sortable: false,
+                          draggable: false,
+                          renderHeaderCell: () => (
+                              <span className="sr-only">Pending change</span>
+                          ),
+                          renderCell: ({ row }) => marker(row),
                       },
-                  },
-              ]
-            : [];
+                  ]
+                : [];
+        const rowButtonWidth = model ? 48 : 36;
         const rowButton: Column<Row>[] = onOpenRow
             ? [
                   {
                       key: '__open',
                       name: '',
-                      width: 36,
-                      minWidth: 36,
-                      maxWidth: 36,
+                      width: rowButtonWidth,
+                      minWidth: rowButtonWidth,
+                      maxWidth: rowButtonWidth,
                       frozen: true,
                       resizable: false,
                       sortable: false,
                       draggable: false,
-                      renderCell: ({ row }) =>
-                          row.__i < 0 ? null : (
-                              <button
-                                  type="button"
-                                  aria-label="Open row"
-                                  title="Open row"
-                                  data-row-index={row.__i}
-                                  onClick={() => onOpenRow(row.__i)}
-                                  className="rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
-                              >
-                                  <ChevronRight className="size-3.5" />
-                              </button>
-                          ),
+                      renderCell: ({ row }) => (
+                          <span className="flex h-full items-center gap-1">
+                              {model && (
+                                  <span className="w-3 shrink-0">
+                                      {marker(row)}
+                                  </span>
+                              )}
+                              {row.__i < 0 ? null : (
+                                  <button
+                                      type="button"
+                                      aria-label="Open row"
+                                      title="Open row"
+                                      data-row-index={row.__i}
+                                      onClick={() => onOpenRow(row.__i)}
+                                      className="rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+                                  >
+                                      <ChevronRight className="size-3.5" />
+                                  </button>
+                              )}
+                          </span>
+                      ),
                   },
               ]
             : [];
