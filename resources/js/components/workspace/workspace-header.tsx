@@ -4,24 +4,17 @@ import { ArrowLeft, Keyboard, RefreshCw, Search } from 'lucide-react';
 import { SHORTCUTS } from '@/browse/shortcuts';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
-import { formatSnapshotAge } from '@/lib/format';
 import { paletteShortcutHint } from '@/lib/platform';
 import type { ConnectionSummary } from '@/types/connection';
 import { useWorkspace } from '@/universe/store';
 
 type Props = {
     connection: ConnectionSummary;
-    storedAt: string | null;
     loading: boolean;
     onRefresh: () => void;
 };
 
-export function WorkspaceHeader({
-    connection,
-    storedAt,
-    loading,
-    onRefresh,
-}: Props) {
+export function WorkspaceHeader({ connection, loading, onRefresh }: Props) {
     const showInferred = useWorkspace((s) => s.showInferred);
     const toggleInferred = useWorkspace((s) => s.toggleInferred);
     const setPaletteOpen = useWorkspace((s) => s.setPaletteOpen);
@@ -35,32 +28,26 @@ export function WorkspaceHeader({
                 <ArrowLeft className="size-4" /> Connections
             </Link>
             <span className="text-muted-foreground/40">/</span>
-            <span
-                className="size-2 rounded-full"
-                style={{
-                    background: connection.color ?? 'var(--universe-accent)',
-                }}
-                aria-hidden
-            />
-            <h1 className="truncate text-sm font-semibold">
-                {connection.name}
-            </h1>
-            <span className="rounded border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                {connection.driver_label}
-            </span>
+            <div className="inline-flex min-w-0 items-center gap-2 rounded-full border bg-card px-2.5 py-0.5">
+                <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{
+                        background:
+                            connection.color ?? 'var(--universe-accent)',
+                    }}
+                    aria-hidden
+                />
+                <h1 className="truncate text-sm font-semibold">
+                    {connection.name}
+                </h1>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                    {connection.driver_label}
+                </span>
+            </div>
             {connection.read_only && (
                 <span className="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">
                     read-only
                 </span>
-            )}
-            {storedAt && (
-                <time
-                    dateTime={storedAt}
-                    title={storedAt}
-                    className="hidden text-xs text-muted-foreground md:block"
-                >
-                    Snapshot from {formatSnapshotAge(storedAt)}
-                </time>
             )}
             <div className="ml-auto flex items-center gap-1.5">
                 <Button

@@ -10,7 +10,9 @@ test('sql dock: Monaco suggests schema tables', async ({ page }) => {
         path.resolve('storage/app/demo/commerce.sqlite'),
     );
     await page.getByRole('link', { name: /SQL demo/ }).click();
-    await expect(page.getByRole('button', { name: 'SQL' })).toBeVisible();
+    await expect(
+        page.getByRole('button', { name: 'SQL', exact: true }),
+    ).toBeVisible();
 
     await page.keyboard.press('Control+j');
     const dock = page.getByRole('region', { name: 'SQL editor' });
@@ -34,7 +36,9 @@ test('sql dock: runs the statement at the cursor and shows an error with positio
         path.resolve('storage/app/demo/commerce.sqlite'),
     );
     await page.getByRole('link', { name: /SQL run demo/ }).click();
-    await expect(page.getByRole('button', { name: 'SQL' })).toBeVisible();
+    await expect(
+        page.getByRole('button', { name: 'SQL', exact: true }),
+    ).toBeVisible();
     await page.keyboard.press('Control+j');
     const dock = page.getByRole('region', { name: 'SQL editor' });
     await expect(dock).toBeVisible();

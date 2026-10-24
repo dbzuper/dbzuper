@@ -31,6 +31,7 @@ import {
 } from '@/browse/local-prefs';
 import { rowsCache, rowsRequestKey } from '@/browse/rows-cache';
 import { reportTableRows } from '@/browse/sql-link';
+import { useTabStatus } from '@/browse/status-store';
 import type { GridEditing } from '@/editing/row-edit';
 import { PendingBar } from '@/components/editing/pending-bar';
 import { FilterBar } from '@/components/inspector/filter-bar';
@@ -112,8 +113,8 @@ type Request = {
     perPage: PerPage;
 };
 
-/** The rows on screen and the request they answer. */
-type View = { key: string; rows: RowsResponse; scrollTop: number };
+/** The rows on screen, the request they answer and its round trip in ms. */
+type View = { key: string; rows: RowsResponse; scrollTop: number; ms: number };
 
 /** What is known about the total for one set of filters. */
 type CountState = {
@@ -163,6 +164,7 @@ function DataViewBody({
                   key: cached.requestKey,
                   rows: cached.rows,
                   scrollTop: cached.scrollTop,
+                  ms: cached.ms ?? 0,
               }
             : null,
     );
@@ -214,6 +216,7 @@ function DataViewBody({
                           key: requestKey,
                           rows: hit.rows,
                           scrollTop: hit.scrollTop,
+                          ms: hit.ms ?? 0,
                       },
             );
             return;
@@ -221,6 +224,7 @@ function DataViewBody({
         const controller = new AbortController();
         const body = JSON.parse(requestKey) as Request;
         setError(null);
+        const sentAt = performance.now();
         workspaceApi
             .rows(
                 connectionId,
@@ -239,14 +243,16 @@ function DataViewBody({
                     latestKey.current !== requestKey
                 )
                     return;
+                const ms = performance.now() - sentAt;
                 // Not counted yet; the total is patched in once this view renders.
                 rowsCache.set(cacheKey, {
                     requestKey,
                     rows,
                     total: null,
                     scrollTop: 0,
+                    ms,
                 });
-                setView({ key: requestKey, rows, scrollTop: 0 });
+                setView({ key: requestKey, rows, scrollTop: 0, ms });
                 // A linked editor tab follows the query; a refetch of the same request is not a new one.
                 reportTableRows(connectionId, tab.id, requestKey, rows.sql);
             })
@@ -256,6 +262,7 @@ function DataViewBody({
                     latestKey.current !== requestKey
                 )
                     return;
+                useTabStatus.getState().clear(tab.id);
                 setError({
                     key: requestKey,
                     message: dbErrorFrom(e, 'Could not load rows.').message,
@@ -351,6 +358,21 @@ function DataViewBody({
             return;
         rowsCache.patch(cacheKey, { total, countFailed });
     }, [cacheKey, total, countFailed, countFor, filtersKey, requestKey, view]);
+
+    // The status bar's row range, timing and total (spec 1.2): published when rows land and when the total changes.
+    useEffect(() => {
+        if (!view || view.key !== requestKey) return;
+        const n = view.rows.rows.length;
+        const from =
+            n === 0 ? 0 : (view.rows.page - 1) * view.rows.per_page + 1;
+        useTabStatus.getState().publish(tab.id, {
+            from,
+            to: n === 0 ? 0 : from + n - 1,
+            total,
+            ms: view.ms,
+        });
+    }, [view, requestKey, total, tab.id]);
+    useEffect(() => () => useTabStatus.getState().clear(tab.id), [tab.id]);
 
     const countExactly = () => {
         exactRequest.current?.abort();

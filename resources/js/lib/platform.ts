@@ -19,3 +19,8 @@ export function paletteShortcutHint(): string {
 export function tabFocusShortcutHint(): string {
     return isApplePlatform() ? '⌃⇧M' : 'Ctrl+M';
 }
+
+/** The SQL dock shortcut as shown to this user: "⌘J" on a Mac, "Ctrl J" elsewhere. */
+export function dockShortcutHint(): string {
+    return isApplePlatform() ? '⌘J' : 'Ctrl J';
+}

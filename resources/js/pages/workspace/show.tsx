@@ -31,6 +31,7 @@ import { FocusChip } from '@/components/workspace/focus-chip';
 import { PathDialog } from '@/components/workspace/path-dialog';
 import { PathPickChip } from '@/components/workspace/path-pick-chip';
 import { LeftRail } from '@/components/workspace/left-rail';
+import { StatusBar } from '@/components/workspace/status-bar';
 import { WorkspaceHeader } from '@/components/workspace/workspace-header';
 import { reconcilePending } from '@/editing/reconcile-pending';
 import { historyApi } from '@/lib/history-api';
@@ -386,7 +387,6 @@ export default function WorkspaceShow({
             <PendingGuard />
             <WorkspaceHeader
                 connection={connection}
-                storedAt={data?.stored_at ?? null}
                 loading={loading}
                 onRefresh={() => void load(true)}
             />
@@ -646,6 +646,11 @@ export default function WorkspaceShow({
                     </aside>
                 )}
             </div>
+            <StatusBar
+                connection={connection}
+                snapshot={snapshot}
+                storedAt={data?.stored_at ?? null}
+            />
         </div>
     );
 }

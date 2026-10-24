@@ -67,6 +67,7 @@ import type {
     SchemaSnapshot,
 } from '@/types/schema';
 import { CellDrawer, type DrawerState } from './cell-drawer';
+import { boolCell, columnFamily, typeGlyph } from './type-glyph';
 import { BoolCellEditor, TextCellEditor } from './cell-editors';
 import { RowMenu } from './row-menu';
 import { SelectionBar } from './selection-bar';
@@ -144,6 +145,24 @@ const RESIZE_DEBOUNCE_MS = 200;
 
 const PREVIEW_CHARS = 120;
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** `{…} 2 keys` for a JSON object, `[…] 3 items` for an array; null when the value doesn't parse to either. */
+function jsonSummary(value: CellValue): string | null {
+    let parsed: unknown = value;
+    if (typeof value === 'string') {
+        try {
+            parsed = JSON.parse(value);
+        } catch {
+            return null;
+        }
+    }
+    if (Array.isArray(parsed)) return `[…] ${plural(parsed.length, 'item')}`;
+    if (parsed !== null && typeof parsed === 'object')
+        return `{…} ${plural(Object.keys(parsed).length, 'key')}`;
+    return null;
+}
+
 export function CellView({
     value,
     type,
@@ -158,10 +177,14 @@ export function CellView({
     /** Replaces the value tooltip (an edited cell shows its original, a locked one why). */
     title?: string;
 }) {
-    const kind = cellKind(value, type);
+    const bool = boolCell(value, type);
+    const kind = bool === null ? cellKind(value, type) : 'boolean';
     if (kind === 'null')
         return (
-            <span data-null="true" className="text-muted-foreground italic">
+            <span
+                data-null="true"
+                className="rounded-full border border-dashed px-1.5 text-[10px] text-muted-foreground"
+            >
                 NULL
             </span>
         );
@@ -180,12 +203,17 @@ export function CellView({
               .join('')
               .replace(/\s*\n\s*/g, ' ')
         : textValue;
+    const summary = kind === 'json' ? jsonSummary(value) : null;
+    const dateParts =
+        kind === 'date'
+            ? /^(\d{4}-\d{2}-\d{2})[ T](.*)$/.exec(textValue)
+            : null;
     const body = foreign ? (
         <button
             type="button"
             aria-label={foreign.label}
             onClick={foreign.onClick}
-            className="text-[var(--universe-accent)] underline-offset-2 hover:underline"
+            className="text-primary underline decoration-primary/35 underline-offset-[3px]"
         >
             {textValue}
         </button>
@@ -194,25 +222,39 @@ export function CellView({
             data-kind={kind}
             title={
                 title ??
-                (kind === 'boolean' || kind === 'binary'
-                    ? undefined
-                    : cellTitle(textValue))
+                (kind === 'boolean'
+                    ? textValue
+                    : kind === 'binary'
+                      ? undefined
+                      : cellTitle(textValue))
             }
-            role={kind === 'boolean' ? 'img' : undefined}
-            aria-label={kind === 'boolean' ? textValue : undefined}
             className={cn(
                 kind === 'number' && 'block text-right tabular-nums',
                 kind === 'binary' && 'text-muted-foreground italic',
-                kind === 'boolean' && 'text-[var(--universe-accent)]',
+                kind === 'boolean' &&
+                    (bool
+                        ? 'rounded-full bg-success/14 px-1.5 text-[11px] text-success'
+                        : 'rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground'),
+                summary &&
+                    'rounded-md bg-muted px-1.5 text-[11px] text-muted-foreground',
             )}
         >
-            {kind === 'boolean'
-                ? value
-                    ? '✓'
-                    : '✗'
-                : kind === 'binary'
-                  ? blobLabel(value)
-                  : preview}
+            {kind === 'boolean' ? (
+                String(bool)
+            ) : kind === 'binary' ? (
+                blobLabel(value)
+            ) : summary ? (
+                summary
+            ) : dateParts ? (
+                <>
+                    <span>{dateParts[1]}</span>{' '}
+                    <span className="text-muted-foreground">
+                        {dateParts[2]}
+                    </span>
+                </>
+            ) : (
+                preview
+            )}
         </span>
     );
     return (
@@ -707,6 +749,14 @@ export function ResultGrid({
                     const index = Number(key);
                     const column = columns[index];
                     const target = snapshot ? fkTarget(column, snapshot) : null;
+                    const primary =
+                        !!snapshot &&
+                        !!column.table &&
+                        !!snapshot.tables
+                            .find((t) => t.name === column.table)
+                            ?.primary_key.includes(column.name);
+                    const family = columnFamily(column.type);
+                    const Glyph = family ? typeGlyph(family) : null;
                     return {
                         key,
                         name: column.name,
@@ -715,38 +765,64 @@ export function ResultGrid({
                         draggable: true,
                         minWidth: 60,
                         width: widths?.[column.name],
-                        renderHeaderCell: onFilterColumn
-                            ? (props) => (
-                                  <span className="flex items-center gap-1">
-                                      <span className="min-w-0 flex-1 truncate">
-                                          {defaultHeaderCell(props)}
-                                      </span>
-                                      <button
-                                          type="button"
-                                          aria-label={`Filter ${column.name}`}
-                                          title={`Filter ${column.name}`}
-                                          onClick={(event) => {
-                                              event.stopPropagation();
-                                              onFilterColumn(column.name);
-                                          }}
-                                          onKeyDown={(event) => {
-                                              if (
-                                                  event.key !== 'Enter' &&
-                                                  event.key !== ' '
-                                              )
-                                                  return;
-                                              // The header sorts on Enter and Space; this button filters.
-                                              event.stopPropagation();
-                                              event.preventDefault();
-                                              onFilterColumn(column.name);
-                                          }}
-                                          className="shrink-0 rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
-                                      >
-                                          <Filter className="size-3" />
-                                      </button>
-                                  </span>
-                              )
-                            : undefined,
+                        // Glyph, name and key badges; SQL results without a type or snapshot show just the name.
+                        renderHeaderCell: (props) => (
+                            <span className="flex items-center gap-1">
+                                <span
+                                    title={column.type ?? undefined}
+                                    className="flex min-w-0 flex-1 items-center gap-1"
+                                >
+                                    {Glyph && (
+                                        <Glyph
+                                            aria-hidden="true"
+                                            className="size-3 shrink-0 text-muted-foreground"
+                                        />
+                                    )}
+                                    <span className="min-w-0 truncate">
+                                        {defaultHeaderCell(props)}
+                                    </span>
+                                    {primary && (
+                                        <span className="shrink-0 rounded bg-warning/15 px-1 text-[9px] font-semibold text-warning-foreground">
+                                            PK
+                                        </span>
+                                    )}
+                                    {target && (
+                                        <span
+                                            title={`→ ${target.table}.${target.column}`}
+                                            // text-primary on the muted header falls short of 4.5:1 at 9px: deepened toward the foreground.
+                                            className="shrink-0 rounded bg-primary/12 px-1 text-[9px] font-semibold text-[color-mix(in_oklab,var(--primary)_70%,var(--foreground))]"
+                                        >
+                                            FK
+                                        </span>
+                                    )}
+                                </span>
+                                {onFilterColumn && (
+                                    <button
+                                        type="button"
+                                        aria-label={`Filter ${column.name}`}
+                                        title={`Filter ${column.name}`}
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            onFilterColumn(column.name);
+                                        }}
+                                        onKeyDown={(event) => {
+                                            if (
+                                                event.key !== 'Enter' &&
+                                                event.key !== ' '
+                                            )
+                                                return;
+                                            // The header sorts on Enter and Space; this button filters.
+                                            event.stopPropagation();
+                                            event.preventDefault();
+                                            onFilterColumn(column.name);
+                                        }}
+                                        className="shrink-0 rounded text-muted-foreground hover:text-[var(--universe-accent)] focus-visible:ring-2 focus-visible:ring-[var(--universe-accent)] focus-visible:outline-none"
+                                    >
+                                        <Filter className="size-3" />
+                                    </button>
+                                )}
+                            </span>
+                        ),
                         ...(model
                             ? {
                                   editable: (row: Row) =>

@@ -207,35 +207,39 @@ export function TableTabView({ connection, snapshot, tab, actions }: Props) {
                             <Button
                                 type="button"
                                 variant="ghost"
-                                size="sm"
+                                size="icon"
+                                className="size-8"
+                                aria-label="Add row"
+                                title="Add row"
                                 onClick={addRow}
                             >
-                                <Plus className="size-3.5" /> Add row
+                                <Plus className="size-4" />
                             </Button>
                         )}
                     <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="icon"
+                        className="size-8"
+                        aria-label="Refresh"
+                        title="Refresh"
                         onClick={refresh}
                     >
-                        <RefreshCw className="size-3.5" /> Refresh
+                        <RefreshCw className="size-4" />
                     </Button>
                     <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
-                        onClick={openInSql}
-                    >
-                        <Code2 className="size-3.5" /> Open in SQL
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
+                        size="icon"
+                        className="size-8"
+                        aria-label="Copy SELECT"
+                        title="Copy SELECT"
                         onClick={() => void copySelect()}
                     >
-                        <Copy className="size-3.5" /> Copy SELECT
+                        <Copy className="size-4" />
+                    </Button>
+                    <Button type="button" size="sm" onClick={openInSql}>
+                        <Code2 className="size-3.5" /> Open in SQL
                     </Button>
                     <Button
                         type="button"

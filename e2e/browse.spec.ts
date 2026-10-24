@@ -509,6 +509,10 @@ test('browse: 2,000-table sidebar scrolls without long tasks', async () => {
     await expect(
         page.getByRole('group', { name: /^All tables \(\d{4,}\)$/ }),
     ).toBeVisible();
+    // Prefix groups would fold the 2,000 tables into a short list; measure every row.
+    const grouping = page.getByRole('button', { name: 'Group by prefix' });
+    await grouping.click();
+    await expect(grouping).toHaveAttribute('aria-pressed', 'false');
 
     const longest = await page.evaluate(async () => {
         const tasks: number[] = [];
@@ -538,4 +542,34 @@ test('browse: 2,000-table sidebar scrolls without long tasks', async () => {
     });
     console.log(`sidebar-longest-task-ms=${longest}`);
     expect(longest).toBeLessThan(50);
+});
+
+test('browse: tables sharing a prefix collapse into a group', async () => {
+    await addSqliteConnection(
+        page,
+        'Groups demo',
+        path.resolve('storage/app/demo/commerce.sqlite'),
+    );
+    await page.getByRole('link', { name: /Groups demo/ }).click();
+    const tree = page.getByRole('tree', { name: 'Tables' });
+    // The 2,000-table test above measures the flat list; grouping is a remembered setting.
+    const toggle = page.getByRole('button', { name: 'Group by prefix' });
+    if ((await toggle.getAttribute('aria-pressed')) === 'false')
+        await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    const group = tree.getByRole('treeitem', {
+        name: 'order_ group, 2 tables',
+    });
+    await expect(group).toHaveAttribute('aria-expanded', 'false');
+    await expect(sidebarRow('order_items')).toHaveCount(0);
+    await group.focus();
+    await page.keyboard.press('Enter');
+    await expect(group).toHaveAttribute('aria-expanded', 'true');
+    await expect(sidebarRow('order_items')).toBeVisible();
+
+    await sidebarRow('order_totals').click();
+    await expect(
+        tabs().getByRole('tab', { name: 'order_totals' }),
+    ).toBeVisible();
 });

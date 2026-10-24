@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useBrowse, type TableTab } from '@/browse/browse-store';
 import { rowsCache } from '@/browse/rows-cache';
+import { useTabStatus } from '@/browse/status-store';
 import { refOf, usePending } from '@/editing/pending-store';
 import type { RowFilter, RowsResponse } from '@/lib/workspace-api';
 import type { QueryCell, RowCountSchema } from '@/types/schema';
@@ -874,5 +875,52 @@ describe('DataView', () => {
         expect(
             screen.getByRole('button', { name: 'Next page' }),
         ).toBeDisabled();
+    });
+});
+
+describe('DataView status', () => {
+    beforeEach(() => useTabStatus.setState({ byTab: {} }));
+
+    it('publishes the row range, total and timing once rows land, and clears it on unmount', async () => {
+        api.rows.mockResolvedValue(page(2, 101));
+        useBrowse
+            .getState()
+            .openTable(1, 'orders', { mode: 'preview', state: { page: 2 } });
+        const { unmount } = render(
+            <Harness rowCount={{ count: 1234, kind: 'exact' }} />,
+        );
+        await screen.findByText('100 rows');
+        const status = useTabStatus.getState().byTab[tabId()];
+        expect(status).toMatchObject({
+            from: 101,
+            to: 200,
+            total: { count: 1234, exact: true },
+        });
+        expect(status.ms).toBeGreaterThanOrEqual(0);
+        unmount();
+        expect(useTabStatus.getState().byTab[tabId()]).toBeUndefined();
+    });
+
+    it('publishes an empty result as 0–0', async () => {
+        api.rows.mockResolvedValue(page(1, 1, { rows: [], has_more: false }));
+        open();
+        render(<Harness />);
+        await waitFor(() =>
+            expect(useTabStatus.getState().byTab[tabId()]).toMatchObject({
+                from: 0,
+                to: 0,
+            }),
+        );
+    });
+
+    it('clears the status when the rows request fails', async () => {
+        open();
+        useTabStatus
+            .getState()
+            .publish(tabId(), { from: 1, to: 1, total: null, ms: 1 });
+        api.rows.mockRejectedValueOnce(new Error('down'));
+        render(<Harness />);
+        await screen.findByRole('alert');
+        expect(useTabStatus.getState().byTab[tabId()]).toBeUndefined();
     });
 });

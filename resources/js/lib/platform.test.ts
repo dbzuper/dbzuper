@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { paletteShortcutHint, tabFocusShortcutHint } from './platform';
+import {
+    dockShortcutHint,
+    paletteShortcutHint,
+    tabFocusShortcutHint,
+} from './platform';
 
 const stubNavigator = (value: object) =>
     vi.stubGlobal('navigator', { ...value });
@@ -38,5 +42,16 @@ describe('tabFocusShortcutHint', () => {
         expect(tabFocusShortcutHint()).toBe('Ctrl+M');
         stubNavigator({ platform: 'MacIntel' });
         expect(tabFocusShortcutHint()).toBe('⌃⇧M');
+    });
+});
+
+describe('dockShortcutHint', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('reads Ctrl J off a Mac and ⌘J on one', () => {
+        stubNavigator({ platform: 'Win32' });
+        expect(dockShortcutHint()).toBe('Ctrl J');
+        stubNavigator({ platform: 'MacIntel' });
+        expect(dockShortcutHint()).toBe('⌘J');
     });
 });

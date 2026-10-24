@@ -30,7 +30,7 @@ test('setup → add SQLite connection → test → explore schema list', async (
     // The table sidebar lists every table beside the universe (which shows the inferred legend).
     const tree = page.getByRole('tree', { name: 'Tables' });
     await expect(
-        tree.getByRole('treeitem', { name: /^order_items,/ }),
+        tree.getByRole('treeitem', { name: /^products,/ }),
     ).toBeVisible();
     await expect(page.getByText(/inferred/i).first()).toBeVisible();
     await page
@@ -40,6 +40,6 @@ test('setup → add SQLite connection → test → explore schema list', async (
         tree.getByRole('treeitem', { name: /^régions,/ }),
     ).toBeVisible();
     await expect(
-        tree.getByRole('treeitem', { name: /^order_items,/ }),
+        tree.getByRole('treeitem', { name: /^products,/ }),
     ).toHaveCount(0);
 });

@@ -1,4 +1,5 @@
 import type { RowCountSchema } from '@/types/schema';
+import type { ConnectionSummary } from '@/types/connection';
 
 const compact = new Intl.NumberFormat('en', {
     notation: 'compact',
@@ -43,4 +44,12 @@ export function formatSnapshotAge(iso: string, now: Date = new Date()): string {
         return relative.format(-Math.floor(seconds / 86_400), 'day');
 
     return `${at.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
+/** Where a connection points: `host:port/database`, the file's base name for SQLite, or the database alone. */
+export function formatConnectionTarget(c: ConnectionSummary): string {
+    if (c.driver === 'sqlite')
+        return c.database.split(/[\\/]/).pop() || c.database;
+    if (!c.host) return c.database;
+    return `${c.host}${c.port ? `:${c.port}` : ''}/${c.database}`;
 }
