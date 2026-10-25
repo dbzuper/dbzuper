@@ -596,6 +596,17 @@ function DataViewBody({
 
     const currentError = error?.key === requestKey ? error.message : null;
     const loading = !currentError && view?.key !== requestKey;
+
+    // "Found it": when a changed filter comes back with rows, an orange ping beside the row range. Rows
+    // already on screen when the tab opens (or a page/sort change) do not ping.
+    const settledFilters = useRef(filtersKey);
+    const [filterPing, setFilterPing] = useState<number | null>(null);
+    useEffect(() => {
+        if (loading || !view || settledFilters.current === filtersKey) return;
+        settledFilters.current = filtersKey;
+        if (filters.length > 0 && view.rows.rows.length > 0)
+            setFilterPing(Date.now());
+    }, [loading, view, filtersKey, filters.length]);
     // Offered for estimates and lower bounds, and when there is no total (not counted, or the capped count failed).
     const showExact =
         !!view &&
@@ -747,6 +758,23 @@ function DataViewBody({
                     update({ perPage: n, page: 1, drawerRow: null })
                 }
             >
+                {filterPing !== null && (
+                    <span
+                        key={filterPing}
+                        data-testid="filter-ping"
+                        aria-hidden
+                        className="relative inline-flex size-2"
+                    >
+                        <span className="size-2 rounded-full bg-logo-dot" />
+                        <span
+                            className="radar-ping absolute inset-0"
+                            onAnimationEnd={(e) => {
+                                if (e.pseudoElement === '::after')
+                                    setFilterPing(null);
+                            }}
+                        />
+                    </span>
+                )}
                 {view && countState.failed && (
                     <span className="text-muted-foreground">
                         count unavailable

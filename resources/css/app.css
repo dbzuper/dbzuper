@@ -671,6 +671,112 @@
     animation: row-drawer-flash 600ms ease-out;
 }
 
+/* The radar loader (components/radar.tsx): the sweep turns once every 2.4s; the blip at the north-east
+   (an eighth of a turn from the sweep's start) lights up as the leading edge passes it, then fades. */
+@keyframes radar-sweep {
+    to {
+        transform: rotate(360deg);
+    }
+}
+@keyframes radar-blip {
+    0%,
+    11% {
+        opacity: 0;
+    }
+    13% {
+        opacity: 1;
+    }
+    75%,
+    100% {
+        opacity: 0;
+    }
+}
+.radar-sweep {
+    transform-box: view-box;
+    transform-origin: center;
+    animation: radar-sweep 2.4s linear infinite;
+}
+.radar-blip {
+    animation: radar-blip 2.4s linear infinite;
+}
+
+/* "Found it": an orange ping where a search, a path or a filter lands (components/radar-ping.tsx). Orange
+   is kept for these moments and the logo's dots. */
+@keyframes radar-ping {
+    from {
+        opacity: 1;
+        transform: scale(0.5);
+    }
+    to {
+        opacity: 0;
+        transform: scale(2.6);
+    }
+}
+@keyframes radar-ping-fade {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+.radar-ping,
+.radar-ping::after {
+    pointer-events: none;
+    border-radius: 9999px;
+    box-shadow: 0 0 0 2px var(--logo-dot);
+    animation: radar-ping 900ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.radar-ping::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    animation-delay: 250ms;
+}
+
+/* The hidden "make a wish" command: a burst of light with seven orange orbs flying out
+   (components/workspace/wish-burst.tsx). */
+@keyframes wish-glow {
+    0% {
+        opacity: 0;
+        transform: scale(0.2);
+    }
+    30% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.6);
+    }
+}
+@keyframes wish-orb {
+    0% {
+        opacity: 0;
+        transform: rotate(var(--angle)) translateX(0) scale(0.4);
+    }
+    20% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: rotate(var(--angle)) translateX(var(--reach)) scale(1);
+    }
+}
+.wish-glow {
+    background: radial-gradient(
+        circle,
+        color-mix(in oklab, var(--logo-dot) 55%, transparent) 0%,
+        color-mix(in oklab, var(--logo-dot) 18%, transparent) 35%,
+        transparent 65%
+    );
+    animation: wish-glow 1400ms ease-out both;
+}
+.wish-orb {
+    background: var(--logo-dot);
+    box-shadow: 0 0 18px 4px color-mix(in oklab, var(--logo-dot) 60%, transparent);
+    animation: wish-orb 1400ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
 /* Honour the OS "reduce motion" setting app-wide (tw-animate-css, Radix, transitions). */
 @media (prefers-reduced-motion: reduce) {
     *,
@@ -694,6 +800,17 @@
     }
     .row-drawer[data-motion='change'] > .row-drawer-header {
         animation-duration: 600ms !important;
+    }
+
+    /* The radar holds still with its blip lit; the found ping fades in place without growing. */
+    .radar-sweep,
+    .radar-blip {
+        animation: none !important;
+    }
+    .radar-ping,
+    .radar-ping::after {
+        animation-name: radar-ping-fade;
+        animation-duration: 900ms !important;
     }
 }
 
