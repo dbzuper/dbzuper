@@ -19,7 +19,7 @@ vi.mock('@inertiajs/react', () => ({
     usePage: () => ({
         url: '/connections/create',
         props: {
-            name: 'DBSuperb',
+            name: 'DBZuper',
             sidebarOpen: true,
             auth: { user: { name: 'Admin', email: 'a@b.c' } },
         },

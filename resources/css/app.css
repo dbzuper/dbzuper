@@ -67,6 +67,8 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+
+    --color-logo-dot: var(--logo-dot);
 }
 
 :root,
@@ -108,6 +110,7 @@
     --sidebar-accent-foreground: oklch(0.25 0.015 80);
     --sidebar-border: oklch(0.88 0.012 85);
     --sidebar-ring: oklch(0.6 0.1 185);
+    --logo-dot: #f59e0b;
 
     /* Workspace shell: the canvas behind the panels, and how the panels sit on it */
     --shell: var(--background);
@@ -158,6 +161,7 @@
     --sidebar-accent-foreground: oklch(0.95 0.008 260);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.8 0.13 183);
+    --logo-dot: #f59e0b;
 }
 
 @layer base {
@@ -261,6 +265,7 @@
     --sidebar-accent-foreground: oklch(0.25 0.02 265);
     --sidebar-border: oklch(0.9 0.01 90);
     --sidebar-ring: oklch(0.6 0.104 184.704);
+    --logo-dot: #f59e0b;
 
     --shell: oklch(0.945 0.01 90);
     --shell-gap: 8px;
@@ -320,6 +325,7 @@
     --sidebar-accent-foreground: oklch(0.93 0.01 265);
     --sidebar-border: oklch(0.29 0.018 265);
     --sidebar-ring: oklch(0.785 0.133 181.912);
+    --logo-dot: #f59e0b;
 
     --shell: oklch(0.14 0.014 265);
     --shell-gap: 8px;
@@ -386,6 +392,7 @@
     --sidebar-accent-foreground: oklch(0.208 0.011 260.669);
     --sidebar-border: oklch(0.896 0.009 258.337);
     --sidebar-ring: oklch(0.503 0.2 266.296);
+    --logo-dot: #f59e0b;
 
     --shell: var(--background);
     --shell-gap: 0px;
@@ -443,6 +450,7 @@
     --sidebar-accent-foreground: oklch(0.936 0.009 264.521);
     --sidebar-border: oklch(0.288 0.018 262.213);
     --sidebar-ring: oklch(0.711 0.15 269.685);
+    --logo-dot: #f59e0b;
 
     --shell: var(--background);
     --shell-gap: 0px;

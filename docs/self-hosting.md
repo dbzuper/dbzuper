@@ -1,6 +1,6 @@
-# Self-hosting DBSuperb
+# Self-hosting DBZuper
 
-DBSuperb ships as a single Docker image (FrankenPHP 1.13 on PHP 8.4, running as a non-root user) that listens on plain HTTP port 8080. Put a reverse proxy in front of it for HTTPS.
+DBZuper ships as a single Docker image (FrankenPHP 1.13 on PHP 8.4, running as a non-root user) that listens on plain HTTP port 8080. Put a reverse proxy in front of it for HTTPS.
 
 ## Requirements
 
@@ -26,7 +26,7 @@ Build and run without Compose:
 
 ## First administrator
 
-DBSuperb has a single administrator. Either open the app: until an administrator exists every page redirects to the setup screen. Or create it from the command line before exposing the port:
+DBZuper has a single administrator. Either open the app: until an administrator exists every page redirects to the setup screen. Or create it from the command line before exposing the port:
 
     docker compose exec app php artisan dbsuperb:install --name="Admin" --email=admin@example.com --password='Str0ng-passphrase' --no-interaction
 
@@ -36,7 +36,7 @@ Without options the command prompts for each value. In production the password m
 
 Compose reads an optional `.env.docker` next to `docker-compose.yml` (plain `KEY=value` lines) and passes it to the container. Set `APP_URL` there too (the image default is `http://localhost:8080`); nothing in `docker-compose.yml` overrides it, and variables from your shell or a project `.env` are not passed in. Environment changes apply on `docker compose up -d` or a restart: the configuration is cached from the environment at every start.
 
-The image defaults are `APP_NAME=DBSuperb`, `APP_ENV=production`, `APP_DEBUG=false`, `LOG_CHANNEL=stderr` (read logs with `docker compose logs app`), `DB_CONNECTION=sqlite`, `DB_DATABASE=/app/storage/database/database.sqlite`, `DB_JOURNAL_MODE=WAL`, `DB_TRANSACTION_MODE=IMMEDIATE`, `DB_BUSY_TIMEOUT=5000` and `DBSUPERB_SQLITE_PATHS=/data/sqlite`. The three SQLite lock settings let the multi-threaded server share the application database without "database is locked" errors; keep them.
+The image defaults are `APP_NAME=DBZuper`, `APP_ENV=production`, `APP_DEBUG=false`, `LOG_CHANNEL=stderr` (read logs with `docker compose logs app`), `DB_CONNECTION=sqlite`, `DB_DATABASE=/app/storage/database/database.sqlite`, `DB_JOURNAL_MODE=WAL`, `DB_TRANSACTION_MODE=IMMEDIATE`, `DB_BUSY_TIMEOUT=5000` and `DBSUPERB_SQLITE_PATHS=/data/sqlite`. The three SQLite lock settings let the multi-threaded server share the application database without "database is locked" errors; keep them.
 
 ## Adding SQLite files
 
@@ -132,7 +132,7 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 
 | Variable                         | Default                     | Meaning                                                                                                  |
 | -------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `APP_NAME`                       | `DBSuperb` in the image     | Name in the page title, sidebar, session cookie and two-factor issuer.                                   |
+| `APP_NAME`                       | `DBZuper` in the image     | Name in the page title, sidebar, session cookie and two-factor issuer.                                   |
 | `DBSUPERB_SQLITE_PATHS`          | `/data/sqlite` in the image | Comma-separated directories SQLite connection files must live in.                                        |
 | `DBSUPERB_CONNECT_TIMEOUT`       | `5`                         | Seconds to wait when opening a connection to a database server.                                          |
 | `DBSUPERB_INTROSPECTION_TIMEOUT` | `30`                        | Seconds allowed for loading a schema.                                                                    |
@@ -157,7 +157,7 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 
 ## Security notes
 
-- Only the administrator can sign in and create connections, but DBSuperb connects to **any host reachable from the container**, including your internal network. Do not expose it to people you would not give that reach.
+- Only the administrator can sign in and create connections, but DBZuper connects to **any host reachable from the container**, including your internal network. Do not expose it to people you would not give that reach.
 - Saved credentials are encrypted at rest with `APP_KEY`; anyone holding both the storage volume and the key can read them. Treat backups accordingly.
 - Serve it over HTTPS and keep the container port off the public network.
 - SQLite files are opened only inside `DBSUPERB_SQLITE_PATHS`; `ATTACH`, `VACUUM INTO` and similar are refused.

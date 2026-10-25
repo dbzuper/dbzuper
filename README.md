@@ -1,4 +1,9 @@
-# DBSuperb
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/dbzuper-logo-dark.svg">
+  <img src="docs/images/dbzuper-logo.svg" alt="DBZuper" width="320">
+</picture>
+
+# DBZuper
 
 **One Workspace. Every Database.** A self-hosted, visual database workspace for MySQL, MariaDB, PostgreSQL and SQLite.
 
@@ -77,9 +82,9 @@ Follow a single row through its relationships. The Records view (rail > Records)
 - The setup screen is public until the first administrator exists. Run `php artisan dbsuperb:install` before exposing the app to a network.
 - Behind a reverse proxy, set `TRUSTED_PROXIES` (comma-separated IPs/CIDRs, or `*`) so client IPs and HTTPS are detected. Leave it unset when the app is reached directly: then no `X-Forwarded-*` header is trusted.
 - Saved credentials are encrypted with `APP_KEY`. Back it up: losing it makes saved passwords unrecoverable.
-- DBSuperb connects to any host reachable from the server. Only the administrator can create connections.
+- DBZuper connects to any host reachable from the server. Only the administrator can create connections.
 - Changing anything that reaches the connection string (driver, host, port, username, database, SSL options or PostgreSQL schema) requires re-entering the stored password. PostgreSQL host, database, username and CA path may not contain spaces, quotes or backslashes.
-- Accounts cannot be deleted from the UI: DBSuperb has a single administrator.
+- Accounts cannot be deleted from the UI: DBZuper has a single administrator.
 - SQLite files are only opened inside directories listed in `DBSUPERB_SQLITE_PATHS`. The SQL editor therefore refuses `ATTACH`, `DETACH`, `VACUUM INTO` and the `temp_store_directory`/`data_store_directory` pragmas on SQLite connections, which would reach other files.
 - Connections marked read-only are enforced by the database session (MySQL/MariaDB `READ ONLY` transactions, PostgreSQL read-only session, SQLite read-only open mode).
 

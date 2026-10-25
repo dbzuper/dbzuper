@@ -1,12 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>DBZuper</title>
   <style>
-    .m { color: #0d9488; }
-    @media (prefers-color-scheme: dark) { .m { color: #2dd4bf; } }
+    .m { fill: #0d9488; }
+    @media (prefers-color-scheme: dark) { .m { fill: #2dd4bf; } }
   </style>
-  <g class="m">
-    <circle cx="20" cy="20" r="15" fill="none" stroke="currentColor" stroke-width="2.4"/>
-    <circle cx="20" cy="20" r="6.5" fill="currentColor"/>
-    <circle cx="30.6" cy="9.4" r="3.4" fill="currentColor"/>
-    <circle cx="9.4" cy="30.6" r="3.4" fill="currentColor"/>
-  </g>
+  <path class="m" d="M244.45 85.39A124 124 0 1 1 170.61 11.55A15 15 0 0 1 160.3 39.72A94 94 0 1 0 216.28 95.7A15 15 0 0 1 244.45 85.39ZM96 72.57L96 96L72.57 96A64 64 0 0 1 96 72.57ZM66.03 112L96 112L96 144L66.03 144A64 64 0 0 1 66.03 112ZM72.57 160L96 160L96 183.43A64 64 0 0 1 72.57 160ZM144 66.03L144 96L112 96L112 66.03A64 64 0 0 1 144 66.03ZM112 112L144 112L144 144L112 144ZM112 160L144 160L144 189.97A64 64 0 0 1 112 189.97ZM183.43 96L160 96L160 72.57A64 64 0 0 1 183.43 96ZM160 112L189.97 112A64 64 0 0 1 189.97 144L160 144ZM160 160L183.43 160A64 64 0 0 1 160 183.43Z"/>
+  <path fill="#f59e0b" d="M183.07 50.93a22 22 0 1 0 44 0a22 22 0 1 0-44 0Z"/>
 </svg>

@@ -11,7 +11,7 @@ class DemoDatabaseCommand extends Command
 {
     protected $signature = 'dbsuperb:demo-database {path? : Target SQLite file (default storage/app/demo/commerce.sqlite)} {--force : Overwrite the target file if it exists} {--tables=0 : Also create N synthetic tables (0-20000) for large-schema testing}';
 
-    protected $description = 'Create a small commerce SQLite database to explore in DBSuperb';
+    protected $description = 'Create a small commerce SQLite database to explore in DBZuper';
 
     public function handle(): int
     {

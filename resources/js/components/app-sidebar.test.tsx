@@ -60,7 +60,7 @@ function renderShell(open = true) {
 beforeEach(() => {
     localStorage.clear();
     page.props = {
-        name: 'DBSuperb',
+        name: 'DBZuper',
         auth: { user: { name: 'Admin', email: 'a@b.c' } },
         sidebarOpen: true,
         sidebar,
