@@ -2,19 +2,27 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Every prop each Link received, so tests can see props React would drop from the DOM (like `prefetch`).
+const linkProps = vi.hoisted(() => [] as Record<string, unknown>[]);
+
 vi.mock('@inertiajs/react', () => ({
     Link: ({
         href,
         children,
+        prefetch: _prefetch,
         ...rest
     }: {
         href: string;
         children: ReactNode;
-    }) => (
-        <a href={href} {...rest}>
-            {children}
-        </a>
-    ),
+        prefetch?: unknown;
+    }) => {
+        linkProps.push({ href, prefetch: _prefetch, ...rest });
+        return (
+            <a href={href} {...rest}>
+                {children}
+            </a>
+        );
+    },
 }));
 
 const prefetchWorkspace = vi.hoisted(() => vi.fn());
@@ -54,12 +62,19 @@ function renderQueries(open = true, list = items) {
 }
 
 describe('RecentQueries', () => {
-    beforeEach(() => prefetchWorkspace.mockClear());
+    beforeEach(() => {
+        prefetchWorkspace.mockClear();
+        linkProps.length = 0;
+    });
 
     it('warms only the workspace chunks on hover or focus, never an Inertia prefetch (which would mark it opened)', () => {
         renderQueries();
         const link = screen.getByRole('link', { name: /status, count/ });
-        expect(link).not.toHaveAttribute('prefetch');
+        const workspaceLinks = linkProps.filter((p) =>
+            String(p.href).startsWith('/c/'),
+        );
+        expect(workspaceLinks.length).toBeGreaterThan(0);
+        for (const p of workspaceLinks) expect(p.prefetch).toBeUndefined();
         fireEvent.mouseEnter(link);
         fireEvent.focus(link);
         expect(prefetchWorkspace).toHaveBeenCalledTimes(2);
