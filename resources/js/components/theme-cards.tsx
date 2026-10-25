@@ -45,7 +45,10 @@ export function ThemeCards({ className }: { className?: string }) {
         <div
             role="radiogroup"
             aria-label="Theme"
-            className={cn('grid max-w-xl grid-cols-3 gap-3', className)}
+            className={cn(
+                'grid max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4',
+                className,
+            )}
         >
             {THEMES.map(({ name, label }, i) => (
                 <button

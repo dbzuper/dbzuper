@@ -9,13 +9,13 @@ beforeEach(function () {
     User::factory()->create();
 });
 
-test('a saved theme cookie renders that theme', function () {
+test('a saved theme cookie renders that theme', function (string $theme) {
     $this->withoutVite();
 
-    $html = $this->withUnencryptedCookie('theme', 'layered')->get('/login')->assertOk()->getContent();
+    $html = $this->withUnencryptedCookie('theme', $theme)->get('/login')->assertOk()->getContent();
 
-    expect($html)->toMatch('/<html[^>]*data-theme="layered"/');
-});
+    expect($html)->toMatch('/<html[^>]*data-theme="'.$theme.'"/');
+})->with(['layered', 'radar']);
 
 test('an unknown theme cookie falls back to classic', function () {
     $this->withoutVite();
@@ -69,4 +69,4 @@ test('other themes do not load the graphite fonts', function (?string $theme) {
 
     expect($html)->toContain('<!-- vite: resources/css/app.css')
         ->not->toContain('fonts-graphite');
-})->with(['classic', 'layered', 'neon', null]);
+})->with(['classic', 'layered', 'radar', 'neon', null]);

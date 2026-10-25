@@ -5,6 +5,7 @@ import { assignClusters } from '@/universe/clusters';
 import { buildSchemaGraph } from '@/universe/graph';
 import { useBrowse } from '@/browse/browse-store';
 import { useWorkspace } from '@/universe/store';
+import { universe } from '@/universe/controller';
 import { UniverseCanvas } from './universe-canvas';
 import { tableTabOf } from '@/test/browse-tabs';
 
@@ -228,6 +229,44 @@ describe('UniverseCanvas resize', () => {
         expect(observers.disconnected).toBe(1);
         raf.mockRestore();
         vi.unstubAllGlobals();
+    });
+
+    it('pings where a fly-to lands, in ball orange', async () => {
+        const snapshot = syntheticSnapshot(20);
+        const graph = buildSchemaGraph(snapshot);
+        const model = { graph, clusters: assignClusters(graph) };
+        const Sigma = (await import('sigma')).default;
+        vi.spyOn(Sigma.prototype, 'getNodeDisplayData').mockReturnValue({
+            x: 0.4,
+            y: 0.6,
+        } as never);
+
+        render(
+            <UniverseCanvas
+                connectionId={1}
+                model={model}
+                snapshot={snapshot}
+                onRelayout={() => undefined}
+                onPositionsChanged={() => undefined}
+                onError={() => undefined}
+            />,
+        );
+        await waitFor(() =>
+            expect(
+                screen.getByRole('img', { name: /Schema universe of 20/ }),
+            ).toHaveAttribute('data-universe-ready', 'true'),
+        );
+        expect(screen.queryByTestId('radar-ping')).toBeNull();
+
+        const table = graph.nodes()[1];
+        const { x, y } = graph.getNodeAttributes(table);
+        await act(async () => universe.flyTo(table));
+
+        const ping = await screen.findByTestId('radar-ping');
+        expect(ping).toHaveClass('radar-ping');
+        // The fake viewport is the graph itself; the 28px ping is centred on the node.
+        expect(ping.style.left).toBe(`${x - 14}px`);
+        expect(ping.style.top).toBe(`${y - 14}px`);
     });
 
     it('opens the table tab on a node double-click instead of zooming', async () => {

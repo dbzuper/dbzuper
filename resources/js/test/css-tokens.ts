@@ -77,4 +77,11 @@ export const THEMES: {
         nestedDark: ".dark [data-theme='graphite']",
         shell: 'flat',
     },
+    {
+        name: 'radar',
+        light: "[data-theme='radar']",
+        dark: "[data-theme='radar'].dark",
+        nestedDark: ".dark [data-theme='radar']",
+        shell: 'flat',
+    },
 ];

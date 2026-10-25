@@ -58,6 +58,12 @@ export function UniverseCanvas({
     const [sigma, setSigma] = useState<UniverseSigma | null>(null);
     const [ready, setReady] = useState(false);
     const [themeNonce, setThemeNonce] = useState(0);
+    // The orange "found it" ping, in container pixels, where a fly-to or a found path lands.
+    const [ping, setPing] = useState<{
+        x: number;
+        y: number;
+        id: number;
+    } | null>(null);
     const relayoutRef = useRef(onRelayout);
     relayoutRef.current = onRelayout;
     const positionsRef = useRef(onPositionsChanged);
@@ -249,18 +255,24 @@ export function UniverseCanvas({
                   });
         resizeObserver?.observe(container);
 
-        const fitNodes = (tables: string[]) => {
+        const pingAt = (table: string) => {
+            if (!graph.hasNode(table)) return;
+            const p = instance.graphToViewport(graph.getNodeAttributes(table));
+            setPing({ x: p.x, y: p.y, id: Date.now() });
+        };
+
+        const fitNodes = (tables: string[]): Promise<void> => {
             const pts = tables
                 .map((t) => instance.getNodeDisplayData(t))
                 .filter((d): d is NodeDisplayData => d !== undefined);
-            if (pts.length === 0) return;
+            if (pts.length === 0) return Promise.resolve();
             const xs = pts.map((p) => p.x);
             const ys = pts.map((p) => p.y);
             const span = Math.max(
                 Math.max(...xs) - Math.min(...xs),
                 Math.max(...ys) - Math.min(...ys),
             );
-            void camera.animate(
+            return camera.animate(
                 {
                     x: (Math.min(...xs) + Math.max(...xs)) / 2,
                     y: (Math.min(...ys) + Math.max(...ys)) / 2,
@@ -273,7 +285,7 @@ export function UniverseCanvas({
         const unsubscribeCamera = useWorkspace.subscribe((st, prev) => {
             if (st.focus !== prev.focus) {
                 if (st.focus)
-                    fitNodes([
+                    void fitNodes([
                         ...neighborhood(
                             graph,
                             st.focus.table,
@@ -283,20 +295,24 @@ export function UniverseCanvas({
                     ]);
                 else resetView(400);
             }
-            if (st.path !== prev.path && st.path && st.path.length > 1)
-                fitNodes(st.path);
+            if (st.path !== prev.path && st.path && st.path.length > 1) {
+                const end = st.path[st.path.length - 1];
+                void fitNodes(st.path).then(() => pingAt(end));
+            }
         });
 
         registerUniverse({
             flyTo: (table) => {
                 const d = instance.getNodeDisplayData(table);
                 if (d)
-                    void camera.animate(
-                        { x: d.x, y: d.y, ratio: 0.18 },
-                        { duration: motionMs(500) },
-                    );
+                    void camera
+                        .animate(
+                            { x: d.x, y: d.y, ratio: 0.18 },
+                            { duration: motionMs(500) },
+                        )
+                        .then(() => pingAt(table));
             },
-            fitNodes,
+            fitNodes: (tables) => void fitNodes(tables),
             fitAll: () => resetView(400),
             relayout: () => relayoutRef.current(),
         });
@@ -341,6 +357,19 @@ export function UniverseCanvas({
                 />
             )}
             {sigma && <TableCards sigma={sigma} snapshot={snapshot} />}
+            {ping && (
+                <span
+                    key={ping.id}
+                    data-testid="radar-ping"
+                    aria-hidden
+                    className="radar-ping absolute size-7"
+                    style={{ left: ping.x - 14, top: ping.y - 14 }}
+                    onAnimationEnd={(e) => {
+                        // The second ring (::after, started 250ms later) ends last.
+                        if (e.pseudoElement === '::after') setPing(null);
+                    }}
+                />
+            )}
             <Legend />
         </div>
     );

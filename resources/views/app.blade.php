@@ -58,6 +58,14 @@
             html[data-theme="graphite"].dark {
                 background-color: #14171c;
             }
+
+            html[data-theme="radar"] {
+                background-color: #f1f7f2;
+            }
+
+            html[data-theme="radar"].dark {
+                background-color: #0a1a10;
+            }
         </style>
 
         <link rel="icon" href="/favicon.ico" sizes="any">

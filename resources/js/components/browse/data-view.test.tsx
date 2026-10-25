@@ -642,6 +642,51 @@ describe('DataView', () => {
         expect(tab.preview).toBe(false);
     });
 
+    it('pings beside the row range when a changed filter comes back with rows', async () => {
+        open();
+        render(<Harness />);
+        await screen.findByText('100 rows');
+        expect(screen.queryByTestId('filter-ping')).toBeNull();
+
+        fireEvent.change(screen.getByLabelText('Filter value'), {
+            target: { value: '7' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Add filter' }));
+
+        expect(await screen.findByTestId('filter-ping')).toBeInTheDocument();
+    });
+
+    it('does not ping when a filter matches no rows', async () => {
+        open();
+        render(<Harness />);
+        await screen.findByText('100 rows');
+        api.rows.mockResolvedValue(
+            page(1, 1, {
+                rows: [],
+                row_ids: [],
+                locked: [],
+                shortened: [],
+                has_more: false,
+            }),
+        );
+
+        fireEvent.change(screen.getByLabelText('Filter value'), {
+            target: { value: '7' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Add filter' }));
+
+        await waitFor(() => expect(api.rows).toHaveBeenCalledTimes(2));
+        await act(async () => {});
+        expect(screen.queryByTestId('filter-ping')).toBeNull();
+    });
+
+    it('does not ping for the rows a filtered tab opens with', async () => {
+        open('orders', [{ column: 'id', op: 'eq', value: '7' }]);
+        render(<Harness />);
+        await screen.findByText('100 rows');
+        expect(screen.queryByTestId('filter-ping')).toBeNull();
+    });
+
     it('promotes a preview tab when a column is resized', async () => {
         open();
         render(<Harness />);

@@ -6,6 +6,7 @@ import { openTableTab } from '@/browse/table-actions';
 import { requestFilterDraft } from '@/components/browse/data-view';
 import { useSidebarPrefs } from '@/browse/sidebar-prefs';
 import { INSPECTOR_HEADING_ID } from '@/components/inspector/inspector-panel';
+import { makeAWish, matchesWish } from '@/lib/easter-eggs';
 import { takePaletteOpener } from '@/lib/workspace-shortcuts';
 import { nextAppearance, useAppearance } from '@/hooks/use-appearance';
 import type { SchemaSnapshot } from '@/types/schema';
@@ -153,6 +154,10 @@ export function CommandPalette({
             : []),
         ...(st.focus
             ? [{ label: 'Exit focus mode', run: () => st.setFocus(null) }]
+            : []),
+        // Hidden: only typing the whole phrase reveals it.
+        ...(matchesWish(query)
+            ? [{ label: 'Make a wish', run: makeAWish }]
             : []),
     ];
 

@@ -21,6 +21,7 @@ import { panelDomId, TabBar, tabDomId } from '@/components/browse/tab-bar';
 import { TableSidebar } from '@/components/browse/table-sidebar';
 import { TableTabView } from '@/components/browse/table-tab';
 import { PendingGuard } from '@/components/editing/pending-guard';
+import { RadarLoader } from '@/components/radar';
 import { HistoryList } from '@/components/history/history-list';
 import { InspectorPanel } from '@/components/inspector/inspector-panel';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,7 @@ import { PathDialog } from '@/components/workspace/path-dialog';
 import { PathPickChip } from '@/components/workspace/path-pick-chip';
 import { LeftRail } from '@/components/workspace/left-rail';
 import { StatusBar } from '@/components/workspace/status-bar';
+import { WishBurst } from '@/components/workspace/wish-burst';
 import { WorkspaceHeader } from '@/components/workspace/workspace-header';
 import { reconcilePending } from '@/editing/reconcile-pending';
 import { historyApi } from '@/lib/history-api';
@@ -469,10 +471,11 @@ export default function WorkspaceShow({
                                     }
                                     className="relative min-h-0 flex-1"
                                 >
+                                    <WishBurst />
                                     {!snapshot && loading && (
-                                        <div className={centered}>
+                                        <RadarLoader>
                                             Loading schema…
-                                        </div>
+                                        </RadarLoader>
                                     )}
 
                                     {snapshot && !hasTables && onUniverse && (
@@ -507,14 +510,10 @@ export default function WorkspaceShow({
                                                         >
                                                             <Suspense
                                                                 fallback={
-                                                                    <div
-                                                                        className={
-                                                                            centered
-                                                                        }
-                                                                    >
+                                                                    <RadarLoader>
                                                                         Loading
                                                                         universe…
-                                                                    </div>
+                                                                    </RadarLoader>
                                                                 }
                                                             >
                                                                 <UniverseCanvas
@@ -541,13 +540,13 @@ export default function WorkspaceShow({
                                                         </UniverseBoundary>
                                                     )}
                                                 {status === 'layout' && (
-                                                    <div className={centered}>
+                                                    <RadarLoader>
                                                         Laying out{' '}
                                                         {snapshot.tables.length.toLocaleString(
                                                             'en',
                                                         )}{' '}
                                                         tables…
-                                                    </div>
+                                                    </RadarLoader>
                                                 )}
                                                 {status === 'error' && (
                                                     <div

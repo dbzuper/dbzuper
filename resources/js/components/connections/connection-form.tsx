@@ -1,4 +1,5 @@
 import InputError from '@/components/input-error';
+import { RadarSweep } from '@/components/radar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -365,6 +366,7 @@ export function ConnectionForm({
                     onClick={runTest}
                     disabled={testing}
                 >
+                    {testing && <RadarSweep className="size-4" />}
                     {testing ? 'Testing…' : 'Test connection'}
                 </Button>
                 <Button type="submit" disabled={form.processing}>

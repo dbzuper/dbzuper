@@ -471,6 +471,125 @@
     --universe-label: #e7eaf0;
 }
 
+/* Radar: the Dragon Radar's screen. Phosphor greens on a pale screen (light) or a near-black one (dark),
+   a stronger grid on the Universe, and ball orange still kept for the logo and "found it" pings. Flat
+   panels and the default fonts, like Classic. */
+[data-theme='radar'] {
+    --background: oklch(0.975 0.012 150);
+    --foreground: oklch(0.22 0.03 155);
+    --card: oklch(0.99 0.008 150);
+    --card-foreground: oklch(0.22 0.03 155);
+    --popover: oklch(0.995 0.005 150);
+    --popover-foreground: oklch(0.22 0.03 155);
+    --primary: oklch(0.48 0.12 152);
+    --primary-foreground: oklch(0.985 0.01 150);
+    --secondary: oklch(0.945 0.018 150);
+    --secondary-foreground: oklch(0.25 0.03 155);
+    --muted: oklch(0.945 0.018 150);
+    --muted-foreground: oklch(0.47 0.04 155);
+    --accent: oklch(0.93 0.035 150);
+    --accent-foreground: oklch(0.25 0.03 155);
+    --destructive: oklch(0.55 0.2 27);
+    --destructive-foreground: oklch(0.55 0.2 27);
+    --success: oklch(0.5 0.13 150);
+    --warning: oklch(0.6 0.14 65);
+    --warning-foreground: oklch(0.45 0.09 65);
+    --border: oklch(0.885 0.025 150);
+    --input: oklch(0.885 0.025 150);
+    --ring: oklch(0.58 0.12 152);
+    --chart-1: oklch(0.55 0.13 152);
+    --chart-2: oklch(0.7 0.16 60);
+    --chart-3: oklch(0.6 0.1 220);
+    --chart-4: oklch(0.8 0.16 120);
+    --chart-5: oklch(0.65 0.15 30);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.96 0.015 150);
+    --sidebar-foreground: oklch(0.22 0.03 155);
+    --sidebar-primary: oklch(0.48 0.12 152);
+    --sidebar-primary-foreground: oklch(0.985 0.01 150);
+    --sidebar-accent: oklch(0.92 0.035 150);
+    --sidebar-accent-foreground: oklch(0.25 0.03 155);
+    --sidebar-border: oklch(0.885 0.025 150);
+    --sidebar-ring: oklch(0.58 0.12 152);
+    --logo-dot: #f59e0b;
+
+    --shell: var(--background);
+    --shell-gap: 0px;
+    --panel-radius: 0px;
+    --panel-shadow: 0 0 #0000;
+    --chrome-edge: var(--border);
+    --sidebar-shadow: var(--panel-shadow);
+    --grid-header: var(--muted);
+    --grid-column-line: var(--border);
+
+    --universe-bg: #eef5ef;
+    --universe-grid: rgba(22, 101, 52, 0.12);
+    --universe-accent: #15803d;
+    --universe-node-dim: #d3e0d6;
+    --universe-edge: rgba(30, 70, 45, 0.35);
+    --universe-edge-inferred: rgba(30, 70, 45, 0.16);
+    --universe-edge-dim: rgba(30, 70, 45, 0.07);
+    --universe-label: #10261a;
+}
+
+[data-theme='radar'].dark,
+.dark [data-theme='radar'] {
+    --background: oklch(0.17 0.03 155);
+    --foreground: oklch(0.94 0.03 145);
+    --card: oklch(0.2 0.035 155);
+    --card-foreground: oklch(0.94 0.03 145);
+    --popover: oklch(0.22 0.037 155);
+    --popover-foreground: oklch(0.94 0.03 145);
+    --primary: oklch(0.82 0.18 145);
+    --primary-foreground: oklch(0.2 0.05 155);
+    --secondary: oklch(0.25 0.035 155);
+    --secondary-foreground: oklch(0.94 0.03 145);
+    --muted: oklch(0.24 0.035 155);
+    --muted-foreground: oklch(0.74 0.05 150);
+    --accent: oklch(0.3 0.06 152);
+    --accent-foreground: oklch(0.94 0.03 145);
+    --destructive: oklch(0.765 0.142 13.419);
+    --destructive-foreground: oklch(0.765 0.142 13.419);
+    --success: oklch(0.79 0.16 150);
+    --warning: oklch(0.82 0.13 77);
+    --warning-foreground: oklch(0.82 0.13 77);
+    --border: oklch(0.3 0.04 155);
+    --input: oklch(0.3 0.04 155);
+    --ring: oklch(0.82 0.18 145);
+    --chart-1: oklch(0.82 0.18 145);
+    --chart-2: oklch(0.8 0.15 65);
+    --chart-3: oklch(0.72 0.11 220);
+    --chart-4: oklch(0.88 0.16 120);
+    --chart-5: oklch(0.72 0.16 30);
+    --sidebar: oklch(0.155 0.028 155);
+    --sidebar-foreground: oklch(0.94 0.03 145);
+    --sidebar-primary: oklch(0.82 0.18 145);
+    --sidebar-primary-foreground: oklch(0.2 0.05 155);
+    --sidebar-accent: oklch(0.27 0.05 152);
+    --sidebar-accent-foreground: oklch(0.94 0.03 145);
+    --sidebar-border: oklch(0.3 0.04 155);
+    --sidebar-ring: oklch(0.82 0.18 145);
+    --logo-dot: #f59e0b;
+
+    --shell: var(--background);
+    --shell-gap: 0px;
+    --panel-radius: 0px;
+    --panel-shadow: 0 0 #0000;
+    --chrome-edge: var(--border);
+    --sidebar-shadow: var(--panel-shadow);
+    --grid-header: var(--muted);
+    --grid-column-line: var(--border);
+
+    --universe-bg: #07140c;
+    --universe-grid: rgba(74, 222, 128, 0.11);
+    --universe-accent: #4ade80;
+    --universe-node-dim: #13281b;
+    --universe-edge: rgba(134, 239, 172, 0.3);
+    --universe-edge-inferred: rgba(134, 239, 172, 0.13);
+    --universe-edge-dim: rgba(134, 239, 172, 0.05);
+    --universe-label: #dcfce7;
+}
+
 .universe-grid-dots {
     background-image: radial-gradient(
         var(--universe-grid) 1px,
@@ -671,6 +790,113 @@
     animation: row-drawer-flash 600ms ease-out;
 }
 
+/* The radar loader (components/radar.tsx): the sweep turns once every 2.4s; the blip at the north-east
+   (an eighth of a turn from the sweep's start) lights up as the leading edge passes it, then fades. */
+@keyframes radar-sweep {
+    to {
+        transform: rotate(360deg);
+    }
+}
+@keyframes radar-blip {
+    0%,
+    11% {
+        opacity: 0;
+    }
+    13% {
+        opacity: 1;
+    }
+    75%,
+    100% {
+        opacity: 0;
+    }
+}
+.radar-sweep {
+    transform-box: view-box;
+    transform-origin: center;
+    animation: radar-sweep 2.4s linear infinite;
+}
+.radar-blip {
+    animation: radar-blip 2.4s linear infinite;
+}
+
+/* "Found it": an orange ping where a search, a path or a filter lands (components/radar-ping.tsx). Orange
+   is kept for these moments and the logo's dots. */
+@keyframes radar-ping {
+    from {
+        opacity: 1;
+        transform: scale(0.5);
+    }
+    to {
+        opacity: 0;
+        transform: scale(2.6);
+    }
+}
+@keyframes radar-ping-fade {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+.radar-ping,
+.radar-ping::after {
+    pointer-events: none;
+    border-radius: 9999px;
+    box-shadow: 0 0 0 2px var(--logo-dot);
+    animation: radar-ping 900ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.radar-ping::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    animation-delay: 250ms;
+}
+
+/* The hidden "make a wish" command: a burst of light with seven orange orbs flying out
+   (components/workspace/wish-burst.tsx). */
+@keyframes wish-glow {
+    0% {
+        opacity: 0;
+        transform: scale(0.2);
+    }
+    30% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.6);
+    }
+}
+@keyframes wish-orb {
+    0% {
+        opacity: 0;
+        transform: rotate(var(--angle)) translateX(0) scale(0.4);
+    }
+    20% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: rotate(var(--angle)) translateX(var(--reach)) scale(1);
+    }
+}
+.wish-glow {
+    background: radial-gradient(
+        circle,
+        color-mix(in oklab, var(--logo-dot) 55%, transparent) 0%,
+        color-mix(in oklab, var(--logo-dot) 18%, transparent) 35%,
+        transparent 65%
+    );
+    animation: wish-glow 1400ms ease-out both;
+}
+.wish-orb {
+    background: var(--logo-dot);
+    box-shadow: 0 0 18px 4px
+        color-mix(in oklab, var(--logo-dot) 60%, transparent);
+    animation: wish-orb 1400ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
 /* Honour the OS "reduce motion" setting app-wide (tw-animate-css, Radix, transitions). */
 @media (prefers-reduced-motion: reduce) {
     *,
@@ -694,6 +920,17 @@
     }
     .row-drawer[data-motion='change'] > .row-drawer-header {
         animation-duration: 600ms !important;
+    }
+
+    /* The radar holds still with its blip lit; the found ping fades in place without growing. */
+    .radar-sweep,
+    .radar-blip {
+        animation: none !important;
+    }
+    .radar-ping,
+    .radar-ping::after {
+        animation-name: radar-ping-fade;
+        animation-duration: 900ms !important;
     }
 }
 

@@ -19,7 +19,7 @@ class HandleAppearance
         View::share('appearance', $request->cookie('appearance') ?? 'dark');
 
         $theme = $request->cookie('theme');
-        View::share('theme', in_array($theme, ['classic', 'layered', 'graphite'], true) ? $theme : 'classic');
+        View::share('theme', in_array($theme, ['classic', 'layered', 'graphite', 'radar'], true) ? $theme : 'classic');
 
         return $next($request);
     }
