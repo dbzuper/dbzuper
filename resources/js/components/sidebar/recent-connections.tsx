@@ -10,6 +10,7 @@ import {
     SidebarMenu,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { prefetchWorkspace } from '@/lib/prefetch-workspace';
 
 export type RecentConnection = {
     id: number;
@@ -31,7 +32,9 @@ export function RecentConnections({ items }: { items: RecentConnection[] }) {
                     <SidebarMenuItem key={c.id}>
                         <Link
                             href={`/c/${c.id}`}
-                            prefetch
+                            // Chunk-only warm-up: an Inertia prefetch would GET the workspace and mark it opened.
+                            onMouseEnter={prefetchWorkspace}
+                            onFocus={prefetchWorkspace}
                             className="group/rc flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-sidebar-foreground ring-sidebar-ring outline-hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2"
                         >
                             <span

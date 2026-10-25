@@ -10,6 +10,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { formatSnapshotAge } from '@/lib/format';
+import { prefetchWorkspace } from '@/lib/prefetch-workspace';
 
 export type RecentQuery = {
     id: number;
@@ -55,6 +56,8 @@ export function RecentQueries({ items }: { items: RecentQuery[] }) {
                         <SidebarMenuItem key={q.id}>
                             <Link
                                 href={`/c/${q.connection_id}?history=${q.id}`}
+                                onMouseEnter={prefetchWorkspace}
+                                onFocus={prefetchWorkspace}
                                 className="grid grid-cols-[0.5rem_minmax(0,1fr)] gap-x-2 rounded-md px-2 py-1.5 text-sidebar-foreground ring-sidebar-ring outline-hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2"
                             >
                                 <span

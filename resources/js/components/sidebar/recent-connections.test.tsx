@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@inertiajs/react', () => ({
     Link: ({
@@ -16,6 +16,9 @@ vi.mock('@inertiajs/react', () => ({
         </a>
     ),
 }));
+
+const prefetchWorkspace = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/prefetch-workspace', () => ({ prefetchWorkspace }));
 
 import { RecentConnections } from '@/components/sidebar/recent-connections';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -39,6 +42,17 @@ function renderRecent(open = true, list = items) {
 }
 
 describe('RecentConnections', () => {
+    beforeEach(() => prefetchWorkspace.mockClear());
+
+    it('warms only the workspace chunks on hover or focus, never an Inertia prefetch (which would mark it opened)', () => {
+        renderRecent();
+        const link = screen.getByRole('link', { name: /Shipitlah Production/ });
+        expect(link).not.toHaveAttribute('prefetch');
+        fireEvent.mouseEnter(link);
+        fireEvent.focus(link);
+        expect(prefetchWorkspace).toHaveBeenCalledTimes(2);
+    });
+
     it('lists each connection with its engine, linking to its workspace', () => {
         renderRecent();
         expect(screen.getByText('Recent')).toBeInTheDocument();
