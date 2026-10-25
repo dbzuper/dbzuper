@@ -27,6 +27,11 @@ vi.mock('@inertiajs/react', () => ({
     }),
 }));
 
+// jsdom has no canvas; the star maps are covered by their own tests.
+vi.mock('@/components/connections/star-map', () => ({
+    StarMap: () => null,
+}));
+
 import { TooltipProvider } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
 import ConnectionsIndex from '@/pages/connections/index';

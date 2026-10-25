@@ -8,13 +8,18 @@ vi.mock('@inertiajs/react', () => ({
         <a href={String(href)}>{children}</a>
     ),
     router: { delete: vi.fn(), visit: vi.fn() },
+    usePage: () => ({ props: { auth: { user: { name: 'Admin' } } } }),
+}));
+
+vi.mock('@/components/connections/star-map', () => ({
+    StarMap: () => null,
 }));
 
 import ConnectionsIndex from '@/pages/connections/index';
 import { flushSqlTabs, useSqlTabs } from '@/sql/tabs-store';
-import type { ConnectionSummary } from '@/types/connection';
+import type { ConnectionCard } from '@/types/connection';
 
-const connection = (id: number): ConnectionSummary => ({
+const connection = (id: number): ConnectionCard => ({
     id,
     name: `Conn ${id}`,
     driver: 'sqlite',
@@ -29,6 +34,11 @@ const connection = (id: number): ConnectionSummary => ({
     color: null,
     store_history: true,
     last_opened_at: null,
+    tables: null,
+    views: null,
+    snapshot_at: null,
+    pins: [],
+    star: null,
 });
 
 describe('connections index', () => {
