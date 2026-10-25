@@ -97,6 +97,29 @@ describe('InspectorPanel', () => {
         expect(heading).toHaveAttribute('tabindex', '-1');
     });
 
+    it('reads a power level over 9,000 rows', () => {
+        const { rerender } = render(
+            <InspectorPanel
+                connectionId={1}
+                snapshot={snapshot}
+                table={orders}
+            />,
+        );
+        expect(screen.getByText('10 rows')).not.toHaveAttribute('title');
+
+        rerender(
+            <InspectorPanel
+                connectionId={1}
+                snapshot={snapshot}
+                table={{ ...orders, row_count: { count: 9001, kind: 'exact' } }}
+            />,
+        );
+        expect(screen.getByText('9,001 rows')).toHaveAttribute(
+            'title',
+            "It's over 9,000!",
+        );
+    });
+
     it('lists columns with key markers', () => {
         render(
             <InspectorPanel

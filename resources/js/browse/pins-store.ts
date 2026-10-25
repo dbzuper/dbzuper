@@ -1,5 +1,6 @@
 import { toast } from 'sonner';
 import { create } from 'zustand';
+import { claimSevenWish, SEVEN, SEVEN_LINE } from '@/lib/easter-eggs';
 import { pinsApi, type Pin } from '@/lib/pins-api';
 
 type State = {
@@ -83,7 +84,12 @@ export const usePins = create<State>()((set, get) => {
                     optimistic: [...list(c), temp],
                     run: async () => {
                         const { pin } = await pinsApi.add(c, table);
-                        return list(c).map((p) => (p.id === temp.id ? pin : p));
+                        const next = list(c).map((p) =>
+                            p.id === temp.id ? pin : p,
+                        );
+                        if (next.length === SEVEN && claimSevenWish())
+                            toast(SEVEN_LINE);
+                        return next;
                     },
                 };
             }),

@@ -7,7 +7,8 @@ const api = vi.hoisted(() => ({
     reorder: vi.fn(),
 }));
 vi.mock('@/lib/pins-api', () => ({ pinsApi: api }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+const toastMock = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn() }));
+vi.mock('sonner', () => ({ toast: toastMock }));
 
 import { toast } from 'sonner';
 import { usePins } from './pins-store';
@@ -15,6 +16,49 @@ import { usePins } from './pins-store';
 beforeEach(() => {
     vi.clearAllMocks();
     usePins.setState({ byConnection: {} });
+    localStorage.clear();
+});
+
+describe('gathering all seven', () => {
+    const pinsUpTo = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({
+            id: i + 1,
+            table: `t${i + 1}`,
+            position: i + 1,
+        }));
+
+    it('makes a wish once, when the seventh pin is saved', async () => {
+        api.list.mockResolvedValue({ pins: pinsUpTo(6) });
+        await usePins.getState().load(7);
+        api.add.mockResolvedValue({
+            pin: { id: 7, table: 't7', position: 7 },
+        });
+
+        await usePins.getState().toggle(7, 't7');
+
+        expect(toast).toHaveBeenCalledExactlyOnceWith(
+            "You've gathered all seven. Make a wish.",
+        );
+
+        // Unpinning and pinning a seventh again does not repeat it.
+        api.remove.mockResolvedValue(null);
+        await usePins.getState().toggle(7, 't7');
+        await usePins.getState().toggle(7, 't7');
+        expect(toast).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays quiet below seven and when the pin is refused', async () => {
+        api.list.mockResolvedValue({ pins: pinsUpTo(5) });
+        await usePins.getState().load(7);
+        api.add.mockResolvedValue({
+            pin: { id: 6, table: 't6', position: 6 },
+        });
+        await usePins.getState().toggle(7, 't6');
+        api.add.mockRejectedValue(new Error('500'));
+        await usePins.getState().toggle(7, 't7');
+
+        expect(toast).not.toHaveBeenCalled();
+    });
 });
 
 describe('usePins', () => {

@@ -323,6 +323,30 @@ describe('CommandPalette', () => {
         expect(useWorkspace.getState().paletteOpen).toBe(true);
     });
 
+    it('reveals "Make a wish" only for the whole phrase, and makes the wish', () => {
+        const wished = vi.fn();
+        window.addEventListener('dbzuper:wish', wished);
+        render(
+            <CommandPalette
+                connectionId={1}
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
+        const wish = () =>
+            screen.queryByRole('option', { name: 'Make a wish' });
+
+        expect(wish()).not.toBeInTheDocument();
+        fireEvent.change(searchBox(), { target: { value: 'make' } });
+        expect(wish()).not.toBeInTheDocument();
+        fireEvent.change(searchBox(), { target: { value: 'Make a wish' } });
+        fireEvent.click(wish()!);
+
+        expect(wished).toHaveBeenCalledOnce();
+        expect(useWorkspace.getState().paletteOpen).toBe(false);
+        window.removeEventListener('dbzuper:wish', wished);
+    });
+
     it('offers no list or universe view switch', () => {
         render(
             <CommandPalette

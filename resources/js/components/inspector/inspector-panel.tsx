@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { openTableTab } from '@/browse/table-actions';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { isOverNineThousand, POWER_LEVEL_LINE } from '@/lib/easter-eggs';
 import { formatBytes, formatRowCount } from '@/lib/format';
 import type { SchemaSnapshot, TableSchema } from '@/types/schema';
 import { useWorkspace, type InspectorTab } from '@/universe/store';
@@ -48,8 +49,17 @@ export function InspectorPanel({ connectionId, snapshot, table }: Props) {
                         {table.name}
                     </h2>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {table.kind} · {formatRowCount(table.row_count)} rows ·{' '}
-                        {table.columns.length} columns ·{' '}
+                        {table.kind} ·{' '}
+                        <span
+                            title={
+                                isOverNineThousand(table.row_count)
+                                    ? POWER_LEVEL_LINE
+                                    : undefined
+                            }
+                        >
+                            {formatRowCount(table.row_count)} rows
+                        </span>{' '}
+                        · {table.columns.length} columns ·{' '}
                         {formatBytes(table.size_bytes)}
                     </p>
                 </div>
