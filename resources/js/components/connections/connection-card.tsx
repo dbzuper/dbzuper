@@ -19,6 +19,9 @@ import type { ConnectionCard as Card, DriverValue } from '@/types/connection';
 
 const PIN_CHIPS = 4;
 
+/** Entrance stagger steps; later cards share the last delay so a long list doesn't trickle in. */
+export const MAX_STAGGER = 8;
+
 const GLYPHS: Record<DriverValue, string> = {
     mysql: 'My',
     mariadb: 'Ma',
@@ -84,7 +87,9 @@ export function ConnectionCard({
                 'ease-[cubic-bezier(0.2,0.7,0.2,1)] motion-safe:animate-in motion-safe:animation-duration-[450ms] motion-safe:fade-in-0 motion-safe:fill-mode-both motion-safe:slide-in-from-bottom-2',
                 STRETCHED_FOCUS,
             )}
-            style={colorStyle(c, { animationDelay: `${index * 50}ms` })}
+            style={colorStyle(c, {
+                animationDelay: `${Math.min(index, MAX_STAGGER) * 50}ms`,
+            })}
         >
             <div
                 className="relative h-[118px] shrink-0"
@@ -99,15 +104,18 @@ export function ConnectionCard({
                 <span className="absolute bottom-3 left-3.5 inline-flex items-center gap-1.5 rounded-full bg-background/85 py-0.5 pr-2.5 pl-1 text-[11px] font-medium backdrop-blur-sm">
                     <span
                         aria-hidden
-                        className="grid size-[18px] place-items-center rounded-full bg-(--c) font-mono text-[9px] font-bold text-background"
+                        className="grid size-[18px] place-items-center rounded-full bg-[color-mix(in_oklab,var(--c)_30%,var(--card))] font-mono text-[9px] font-bold text-foreground"
                     >
                         {GLYPHS[c.driver]}
                     </span>
                     {c.driver_label}
                 </span>
                 {c.read_only && (
-                    <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-background/85 px-2 py-0.5 text-[10.5px] font-medium text-warning-foreground backdrop-blur-sm">
-                        <Lock className="size-3" aria-hidden />
+                    <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-[color-mix(in_oklab,var(--warning)_14%,var(--background))] px-2 py-0.5 text-[10.5px] font-medium text-foreground">
+                        <Lock
+                            className="size-3 text-warning-foreground"
+                            aria-hidden
+                        />
                         read-only
                     </span>
                 )}
@@ -203,7 +211,7 @@ export function ConnectionCard({
                 />
                 <span
                     aria-hidden
-                    className="ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 font-semibold text-foreground transition-colors group-hover/card:bg-(--c) group-hover/card:text-background"
+                    className="ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 font-semibold text-foreground transition-colors group-hover/card:bg-[color-mix(in_oklab,var(--c)_30%,var(--card))]"
                 >
                     Open
                     <ArrowRight className="size-3.5 transition-transform group-hover/card:translate-x-0.5" />

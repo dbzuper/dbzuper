@@ -77,6 +77,27 @@ function luminance({ l, c, h }: Colour): number {
     return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
 }
 
+/** `color-mix(in oklab, a p, b)`: a straight blend of the Oklab coordinates. */
+function mix(a: Colour, p: number, b: Colour): Colour {
+    const lab = ({ l, c, h }: Colour) => [
+        l,
+        c * Math.cos((h * Math.PI) / 180),
+        c * Math.sin((h * Math.PI) / 180),
+    ];
+    const [la, aa, ba] = lab(a);
+    const [lb, ab, bb] = lab(b);
+    const L = la * p + lb * (1 - p);
+    const A = aa * p + ab * (1 - p);
+    const B = ba * p + bb * (1 - p);
+
+    return {
+        l: L,
+        c: Math.hypot(A, B),
+        h: (Math.atan2(B, A) * 180) / Math.PI,
+        alpha: 1,
+    };
+}
+
 function ratio(a: Colour, b: Colour): number {
     const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
 
@@ -110,6 +131,47 @@ describe('contrast', () => {
             [text.alpha, surface.alpha],
             'text pairs must use opaque colours',
         ).toEqual([1, 1]);
+        expect(ratio(text, surface)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    /**
+     * Text on a tint: `color-mix(in oklab, <tint> p, var(--surface))` behind `--text`. A connection colour is
+     * any hex, so `--c` is checked at the lightness extremes (black, white) and two saturated hues.
+     */
+    const ANY_COLOUR = {
+        black: 'oklch(0 0 0)',
+        white: 'oklch(1 0 0)',
+        yellow: 'oklch(0.968 0.211 109.77)',
+        blue: 'oklch(0.452 0.313 264.05)',
+    };
+    const TINTS = [
+        // The connections page's read-only chip.
+        { text: 'foreground', tint: 'warning', p: 0.14, surface: 'background' },
+        // The hovered "Open" label and the engine glyph on a connection card.
+        ...Object.keys(ANY_COLOUR).map((tint) => ({
+            text: 'foreground',
+            tint,
+            p: 0.3,
+            surface: 'card',
+        })),
+    ];
+    const tinted = BLOCKS.flatMap(({ name, chain }) =>
+        TINTS.map(({ text, tint, p, surface }) => ({
+            block: name,
+            pair: `${text} on ${tint} ${Math.round(p * 100)}% in ${surface}`,
+            text: parse(resolve(chain, text)),
+            surface: mix(
+                parse(
+                    ANY_COLOUR[tint as keyof typeof ANY_COLOUR] ??
+                        resolve(chain, tint),
+                ),
+                p,
+                parse(resolve(chain, surface)),
+            ),
+        })),
+    );
+
+    it.each(tinted)('$block $pair reaches 4.5:1', ({ text, surface }) => {
         expect(ratio(text, surface)).toBeGreaterThanOrEqual(4.5);
     });
 });

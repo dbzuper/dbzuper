@@ -238,4 +238,36 @@ describe('connections page', () => {
             screen.getByRole('link', { name: 'Edit Test SQLite' }),
         ).toHaveAttribute('href', '/connections/3/edit');
     });
+
+    it('fills the hovered Open label and the engine glyph with a tint that keeps foreground text readable', () => {
+        render(<ConnectionsIndex connections={fixtures} />);
+        const [ship] = cards();
+        const tint = 'bg-[color-mix(in_oklab,var(--c)_30%,var(--card))]';
+        const open = within(ship).getByText('Open');
+        expect(open.className).toContain(`group-hover/card:${tint}`);
+        expect(open.className).not.toContain('text-background');
+        const glyph = within(ship).getByText('My');
+        expect(glyph.className).toContain(tint);
+        expect(glyph.className).toContain('text-foreground');
+        expect(ship.innerHTML).not.toContain('text-background');
+    });
+
+    it('draws the read-only chip as foreground text on a warning tint', () => {
+        render(<ConnectionsIndex connections={fixtures} />);
+        const chip = within(cards()[0]).getByText('read-only');
+        expect(chip.className).toContain(
+            'bg-[color-mix(in_oklab,var(--warning)_14%,var(--background))]',
+        );
+        expect(chip.className).toContain('text-foreground');
+    });
+
+    it('caps the entrance stagger at eight steps', () => {
+        const many = Array.from({ length: 12 }, (_, i) =>
+            card({ id: i + 1, name: `C${i + 1}` }),
+        );
+        render(<ConnectionsIndex connections={many} />);
+        const delays = cards().map((a) => a.style.animationDelay);
+        expect(delays[3]).toBe('150ms');
+        expect(delays[11]).toBe('400ms');
+    });
 });

@@ -53,8 +53,11 @@ export function ConnectionRow({
                 </div>
             </div>
             {c.read_only && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-warning-foreground">
-                    <Lock className="size-3" aria-hidden />
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[color-mix(in_oklab,var(--warning)_14%,var(--background))] px-2 py-0.5 text-[10.5px] font-medium text-foreground">
+                    <Lock
+                        className="size-3 text-warning-foreground"
+                        aria-hidden
+                    />
                     read-only
                 </span>
             )}
