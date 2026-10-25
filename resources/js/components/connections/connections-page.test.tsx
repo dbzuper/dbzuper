@@ -188,7 +188,7 @@ describe('connections page', () => {
             screen.getByText('Connect your first database'),
         ).toBeInTheDocument();
         expect(
-            screen.getByText(/Point DBSuperb at MySQL, MariaDB, PostgreSQL/),
+            screen.getByText(/Point DBZuper at MySQL, MariaDB, PostgreSQL/),
         ).toBeInTheDocument();
         expect(screen.queryByRole('list', { name: 'Summary' })).toBeNull();
         expect(screen.queryByPlaceholderText('Find a connection')).toBeNull();

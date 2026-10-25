@@ -20,7 +20,7 @@ export function ConnectionsEmpty() {
                     Connect your first database
                 </h2>
                 <p className="mx-auto mb-[18px] max-w-[420px] text-muted-foreground">
-                    Point DBSuperb at MySQL, MariaDB, PostgreSQL or a SQLite
+                    Point DBZuper at MySQL, MariaDB, PostgreSQL or a SQLite
                     file. It maps the schema into a universe you can fly
                     through, browse and edit.
                 </p>

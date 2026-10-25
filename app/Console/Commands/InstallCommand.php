@@ -14,7 +14,7 @@ class InstallCommand extends Command
 {
     protected $signature = 'dbsuperb:install {--name=} {--email=} {--password=}';
 
-    protected $description = 'Create the DBSuperb administrator account';
+    protected $description = 'Create the DBZuper administrator account';
 
     public function handle(CreateFirstAdmin $createFirstAdmin): int
     {
@@ -52,7 +52,7 @@ class InstallCommand extends Command
 
     private function alreadyInstalled(): int
     {
-        $this->error('DBSuperb is already installed: an administrator exists.');
+        $this->error('DBZuper is already installed: an administrator exists.');
 
         return self::FAILURE;
     }

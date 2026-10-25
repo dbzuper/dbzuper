@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# DBSuperb production image: FrankenPHP 1.13 on PHP 8.4, non-root, port 8080.
+# DBZuper production image: FrankenPHP 1.13 on PHP 8.4, non-root, port 8080.
 #
 # Build-stage choice: the Vite build runs the Wayfinder plugin, which shells out to
 # `php artisan wayfinder:generate`, so the asset stage needs PHP *and* Node plus an installed vendor/.
@@ -47,7 +47,7 @@ FROM php-base AS runtime
 # The app database is SQLite under a multi-threaded server: WAL lets reads run beside a write,
 # IMMEDIATE transactions take the write lock up front (no read-to-write upgrade that fails at once
 # with "database is locked"), and the busy timeout makes a request wait for the lock instead.
-ENV APP_NAME=DBSuperb \
+ENV APP_NAME=DBZuper \
     APP_ENV=production \
     APP_DEBUG=false \
     LOG_CHANNEL=stderr \

@@ -30,7 +30,7 @@ export default function Setup() {
 
     return (
         <AuthLayout
-            title="Welcome to DBSuperb"
+            title="Welcome to DBZuper"
             description="Create the administrator account for this installation."
         >
             <Head title="Setup" />

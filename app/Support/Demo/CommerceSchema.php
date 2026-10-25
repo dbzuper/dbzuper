@@ -6,7 +6,7 @@ use Illuminate\Database\Connection;
 use Illuminate\Database\Schema\Blueprint;
 
 /**
- * Portable demo/fixture schema covering the awkward cases DBSuperb must handle:
+ * Portable demo/fixture schema covering the awkward cases DBZuper must handle:
  * declared FKs and Laravel-style unconstrained *_id columns, a self-referencing FK,
  * a composite PK, a table without a PK, a reserved-word table name, a Unicode name,
  * JSON/BLOB columns and a view.
