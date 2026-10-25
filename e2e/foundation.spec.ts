@@ -26,7 +26,9 @@ test('setup → add SQLite connection → test → explore schema list', async (
     await expect(page.getByRole('status')).toContainText('Connected');
     await page.getByRole('button', { name: 'Add connection' }).click();
 
-    await page.getByRole('link', { name: /Demo shop/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Demo shop', exact: true })
+        .click();
     // The table sidebar lists every table beside the universe (which shows the inferred legend).
     const tree = page.getByRole('tree', { name: 'Tables' });
     await expect(

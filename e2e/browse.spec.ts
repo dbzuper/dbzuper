@@ -34,7 +34,9 @@ const tabs = () => page.getByRole('tablist', { name: 'Open tabs' });
 const panel = () => page.getByRole('main').getByRole('tabpanel');
 
 test('browse: preview tab, promotion, state kept across tab switches', async () => {
-    await page.getByRole('link', { name: /Browse demo/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Browse demo', exact: true })
+        .click();
     await sidebarRow('users').click();
     await expect(tabs().getByRole('tab', { name: 'users' })).toHaveAttribute(
         'data-preview',
@@ -258,7 +260,9 @@ test('table views: a duplicated tab keeps its own filters; Open in new tab', asy
         'Views demo',
         path.resolve('storage/app/demo/commerce.sqlite'),
     );
-    await page.getByRole('link', { name: /Views demo/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Views demo', exact: true })
+        .click();
     await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
         timeout: 30_000,
     });
@@ -498,7 +502,9 @@ test('browse: 2,000-table sidebar scrolls without long tasks', async () => {
         'Large browse',
         path.resolve('storage/app/demo/large.sqlite'),
     );
-    await page.getByRole('link', { name: /Large browse/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Large browse', exact: true })
+        .click();
     const tree = page.getByRole('tree', { name: 'Tables' });
     await tree.waitFor({ timeout: 180_000 });
     // The first visit lays out and mounts the universe; measure the sidebar once that is done, so
@@ -550,7 +556,9 @@ test('browse: tables sharing a prefix collapse into a group', async () => {
         'Groups demo',
         path.resolve('storage/app/demo/commerce.sqlite'),
     );
-    await page.getByRole('link', { name: /Groups demo/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Groups demo', exact: true })
+        .click();
     const tree = page.getByRole('tree', { name: 'Tables' });
     // The 2,000-table test above measures the flat list; grouping is a remembered setting.
     const toggle = page.getByRole('button', { name: 'Group by prefix' });

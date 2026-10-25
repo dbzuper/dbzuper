@@ -32,3 +32,14 @@ export async function chooseMode(
     await expect(radio).toHaveAttribute('aria-checked', 'true');
     await closeAppearanceMenu(page);
 }
+
+/** Picks a theme (by its label, e.g. "Classic") in the real Appearance menu and closes it again. */
+export async function chooseTheme(page: Page, label: string): Promise<void> {
+    const menu = await openAppearanceMenu(page);
+    const radio = menu
+        .getByRole('radiogroup', { name: 'Theme' })
+        .getByRole('radio', { name: label });
+    await radio.click();
+    await expect(radio).toHaveAttribute('aria-checked', 'true');
+    await closeAppearanceMenu(page);
+}

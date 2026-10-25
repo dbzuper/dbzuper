@@ -85,7 +85,9 @@ async function switchTheme(appearance: 'dark' | 'light') {
 
 test('table tab: date range filter with the picker and linked SQL', async () => {
     await addSqliteConnection(page, 'Date filter demo', DEMO);
-    await page.getByRole('link', { name: /Date filter demo/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Date filter demo', exact: true })
+        .click();
     await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
         timeout: 30_000,
     });

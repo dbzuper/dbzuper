@@ -36,7 +36,7 @@ const PALETTE_PLACEHOLDER = 'Search tables, columns and actions…';
 
 async function openWorkspace(name: string) {
     await addSqliteConnection(page, name, DEMO);
-    await page.getByRole('link', { name: new RegExp(name) }).click();
+    await page.getByRole('link', { name: `Open ${name}`, exact: true }).click();
     await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
         timeout: 30_000,
     });
@@ -176,7 +176,9 @@ test('records: entry points (result row, table tab row) and tables without a pri
 
 test('sql: write, run, confirm, inspect results and history', async () => {
     await addSqliteConnection(page, 'SQL flow demo', DEMO);
-    await page.getByRole('link', { name: /SQL flow demo/ }).click();
+    await page
+        .getByRole('link', { name: 'Open SQL flow demo', exact: true })
+        .click();
     await expect(
         page.getByRole('button', { name: 'SQL', exact: true }),
     ).toBeVisible();
@@ -245,7 +247,9 @@ test('sql: write, run, confirm, inspect results and history', async () => {
 
 test('table tab: filter, sort and open in SQL', async () => {
     await addSqliteConnection(page, 'Table tab demo', DEMO);
-    await page.getByRole('link', { name: /Table tab demo/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Table tab demo', exact: true })
+        .click();
     await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
         timeout: 30_000,
     });
@@ -281,7 +285,9 @@ test('table tab: filter, sort and open in SQL', async () => {
 
 test('table tab: server sort by column header', async () => {
     await addSqliteConnection(page, 'Data sort demo', DEMO);
-    await page.getByRole('link', { name: /Data sort demo/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Data sort demo', exact: true })
+        .click();
     await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
         timeout: 30_000,
     });
@@ -307,7 +313,9 @@ const b64url = (text: string) =>
 
 test('records: Back/Forward restore the trail without remounting or refetching', async () => {
     await addSqliteConnection(page, 'Records history demo', DEMO);
-    await page.getByRole('link', { name: /Records history demo/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Records history demo', exact: true })
+        .click();
     await expect(
         page.getByRole('button', { name: 'SQL', exact: true }),
     ).toBeVisible();
@@ -523,7 +531,7 @@ test('accessibility: no serious or critical axe violations on the main screens',
     // signed-in page.
     await page.goto('/connections');
     await expect(
-        page.getByRole('heading', { name: 'Connections' }),
+        page.getByRole('heading', { name: 'Your databases', level: 1 }),
     ).toBeVisible();
     await expectNoA11yViolations(page, { label: '/connections' });
 
