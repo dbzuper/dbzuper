@@ -50,7 +50,7 @@ test.afterAll(async () => {
 
 async function openWorkspace(name: string) {
     await page.goto('/connections');
-    await page.getByRole('link', { name: new RegExp(name) }).click();
+    await page.getByRole('link', { name: `Open ${name}`, exact: true }).click();
     await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
         timeout: 30_000,
     });

@@ -1,10 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import path from 'node:path';
-import {
-    chooseMode,
-    closeAppearanceMenu,
-    openAppearanceMenu,
-} from './support/appearance';
+import { chooseMode, chooseTheme as chooseThemeIn } from './support/appearance';
 import { settleStyles } from './support/axe';
 import { addSqliteConnection, newSignedInContext } from './support/auth';
 
@@ -32,7 +28,9 @@ test.beforeAll(async ({ browser }) => {
         'Themes demo',
         path.resolve('storage/app/demo/commerce.sqlite'),
     );
-    await page.getByRole('link', { name: /Themes demo/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Themes demo', exact: true })
+        .click();
     await openGroupedTable();
 });
 
@@ -78,15 +76,7 @@ async function openGroupedTable() {
     ).toBeVisible();
 }
 
-async function chooseTheme(label: string) {
-    const menu = await openAppearanceMenu(page);
-    const radio = menu
-        .getByRole('radiogroup', { name: 'Theme' })
-        .getByRole('radio', { name: label });
-    await radio.click();
-    await expect(radio).toHaveAttribute('aria-checked', 'true');
-    await closeAppearanceMenu(page);
-}
+const chooseTheme = (label: string) => chooseThemeIn(page, label);
 
 /** The status bar and the sidebar's table tree are drawn in every theme. */
 async function expectChrome() {

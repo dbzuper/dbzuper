@@ -12,6 +12,22 @@ declare module '@inertiajs/core' {
             name: string;
             auth: Auth;
             sidebarOpen: boolean;
+            sidebar: {
+                recentConnections: {
+                    id: number;
+                    name: string;
+                    color: string | null;
+                    driver_label: string;
+                }[];
+                recentQueries: {
+                    id: number;
+                    connection_id: number;
+                    connection_name: string;
+                    color: string | null;
+                    sql: string;
+                    created_at: string;
+                }[];
+            } | null;
             [key: string]: unknown;
         };
     }

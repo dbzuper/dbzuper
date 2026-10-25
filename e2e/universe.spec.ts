@@ -40,7 +40,9 @@ test('universe: explore, inspect and find a path', async ({ page }) => {
         'Universe demo',
         path.resolve('storage/app/demo/commerce.sqlite'),
     );
-    await page.getByRole('link', { name: /Universe demo/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Universe demo', exact: true })
+        .click();
 
     const stage = page.locator('[data-universe-ready="true"]');
     await expect(stage).toBeVisible({ timeout: 30_000 });
@@ -132,7 +134,9 @@ test('universe: 2,000-table schema becomes interactive within budget (and the co
             r.ok(),
         { timeout: 180_000 },
     );
-    await page.getByRole('link', { name: /Large demo/ }).click();
+    await page
+        .getByRole('link', { name: 'Open Large demo', exact: true })
+        .click();
     await expect(page.locator('[data-universe-ready="true"]')).toBeVisible({
         timeout: 180_000,
     });
@@ -176,7 +180,7 @@ test('universe: 2,000-table schema becomes interactive within budget (and the co
     const fcpBudget = Number(process.env.E2E_CONNECTIONS_FCP_BUDGET_MS ?? 1000);
     await page.goto('/connections', { waitUntil: 'load' });
     await expect(
-        page.getByRole('heading', { name: 'Connections' }),
+        page.getByRole('heading', { name: 'Your databases', level: 1 }),
     ).toBeVisible();
     const fcp = await firstContentfulPaint(page);
     test.info().annotations.push({

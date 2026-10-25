@@ -31,6 +31,7 @@ class SavedConnection extends Model
             'options' => 'encrypted:array',
             'read_only' => 'boolean',
             'store_history' => 'boolean',
+            'last_opened_at' => 'immutable_datetime',
         ];
     }
 
@@ -60,6 +61,17 @@ class SavedConnection extends Model
         return $this->hasMany(QueryHistoryEntry::class, 'connection_id');
     }
 
+    /** Records a visit to the workspace; skipped within a minute of the last one, and never touches updated_at. */
+    public function markOpened(): void
+    {
+        if ($this->last_opened_at?->gt(now()->subMinute())) {
+            return;
+        }
+
+        $this->last_opened_at = now();
+        static::withoutTimestamps(fn () => $this->saveQuietly());
+    }
+
     public function toClientArray(): array
     {
         return [
@@ -76,6 +88,7 @@ class SavedConnection extends Model
             'read_only' => $this->read_only,
             'color' => $this->color,
             'store_history' => $this->store_history,
+            'last_opened_at' => $this->last_opened_at?->toIso8601String(),
         ];
     }
 }

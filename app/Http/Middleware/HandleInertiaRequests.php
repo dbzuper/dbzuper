@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\QueryHistoryEntry;
+use App\Models\SavedConnection;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -42,6 +44,67 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'sidebar' => fn () => $this->sidebar($request),
         ];
+    }
+
+    /**
+     * Recent connections and queries for the app sidebar; two queries, null for guests.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function sidebar(Request $request): ?array
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return null;
+        }
+
+        $connections = SavedConnection::query()
+            ->where('user_id', $user->id)
+            ->get(['id', 'name', 'color', 'driver', 'last_opened_at'])
+            ->keyBy('id');
+
+        $queries = QueryHistoryEntry::query()
+            ->whereIn('connection_id', $connections->keys())
+            // Ids rise with inserts; ordering by id rides the (connection_id, id) index, created_at has none.
+            ->latest('id')
+            ->limit(3)
+            ->get(['id', 'connection_id', 'sql', 'created_at']);
+
+        return [
+            'recentConnections' => $connections
+                ->whereNotNull('last_opened_at')
+                ->sortByDesc('last_opened_at')
+                ->take(4)
+                ->map(fn (SavedConnection $c) => [
+                    'id' => $c->id,
+                    'name' => $c->name,
+                    'color' => $c->color,
+                    'driver_label' => $c->driver->label(),
+                ])
+                ->values()
+                ->all(),
+            'recentQueries' => $queries->map(fn (QueryHistoryEntry $q) => [
+                'id' => $q->id,
+                'connection_id' => $q->connection_id,
+                'connection_name' => $connections[$q->connection_id]->name,
+                'color' => $connections[$q->connection_id]->color,
+                'sql' => mb_substr(self::firstLine($q->sql), 0, 120),
+                'created_at' => $q->created_at?->toIso8601String(),
+            ])->all(),
+        ];
+    }
+
+    private static function firstLine(string $sql): string
+    {
+        foreach (preg_split('/\R/', $sql) as $line) {
+            if (trim($line) !== '') {
+                return trim($line);
+            }
+        }
+
+        return '';
     }
 }
