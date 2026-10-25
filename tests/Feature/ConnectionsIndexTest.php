@@ -57,6 +57,13 @@ it('gives counts and a star without points when there is no layout', function ()
             ->where('connections.0.star.count', 3));
 });
 
+it('gives no star when the latest snapshot has no preview, so the card seeds its default pattern', function () {
+    StoredSnapshot::create(['connection_id' => $this->connection->id, 'hash' => sha1('x'), 'payload' => ['tables' => []]]);
+
+    $this->actingAs($this->user)->get(route('connections.index'))
+        ->assertInertia(fn (Assert $page) => $page->where('connections.0.star', null));
+});
+
 it('uses the latest snapshot', function () {
     indexSnapshot($this->connection, ['old']);
     indexSnapshot($this->connection, ['a', 'b'], [[0, 1]]);

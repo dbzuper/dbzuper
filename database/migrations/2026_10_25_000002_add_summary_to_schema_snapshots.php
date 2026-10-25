@@ -33,7 +33,10 @@ return new class extends Migration
         });
     }
 
-    /** Fills the latest snapshot of each connection; older ones are never read for the summary and stay null. */
+    /**
+     * Fills the latest snapshot of each connection; older ones are never read for the summary and stay null. Small
+     * chunks, since each row carries a full payload.
+     */
     public static function backfill(): void
     {
         $latest = DB::table('schema_snapshots')->selectRaw('max(id)')->groupBy('connection_id');
@@ -42,9 +45,14 @@ return new class extends Migration
             ->whereNull('table_count')
             ->whereIn('id', $latest)
             ->select('id', 'payload')
-            ->chunkById(50, function ($rows) {
+            ->chunkById(10, function ($rows) {
                 foreach ($rows as $row) {
-                    $summary = SnapshotSummary::of(json_decode($row->payload, true) ?? []);
+                    try {
+                        $summary = SnapshotSummary::of(json_decode($row->payload, true) ?? []);
+                    } catch (Throwable) {
+                        // An odd payload must not break the migration; the row stays null and the card seeds a default star.
+                        continue;
+                    }
                     DB::table('schema_snapshots')->where('id', $row->id)->update([
                         'table_count' => $summary['table_count'],
                         'view_count' => $summary['view_count'],

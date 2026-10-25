@@ -68,7 +68,7 @@ class HandleInertiaRequests extends Middleware
 
         $queries = QueryHistoryEntry::query()
             ->whereIn('connection_id', $connections->keys())
-            ->latest('created_at')
+            // Ids rise with inserts; ordering by id rides the (connection_id, id) index, created_at has none.
             ->latest('id')
             ->limit(3)
             ->get(['id', 'connection_id', 'sql', 'created_at']);

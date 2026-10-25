@@ -23,7 +23,8 @@ class StarMap
      */
     public static function for(SavedConnection $connection, ?StoredSnapshot $latest): ?array
     {
-        if ($latest === null) {
+        // No preview (the backfill skipped this snapshot): no star, so the card seeds its default pattern.
+        if ($latest === null || $latest->preview === null) {
             return null;
         }
 

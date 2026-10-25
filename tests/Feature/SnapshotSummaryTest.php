@@ -105,4 +105,18 @@ describe('stored snapshots', function () {
             ->and($otherLatest->fresh()->table_count)->toBe(2)
             ->and($old->fresh()->table_count)->toBeNull();
     });
+
+    it('leaves a row with a malformed payload null instead of failing the backfill', function () {
+        $payload = ['tables' => [summaryTable('a')], 'relationships' => []];
+        $bad = StoredSnapshot::create(['connection_id' => $this->connection->id, 'hash' => str_repeat('a', 40), 'payload' => ['tables' => [['kind' => 'table']], 'relationships' => 'nope']]);
+        $other = SavedConnection::factory()->for($this->user)->create();
+        $good = StoredSnapshot::create(['connection_id' => $other->id, 'hash' => str_repeat('b', 40), 'payload' => $payload]);
+
+        $migration = require database_path('migrations/2026_10_25_000002_add_summary_to_schema_snapshots.php');
+        $migration::backfill();
+
+        expect($bad->fresh()->table_count)->toBeNull()
+            ->and($bad->fresh()->preview)->toBeNull()
+            ->and($good->fresh()->table_count)->toBe(1);
+    });
 });

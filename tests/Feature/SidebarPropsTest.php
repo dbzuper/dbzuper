@@ -38,6 +38,15 @@ it('lists up to four opened connections, newest first, skipping never-opened one
             ->has('sidebar.recentConnections.0', fn (Assert $c) => $c->hasAll(['id', 'name', 'color', 'driver_label'])->where('driver_label', 'MySQL')));
 });
 
+it('orders recent queries by id, which rises with inserts, so no created_at index is needed', function () {
+    $connection = SavedConnection::factory()->for($this->user)->create();
+    sidebarEntry($connection, 'SELECT first', '2026-01-01 12:00:00');
+    sidebarEntry($connection, 'SELECT second', '2026-01-01 11:00:00');
+
+    $this->actingAs($this->user)->get(route('connections.index'))
+        ->assertInertia(fn (Assert $page) => $page->where('sidebar.recentQueries.0.sql', 'SELECT second'));
+});
+
 it('lists the three newest queries with only the first non-empty line, cut to 120 characters', function () {
     $connection = SavedConnection::factory()->for($this->user)->create(['name' => 'Shop', 'color' => '#ff0000']);
     sidebarEntry($connection, "\n  \n  SELECT 1  \nFROM x", '2026-01-01 10:00:00');
