@@ -5,6 +5,13 @@ import { cn } from '@/lib/utils';
 import type { ConnectionCard } from '@/types/connection';
 
 const PAD = 6;
+/** Saved layout points are normalised to exactly 0–1; keep them off the rounded band corners. */
+const INSET = 0.1;
+/** Hero edges longer than this share of the width are skipped, so lines never cross the text column. */
+const HERO_MAX_EDGE = 0.25;
+
+const inset = (p: [number, number] | null): [number, number] | null =>
+    p && [INSET + p[0] * (1 - 2 * INSET), INSET + p[1] * (1 - 2 * INSET)];
 
 type Props = {
     seed: number;
@@ -66,8 +73,13 @@ export function StarMap({
             const pts = starPoints(
                 seed,
                 count,
-                star?.points ?? null,
-                hero ? 1.6 : 1,
+                star?.points?.map(inset) ?? null,
+                {
+                    width: w - 2 * PAD,
+                    height: h - 2 * PAD,
+                    spread: hero ? 1.6 : 1,
+                    hero,
+                },
             );
             const rand = mulberry32(seed + 1);
             const edges: [number, number][] = star
@@ -83,7 +95,7 @@ export function StarMap({
             ];
 
             ctx.strokeStyle = resolved;
-            ctx.globalAlpha = 0.18;
+            ctx.globalAlpha = hero ? 0.1 : 0.18;
             ctx.lineWidth = 0.8;
 
             for (const [a, b] of edges) {
@@ -93,6 +105,10 @@ export function StarMap({
 
                 const [x1, y1] = px(pts[a]);
                 const [x2, y2] = px(pts[b]);
+
+                if (hero && Math.hypot(x2 - x1, y2 - y1) > HERO_MAX_EDGE * w) {
+                    continue;
+                }
 
                 ctx.beginPath();
                 ctx.moveTo(x1, y1);
@@ -146,7 +162,12 @@ export function StarMap({
         <canvas
             ref={ref}
             aria-hidden="true"
-            className={cn('size-full', className)}
+            className={cn(
+                'size-full',
+                density === 'hero' &&
+                    '[mask-image:linear-gradient(to_right,transparent_25%,black_60%)]',
+                className,
+            )}
         />
     );
 }

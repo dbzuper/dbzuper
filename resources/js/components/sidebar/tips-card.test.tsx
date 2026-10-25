@@ -28,6 +28,14 @@ describe('TipsCard', () => {
         expect(keys).toEqual(['Ctrl', 'K']);
     });
 
+    it('separates from the sidebar with a token border (Graphite has no panel shadow and a sidebar-coloured background)', () => {
+        renderTips();
+        expect(screen.getByRole('region', { name: 'Tip' })).toHaveClass(
+            'border',
+            'border-sidebar-border',
+        );
+    });
+
     it('moves on with next and back with previous, wrapping around', () => {
         renderTips();
         fireEvent.click(screen.getByRole('button', { name: 'Next tip' }));

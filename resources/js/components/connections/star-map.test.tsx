@@ -27,12 +27,17 @@ function makeCtx() {
     return {
         fills,
         strokes,
+        alphas: [] as number[],
         moveTo: vi.fn(),
         lineTo: vi.fn(),
         arc: vi.fn(),
         beginPath: vi.fn(),
         fill: vi.fn(),
-        stroke: vi.fn(),
+        stroke: vi.fn(
+            function (this: { globalAlpha: number; alphas: number[] }) {
+                this.alphas.push(this.globalAlpha);
+            },
+        ),
         setTransform: vi.fn(),
         clearRect: vi.fn(),
         set fillStyle(v: string) {
@@ -159,5 +164,56 @@ describe('StarMap', () => {
 
         expect(disconnect).toHaveBeenCalled();
         expect(stopWatching).toHaveBeenCalled();
+    });
+
+    it('insets layout points from the rounded band corners', () => {
+        render(
+            <StarMap
+                seed={2}
+                star={{
+                    points: [
+                        [0, 0],
+                        [1, 1],
+                    ],
+                    edges: [],
+                    count: 2,
+                }}
+            />,
+        );
+
+        // 200×100 canvas, 6px pad: inner 188×88, inset by 10% of each dimension.
+        const [[x0, y0], [x1, y1]] = ctx.arc.mock.calls as number[][];
+
+        expect(x0).toBeCloseTo(6 + 18.8);
+        expect(y0).toBeCloseTo(6 + 8.8);
+        expect(x1).toBeCloseTo(194 - 18.8);
+        expect(y1).toBeCloseTo(94 - 8.8);
+    });
+
+    it('masks the hero canvas behind the text and keeps its edges short and faint', () => {
+        Object.defineProperty(HTMLCanvasElement.prototype, 'clientWidth', {
+            configurable: true,
+            value: 1000,
+        });
+        Object.defineProperty(HTMLCanvasElement.prototype, 'clientHeight', {
+            configurable: true,
+            value: 220,
+        });
+
+        const { container } = render(
+            <StarMap seed={21} star={null} density="hero" />,
+        );
+
+        expect(container.querySelector('canvas')?.className).toContain(
+            'mask-image:linear-gradient(to_right,transparent_25%,black_60%)',
+        );
+        expect(ctx.moveTo).toHaveBeenCalled();
+        expect(ctx.alphas.every((a) => a <= 0.1)).toBe(true);
+
+        ctx.moveTo.mock.calls.forEach(([x1, y1], i) => {
+            const [x2, y2] = ctx.lineTo.mock.calls[i] as number[];
+
+            expect(Math.hypot(x2 - x1, y2 - y1)).toBeLessThanOrEqual(250);
+        });
     });
 });

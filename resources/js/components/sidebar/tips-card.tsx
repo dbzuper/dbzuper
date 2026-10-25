@@ -100,7 +100,7 @@ export function TipsCard() {
     return (
         <section
             aria-label="Tip"
-            className="relative mx-1 mb-1 rounded-xl bg-background p-3 text-xs shadow-[var(--panel-shadow)] group-data-[collapsible=icon]:hidden"
+            className="relative mx-1 mb-1 rounded-xl border border-sidebar-border bg-background p-3 text-xs shadow-[var(--panel-shadow)] group-data-[collapsible=icon]:hidden"
         >
             <div className="mb-1 flex items-center gap-1.5 font-semibold">
                 <Lightbulb aria-hidden className="size-3.5 text-warning" />
