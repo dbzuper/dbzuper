@@ -67,5 +67,9 @@ describe('connections page layout', () => {
         expect(
             container.querySelectorAll('[aria-label="Appearance"]'),
         ).toHaveLength(1);
+        // It lives in the header bar now, not the sidebar footer.
+        expect(
+            container.querySelector('header [aria-label="Appearance"]'),
+        ).not.toBeNull();
     });
 });

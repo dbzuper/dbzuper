@@ -1,9 +1,11 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { History, LayoutGrid } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
-import { AppearanceMenu } from '@/components/appearance-menu';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
+import { RecentConnections } from '@/components/sidebar/recent-connections';
+import { RecentQueries } from '@/components/sidebar/recent-queries';
+import { TipsCard } from '@/components/sidebar/tips-card';
 import {
     Sidebar,
     SidebarContent,
@@ -29,6 +31,8 @@ const mainNavItems: NavItem[] = [
 ];
 
 export function AppSidebar() {
+    const { sidebar } = usePage().props;
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
@@ -45,14 +49,12 @@ export function AppSidebar() {
 
             <SidebarContent>
                 <NavMain items={mainNavItems} />
+                <RecentConnections items={sidebar?.recentConnections ?? []} />
+                <RecentQueries items={sidebar?.recentQueries ?? []} />
             </SidebarContent>
 
             <SidebarFooter>
-                <SidebarMenu className="mt-auto">
-                    <SidebarMenuItem>
-                        <AppearanceMenu />
-                    </SidebarMenuItem>
-                </SidebarMenu>
+                <TipsCard />
                 <NavUser />
             </SidebarFooter>
         </Sidebar>
