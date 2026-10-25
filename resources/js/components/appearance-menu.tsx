@@ -90,7 +90,7 @@ export function AppearanceMenu({ className }: { className?: string }) {
                     <Palette className="size-4" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-72 space-y-3 p-3">
+            <PopoverContent align="end" className="w-80 space-y-3 p-3">
                 <Group label="Theme">
                     {THEMES.map(({ name, label }, i) => (
                         <button

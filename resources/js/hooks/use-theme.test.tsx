@@ -22,17 +22,21 @@ describe('parseTheme', () => {
         },
     );
 
-    it.each(['classic', 'layered', 'graphite'])('accepts %s', (value) => {
-        expect(parseTheme(value)).toBe(value);
-    });
+    it.each(['classic', 'layered', 'graphite', 'radar'])(
+        'accepts %s',
+        (value) => {
+            expect(parseTheme(value)).toBe(value);
+        },
+    );
 });
 
 describe('THEMES', () => {
-    it('lists the three themes with labels, Classic by default', () => {
+    it('lists the four themes with labels, Classic by default', () => {
         expect(THEMES).toEqual([
             { name: 'classic', label: 'Classic' },
             { name: 'layered', label: 'Layered' },
             { name: 'graphite', label: 'Graphite' },
+            { name: 'radar', label: 'Radar' },
         ]);
         expect(DEFAULT_THEME).toBe('classic');
     });

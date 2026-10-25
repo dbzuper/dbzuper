@@ -16,6 +16,7 @@ const THEMES = [
     { name: 'classic', label: 'Classic' },
     { name: 'layered', label: 'Layered' },
     { name: 'graphite', label: 'Graphite' },
+    { name: 'radar', label: 'Radar' },
 ] as const;
 const MODES = ['light', 'dark'] as const;
 

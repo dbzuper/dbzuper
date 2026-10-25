@@ -12,6 +12,7 @@ const THEMES = [
     { name: 'classic', label: 'Classic' },
     { name: 'layered', label: 'Layered' },
     { name: 'graphite', label: 'Graphite' },
+    { name: 'radar', label: 'Radar' },
 ] as const;
 const MODES = ['light', 'dark'] as const;
 // Blade links Graphite's built stylesheet on first paint (no data attribute); a later switch adds the marked link.

@@ -42,7 +42,7 @@ describe('AppearanceMenu', () => {
             within(theme)
                 .getAllByRole('radio')
                 .map((r) => r.textContent),
-        ).toEqual(['Classic', 'Layered', 'Graphite']);
+        ).toEqual(['Classic', 'Layered', 'Graphite', 'Radar']);
         expect(
             within(mode)
                 .getAllByRole('radio')
@@ -60,7 +60,7 @@ describe('AppearanceMenu', () => {
         openMenu();
         const theme = screen.getByRole('radiogroup', { name: 'Theme' });
 
-        for (const name of ['classic', 'layered', 'graphite']) {
+        for (const name of ['classic', 'layered', 'graphite', 'radar']) {
             const swatch = theme.querySelector(`[data-theme="${name}"]`);
 
             expect(swatch).not.toBeNull();
@@ -89,7 +89,7 @@ describe('AppearanceMenu', () => {
 
     it('moves focus with the arrow keys (wrapping) without selecting; Enter and Space select', () => {
         openMenu();
-        const [classic, layered, graphite] = within(
+        const [classic, layered, graphite, radar] = within(
             screen.getByRole('radiogroup', { name: 'Theme' }),
         ).getAllByRole('radio');
 
@@ -107,13 +107,15 @@ describe('AppearanceMenu', () => {
         fireEvent.keyDown(layered, { key: 'ArrowDown' });
         expect(graphite).toHaveFocus();
         fireEvent.keyDown(graphite, { key: 'ArrowRight' });
+        expect(radar).toHaveFocus();
+        fireEvent.keyDown(radar, { key: 'ArrowRight' });
         expect(classic).toHaveFocus();
         fireEvent.keyDown(classic, { key: 'ArrowLeft' });
-        expect(graphite).toHaveFocus();
-        fireEvent.keyDown(graphite, { key: 'Home' });
+        expect(radar).toHaveFocus();
+        fireEvent.keyDown(radar, { key: 'Home' });
         expect(classic).toHaveFocus();
         fireEvent.keyDown(classic, { key: 'End' });
-        expect(graphite).toHaveFocus();
+        expect(radar).toHaveFocus();
 
         // A button radio: Enter and Space activate it as a click.
         fireEvent.click(graphite);
@@ -147,11 +149,12 @@ describe('ThemeCards', () => {
             'Classic',
             'Layered',
             'Graphite',
+            'Radar',
         ]);
         cards.forEach((card, i) => {
             expect(
                 card.querySelector(
-                    `[data-theme="${['classic', 'layered', 'graphite'][i]}"]`,
+                    `[data-theme="${['classic', 'layered', 'graphite', 'radar'][i]}"]`,
                 ),
             ).not.toBeNull();
         });
@@ -173,7 +176,7 @@ describe('ThemeCards', () => {
 });
 
 describe('Appearance settings page', () => {
-    it('shows the three theme cards above the mode tabs, the current one checked', () => {
+    it('shows the four theme cards above the mode tabs, the current one checked', () => {
         localStorage.setItem('theme', 'layered');
         initializeColorTheme();
         render(<AppearancePage />);
@@ -181,7 +184,7 @@ describe('Appearance settings page', () => {
         const group = screen.getByRole('radiogroup', { name: 'Theme' });
         const cards = within(group).getAllByRole('radio');
 
-        expect(cards).toHaveLength(3);
+        expect(cards).toHaveLength(4);
         expect(
             within(group).getByRole('radio', { name: 'Layered' }),
         ).toHaveAttribute('aria-checked', 'true');

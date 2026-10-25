@@ -1,12 +1,13 @@
 import { useSyncExternalStore } from 'react';
 import { loadThemeFonts } from '@/lib/theme-fonts';
 
-export type ThemeName = 'classic' | 'layered' | 'graphite';
+export type ThemeName = 'classic' | 'layered' | 'graphite' | 'radar';
 
 export const THEMES: readonly { name: ThemeName; label: string }[] = [
     { name: 'classic', label: 'Classic' },
     { name: 'layered', label: 'Layered' },
     { name: 'graphite', label: 'Graphite' },
+    { name: 'radar', label: 'Radar' },
 ];
 
 export const DEFAULT_THEME: ThemeName = 'classic';
