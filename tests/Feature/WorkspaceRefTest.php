@@ -93,3 +93,13 @@ it('only accepts plain ids where a saved connection is managed or opened', funct
     $this->actingAs($this->user)->get('/c/'.$ref)->assertNotFound();
     expect($this->server->fresh())->not->toBeNull();
 });
+
+it('rejects database names longer than any engine allows', function () {
+    $long = str_repeat('a', 300);
+    $this->actingAs($this->user)->get('/c/'.$this->server->id.'/'.$long)->assertNotFound();
+    $this->actingAs($this->user)->postJson(($this->pins)($this->server->id.':'.$long), ['table' => 'users'])->assertNotFound();
+});
+
+it('treats MySQL names with a backtick as unopenable', function () {
+    $this->actingAs($this->user)->getJson(($this->pins)($this->server->id.':'.rawurlencode('a`b')))->assertNotFound();
+});

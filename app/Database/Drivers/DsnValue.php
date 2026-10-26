@@ -36,11 +36,15 @@ final class DsnValue
 
     /**
      * Whether a database name chosen in the browser may be used for a server connection: non-empty, safe in the
-     * driver's DSN, and free of '/' so it fits in one URL path segment.
+     * driver's DSN, and free of '/' so it fits in one URL path segment. MySQL/MariaDB names also may not hold a
+     * backtick: Laravel selects the database with an unescaped USE `name` after connecting, which such a name breaks.
      */
     public static function isSafeDatabaseName(DriverName $driver, string $name): bool
     {
         $pattern = $driver === DriverName::Postgres ? self::LIBPQ_UNSAFE : self::PDO_UNSAFE;
+        if ($driver !== DriverName::Postgres && str_contains($name, '`')) {
+            return false;
+        }
 
         return $name !== '' && ! str_contains($name, '/') && ! preg_match($pattern, $name);
     }

@@ -137,7 +137,12 @@ class SavedConnection extends Model
             return $database === $this->database ? $this : null;
         }
 
-        return DsnValue::isSafeDatabaseName($this->driver, $database) ? $this->forDatabase($database) : null;
+        // No engine allows names this long (MySQL 64, PostgreSQL 63); the per-database columns hold 255.
+        if (mb_strlen($database) > 255 || ! DsnValue::isSafeDatabaseName($this->driver, $database)) {
+            return null;
+        }
+
+        return $this->forDatabase($database);
     }
 
     public function save(array $options = []): bool

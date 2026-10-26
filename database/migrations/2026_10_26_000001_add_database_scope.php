@@ -13,6 +13,18 @@ use Illuminate\Support\Facades\Schema;
  */
 return new class extends Migration
 {
+    /**
+     * Database names compare exactly: MySQL/MariaDB collations would otherwise treat `Shop` and `shop` (or `café` and
+     * `cafe`), which are different databases on most servers, as one and mix their rows.
+     */
+    private function databaseColumn(Blueprint $table): void
+    {
+        $column = $table->string('database', 255)->default('');
+        if (in_array(Schema::getConnection()->getDriverName(), ['mysql', 'mariadb'], true)) {
+            $column->collation('utf8mb4_bin');
+        }
+    }
+
     public function up(): void
     {
         Schema::table('connections', function (Blueprint $table) {
@@ -21,18 +33,18 @@ return new class extends Migration
         });
 
         Schema::table('schema_snapshots', function (Blueprint $table) {
-            $table->string('database', 255)->default('');
+            $this->databaseColumn($table);
             $table->index(['connection_id', 'database', 'id']);
         });
 
         Schema::table('query_history', function (Blueprint $table) {
-            $table->string('database', 255)->default('');
+            $this->databaseColumn($table);
             $table->index(['connection_id', 'database', 'id']);
         });
 
         // The new unique index comes first: on MySQL it then backs the foreign key the old one served.
         Schema::table('layout_positions', function (Blueprint $table) {
-            $table->string('database', 255)->default('');
+            $this->databaseColumn($table);
             $table->unique(['connection_id', 'database']);
         });
         Schema::table('layout_positions', function (Blueprint $table) {
@@ -40,7 +52,7 @@ return new class extends Migration
         });
 
         Schema::table('pinned_tables', function (Blueprint $table) {
-            $table->string('database', 255)->default('');
+            $this->databaseColumn($table);
             $table->unique(['user_id', 'connection_id', 'database', 'table_name']);
         });
         Schema::table('pinned_tables', function (Blueprint $table) {
