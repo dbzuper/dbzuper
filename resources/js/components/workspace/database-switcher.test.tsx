@@ -82,6 +82,68 @@ describe('DatabaseSwitcher', () => {
         expect(inertia.router.visit).toHaveBeenCalledWith('/c/5/blog');
     });
 
+    it('filters the databases as you type and opens the first match on Enter', async () => {
+        render(
+            <DatabaseSwitcher
+                connection={
+                    {
+                        ...base,
+                        ref: '5:shop',
+                        database: 'shop',
+                        server_level: true,
+                    } as never
+                }
+            />,
+        );
+
+        fireEvent.keyDown(
+            screen.getByRole('button', { name: /Database: shop/ }),
+            { key: 'Enter' },
+        );
+        await screen.findByRole('menuitem', { name: 'blog' });
+        const search = screen.getByRole('searchbox', {
+            name: 'Find a database',
+        });
+        fireEvent.change(search, { target: { value: 'BL' } });
+
+        expect(
+            screen.getByRole('menuitem', { name: 'blog' }),
+        ).toBeInTheDocument();
+        expect(screen.queryByRole('menuitem', { name: 'shop' })).toBeNull();
+
+        fireEvent.keyDown(search, { key: 'Enter' });
+        expect(inertia.router.visit).toHaveBeenCalledWith('/c/5/blog');
+    });
+
+    it('says when nothing matches', async () => {
+        render(
+            <DatabaseSwitcher
+                connection={
+                    {
+                        ...base,
+                        ref: '5:shop',
+                        database: 'shop',
+                        server_level: true,
+                    } as never
+                }
+            />,
+        );
+
+        fireEvent.keyDown(
+            screen.getByRole('button', { name: /Database: shop/ }),
+            { key: 'Enter' },
+        );
+        await screen.findByRole('menuitem', { name: 'blog' });
+        fireEvent.change(
+            screen.getByRole('searchbox', { name: 'Find a database' }),
+            { target: { value: 'zzz' } },
+        );
+
+        expect(
+            screen.getByText('No database matches "zzz"'),
+        ).toBeInTheDocument();
+    });
+
     it('offers the database list itself', async () => {
         render(
             <DatabaseSwitcher
