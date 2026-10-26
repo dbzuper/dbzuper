@@ -77,6 +77,7 @@ beforeEach(() => {
             entry('weird;name', { openable: false }),
         ],
         last_database: 'shop staging',
+        server_version: '8.4.0',
     });
 });
 
@@ -99,6 +100,14 @@ describe('database list', () => {
         expect(within(items[1]).getByText('12 tables')).toBeInTheDocument();
         expect(within(items[1]).getByText('5 MB')).toBeInTheDocument();
         expect(api.list).toHaveBeenCalledWith(5);
+    });
+
+    it('shows the server version under the connection', async () => {
+        render(<Databases connection={connection} />);
+
+        expect(
+            await screen.findByText('localhost:3306 · root · MySQL 8.4.0'),
+        ).toBeInTheDocument();
     });
 
     it('links each database to its workspace', async () => {

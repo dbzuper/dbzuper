@@ -3,14 +3,24 @@ import { useActiveTab, type BrowseTab } from '@/browse/browse-store';
 import type { Total } from '@/browse/counts';
 import { useTabStatus } from '@/browse/status-store';
 import { pendingCounts, pendingKey, usePending } from '@/editing/pending-store';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
+import { DatabaseInfo } from '@/components/workspace/database-info';
 import { useReview } from '@/editing/review-store';
-import { formatConnectionTarget, formatSnapshotAge } from '@/lib/format';
+import {
+    formatConnectionTarget,
+    formatSnapshotAge,
+    shortVersion,
+} from '@/lib/format';
 import { dockShortcutHint } from '@/lib/platform';
 import { cn } from '@/lib/utils';
 import { toggleDock } from '@/lib/workspace-shortcuts';
 import { useRecords } from '@/records/records-store';
 import type { ConnectionSummary, WorkspaceRef } from '@/types/connection';
-import type { SchemaSnapshot } from '@/types/schema';
+import type { SchemaSnapshot, ServerInfo } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
 
 const full = new Intl.NumberFormat('en');
@@ -36,12 +46,17 @@ export function statusRangeLabel(from: number, to: number, total: Total) {
 export function StatusBar({
     connection,
     snapshot,
+    server,
     storedAt,
 }: {
     connection: ConnectionSummary;
     snapshot: SchemaSnapshot | null;
+    server: ServerInfo | null;
     storedAt: string | null;
 }) {
+    const engine = server
+        ? `${connection.driver_label} ${shortVersion(server.version)}`
+        : connection.driver_label;
     const active = useActiveTab(connection.ref);
     const dockOpen = useWorkspace((s) => s.dockOpen);
 
@@ -50,17 +65,38 @@ export function StatusBar({
             aria-label="Status bar"
             className="flex h-[26px] shrink-0 items-center overflow-hidden border-t bg-sidebar text-xs text-muted-foreground"
         >
-            <span className={ITEM}>
-                <span
-                    className="size-2 rounded-full"
-                    style={{
-                        background:
-                            connection.color ?? 'var(--universe-accent)',
-                    }}
-                    aria-hidden
-                />
-                {connection.driver_label}
-            </span>
+            <Popover>
+                <PopoverTrigger
+                    aria-label={`${engine}, database info`}
+                    className={cn(
+                        ITEM,
+                        'hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset',
+                    )}
+                >
+                    <span
+                        className="size-2 rounded-full"
+                        style={{
+                            background:
+                                connection.color ?? 'var(--universe-accent)',
+                        }}
+                        aria-hidden
+                    />
+                    {engine}
+                </PopoverTrigger>
+                <PopoverContent
+                    side="top"
+                    align="start"
+                    aria-label="Database info"
+                    className="w-80 p-3"
+                >
+                    <DatabaseInfo
+                        connection={connection}
+                        server={server}
+                        snapshot={snapshot}
+                        storedAt={storedAt}
+                    />
+                </PopoverContent>
+            </Popover>
             <span
                 className={cn(ITEM, 'min-w-0 shrink font-mono')}
                 title={formatConnectionTarget(connection)}

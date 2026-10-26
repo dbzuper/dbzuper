@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    shortVersion,
     formatBytes,
     formatConnectionTarget,
     formatRowCount,
@@ -93,5 +94,18 @@ describe('formatConnectionTarget', () => {
         expect(formatConnectionTarget(conn({ port: null }))).toBe(
             '127.0.0.1/shop',
         );
+    });
+});
+
+describe('shortVersion', () => {
+    it('keeps the release number of each engine', () => {
+        expect(shortVersion('8.4.0')).toBe('8.4.0');
+        expect(shortVersion('11.4.2-MariaDB-ubu2404')).toBe('11.4.2');
+        expect(shortVersion('18.4 (Debian 18.4-1.pgdg12+1)')).toBe('18.4');
+        expect(shortVersion('3.46.1')).toBe('3.46.1');
+    });
+
+    it('leaves an unrecognised version alone', () => {
+        expect(shortVersion('dev build')).toBe('dev build');
     });
 });

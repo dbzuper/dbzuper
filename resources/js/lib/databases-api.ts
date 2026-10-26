@@ -13,6 +13,8 @@ export type DatabaseEntry = {
 export type DatabaseList = {
     databases: DatabaseEntry[];
     last_database: string | null;
+    /** The server's version, or null when it couldn't be read. */
+    server_version: string | null;
 };
 
 export const databasesApi = {

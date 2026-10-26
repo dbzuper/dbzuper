@@ -104,6 +104,7 @@ test('lists the server databases and opens one', async () => {
         list.getByRole('link', { name: new RegExp(ALPHA) }),
     ).toBeVisible();
     await expect(list.getByText('information_schema')).toHaveCount(0);
+    await expect(page.getByText(/· root · MySQL \d+\.\d+/)).toBeVisible();
     await expectNoA11yViolations(page);
     await page.screenshot({ path: `${SHOTS}/database-list.png` });
 
@@ -112,6 +113,20 @@ test('lists the server databases and opens one', async () => {
     await expect(
         page.getByRole('treeitem', { name: /alpha_items/ }),
     ).toBeVisible();
+});
+
+test('shows the database info from the status bar', async () => {
+    await page
+        .getByRole('button', { name: /^MySQL \d+\.\d+.*database info$/ })
+        .click();
+    const panel = page.getByRole('dialog', { name: 'Database info' });
+    await expect(panel).toContainText(ALPHA);
+    await expect(panel).toContainText('1 table');
+    await expect(panel).toContainText('Not encrypted');
+    await expectNoA11yViolations(page);
+    await page.screenshot({ path: `${SHOTS}/database-info.png` });
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
 });
 
 test('switches to another database from the header', async () => {
