@@ -77,6 +77,7 @@ const response = (...names: string[]): SchemaResponse => ({
     snapshot: makeSnapshot(names.map((name) => ({ name }))),
     snapshot_id: 1,
     stored_at: new Date().toISOString(),
+    server: null,
 });
 const at = (table: string, x: number): LayoutPositionEntry => ({
     table,

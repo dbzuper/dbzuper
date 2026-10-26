@@ -217,9 +217,29 @@ class PostgresDriver implements Driver
         return app(PostgresInspector::class);
     }
 
+    public function serverInfo(Connection $db, SavedConnection $connection): array
+    {
+        $row = $db->selectOne("SELECT current_setting('server_version') AS version, current_user AS user,
+            pg_encoding_to_char(d.encoding) AS charset, d.datcollate AS collation, current_setting('TimeZone') AS timezone,
+            pg_database_size(current_database()) AS size_bytes,
+            (SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()) AS ssl
+            FROM pg_database d WHERE d.datname = current_database()");
+
+        return [
+            'version' => (string) $row->version,
+            'user' => (string) $row->user,
+            'ssl' => $row->ssl === null ? null : (bool) $row->ssl,
+            'charset' => $row->charset,
+            'collation' => $row->collation,
+            'timezone' => $row->timezone,
+            'size_bytes' => (int) $row->size_bytes,
+        ];
+    }
+
+    /** The release, e.g. "18.4 (Debian 18.4-1.pgdg12+1)"; version() would add the platform and compiler. */
     public function versionQuery(): string
     {
-        return 'select version() as version';
+        return "select current_setting('server_version') as version";
     }
 
     public function applyStatementTimeout(Connection $db, int $seconds): void

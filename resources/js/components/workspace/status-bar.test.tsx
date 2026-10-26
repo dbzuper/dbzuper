@@ -7,6 +7,7 @@ import { useReview } from '@/editing/review-store';
 import { useRecords } from '@/records/records-store';
 import { emptyTrail, type Trail } from '@/records/trail';
 import type { ConnectionSummary } from '@/types/connection';
+import type { ServerInfo } from '@/types/schema';
 import { makeSnapshot } from '@/universe/__fixtures__/snapshot';
 import { useWorkspace } from '@/universe/store';
 import { StatusBar } from './status-bar';
@@ -32,11 +33,22 @@ const snapshot = makeSnapshot(
     ],
 );
 
-const renderBar = () =>
+const server: ServerInfo = {
+    version: '8.4.0',
+    user: 'root@%',
+    ssl: false,
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_0900_ai_ci',
+    timezone: 'UTC',
+    size_bytes: 3 * 1024 * 1024,
+};
+
+const renderBar = (info: ServerInfo | null = server) =>
     render(
         <StatusBar
             connection={connection}
             snapshot={snapshot}
+            server={info}
             storedAt="2026-10-15T11:55:00Z"
         />,
     );
@@ -186,6 +198,35 @@ describe('StatusBar', () => {
         });
         renderBar();
         expect(screen.getByText('2 records')).toBeInTheDocument();
+    });
+
+    it('shows the engine and its version, which opens the database info', () => {
+        renderBar();
+        const button = screen.getByRole('button', {
+            name: 'MySQL 8.4.0, database info',
+        });
+        fireEvent.click(button);
+
+        const panel = screen.getByRole('dialog', { name: 'Database info' });
+        expect(panel).toHaveTextContent('127.0.0.1:3307');
+        expect(panel).toHaveTextContent('root@%');
+        expect(panel).toHaveTextContent('Not encrypted');
+        expect(panel).toHaveTextContent('shop');
+        expect(panel).toHaveTextContent('3 MB');
+        expect(panel).toHaveTextContent('3 tables');
+        expect(panel).toHaveTextContent('utf8mb4 · utf8mb4_0900_ai_ci');
+        expect(panel).toHaveTextContent('UTC');
+        expect(panel).toHaveTextContent('Read and write');
+    });
+
+    it('asks for a schema refresh when the server details are missing', () => {
+        renderBar(null);
+        fireEvent.click(
+            screen.getByRole('button', { name: 'MySQL, database info' }),
+        );
+        expect(
+            screen.getByRole('dialog', { name: 'Database info' }),
+        ).toHaveTextContent('Refresh the schema to read the server details.');
     });
 
     it('shows the snapshot age', () => {

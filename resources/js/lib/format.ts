@@ -14,6 +14,11 @@ export function formatRowCount(rc: RowCountSchema): string {
     return full.format(rc.count);
 }
 
+/** The release number of a server version string: "11.4.2-MariaDB-ubu2404" → "11.4.2". */
+export function shortVersion(version: string): string {
+    return version.match(/\d+(?:\.\d+)+/)?.[0] ?? version;
+}
+
 export function formatBytes(n: number | null): string {
     if (n === null || n < 0) return '—';
     if (n < 1024) return `${n} B`;

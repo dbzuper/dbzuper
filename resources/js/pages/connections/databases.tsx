@@ -13,7 +13,11 @@ import {
     type DatabaseEntry,
     type DatabaseList,
 } from '@/lib/databases-api';
-import { formatBytes, formatConnectionTarget } from '@/lib/format';
+import {
+    formatBytes,
+    formatConnectionTarget,
+    shortVersion,
+} from '@/lib/format';
 import { prefetchWorkspace } from '@/lib/prefetch-workspace';
 import { dbErrorFrom } from '@/lib/workspace-api';
 import { cn } from '@/lib/utils';
@@ -87,6 +91,9 @@ export default function Databases({
                     <p className="font-mono text-xs text-muted-foreground">
                         {formatConnectionTarget(connection)}
                         {connection.username ? ` · ${connection.username}` : ''}
+                        {list?.server_version
+                            ? ` · ${connection.driver_label} ${shortVersion(list.server_version)}`
+                            : ''}
                     </p>
                 </header>
 

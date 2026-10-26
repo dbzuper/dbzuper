@@ -74,3 +74,9 @@ it('introspects SQLite tables, views and indexes whose names contain a quote', f
         ->and(collect($table['indexes'])->pluck('name')->all())->toContain("o'clock idx")
         ->and(collect($response->json('snapshot.tables'))->pluck('name'))->toContain("v'iew");
 });
+
+it('returns the server details stored with the snapshot', function () {
+    $this->actingAs($this->user)->getJson(route('api.schema.show', $this->connection))->assertOk()
+        ->assertJsonPath('server.user', null)
+        ->assertJsonStructure(['server' => ['version', 'charset', 'size_bytes']]);
+});

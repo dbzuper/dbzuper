@@ -27,8 +27,18 @@ final class SnapshotService
     public function refresh(SavedConnection $connection): StoredSnapshot
     {
         try {
-            $snapshot = $this->factory->using($connection, function (Connection $db) use ($connection) {
-                return $this->drivers->for($connection->driver)->inspector()->inspect($db, $connection);
+            [$snapshot, $serverInfo] = $this->factory->using($connection, function (Connection $db) use ($connection) {
+                $driver = $this->drivers->for($connection->driver);
+                $snapshot = $driver->inspector()->inspect($db, $connection);
+                try {
+                    // Best effort: the info panel can do without it, the schema can't wait for it.
+                    $serverInfo = $driver->serverInfo($db, $connection);
+                } catch (Throwable $e) {
+                    report($e);
+                    $serverInfo = null;
+                }
+
+                return [$snapshot, $serverInfo];
             }, (int) config('dbsuperb.introspection_timeout'));
         } catch (Throwable $e) {
             throw new DatabaseOperationFailed($this->errors->map($e));
@@ -38,6 +48,7 @@ final class SnapshotService
         $stored = $connection->snapshots()->create([
             'hash' => $snapshot->structureHash(),
             'payload' => $payload,
+            'server_info' => $serverInfo,
             ...SnapshotSummary::of($payload),
         ]);
 

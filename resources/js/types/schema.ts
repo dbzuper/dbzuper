@@ -53,10 +53,23 @@ export interface SchemaSnapshot {
     total_objects?: number;
 }
 
+/** The server and open database as read with a snapshot; null fields don't apply to the engine (SQLite). */
+export interface ServerInfo {
+    version: string;
+    user: string | null;
+    ssl: boolean | null;
+    charset: string | null;
+    collation: string | null;
+    timezone: string | null;
+    size_bytes: number | null;
+}
+
 export interface SchemaResponse {
     snapshot: SchemaSnapshot;
     snapshot_id: number;
     stored_at: string;
+    /** Null for snapshots stored before server details were read, or when reading them failed. */
+    server: ServerInfo | null;
 }
 
 export interface DbErrorPayload {

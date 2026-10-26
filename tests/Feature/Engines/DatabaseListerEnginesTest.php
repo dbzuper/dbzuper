@@ -59,7 +59,7 @@ function entryNamed(array $entries, string $name): ?DatabaseEntry
 it('lists the databases on the server', function (string $engine) {
     $connection = listerSetUp($engine);
     try {
-        $entries = app(DatabaseLister::class)->list($connection);
+        $entries = app(DatabaseLister::class)->list($connection)->databases;
     } finally {
         listerTearDown($engine);
     }
@@ -77,7 +77,9 @@ it('lists the databases on the server', function (string $engine) {
 it('marks system databases', function (string $engine) {
     Engines::skipUnlessAvailable($engine);
 
-    $entries = app(DatabaseLister::class)->list(Engines::savedConnection($engine, ['database' => null]));
+    $listing = app(DatabaseLister::class)->list(Engines::savedConnection($engine, ['database' => null]));
+    $entries = $listing->databases;
+    expect($listing->version)->toMatch('/^\d+\.\d+/');
 
     if ($engine === 'pgsql') {
         expect(entryNamed($entries, 'template0'))->toBeNull()
@@ -94,7 +96,7 @@ it('takes PostgreSQL table counts from stored snapshots', function () {
     $connection = listerSetUp('pgsql');
     try {
         app(SnapshotService::class)->refresh($connection->forDatabase('dbsuperb_test_two'));
-        $entries = app(DatabaseLister::class)->list($connection);
+        $entries = app(DatabaseLister::class)->list($connection)->databases;
     } finally {
         listerTearDown('pgsql');
     }
@@ -124,7 +126,7 @@ it('still lists names when sizes and counts fail', function () {
         }
     });
 
-    $entries = app(DatabaseLister::class)->list(Engines::savedConnection('mysql', ['database' => null]));
+    $entries = app(DatabaseLister::class)->list(Engines::savedConnection('mysql', ['database' => null]))->databases;
 
     expect(entryNamed($entries, 'dbsuperb_test'))->not->toBeNull()
         ->and(entryNamed($entries, 'dbsuperb_test')->bytes)->toBeNull()

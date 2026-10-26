@@ -650,6 +650,7 @@ export default function WorkspaceShow({
             <StatusBar
                 connection={connection}
                 snapshot={snapshot}
+                server={data?.server ?? null}
                 storedAt={data?.stored_at ?? null}
             />
         </div>
