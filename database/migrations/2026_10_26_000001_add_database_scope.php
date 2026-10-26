@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -50,11 +51,11 @@ return new class extends Migration
     public function down(): void
     {
         // Rows of server-level connections have no fixed-database equivalent.
-        $serverLevel = fn () => \DB::table('connections')->whereNull('database')->orWhere('database', '')->pluck('id');
+        $serverLevel = fn () => DB::table('connections')->whereNull('database')->orWhere('database', '')->pluck('id');
         foreach (['schema_snapshots', 'query_history', 'layout_positions', 'pinned_tables'] as $name) {
-            \DB::table($name)->where('database', '<>', '')->delete();
+            DB::table($name)->where('database', '<>', '')->delete();
         }
-        \DB::table('connections')->whereIn('id', $serverLevel())->delete();
+        DB::table('connections')->whereIn('id', $serverLevel())->delete();
 
         Schema::table('pinned_tables', function (Blueprint $table) {
             $table->unique(['user_id', 'connection_id', 'table_name']);
