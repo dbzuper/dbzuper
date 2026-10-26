@@ -23,6 +23,8 @@ declare module '@inertiajs/core' {
                     id: number;
                     connection_id: number;
                     connection_name: string;
+                    /** The database of a server-level connection it ran on, else null. */
+                    database: string | null;
                     color: string | null;
                     sql: string;
                     created_at: string;

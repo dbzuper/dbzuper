@@ -157,7 +157,20 @@ export function ConnectionForm({
                         {field('host', 'Host', { required: true })}
                         {field('port', 'Port', { type: 'number' })}
                     </div>
-                    {field('database', 'Database', { required: true })}
+                    <div className="grid gap-1.5">
+                        {field('database', 'Database', {
+                            'aria-describedby': 'database-hint',
+                        })}
+                        <p
+                            id="database-hint"
+                            className="text-xs text-muted-foreground"
+                        >
+                            Leave empty to browse every database on the server.
+                            A filled-in database limits this connection to it in
+                            DBZuper; the database user's permissions are what
+                            actually restrict access.
+                        </p>
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                         {field('username', 'Username', { autoComplete: 'off' })}
                         {field('password', 'Password', {

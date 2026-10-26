@@ -50,6 +50,12 @@ export function formatSnapshotAge(iso: string, now: Date = new Date()): string {
  * Where a connection points: `host:port/database`, the file's base name for SQLite, or the database alone. A
  * server-level connection outside any database points at the server: `host:port`.
  */
+/** A connection's target as its card shows it: server-level connections add "All databases". */
+export function formatCardTarget(c: ConnectionSummary): string {
+    const target = formatConnectionTarget(c);
+    return c.server_level ? `${target} · All databases` : target;
+}
+
 export function formatConnectionTarget(c: ConnectionSummary): string {
     const database = c.database ?? '';
     if (c.driver === 'sqlite') return database.split(/[\\/]/).pop() || database;

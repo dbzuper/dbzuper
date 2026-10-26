@@ -1,6 +1,7 @@
 import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { HistoryList } from '@/components/history/history-list';
+import { workspaceUrl } from '@/lib/connections';
 import type { HistoryEntry } from '@/lib/history-api';
 
 const OPEN_FAILED = 'Could not open that entry in the workspace.';
@@ -18,9 +19,12 @@ export default function HistoryIndex({
             setProblem(OPEN_FAILED);
             return;
         }
-        router.visit(`/c/${e.connection.id}?history=${e.id}`, {
-            onError: () => setProblem(OPEN_FAILED),
-        });
+        router.visit(
+            `${workspaceUrl(e.connection.id, e.database ?? null)}?history=${e.id}`,
+            {
+                onError: () => setProblem(OPEN_FAILED),
+            },
+        );
     };
 
     return (

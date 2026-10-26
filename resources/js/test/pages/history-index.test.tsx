@@ -27,6 +27,7 @@ const entry = (over: object = {}) => ({
     error: null,
     created_at: new Date().toISOString(),
     connection: { id: 3, name: 'Shop' },
+    database: null,
     ...over,
 });
 
@@ -42,6 +43,22 @@ describe('history page', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Open' }));
         expect(visit).toHaveBeenCalledWith(
             '/c/3?history=5',
+            expect.objectContaining({ onError: expect.any(Function) }),
+        );
+    });
+
+    it('opens an entry in the database it ran on', async () => {
+        historyApi.list.mockResolvedValue({
+            entries: [entry({ database: 'shop staging' })],
+            next_before_id: null,
+        });
+        render(<HistoryIndex connections={[{ id: 3, name: 'Shop' }]} />);
+        expect(
+            await screen.findByText('Shop · shop staging'),
+        ).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+        expect(visit).toHaveBeenCalledWith(
+            '/c/3/shop%20staging?history=5',
             expect.objectContaining({ onError: expect.any(Function) }),
         );
     });

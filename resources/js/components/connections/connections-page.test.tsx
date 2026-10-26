@@ -54,7 +54,7 @@ function card(over: Partial<ConnectionCard>): ConnectionCard {
         store_history: true,
         last_opened_at: null,
         server_level: false,
-        database_label: 'shop',
+        database_label: 'db',
         last_database: null,
         tables: null,
         views: null,
@@ -193,6 +193,31 @@ describe('connections page', () => {
         expect(
             screen.getByRole('list', { name: 'Connections' }),
         ).toBeInTheDocument();
+    });
+
+    it('shows a server-level connection as all databases', () => {
+        render(
+            <ConnectionsIndex
+                connections={[
+                    card({
+                        name: 'Local server',
+                        host: 'localhost',
+                        database: null,
+                        server_level: true,
+                        database_label: 'All databases',
+                    }),
+                ]}
+            />,
+        );
+        expect(
+            screen.getByText('localhost:3306 · All databases'),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByText('Pick a database to start'),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('link', { name: 'Open Local server' }),
+        ).toHaveAttribute('href', '/c/1');
     });
 
     it('shows the empty state without the summary or tools', () => {

@@ -223,7 +223,9 @@ export function HistoryList({
                                 <p className="mt-0.5 text-xs text-muted-foreground">
                                     {e.connection && (
                                         <span className="mr-2 font-medium">
-                                            {e.connection.name}
+                                            {e.database
+                                                ? `${e.connection.name} · ${e.database}`
+                                                : e.connection.name}
                                         </span>
                                     )}
                                     {formatSnapshotAge(e.created_at)} ·{' '}

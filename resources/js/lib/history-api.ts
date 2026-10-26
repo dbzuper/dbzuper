@@ -12,6 +12,8 @@ export type HistoryEntry = {
     error: string | null;
     created_at: string;
     connection?: { id: number; name: string };
+    /** On the global list: the database of a server-level connection the entry ran on, else null. */
+    database?: string | null;
 };
 
 export type HistoryPage = {

@@ -8,7 +8,7 @@ import {
     STRETCHED_FOCUS,
 } from '@/components/connections/connection-card';
 import { ConnectionMenu } from '@/components/connections/connection-menu';
-import { formatConnectionTarget } from '@/lib/format';
+import { formatCardTarget } from '@/lib/format';
 import { prefetchWorkspace } from '@/lib/prefetch-workspace';
 import { cn } from '@/lib/utils';
 import type { ConnectionCard } from '@/types/connection';
@@ -49,7 +49,7 @@ export function ConnectionRow({
                     {c.name}
                 </Link>
                 <div className="truncate font-mono text-xs text-muted-foreground">
-                    {formatConnectionTarget(c)}
+                    {formatCardTarget(c)}
                 </div>
             </div>
             {c.read_only && (

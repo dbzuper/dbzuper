@@ -9,6 +9,7 @@ import {
     SidebarMenu,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { workspaceUrl } from '@/lib/connections';
 import { formatSnapshotAge } from '@/lib/format';
 import { prefetchWorkspace } from '@/lib/prefetch-workspace';
 
@@ -16,6 +17,8 @@ export type RecentQuery = {
     id: number;
     connection_id: number;
     connection_name: string;
+    /** The database of a server-level connection it ran on, else null. */
+    database: string | null;
     color: string | null;
     sql: string;
     created_at: string;
@@ -55,7 +58,7 @@ export function RecentQueries({ items }: { items: RecentQuery[] }) {
                     return (
                         <SidebarMenuItem key={q.id}>
                             <Link
-                                href={`/c/${q.connection_id}?history=${q.id}`}
+                                href={`${workspaceUrl(q.connection_id, q.database)}?history=${q.id}`}
                                 onMouseEnter={prefetchWorkspace}
                                 onFocus={prefetchWorkspace}
                                 className="grid grid-cols-[0.5rem_minmax(0,1fr)] gap-x-2 rounded-md px-2 py-1.5 text-sidebar-foreground ring-sidebar-ring outline-hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2"
