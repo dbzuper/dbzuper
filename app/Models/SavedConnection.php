@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Database\Drivers\DsnValue;
 use App\Enums\DriverName;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -78,6 +79,44 @@ class SavedConnection extends Model
     public function workspaceRef(): string
     {
         return $this->scopedDatabase === null ? (string) $this->getKey() : $this->getKey().':'.$this->scopedDatabase;
+    }
+
+    /** Route keys are workspace refs, so a scoped connection links to its own database. */
+    public function getRouteKey(): mixed
+    {
+        return $this->workspaceRef();
+    }
+
+    /**
+     * Resolves a workspace ref. A database part must match a fixed connection's own database, or name a database
+     * a server-level connection may open; anything else is not found.
+     */
+    public function resolveRouteBinding($value, $field = null): ?self
+    {
+        if ($field !== null || ! is_string($value) || ! preg_match('/^(\d+)(?::(.*))?$/s', $value, $m)) {
+            return $field !== null ? parent::resolveRouteBinding($value, $field) : null;
+        }
+
+        $connection = static::query()->find((int) $m[1]);
+        $database = $m[2] ?? null;
+        if ($connection === null || $database === null) {
+            return $connection;
+        }
+
+        return $connection->scopedTo($database);
+    }
+
+    /**
+     * This connection opened on $database: itself when that is its fixed database, a scoped copy for a server-level
+     * connection when the name is safe to connect with, otherwise null.
+     */
+    public function scopedTo(string $database): ?self
+    {
+        if (! $this->isServerLevel()) {
+            return $database === $this->database ? $this : null;
+        }
+
+        return DsnValue::isSafeDatabaseName($this->driver, $database) ? $this->forDatabase($database) : null;
     }
 
     public function save(array $options = []): bool

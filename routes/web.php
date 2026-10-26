@@ -15,6 +15,7 @@ use App\Http\Controllers\ConnectionTestController;
 use App\Http\Controllers\HistoryPageController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\WorkspaceController;
+use App\Http\Middleware\RequireDatabase;
 use Illuminate\Support\Facades\Route;
 
 Route::get('setup', [SetupController::class, 'show'])->name('setup.show');
@@ -25,14 +26,14 @@ Route::middleware('auth')->group(function () {
     Route::redirect('dashboard', '/connections')->name('dashboard');
     Route::post('connections/test', ConnectionTestController::class)
         ->middleware('throttle:dbsuperb-api')->name('connections.test');
-    Route::resource('connections', ConnectionController::class)->except('show');
+    Route::resource('connections', ConnectionController::class)->except('show')->where(['connection' => '[0-9]+']);
 
-    Route::get('c/{connection}', WorkspaceController::class)->name('workspace.show');
+    Route::get('c/{connection}/{database?}', WorkspaceController::class)->where(['connection' => '[0-9]+', 'database' => '[^/]+'])->name('workspace.show');
 
     Route::get('history', HistoryPageController::class)->name('history.index');
     Route::get('api/history', [HistoryController::class, 'all'])->middleware('throttle:dbsuperb-api')->name('api.history.all');
 
-    Route::prefix('api/c/{connection}')->name('api.')->middleware('throttle:dbsuperb-api')->group(function () {
+    Route::prefix('api/c/{connection}')->name('api.')->middleware(['throttle:dbsuperb-api', RequireDatabase::class])->group(function () {
         Route::get('schema', [SchemaController::class, 'show'])->name('schema.show');
         Route::post('schema/refresh', [SchemaController::class, 'refresh'])->name('schema.refresh');
         Route::get('layout', [LayoutController::class, 'show'])->name('layout.show');
