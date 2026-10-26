@@ -17,9 +17,12 @@ class DatabaseController extends Controller
         Gate::authorize('view', $connection);
         abort_if(! $connection->isServerLevel() || $connection->scopedDatabase() !== null, 404);
 
+        $listing = $lister->list($connection);
+
         return response()->json([
-            'databases' => array_map(fn (DatabaseEntry $e) => $e->toArray(), $lister->list($connection)),
+            'databases' => array_map(fn (DatabaseEntry $e) => $e->toArray(), $listing->databases),
             'last_database' => $connection->last_database,
+            'server_version' => $listing->version,
         ]);
     }
 }

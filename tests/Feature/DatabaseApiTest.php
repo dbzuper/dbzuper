@@ -2,6 +2,7 @@
 
 use App\Database\DatabaseEntry;
 use App\Database\DatabaseLister;
+use App\Database\DatabaseListing;
 use App\Models\SavedConnection;
 use App\Models\User;
 
@@ -9,10 +10,10 @@ beforeEach(function () {
     $this->user = User::factory()->create();
     $this->server = SavedConnection::factory()->for($this->user)->create(['database' => null]);
     $this->server->forceFill(['last_database' => 'shop'])->save();
-    $this->mock(DatabaseLister::class)->shouldReceive('list')->andReturn([
+    $this->mock(DatabaseLister::class)->shouldReceive('list')->andReturn(new DatabaseListing([
         new DatabaseEntry('mysql', true, 30, 1024, true),
         new DatabaseEntry('shop', false, 12, 4096, true),
-    ]);
+    ], '8.4.0'));
 });
 
 it('lists the databases of a server-level connection', function () {
@@ -23,6 +24,7 @@ it('lists the databases of a server-level connection', function () {
                 ['name' => 'shop', 'system' => false, 'tables' => 12, 'bytes' => 4096, 'openable' => true],
             ],
             'last_database' => 'shop',
+            'server_version' => '8.4.0',
         ]);
 });
 

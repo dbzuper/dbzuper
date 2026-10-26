@@ -19,10 +19,10 @@ class DatabaseLister
         private readonly DbErrorMapper $errors,
     ) {}
 
-    /** @return list<DatabaseEntry> sorted by name */
-    public function list(SavedConnection $connection): array
+    /** The databases sorted by name, with the server's version. */
+    public function list(SavedConnection $connection): DatabaseListing
     {
-        [$names, $stats] = $this->read($connection);
+        [$names, $stats, $version] = $this->read($connection);
         $system = $this->drivers->for($connection->driver)->systemDatabases();
         $snapshotTables = $this->snapshotTableCounts($connection);
 
@@ -35,14 +35,14 @@ class DatabaseLister
         ), $names);
         usort($entries, fn (DatabaseEntry $a, DatabaseEntry $b) => strcmp($a->name, $b->name));
 
-        return $entries;
+        return new DatabaseListing($entries, $version);
     }
 
     /**
      * Names and stats over the first maintenance database that accepts the login. Stats are best effort: a failure
      * or timeout leaves them out rather than hiding the list.
      *
-     * @return array{list<string>, array<string, array{tables: ?int, bytes: ?int}>}
+     * @return array{list<string>, array<string, array{tables: ?int, bytes: ?int}>, ?string}
      */
     private function read(SavedConnection $connection): array
     {
@@ -59,7 +59,14 @@ class DatabaseLister
                         $stats = [];
                     }
 
-                    return [$names, $stats];
+                    try {
+                        $version = (string) $db->selectOne($driver->versionQuery())->version;
+                    } catch (Throwable $e) {
+                        report($e);
+                        $version = null;
+                    }
+
+                    return [$names, $stats, $version];
                 }, (int) config('dbsuperb.introspection_timeout'));
             } catch (Throwable $e) {
                 $first ??= $e;

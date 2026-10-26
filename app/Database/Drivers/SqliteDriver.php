@@ -70,6 +70,22 @@ class SqliteDriver implements Driver
         return app(SqliteInspector::class);
     }
 
+    /** SQLite has no server: a file, its library version and its text encoding. */
+    public function serverInfo(Connection $db, SavedConnection $connection): array
+    {
+        $file = $db->getDatabaseName();
+
+        return [
+            'version' => (string) $db->selectOne('SELECT sqlite_version() AS version')->version,
+            'user' => null,
+            'ssl' => null,
+            'charset' => (string) $db->selectOne('PRAGMA encoding')->encoding,
+            'collation' => null,
+            'timezone' => null,
+            'size_bytes' => is_file($file) ? (int) filesize($file) : null,
+        ];
+    }
+
     public function versionQuery(): string
     {
         return 'select sqlite_version() as version';

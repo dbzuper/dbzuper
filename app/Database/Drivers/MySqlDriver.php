@@ -158,6 +158,25 @@ class MySqlDriver implements Driver
         return app(MySqlInspector::class);
     }
 
+    public function serverInfo(Connection $db, SavedConnection $connection): array
+    {
+        $row = $db->selectOne('SELECT version() AS version, current_user() AS user, @@character_set_database AS charset,
+            @@collation_database AS collation, @@time_zone AS tz, @@system_time_zone AS system_tz,
+            (SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.tables WHERE table_schema = database()) AS size_bytes');
+        $cipher = $db->selectOne("SHOW SESSION STATUS LIKE 'Ssl_cipher'");
+
+        return [
+            'version' => (string) $row->version,
+            'user' => (string) $row->user,
+            'ssl' => $cipher !== null && (string) $cipher->Value !== '',
+            'charset' => $row->charset,
+            'collation' => $row->collation,
+            // SYSTEM means "the server's own zone", which @@system_time_zone names.
+            'timezone' => $row->tz === 'SYSTEM' ? $row->system_tz : $row->tz,
+            'size_bytes' => (int) $row->size_bytes,
+        ];
+    }
+
     public function versionQuery(): string
     {
         return 'select version() as version';

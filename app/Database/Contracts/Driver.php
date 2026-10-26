@@ -47,6 +47,14 @@ interface Driver
     /** SQL returning one row with a `version` column. */
     public function versionQuery(): string;
 
+    /**
+     * What the database info panel shows about the server and the open database. Values the engine has no notion of
+     * (SQLite's login, TLS, time zone, collation) are null.
+     *
+     * @return array{version: string, user: ?string, ssl: ?bool, charset: ?string, collation: ?string, timezone: ?string, size_bytes: ?int}
+     */
+    public function serverInfo(Connection $db, SavedConnection $connection): array;
+
     /** Bound how long any single statement on this session may run. */
     public function applyStatementTimeout(Connection $db, int $seconds): void;
 
