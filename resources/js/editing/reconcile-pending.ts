@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import { pendingKey, usePending } from './pending-store';
 import { useReview } from './review-store';
+import type { WorkspaceRef } from '@/types/connection';
 
 /**
  * Fits the connection's staged changes to a refreshed schema (spec §4.4) and says what was dropped. A table whose
@@ -8,7 +9,7 @@ import { useReview } from './review-store';
  * pending (settle matches what was committed), so they could be committed twice.
  */
 export function reconcilePending(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     tables: Map<string, string[]>,
     only?: string,
 ): void {

@@ -39,7 +39,7 @@ describe('runWithConfirmations', () => {
             .mockResolvedValue({ confirmed: true, typed: 'audit_log' });
 
         const out = await runWithConfirmations({
-            connectionId: 1,
+            connectionId: '1',
             statements: ['select 1', 'delete from audit_log'],
             maxRows: 1000,
             signal: new AbortController().signal,
@@ -79,7 +79,7 @@ describe('runWithConfirmations', () => {
             }),
         );
         const out = await runWithConfirmations({
-            connectionId: 1,
+            connectionId: '1',
             statements: ['update t set a = 1 where b'],
             maxRows: 10,
             signal: new AbortController().signal,
@@ -100,7 +100,7 @@ describe('runWithConfirmations', () => {
             }),
         );
         const out = await runWithConfirmations({
-            connectionId: 1,
+            connectionId: '1',
             statements: ['update t set a=1'],
             maxRows: 10,
             signal: new AbortController().signal,
@@ -121,7 +121,7 @@ describe('runWithConfirmations', () => {
             }),
         );
         const out = await runWithConfirmations({
-            connectionId: 1,
+            connectionId: '1',
             statements: ['select 1'],
             maxRows: 10,
             signal: new AbortController().signal,
@@ -139,7 +139,7 @@ describe('runWithConfirmations', () => {
             new DOMException('aborted', 'AbortError'),
         );
         const out = await runWithConfirmations({
-            connectionId: 1,
+            connectionId: '1',
             statements: ['select 1'],
             maxRows: 10,
             signal: new AbortController().signal,

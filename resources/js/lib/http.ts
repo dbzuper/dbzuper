@@ -1,3 +1,13 @@
+import type { WorkspaceRef } from '@/types/connection';
+
+/** API root of a workspace. The database part of a ref is encoded; the id and its colon stay as they are. */
+export function apiBase(ref: WorkspaceRef): string {
+    const colon = ref.indexOf(':');
+    return colon === -1
+        ? `/api/c/${ref}`
+        : `/api/c/${ref.slice(0, colon)}:${encodeURIComponent(ref.slice(colon + 1))}`;
+}
+
 export class ApiError extends Error {
     constructor(
         public readonly status: number,

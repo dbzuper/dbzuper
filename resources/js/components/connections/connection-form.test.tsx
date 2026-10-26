@@ -35,6 +35,8 @@ const drivers: DriverChoice[] = [
 function saved(overrides: Partial<ConnectionSummary>): ConnectionSummary {
     return {
         id: 1,
+
+        ref: '1',
         name: 'Prod',
         driver: 'mysql',
         driver_label: 'MySQL',
@@ -48,6 +50,8 @@ function saved(overrides: Partial<ConnectionSummary>): ConnectionSummary {
         color: null,
         store_history: true,
         last_opened_at: null,
+        server_level: false,
+        last_database: null,
         ...overrides,
     };
 }

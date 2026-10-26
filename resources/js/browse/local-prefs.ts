@@ -1,4 +1,5 @@
 import { safeStorage } from './safe-storage';
+import type { WorkspaceRef } from '@/types/connection';
 
 export type GridLayout = { widths: Record<string, number>; hidden: string[] };
 export type SidebarPrefs = { width: number; collapsed: boolean };
@@ -22,11 +23,11 @@ function readJson(key: string): unknown {
     }
 }
 
-const layoutKey = (connectionId: number, table: string) =>
+const layoutKey = (connectionId: WorkspaceRef, table: string) =>
     `${connectionId}:${table}`;
 
 export function readGridLayout(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     table: string,
 ): GridLayout {
     const all = readJson(GRID_KEY);
@@ -47,7 +48,7 @@ export function readGridLayout(
 }
 
 export function writeGridLayout(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     table: string,
     layout: GridLayout,
 ): void {
@@ -92,7 +93,7 @@ export type GroupPrefs = { open: string[] };
 const GROUPS_KEY = 'dbsuperb.sidebar-groups';
 const GROUPING_KEY = 'dbsuperb.sidebar-grouping';
 
-export function readGroupPrefs(connectionId: number): GroupPrefs {
+export function readGroupPrefs(connectionId: WorkspaceRef): GroupPrefs {
     const all = readJson(GROUPS_KEY);
     const found =
         all && typeof all === 'object'
@@ -106,7 +107,10 @@ export function readGroupPrefs(connectionId: number): GroupPrefs {
     };
 }
 
-export function writeGroupPrefs(connectionId: number, p: GroupPrefs): void {
+export function writeGroupPrefs(
+    connectionId: WorkspaceRef,
+    p: GroupPrefs,
+): void {
     const all = readJson(GROUPS_KEY);
     const map: Record<string, GroupPrefs> =
         all && typeof all === 'object'

@@ -5,13 +5,14 @@ import { useClipboard } from '@/hooks/use-clipboard';
 import { dbErrorFrom, workspaceApi } from '@/lib/workspace-api';
 import type { Dialect, SchemaSnapshot, TableSchema } from '@/types/schema';
 import { generateDdl } from '@/universe/ddl';
+import type { WorkspaceRef } from '@/types/connection';
 
 export function DdlTab({
     connectionId,
     snapshot,
     table,
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     snapshot: SchemaSnapshot;
     table: TableSchema;
 }) {

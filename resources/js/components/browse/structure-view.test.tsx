@@ -59,7 +59,7 @@ describe('StructureView', () => {
         const onOpenTable = vi.fn();
         render(
             <StructureView
-                connectionId={1}
+                connectionId="1"
                 snapshot={snapshot}
                 table={snapshot.tables[0]}
                 onOpenTable={onOpenTable}

@@ -9,8 +9,9 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useWorkspace } from '@/universe/store';
+import type { WorkspaceRef } from '@/types/connection';
 
-export function LeftRail({ connectionId }: { connectionId: number }) {
+export function LeftRail({ connectionId }: { connectionId: WorkspaceRef }) {
     const universeActive = useActiveTab(connectionId).kind === 'universe';
     const sidebarCollapsed = useSidebarPrefs((s) => s.collapsed);
     const dockOpen = useWorkspace((s) => s.dockOpen);

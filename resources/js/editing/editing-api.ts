@@ -1,4 +1,5 @@
-import { ApiError, apiFetch } from '@/lib/http';
+import type { WorkspaceRef } from '@/types/connection';
+import { ApiError, apiFetch, apiBase } from '@/lib/http';
 import { dbErrorFrom, type RowIdentity } from '@/lib/workspace-api';
 import type { QueryCell } from '@/types/schema';
 
@@ -50,8 +51,8 @@ export class ChangeSetError extends Error {
     }
 }
 
-const changesUrl = (connectionId: number, table: string) =>
-    `/api/c/${connectionId}/tables/${encodeURIComponent(table)}/changes`;
+const changesUrl = (connectionId: WorkspaceRef, table: string) =>
+    `${apiBase(connectionId)}/tables/${encodeURIComponent(table)}/changes`;
 
 /** The index of the first `changes.N…` validation key, else null. */
 function validationIndex(body: unknown): number | null {
@@ -108,7 +109,7 @@ export function changeSetErrorFrom(e: unknown): ChangeSetErrorInfo {
 }
 
 async function send<T>(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     table: string,
     changes: ChangeRequest[],
     preview: boolean,
@@ -125,9 +126,15 @@ async function send<T>(
 
 export const editingApi = {
     /** The statements the server would run, with literals inlined, in execution order. Nothing runs. */
-    preview: (connectionId: number, table: string, changes: ChangeRequest[]) =>
-        send<PreviewResponse>(connectionId, table, changes, true),
+    preview: (
+        connectionId: WorkspaceRef,
+        table: string,
+        changes: ChangeRequest[],
+    ) => send<PreviewResponse>(connectionId, table, changes, true),
     /** Runs every change in one transaction; rejects with ChangeSetError (nothing applied) on any failure. */
-    commit: (connectionId: number, table: string, changes: ChangeRequest[]) =>
-        send<CommitResponse>(connectionId, table, changes, false),
+    commit: (
+        connectionId: WorkspaceRef,
+        table: string,
+        changes: ChangeRequest[],
+    ) => send<CommitResponse>(connectionId, table, changes, false),
 };

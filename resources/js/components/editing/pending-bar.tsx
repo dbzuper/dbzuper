@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { pendingCounts, pendingKey, usePending } from '@/editing/pending-store';
 import { useReview } from '@/editing/review-store';
 import { DiscardDialog } from './discard-dialog';
+import type { WorkspaceRef } from '@/types/connection';
 
 /**
  * Above the pager while the table has pending changes (spec §4.1): the counts, Discard (asks first) and Review &
@@ -12,7 +13,7 @@ export function PendingBar({
     connectionId,
     table,
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     table: string;
 }) {
     const rows = usePending((s) => s.byTable[pendingKey(connectionId, table)]);

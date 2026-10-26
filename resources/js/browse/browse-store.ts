@@ -14,6 +14,7 @@ import {
 } from '@/lib/workspace-api';
 import { rowsCache } from './rows-cache';
 import { safeStorage } from './safe-storage';
+import { isWorkspaceRef, type WorkspaceRef } from '@/types/connection';
 
 export type TableView = 'data' | 'structure';
 export type TableTabState = {
@@ -144,7 +145,7 @@ function focus(c: ConnectionBrowse, id: string): ConnectionBrowse {
 
 /** The latest tab of `table` on a connection (the one opening it focuses), or null. */
 export function latestTableTab(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     table: string,
 ): TableTab | null {
     const c = useBrowse.getState().byConnection[connectionId];
@@ -176,9 +177,9 @@ const defaultState = (perPage: PerPage): TableTabState => ({
 });
 
 type Actions = {
-    get: (connectionId: number) => ConnectionBrowse;
+    get: (connectionId: WorkspaceRef) => ConnectionBrowse;
     openTable: (
-        connectionId: number,
+        connectionId: WorkspaceRef,
         table: string,
         opts?: {
             mode?: OpenMode;
@@ -188,32 +189,32 @@ type Actions = {
         },
     ) => string;
     /** A copy of a table tab (drawer closed, never a preview) right after it, activated; '' when `id` is no table tab. */
-    duplicateTab: (connectionId: number, id: string) => string;
+    duplicateTab: (connectionId: WorkspaceRef, id: string) => string;
     /** A further tab of `table` with default state, permanent, after the active tab, activated. */
-    openNewView: (connectionId: number, table: string) => string;
-    promote: (connectionId: number, id: string) => void;
-    activate: (connectionId: number, id: string) => void;
-    activateIndex: (connectionId: number, n: number) => void;
-    cycle: (connectionId: number, dir: 1 | -1) => void;
-    closeTab: (connectionId: number, id: string) => void;
-    closeOthers: (connectionId: number, id: string) => void;
-    closeRight: (connectionId: number, id: string) => void;
-    closeAll: (connectionId: number) => void;
-    move: (connectionId: number, id: string, toIndex: number) => void;
+    openNewView: (connectionId: WorkspaceRef, table: string) => string;
+    promote: (connectionId: WorkspaceRef, id: string) => void;
+    activate: (connectionId: WorkspaceRef, id: string) => void;
+    activateIndex: (connectionId: WorkspaceRef, n: number) => void;
+    cycle: (connectionId: WorkspaceRef, dir: 1 | -1) => void;
+    closeTab: (connectionId: WorkspaceRef, id: string) => void;
+    closeOthers: (connectionId: WorkspaceRef, id: string) => void;
+    closeRight: (connectionId: WorkspaceRef, id: string) => void;
+    closeAll: (connectionId: WorkspaceRef) => void;
+    move: (connectionId: WorkspaceRef, id: string, toIndex: number) => void;
     updateTable: (
-        connectionId: number,
+        connectionId: WorkspaceRef,
         id: string,
         patch: Partial<TableTabState>,
     ) => void;
-    showRecords: (connectionId: number, title: string) => void;
-    closeRecords: (connectionId: number) => void;
+    showRecords: (connectionId: WorkspaceRef, title: string) => void;
+    closeRecords: (connectionId: WorkspaceRef) => void;
     reconcile: (
-        connectionId: number,
+        connectionId: WorkspaceRef,
         tables: Map<string, string[]>,
     ) => { dropped: string[]; cleaned: string[] };
 };
 
-type State = { byConnection: Record<number, ConnectionBrowse> } & Actions;
+type State = { byConnection: Record<WorkspaceRef, ConnectionBrowse> } & Actions;
 
 /**
  * Asked before tabs close (or a preview is replaced) that leave `tables` with no open view. Returning true holds
@@ -221,7 +222,7 @@ type State = { byConnection: Record<number, ConnectionBrowse> } & Actions;
  * such a table are discarded, spec §4.4). False lets the close go ahead now.
  */
 export type CloseGuard = (
-    connectionId: number,
+    connectionId: WorkspaceRef,
     tables: string[],
     proceed: () => void,
 ) => boolean;
@@ -236,7 +237,7 @@ export function setCloseGuard(guard: CloseGuard | null): void {
 
 /** Runs `run` unless the guard holds it; whether it ran now. */
 function guarded(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     tables: string[],
     run: () => void,
 ): boolean {
@@ -345,11 +346,11 @@ function sanitizeTab(t: unknown, perPage: PerPage): BrowseTab | null {
     };
 }
 
-function sanitize(input: unknown): Record<number, ConnectionBrowse> {
-    const out: Record<number, ConnectionBrowse> = {};
+function sanitize(input: unknown): Record<WorkspaceRef, ConnectionBrowse> {
+    const out: Record<WorkspaceRef, ConnectionBrowse> = {};
     if (!isObj(input)) return out;
     for (const [key, value] of Object.entries(input)) {
-        if (!isObj(value) || !Number.isInteger(Number(key))) continue;
+        if (!isObj(value) || !isWorkspaceRef(key)) continue;
         const perPage = isPerPage(value.perPage)
             ? value.perPage
             : DEFAULT_PER_PAGE;
@@ -382,7 +383,7 @@ function sanitize(input: unknown): Record<number, ConnectionBrowse> {
         const activeId = tabs.some((t) => t.id === value.activeId)
             ? (value.activeId as string)
             : 'universe';
-        out[Number(key)] = { tabs, activeId, recents, perPage };
+        out[key] = { tabs, activeId, recents, perPage };
     }
     return out;
 }
@@ -445,7 +446,7 @@ const STORAGE_KEY = 'dbsuperb.browse';
 const VERSION = 2;
 const PERSIST_DELAY_MS = 250;
 
-type Persisted = { byConnection: Record<number, ConnectionBrowse> };
+type Persisted = { byConnection: Record<WorkspaceRef, ConnectionBrowse> };
 
 let pendingWrite: (() => void) | null = null;
 let pendingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -460,7 +461,7 @@ export function flushBrowse(): void {
 }
 
 /** The map as last read from or written to storage, to tell which connections this browser tab changed. */
-let lastSynced: Record<number, ConnectionBrowse> = {};
+let lastSynced: Record<WorkspaceRef, ConnectionBrowse> = {};
 
 /**
  * Another browser tab may have saved its workspace since this one loaded, so a write replaces only the connections
@@ -507,9 +508,8 @@ function writeMerged(
     const merged: Record<string, unknown> = { ...(isObj(base) ? base : {}) };
     const ids = new Set([...Object.keys(next), ...Object.keys(lastSynced)]);
     for (const key of ids) {
-        const id = Number(key);
-        if (next[id] === lastSynced[id] && !outdated) continue;
-        if (next[id]) merged[key] = next[id];
+        if (next[key] === lastSynced[key] && !outdated) continue;
+        if (next[key]) merged[key] = next[key];
         else delete merged[key];
     }
     lastSynced = next;
@@ -526,10 +526,10 @@ const sameStored = (a: ConnectionBrowse, b: ConnectionBrowse) =>
 export const useBrowse = create<State>()(
     persist(
         (set, get) => {
-            const current = (connectionId: number) =>
+            const current = (connectionId: WorkspaceRef) =>
                 get().byConnection[connectionId] ?? fresh();
             const update = (
-                connectionId: number,
+                connectionId: WorkspaceRef,
                 fn: (c: ConnectionBrowse) => ConnectionBrowse,
             ) =>
                 set((s) => ({
@@ -541,7 +541,7 @@ export const useBrowse = create<State>()(
                     },
                 }));
             const remove = (
-                connectionId: number,
+                connectionId: WorkspaceRef,
                 keep: (t: BrowseTab, i: number) => boolean,
             ) => {
                 const before = current(connectionId).tabs;
@@ -557,7 +557,7 @@ export const useBrowse = create<State>()(
                 );
             };
             const removeNow = (
-                connectionId: number,
+                connectionId: WorkspaceRef,
                 keep: (t: BrowseTab, i: number) => boolean,
             ) =>
                 update(connectionId, (c) => {
@@ -575,7 +575,7 @@ export const useBrowse = create<State>()(
                 });
             /** Puts a new table tab after the tab at index `at(c)` and activates it. */
             const insertAfter = (
-                connectionId: number,
+                connectionId: WorkspaceRef,
                 at: (c: ConnectionBrowse) => number,
                 make: (c: ConnectionBrowse) => TableTab,
             ) => {
@@ -591,7 +591,7 @@ export const useBrowse = create<State>()(
             };
 
             const openNow = (
-                connectionId: number,
+                connectionId: WorkspaceRef,
                 table: string,
                 opts: Parameters<Actions['openTable']>[2] = {},
             ): string => {
@@ -911,16 +911,15 @@ export const useBrowse = create<State>()(
                 for (const [key, local] of Object.entries(
                     current.byConnection,
                 )) {
-                    const id = Number(key);
-                    const stored = incoming[id];
+                    const stored = incoming[key];
                     if (!stored) continue;
                     if (sameStored(local, stored)) {
                         // Unchanged elsewhere: keep this window's objects (and its open drawer).
-                        byConnection[id] = local;
-                        incoming[id] = local;
+                        byConnection[key] = local;
+                        incoming[key] = local;
                     } else if (stored.tabs.some((t) => t.id === local.activeId))
                         // Another window may have switched its active tab; this window keeps the one it is looking at.
-                        byConnection[id] = {
+                        byConnection[key] = {
                             ...stored,
                             activeId: local.activeId,
                         };
@@ -933,7 +932,7 @@ export const useBrowse = create<State>()(
 );
 
 /** The active tab of a connection (Universe when none). */
-export function useActiveTab(connectionId: number): BrowseTab {
+export function useActiveTab(connectionId: WorkspaceRef): BrowseTab {
     return useBrowse((s) => {
         const c = s.byConnection[connectionId];
         return c?.tabs.find((t) => t.id === c.activeId) ?? UNIVERSE_TAB;

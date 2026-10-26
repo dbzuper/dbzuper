@@ -196,6 +196,7 @@ class SavedConnection extends Model
     {
         return [
             'id' => $this->id,
+            'ref' => $this->workspaceRef(),
             'name' => $this->name,
             'driver' => $this->driver->value,
             'driver_label' => $this->driver->label(),

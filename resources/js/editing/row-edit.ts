@@ -7,6 +7,7 @@ import type {
     QueryColumn,
 } from '@/types/schema';
 import { rowRefs, type PendingTarget } from './pending-store';
+import type { WorkspaceRef } from '@/types/connection';
 
 /**
  * The editing rules shared by the grid and the row drawer (spec §4.1, §4.2, §6): which rows and cells can be edited,
@@ -15,7 +16,7 @@ import { rowRefs, type PendingTarget } from './pending-store';
 
 /** Staged editing of a table tab's rows. Only given for an editable table on a writable connection. */
 export type GridEditing = {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     table: string;
     dialect: Dialect;
     /** From the rows response, parallel to `rows`. */

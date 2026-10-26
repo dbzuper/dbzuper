@@ -13,6 +13,7 @@ import { StatusBar } from './status-bar';
 
 const connection = {
     id: 1,
+    ref: '1',
     name: 'shop',
     driver: 'mysql',
     driver_label: 'MySQL',
@@ -44,7 +45,7 @@ const renderBar = () =>
 const openOrders = (status?: TabStatus) => {
     const id = useBrowse
         .getState()
-        .openTable(1, 'orders', { mode: 'permanent' });
+        .openTable('1', 'orders', { mode: 'permanent' });
     if (status) useTabStatus.getState().publish(id, status);
     return id;
 };
@@ -127,7 +128,7 @@ describe('StatusBar', () => {
         const spy = vi.spyOn(useReview.getState(), 'openReview');
         act(() =>
             usePending.getState().setCell(
-                1,
+                '1',
                 'orders',
                 {
                     ref: '{"id":1}',
@@ -142,7 +143,7 @@ describe('StatusBar', () => {
             name: '1 pending change',
         });
         fireEvent.click(button);
-        expect(spy).toHaveBeenCalledWith(1, 'orders');
+        expect(spy).toHaveBeenCalledWith('1', 'orders');
     });
 
     it('counts tables and relations on the universe, inferred ones only while shown', () => {

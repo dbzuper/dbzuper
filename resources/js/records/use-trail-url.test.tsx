@@ -65,7 +65,7 @@ beforeEach(() => {
     );
     window.history.replaceState({ page: 'inertia' }, '', '/?keep=1#h');
     useRecords.getState().reset();
-    useRecords.getState().setConnection(1);
+    useRecords.getState().setConnection('1');
     useBrowse.setState({ byConnection: {} });
 });
 afterEach(() => vi.restoreAllMocks());
@@ -165,7 +165,7 @@ describe('useTrailUrl', () => {
             renderHook(() => useTrailUrl(snapshot));
         });
         expect(useRecords.getState().trail.nodes[0].key).toEqual({ id: 3 });
-        const browse = useBrowse.getState().get(1);
+        const browse = useBrowse.getState().get('1');
         expect(browse.activeId).toBe('records');
         expect(browse.tabs.find((t) => t.id === 'records')).toMatchObject({
             title: 'Records · users #3',
@@ -178,9 +178,9 @@ describe('useTrailUrl', () => {
     it('clears the trail and ?r= when the records tab is closed', async () => {
         renderHook(() => useTrailUrl(snapshot));
         await act(async () => useRecords.getState().open('users', { id: 1 }));
-        act(() => useBrowse.getState().showRecords(1, 'Records · users #1'));
+        act(() => useBrowse.getState().showRecords('1', 'Records · users #1'));
         expect(param()).not.toBeNull();
-        act(() => useBrowse.getState().closeRecords(1));
+        act(() => useBrowse.getState().closeRecords('1'));
         expect(useRecords.getState().trail.nodes).toHaveLength(0);
         expect(param()).toBeNull();
         expect(new URL(window.location.href).searchParams.get('keep')).toBe(
@@ -189,15 +189,15 @@ describe('useTrailUrl', () => {
     });
 
     it('closes a lingering records tab when the URL has no trail', async () => {
-        useBrowse.getState().showRecords(1, 'Records · users #9');
+        useBrowse.getState().showRecords('1', 'Records · users #9');
         await act(async () => {
             renderHook(() => useTrailUrl(snapshot));
         });
-        expect(useBrowse.getState().get(1).activeId).toBe('universe');
+        expect(useBrowse.getState().get('1').activeId).toBe('universe');
         expect(
             useBrowse
                 .getState()
-                .get(1)
+                .get('1')
                 .tabs.some((t) => t.kind === 'records'),
         ).toBe(false);
     });

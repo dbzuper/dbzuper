@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useSqlTabs, type SqlTab } from '@/sql/tabs-store';
 import type { Dialect } from '@/types/schema';
+import type { WorkspaceRef } from '@/types/connection';
 
 const Title = ({ children }: { children: string }) => (
     <span className="font-mono text-foreground">{children}</span>
@@ -26,7 +27,7 @@ export function LinkChip({
     dialect,
     columns = [],
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     tab: SqlTab;
     dialect: Dialect;
     /** The linked table's columns, for the date filters' shapes when its query is built. */

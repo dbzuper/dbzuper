@@ -62,7 +62,7 @@ export function RecordsBreadcrumb({
 
     const copy = () => {
         if (sql === null) return;
-        useSqlTabs.getState().openTab(connection.id, sql, 'Record path');
+        useSqlTabs.getState().openTab(connection.ref, sql, 'Record path');
         useWorkspace.getState().setDockOpen(true);
         // Best effort: the tab is the source of truth, a refused clipboard is not an error.
         try {

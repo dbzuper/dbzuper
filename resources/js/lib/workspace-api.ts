@@ -1,4 +1,5 @@
-import { ApiError, apiFetch } from '@/lib/http';
+import type { WorkspaceRef } from '@/types/connection';
+import { ApiError, apiFetch, apiBase } from '@/lib/http';
 import type {
     DbErrorPayload,
     DdlResponse,
@@ -99,42 +100,49 @@ export const FILTER_OPS: {
     { value: 'after', label: 'after', needsValue: true },
 ];
 
-const table = (id: number, name: string, what: string) =>
-    `/api/c/${id}/tables/${encodeURIComponent(name)}/${what}`;
+const table = (id: WorkspaceRef, name: string, what: string) =>
+    `${apiBase(id)}/tables/${encodeURIComponent(name)}/${what}`;
 
 export const workspaceApi = {
-    schema: (id: number) => apiFetch<SchemaResponse>(`/api/c/${id}/schema`),
-    refresh: (id: number) =>
-        apiFetch<SchemaResponse>(`/api/c/${id}/schema/refresh`, {
+    schema: (id: WorkspaceRef) =>
+        apiFetch<SchemaResponse>(`${apiBase(id)}/schema`),
+    refresh: (id: WorkspaceRef) =>
+        apiFetch<SchemaResponse>(`${apiBase(id)}/schema/refresh`, {
             method: 'POST',
         }),
-    layout: (id: number) => apiFetch<LayoutResponse>(`/api/c/${id}/layout`),
+    layout: (id: WorkspaceRef) =>
+        apiFetch<LayoutResponse>(`${apiBase(id)}/layout`),
     /**
      * `keepalive` lets the save outlive the page (pagehide, navigation) when the body is small enough;
      * `merge` updates only the given tables instead of replacing the stored layout.
      */
     saveLayout: (
-        id: number,
+        id: WorkspaceRef,
         positions: LayoutPositionEntry[],
         opts: { keepalive?: boolean; merge?: boolean } = {},
     ) =>
-        apiFetch<{ saved: boolean }>(`/api/c/${id}/layout`, {
+        apiFetch<{ saved: boolean }>(`${apiBase(id)}/layout`, {
             method: 'PUT',
             body: opts.merge ? { merge: true, positions } : { positions },
             keepalive: opts.keepalive,
         }),
-    sample: (id: number, name: string) =>
+    sample: (id: WorkspaceRef, name: string) =>
         apiFetch<SampleResponse>(table(id, name, 'sample')),
-    rows: (id: number, name: string, body: RowsRequest, signal?: AbortSignal) =>
+    rows: (
+        id: WorkspaceRef,
+        name: string,
+        body: RowsRequest,
+        signal?: AbortSignal,
+    ) =>
         apiFetch<RowsResponse>(table(id, name, 'rows'), {
             method: 'POST',
             body,
             signal,
         }),
-    ddl: (id: number, name: string) =>
+    ddl: (id: WorkspaceRef, name: string) =>
         apiFetch<DdlResponse>(table(id, name, 'ddl')),
     count: (
-        id: number,
+        id: WorkspaceRef,
         name: string,
         body: { filters: RowFilter[]; exact: boolean },
         signal?: AbortSignal,

@@ -1,4 +1,5 @@
-import { apiFetch } from '@/lib/http';
+import type { WorkspaceRef } from '@/types/connection';
+import { apiFetch, apiBase } from '@/lib/http';
 
 export type HistoryEntry = {
     id: number;
@@ -37,20 +38,20 @@ function query(params: HistoryParams): string {
 export const historyApi = {
     /** Per-connection endpoint when an id is given, otherwise the global one (`connection_id` filters it). */
     list: (
-        connectionId: number | null,
+        connectionId: WorkspaceRef | null,
         params: HistoryParams,
         signal?: AbortSignal,
     ) =>
         apiFetch<HistoryPage>(
             connectionId === null
                 ? `/api/history${query(params)}`
-                : `/api/c/${connectionId}/history${query({ ...params, connection_id: undefined })}`,
+                : `${apiBase(connectionId)}/history${query({ ...params, connection_id: undefined })}`,
             { signal },
         ),
-    show: (connectionId: number, entryId: number) =>
-        apiFetch<HistoryEntry>(`/api/c/${connectionId}/history/${entryId}`),
-    clear: (connectionId: number) =>
-        apiFetch<{ cleared: number }>(`/api/c/${connectionId}/history`, {
+    show: (connectionId: WorkspaceRef, entryId: number) =>
+        apiFetch<HistoryEntry>(`${apiBase(connectionId)}/history/${entryId}`),
+    clear: (connectionId: WorkspaceRef) =>
+        apiFetch<{ cleared: number }>(`${apiBase(connectionId)}/history`, {
             method: 'DELETE',
         }),
 };

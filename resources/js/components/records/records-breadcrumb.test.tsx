@@ -46,7 +46,7 @@ const snapshot = {
         },
     ],
 } as SchemaSnapshot;
-const connection = { id: 1 } as ConnectionSummary;
+const connection = { id: 1, ref: '1' } as ConnectionSummary;
 
 const usersId = nodeId('users', { id: 1 });
 const noteId = nodeId('notes', { id: 5 });
@@ -83,7 +83,7 @@ function seed(edgeRel = 'r2') {
 beforeEach(() => {
     vi.restoreAllMocks();
     useRecords.getState().reset();
-    useRecords.getState().setConnection(1);
+    useRecords.getState().setConnection('1');
     useSqlTabs.setState({ byConnection: {} } as never);
     useWorkspace.getState().reset();
 });
@@ -202,7 +202,7 @@ describe('RecordsBreadcrumb', () => {
         );
         fireEvent.click(screen.getByRole('button', { name: 'Close explorer' }));
         expect(useRecords.getState().trail.nodes).toHaveLength(0);
-        expect(useRecords.getState().connectionId).toBe(1);
+        expect(useRecords.getState().connectionId).toBe('1');
     });
 
     it('shows the root and explains the disabled copy when nothing is selected', () => {

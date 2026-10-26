@@ -29,9 +29,6 @@ class WorkspaceController extends Controller
 
         $connection->markOpened();
 
-        return Inertia::render('workspace/show', [
-            'connection' => $connection->toClientArray(),
-            'workspace' => ['ref' => $connection->workspaceRef(), 'database' => $connection->scopedDatabase()],
-        ]);
+        return Inertia::render('workspace/show', ['connection' => $connection->toClientArray()]);
     }
 }

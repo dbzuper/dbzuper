@@ -46,7 +46,7 @@ type Props = {
 };
 
 export function TableTabView({ connection, snapshot, tab, actions }: Props) {
-    const connectionId = connection.id;
+    const connectionId = connection.ref;
     const table = useMemo(
         () => snapshot.tables.find((t) => t.name === tab.table),
         [snapshot, tab.table],

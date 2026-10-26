@@ -16,7 +16,7 @@ const tabWith = (l?: SqlLink): SqlTab => ({
     link: l,
 });
 const chip = (l?: SqlLink) =>
-    render(<LinkChip connectionId={1} tab={tabWith(l)} dialect="mysql" />);
+    render(<LinkChip connectionId="1" tab={tabWith(l)} dialect="mysql" />);
 
 beforeEach(() =>
     useSqlTabs.setState({

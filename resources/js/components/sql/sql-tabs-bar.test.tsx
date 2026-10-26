@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useSqlTabs } from '@/sql/tabs-store';
 import { SqlTabsBar } from './sql-tabs-bar';
 
-const CONNECTION = 7;
+const CONNECTION = '7';
 const state = () => useSqlTabs.getState().byConnection[CONNECTION];
 
 describe('SqlTabsBar', () => {

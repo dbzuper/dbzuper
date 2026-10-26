@@ -12,12 +12,13 @@ import { ColumnsTab } from './columns-tab';
 import { DdlTab } from './ddl-tab';
 import { IndexesTab } from './indexes-tab';
 import { RelationshipsTab } from './relationships-tab';
+import type { WorkspaceRef } from '@/types/connection';
 
 /** The inspector's heading: the command palette moves focus here after picking a table. */
 export const INSPECTOR_HEADING_ID = 'inspector-heading';
 
 type Props = {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     snapshot: SchemaSnapshot;
     table: TableSchema;
 };

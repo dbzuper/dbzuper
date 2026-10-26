@@ -20,7 +20,7 @@ import {
 } from '@/sql/run-query';
 import { splitStatements, statementAt } from '@/sql/splitter';
 import { useSqlTabs } from '@/sql/tabs-store';
-import type { ConnectionSummary } from '@/types/connection';
+import type { ConnectionSummary, WorkspaceRef } from '@/types/connection';
 import type {
     ConfirmationPayload,
     DbErrorPayload,
@@ -84,7 +84,7 @@ export default function SqlDock({
         window.addEventListener('resize', clamp);
         return () => window.removeEventListener('resize', clamp);
     }, [height, setHeight]);
-    const tabs = useSqlTabs((s) => s.byConnection[connection.id]);
+    const tabs = useSqlTabs((s) => s.byConnection[connection.ref]);
     const ensure = useSqlTabs((s) => s.ensure);
     const setSql = useSqlTabs((s) => s.setSql);
     // The completion provider is registered once; it reads the latest schema through this ref.
@@ -93,23 +93,24 @@ export default function SqlDock({
         context.current = { snapshot };
     });
 
-    useEffect(() => ensure(connection.id), [connection.id, ensure]);
+    useEffect(() => ensure(connection.ref), [connection.ref, ensure]);
     const active = tabs?.tabs.find((t) => t.id === tabs.activeId);
 
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
     // A closed tab's model would otherwise live (with its undo history) until the page unloads. Runs after the
     // editor has switched to the next tab's model; tabs of another connection are left alone.
-    const knownTabs = useRef<{ connectionId: number; ids: string[] } | null>(
-        null,
-    );
+    const knownTabs = useRef<{
+        connectionId: WorkspaceRef;
+        ids: string[];
+    } | null>(null);
     useEffect(() => {
         const ids = tabs?.tabs.map((t) => t.id) ?? [];
         const previous = knownTabs.current;
-        knownTabs.current = { connectionId: connection.id, ids };
-        if (monacoRef.current && previous?.connectionId === connection.id)
+        knownTabs.current = { connectionId: connection.ref, ids };
+        if (monacoRef.current && previous?.connectionId === connection.ref)
             disposeClosedModels(monacoRef.current, previous.ids, ids);
-    }, [connection.id, tabs]);
+    }, [connection.ref, tabs]);
     const controller = useRef<AbortController | null>(null);
     const pendingConfirm = useRef<((a: ConfirmAnswer) => void) | null>(null);
     const [maxRows, setMaxRows] = useState(DEFAULT_ROW_LIMIT);
@@ -212,7 +213,7 @@ export default function SqlDock({
             const monaco = monacoRef.current;
             const model = editor?.getModel();
             const tabId =
-                useSqlTabs.getState().byConnection[connection.id]?.activeId;
+                useSqlTabs.getState().byConnection[connection.ref]?.activeId;
             if (!editor || !monaco || !model || !tabId || runningRef.current)
                 return;
             clearMarkers();
@@ -301,7 +302,7 @@ export default function SqlDock({
             if (markers.length > 0)
                 monaco.editor.setModelMarkers(model, MARKER_OWNER, markers);
         },
-        [clearMarkers, connection.id],
+        [clearMarkers, connection.ref],
     );
 
     const confirm = useCallback(
@@ -319,7 +320,7 @@ export default function SqlDock({
      */
     const applyLinked = useCallback(
         (target: RunTarget | null): { applied: boolean; reason?: string } => {
-            const state = useSqlTabs.getState().byConnection[connection.id];
+            const state = useSqlTabs.getState().byConnection[connection.ref];
             const tab = state?.tabs.find((t) => t.id === state.activeId);
             const link = tab?.link;
             if (
@@ -353,7 +354,7 @@ export default function SqlDock({
             const whole =
                 parts.length === 1 && parts[0].sql.trim() === statement.trim();
             const applied = applyToTable(
-                connection.id,
+                connection.ref,
                 link,
                 match.state,
                 whole ? undefined : statement,
@@ -371,7 +372,7 @@ export default function SqlDock({
             }));
             return { applied: true };
         },
-        [clearMarkers, connection.id, dialect, snapshot],
+        [clearMarkers, connection.ref, dialect, snapshot],
     );
 
     const runTarget = useCallback(
@@ -382,7 +383,7 @@ export default function SqlDock({
                 target,
                 (signal) =>
                     runWithConfirmations({
-                        connectionId: connection.id,
+                        connectionId: connection.ref,
                         statements: target?.statements ?? [],
                         maxRows,
                         signal,
@@ -394,7 +395,7 @@ export default function SqlDock({
             // The run may have added history entries.
             useWorkspace.getState().bumpRuns();
         },
-        [applyLinked, confirm, connection.id, execute, maxRows],
+        [applyLinked, confirm, connection.ref, execute, maxRows],
     );
 
     const run = useCallback(
@@ -412,14 +413,14 @@ export default function SqlDock({
             target && { statements: sql ? [sql] : [], offsets: target.offsets },
             async (signal) => {
                 try {
-                    return await queryApi.explain(connection.id, sql, signal);
+                    return await queryApi.explain(connection.ref, sql, signal);
                 } catch (e) {
                     return outcomeFromError(e);
                 }
             },
             false,
         );
-    }, [connection.id, currentTarget, execute]);
+    }, [connection.ref, currentTarget, execute]);
 
     // Monaco commands are registered once per editor, so they call the latest handlers through this ref.
     const handlers = useRef({ run, runAll });
@@ -441,7 +442,7 @@ export default function SqlDock({
         >
             <DockSeparator />
             <div className="flex items-center gap-2 border-b px-2">
-                <SqlTabsBar connectionId={connection.id} />
+                <SqlTabsBar connectionId={connection.ref} />
                 <Button
                     variant="ghost"
                     size="icon"
@@ -463,7 +464,7 @@ export default function SqlDock({
                 chip={
                     active?.link && (
                         <LinkChip
-                            connectionId={connection.id}
+                            connectionId={connection.ref}
                             tab={active}
                             dialect={dialect}
                             columns={
@@ -482,7 +483,7 @@ export default function SqlDock({
                         value={active.sql}
                         dialect={dialect}
                         onChange={(sql) =>
-                            setSql(connection.id, active.id, sql)
+                            setSql(connection.ref, active.id, sql)
                         }
                         onMount={(editor, monaco) => {
                             editorRef.current = editor;

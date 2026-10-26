@@ -105,6 +105,8 @@ import { tableTabOf } from '@/test/browse-tabs';
 
 const connection = {
     id: 1,
+
+    ref: '1',
     name: 'Shop',
     driver: 'sqlite' as const,
     driver_label: 'SQLite',
@@ -118,6 +120,8 @@ const connection = {
     color: null,
     store_history: true,
     last_opened_at: null,
+    server_level: false,
+    last_database: null,
 };
 
 beforeEach(() => {
@@ -167,7 +171,7 @@ describe('workspace page', () => {
             }),
         );
         await waitFor(() =>
-            expect(useBrowse.getState().get(1).activeId).toBe('records'),
+            expect(useBrowse.getState().get('1').activeId).toBe('records'),
         );
         expect(
             await screen.findByRole('region', { name: 'Record explorer' }),
@@ -181,17 +185,19 @@ describe('workspace page', () => {
     it('binds the records store to the connection and switches tabs from the rail', async () => {
         render(<WorkspaceShow connection={connection} />);
         await screen.findByRole('treeitem', { name: /orders/ });
-        expect(useRecords.getState().connectionId).toBe(1);
+        expect(useRecords.getState().connectionId).toBe('1');
         const universe = screen.getByRole('button', { name: 'Universe' });
         expect(universe).toHaveAttribute('aria-pressed', 'true');
         expect(screen.queryByRole('button', { name: 'Records' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'List view' })).toBeNull();
         act(() => {
-            useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+            useBrowse
+                .getState()
+                .openTable('1', 'orders', { mode: 'permanent' });
         });
         expect(universe).toHaveAttribute('aria-pressed', 'false');
         fireEvent.click(universe);
-        expect(useBrowse.getState().get(1).activeId).toBe('universe');
+        expect(useBrowse.getState().get('1').activeId).toBe('universe');
         expect(universe).toHaveAttribute('aria-pressed', 'true');
         window.history.replaceState(null, '', '/');
     });
@@ -217,12 +223,12 @@ describe('workspace page', () => {
         vi.mocked(pinsApi.list).mockResolvedValueOnce({
             pins: [{ id: 3, table: 'orders', position: 1 }],
         });
-        useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+        useBrowse.getState().openTable('1', 'orders', { mode: 'permanent' });
         render(<WorkspaceShow connection={connection} />);
         expect(
             await screen.findByRole('button', { name: 'Unpin table' }),
         ).toBeInTheDocument();
-        expect(pinsApi.list).toHaveBeenCalledWith(1);
+        expect(pinsApi.list).toHaveBeenCalledWith('1');
         window.history.replaceState(null, '', '/');
     });
 
@@ -256,8 +262,8 @@ describe('workspace page', () => {
         fireEvent.click(
             await screen.findByRole('treeitem', { name: /orders/ }),
         );
-        expect(useBrowse.getState().get(1).activeId).toBe(
-            tableTabOf(1, 'orders')?.id,
+        expect(useBrowse.getState().get('1').activeId).toBe(
+            tableTabOf('1', 'orders')?.id,
         );
         expect(
             screen.getByRole('heading', { name: 'orders' }),
@@ -284,8 +290,8 @@ describe('workspace page', () => {
         });
         const { unmount } = render(<WorkspaceShow connection={connection} />);
         await waitFor(() =>
-            expect(useBrowse.getState().get(1).activeId).toBe(
-                tableTabOf(1, 'order items')?.id,
+            expect(useBrowse.getState().get('1').activeId).toBe(
+                tableTabOf('1', 'order items')?.id,
             ),
         );
         unmount();
@@ -297,12 +303,12 @@ describe('workspace page', () => {
             expect(toast.error).toHaveBeenCalledWith('Table not found: ghost'),
         );
         expect(window.location.search).toBe('?keep=1');
-        expect(useBrowse.getState().get(1).activeId).toBe('universe');
+        expect(useBrowse.getState().get('1').activeId).toBe('universe');
         window.history.replaceState(null, '', '/');
     });
 
     it('reconciles tabs after a refresh, clears cached rows and says which filters were dropped', async () => {
-        useBrowse.getState().openTable(1, 'orders', {
+        useBrowse.getState().openTable('1', 'orders', {
             mode: 'permanent',
             state: { filters: [{ column: 'gone', op: 'eq', value: '1' }] },
         });
@@ -331,13 +337,13 @@ describe('workspace page', () => {
         usePending
             .getState()
             .setCell(
-                1,
+                '1',
                 'orders',
                 { ref: refOf(id), id, original: { gone: 'a' } },
                 'gone',
                 'b',
             );
-        usePending.getState().addRow(1, 'users');
+        usePending.getState().addRow('1', 'users');
         render(<WorkspaceShow connection={connection} />);
         await screen.findByRole('button', { name: 'Refresh schema' });
         // The first load fits the changes to `users`; the column is unknown already.
@@ -369,7 +375,9 @@ describe('workspace page', () => {
             screen.getByRole('complementary', { name: 'Inspector' }),
         ).toBeInTheDocument();
         act(() => {
-            useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+            useBrowse
+                .getState()
+                .openTable('1', 'orders', { mode: 'permanent' });
         });
         expect(
             screen.queryByRole('complementary', { name: 'Inspector' }),
@@ -388,7 +396,9 @@ describe('workspace page', () => {
             screen.getByRole('button', { name: 'Exit focus' }),
         ).toBeInTheDocument();
         act(() => {
-            useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
+            useBrowse
+                .getState()
+                .openTable('1', 'orders', { mode: 'permanent' });
             useWorkspace.getState().setHistoryOpen(true);
         });
         expect(screen.queryByRole('button', { name: 'Exit focus' })).toBeNull();
@@ -589,7 +599,7 @@ describe('workspace page', () => {
         await waitFor(() =>
             expect(useWorkspace.getState().dockOpen).toBe(true),
         );
-        expect(historyApi.show).toHaveBeenCalledWith(1, 9);
+        expect(historyApi.show).toHaveBeenCalledWith('1', 9);
         const state = useSqlTabs.getState().byConnection[1];
         const tab = state.tabs.find((t) => t.id === state.activeId);
         expect(tab?.sql).toBe('select 1');

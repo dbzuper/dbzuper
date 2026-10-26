@@ -25,14 +25,14 @@ const snapshot = {
     tables: [],
     relationships: [],
 } as unknown as SchemaSnapshot;
-const connection = { id: 1 } as ConnectionSummary;
+const connection = { id: 1, ref: '1' } as ConnectionSummary;
 
 beforeEach(() => {
     vi.resetAllMocks();
     useWorkspace.getState().reset();
     useBrowse.setState({ byConnection: {} });
     useRecords.getState().reset();
-    useRecords.getState().setConnection(1);
+    useRecords.getState().setConnection('1');
 });
 
 describe('RecordsView', () => {
@@ -84,9 +84,9 @@ describe('RecordsView', () => {
         fireEvent.click(
             screen.getByRole('button', { name: 'Open logs in table tab' }),
         );
-        const browse = useBrowse.getState().get(connection.id);
-        expect(browse.activeId).toBe(tableTabOf(connection.id, 'logs')?.id);
-        expect(tableTabOf(connection.id, 'logs')).toMatchObject({
+        const browse = useBrowse.getState().get(connection.ref);
+        expect(browse.activeId).toBe(tableTabOf(connection.ref, 'logs')?.id);
+        expect(tableTabOf(connection.ref, 'logs')).toMatchObject({
             preview: false,
             state: { filters: [] },
         });
@@ -166,9 +166,9 @@ describe('RecordsView', () => {
         await twoCards({ kind: 'table', primary_key: [] });
         fireEvent.click(await button('Open items (order_id) in table tab'));
         expect(api.related).not.toHaveBeenCalled();
-        const browse = useBrowse.getState().get(connection.id);
-        expect(browse.activeId).toBe(tableTabOf(connection.id, 'items')?.id);
-        expect(tableTabOf(connection.id, 'items')).toMatchObject({
+        const browse = useBrowse.getState().get(connection.ref);
+        expect(browse.activeId).toBe(tableTabOf(connection.ref, 'items')?.id);
+        expect(tableTabOf(connection.ref, 'items')).toMatchObject({
             state: { filters: [{ column: 'order_id', op: 'eq', value: '5' }] },
         });
     });

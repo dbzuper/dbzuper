@@ -4,7 +4,7 @@ import { flushBrowse, useBrowse, type TableTab } from '@/browse/browse-store';
 import { usePending } from '@/editing/pending-store';
 import { PendingGuard } from './pending-guard';
 
-const C = 1;
+const C = '1';
 const st = () => useBrowse.getState();
 const tableTabs = () =>
     st()

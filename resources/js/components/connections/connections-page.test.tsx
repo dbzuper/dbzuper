@@ -38,6 +38,8 @@ const ago = (minutes: number) =>
 function card(over: Partial<ConnectionCard>): ConnectionCard {
     return {
         id: 1,
+
+        ref: '1',
         name: 'Conn',
         driver: 'mysql',
         driver_label: 'MySQL',
@@ -51,6 +53,9 @@ function card(over: Partial<ConnectionCard>): ConnectionCard {
         color: null,
         store_history: true,
         last_opened_at: null,
+        server_level: false,
+        database_label: 'shop',
+        last_database: null,
         tables: null,
         views: null,
         snapshot_at: null,
@@ -63,6 +68,8 @@ function card(over: Partial<ConnectionCard>): ConnectionCard {
 const fixtures: ConnectionCard[] = [
     card({
         id: 1,
+
+        ref: '1',
         name: 'Shipitlah Production',
         port: 13306,
         database: 'shipitlah',
@@ -72,16 +79,22 @@ const fixtures: ConnectionCard[] = [
         views: 4,
         snapshot_at: ago(12),
         last_opened_at: ago(12),
+        server_level: false,
+        last_database: null,
         pins: ['orders', 'shipments', 'couriers', 'users', 'zones'],
     }),
     card({
         id: 2,
+
+        ref: '2',
         name: 'Continental localhost',
         database: 'continental',
         tables: 48,
         views: 0,
         snapshot_at: ago(2 * 1440),
         last_opened_at: ago(1440),
+        server_level: false,
+        last_database: null,
     }),
     card({
         id: 3,

@@ -6,6 +6,7 @@ import { tabTitle, useBrowse, type TableTab } from './browse-store';
 import type { MatchedState } from './match-table-query';
 import { rowsCache, rowsRequestKey } from './rows-cache';
 import { buildTableSql, type TableColumns } from './table-query-sql';
+import type { WorkspaceRef } from '@/types/connection';
 
 /**
  * Editor tabs linked to table tabs (spec 4): the table tab's query flows into the editor, and a fitting statement
@@ -48,7 +49,11 @@ export function unregisterEditorModel(
  * Sets an editor tab's text. With its model in Monaco the change is an undoable edit (Ctrl+Z brings the old text
  * back); the stored text changes either way.
  */
-function replaceText(connectionId: number, tabId: string, sql: string): void {
+function replaceText(
+    connectionId: WorkspaceRef,
+    tabId: string,
+    sql: string,
+): void {
     const model = models.get(tabId);
     if (model && !model.isDisposed()) {
         model.pushStackElement();
@@ -62,7 +67,7 @@ function replaceText(connectionId: number, tabId: string, sql: string): void {
     useSqlTabs.getState().setSql(connectionId, tabId, sql);
 }
 
-const tabKey = (connectionId: number, browseTabId: string) =>
+const tabKey = (connectionId: WorkspaceRef, browseTabId: string) =>
     `${connectionId}:${browseTabId}`;
 /**
  * Per table tab, in this window only: the last query its rows carried and the request they answered, for
@@ -70,7 +75,10 @@ const tabKey = (connectionId: number, browseTabId: string) =>
  */
 const lastSql = new Map<string, { requestKey?: string; sql: string }>();
 
-function tableTab(connectionId: number, id: string): TableTab | undefined {
+function tableTab(
+    connectionId: WorkspaceRef,
+    id: string,
+): TableTab | undefined {
     const tab = useBrowse
         .getState()
         .byConnection[connectionId]?.tabs.find((t) => t.id === id);
@@ -78,7 +86,11 @@ function tableTab(connectionId: number, id: string): TableTab | undefined {
 }
 
 /** Replaces an editor tab's link with `link` minus its unset fields. */
-function saveLink(connectionId: number, tabId: string, link: SqlLink): void {
+function saveLink(
+    connectionId: WorkspaceRef,
+    tabId: string,
+    link: SqlLink,
+): void {
     const next = { ...link };
     if (!next.stale) delete next.stale;
     if (!next.closed) delete next.closed;
@@ -91,7 +103,7 @@ function saveLink(connectionId: number, tabId: string, link: SqlLink): void {
  * else one built from its filters, sort and page that maps back to the same state.
  */
 function currentQuery(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     tab: TableTab,
     dialect: Dialect,
     columns: TableColumns,
@@ -108,7 +120,7 @@ function currentQuery(
 
 /** The tab's current query (Copy SELECT, Open in SQL). */
 export function tableTabSql(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     tab: TableTab,
     dialect: Dialect,
     columns: TableColumns,
@@ -121,7 +133,7 @@ export function tableTabSql(
  * becomes permanent, so the next preview does not replace it and end the link.
  */
 export function openTableTabInSql(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     tab: TableTab,
     dialect: Dialect,
     columns: TableColumns,
@@ -147,7 +159,7 @@ export function openTableTabInSql(
 
 /** The table tab's latest query as last reported, else from its cached rows; undefined when unknown. */
 export function latestTableSql(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     browseTabId: string,
 ): string | undefined {
     const tab = tableTab(connectionId, browseTabId);
@@ -168,7 +180,7 @@ export function latestTableSql(
  * `syncedSql` is in step again.
  */
 export function onTableQuery(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     browseTabId: string,
     sql: string,
     requestKey?: string,
@@ -199,7 +211,7 @@ export function onTableQuery(
  * window) does not. The key is saved on the link, so this holds across reloads and windows.
  */
 export function reportTableRows(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     browseTabId: string,
     requestKey: string,
     sql: string,
@@ -233,7 +245,7 @@ export function reportTableRows(
 
 /** The table tab was closed: its editor tab says so until edited, and follows nothing. */
 export function onBrowseTabClosed(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     browseTabId: string,
 ): void {
     lastSql.delete(tabKey(connectionId, browseTabId));
@@ -251,7 +263,7 @@ export function onBrowseTabClosed(
  * (and the table's `columns`) when no query is known. False when there is none.
  */
 export function updateSqlFromTable(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     browseTabId: string,
     dialect?: Dialect,
     columns: TableColumns = [],
@@ -280,7 +292,7 @@ export function updateSqlFromTable(
  * synced back over it. False (nothing applied) when the table tab is gone.
  */
 export function applyToTable(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     link: SqlLink,
     state: MatchedState,
     text?: string,
@@ -317,10 +329,9 @@ export function applyToTable(
 /** Links whose table tab is gone (e.g. closed in an earlier session) are marked closed. */
 export function dropDanglingLinks(): void {
     for (const [key, c] of Object.entries(useSqlTabs.getState().byConnection)) {
-        const id = Number(key);
         for (const t of c.tabs)
-            if (t.link && !t.link.closed && !tableTab(id, t.link.browseTabId))
-                onBrowseTabClosed(id, t.link.browseTabId);
+            if (t.link && !t.link.closed && !tableTab(key, t.link.browseTabId))
+                onBrowseTabClosed(key, t.link.browseTabId);
     }
 }
 
@@ -330,16 +341,16 @@ export function dropDanglingLinks(): void {
  * (another window's changes), so following stays per window.
  */
 function activations<C extends { activeId: string; tabs: { id: string }[] }>(
-    state: Record<number, C>,
-    prev: Record<number, C>,
-): [number, string][] {
-    const out: [number, string][] = [];
+    state: Record<WorkspaceRef, C>,
+    prev: Record<WorkspaceRef, C>,
+): [WorkspaceRef, string][] {
+    const out: [WorkspaceRef, string][] = [];
     for (const [key, after] of Object.entries(state)) {
-        const before = prev[Number(key)];
+        const before = prev[key];
         if (!before || after === before || after.activeId === before.activeId)
             continue;
         if (!after.tabs.some((t) => t.id === before.activeId)) continue;
-        out.push([Number(key), after.activeId]);
+        out.push([key, after.activeId]);
     }
     return out;
 }
@@ -358,7 +369,7 @@ function follow(fn: () => void): void {
 }
 
 /** A table tab was activated: its linked editor tab becomes the dock's active tab, when the dock is open. */
-function followTable(connectionId: number, browseTabId: string): void {
+function followTable(connectionId: WorkspaceRef, browseTabId: string): void {
     if (!useWorkspace.getState().dockOpen) return;
     const editor = useSqlTabs.getState().findLinked(connectionId, browseTabId);
     if (!editor?.link || editor.link.closed) return;
@@ -370,7 +381,7 @@ function followTable(connectionId: number, browseTabId: string): void {
 }
 
 /** An editor tab was activated: its linked table tab becomes the active tab of the main area. */
-function followEditor(connectionId: number, tabId: string): void {
+function followEditor(connectionId: WorkspaceRef, tabId: string): void {
     const link = useSqlTabs
         .getState()
         .byConnection[connectionId]?.tabs.find((t) => t.id === tabId)?.link;
@@ -395,12 +406,12 @@ export function initSqlLink(): void {
     dropDanglingLinks();
     const offBrowse = useBrowse.subscribe((state, prev) => {
         for (const [key, before] of Object.entries(prev.byConnection)) {
-            const after = state.byConnection[Number(key)];
+            const after = state.byConnection[key];
             if (after === before) continue;
             const open = new Set(after?.tabs.map((t) => t.id));
             for (const t of before.tabs)
                 if (t.kind === 'table' && !open.has(t.id))
-                    onBrowseTabClosed(Number(key), t.id);
+                    onBrowseTabClosed(key, t.id);
         }
         if (!useBrowse.persist.hasHydrated()) return;
         for (const [id, active] of activations(

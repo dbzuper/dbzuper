@@ -1,16 +1,17 @@
-import { apiFetch } from '@/lib/http';
+import type { WorkspaceRef } from '@/types/connection';
+import { apiFetch, apiBase } from '@/lib/http';
 
 export type Pin = { id: number; table: string; position: number };
 
-const base = (id: number) => `/api/c/${id}/pins`;
+const base = (id: WorkspaceRef) => `${apiBase(id)}/pins`;
 
 export const pinsApi = {
-    list: (id: number) => apiFetch<{ pins: Pin[] }>(base(id)),
-    add: (id: number, table: string) =>
+    list: (id: WorkspaceRef) => apiFetch<{ pins: Pin[] }>(base(id)),
+    add: (id: WorkspaceRef, table: string) =>
         apiFetch<{ pin: Pin }>(base(id), { method: 'POST', body: { table } }),
-    remove: (id: number, pinId: number) =>
+    remove: (id: WorkspaceRef, pinId: number) =>
         apiFetch<null>(`${base(id)}/${pinId}`, { method: 'DELETE' }),
-    reorder: (id: number, ids: number[]) =>
+    reorder: (id: WorkspaceRef, ids: number[]) =>
         apiFetch<{ pins: Pin[] }>(`${base(id)}/order`, {
             method: 'PUT',
             body: { ids },

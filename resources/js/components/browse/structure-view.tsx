@@ -5,6 +5,7 @@ import { IndexesTab } from '@/components/inspector/indexes-tab';
 import { RelationshipsTab } from '@/components/inspector/relationships-tab';
 import type { SchemaSnapshot, TableSchema } from '@/types/schema';
 import { fkColumnsByTable } from '@/universe/visible';
+import type { WorkspaceRef } from '@/types/connection';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
     return (
@@ -21,7 +22,7 @@ export function StructureView({
     table,
     onOpenTable,
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     snapshot: SchemaSnapshot;
     table: TableSchema;
     onOpenTable: (name: string) => void;

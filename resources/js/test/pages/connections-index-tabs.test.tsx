@@ -21,12 +21,14 @@ import type { ConnectionCard } from '@/types/connection';
 
 const connection = (id: number): ConnectionCard => ({
     id,
+    ref: String(id),
     name: `Conn ${id}`,
     driver: 'sqlite',
     driver_label: 'SQLite',
     host: null,
     port: null,
     database: '/x.sqlite',
+    database_label: '/x.sqlite',
     username: null,
     has_password: false,
     options: {},
@@ -34,6 +36,8 @@ const connection = (id: number): ConnectionCard => ({
     color: null,
     store_history: true,
     last_opened_at: null,
+    server_level: false,
+    last_database: null,
     tables: null,
     views: null,
     snapshot_at: null,
@@ -48,8 +52,8 @@ describe('connections index', () => {
     });
 
     it('drops SQL tabs of connections that no longer exist', () => {
-        useSqlTabs.getState().ensure(1);
-        useSqlTabs.getState().ensure(2);
+        useSqlTabs.getState().ensure('1');
+        useSqlTabs.getState().ensure('2');
 
         render(<ConnectionsIndex connections={[connection(2)]} />);
 

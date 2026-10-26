@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { setCloseGuard, useBrowse } from '@/browse/browse-store';
 import { usePending } from '@/editing/pending-store';
 import { DiscardDialog, type DiscardTarget } from './discard-dialog';
+import type { WorkspaceRef } from '@/types/connection';
 
 type Ask = {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     targets: DiscardTarget[];
     proceed: () => void;
 };

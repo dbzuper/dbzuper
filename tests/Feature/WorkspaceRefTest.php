@@ -60,8 +60,9 @@ it('shows the database list for a server-level connection', function () {
 it('opens one database of a server-level connection', function () {
     $this->actingAs($this->user)->get('/c/'.$this->server->id.'/'.rawurlencode('my db'))
         ->assertInertia(fn (Assert $page) => $page->component('workspace/show')
-            ->where('workspace.ref', $this->server->id.':my db')
-            ->where('workspace.database', 'my db'));
+            ->where('connection.ref', $this->server->id.':my db')
+            ->where('connection.database', 'my db')
+            ->where('connection.server_level', true));
 
     $fresh = $this->server->fresh();
     expect($fresh->database)->toBeNull()->and($fresh->last_database)->toBe('my db');
@@ -70,8 +71,8 @@ it('opens one database of a server-level connection', function () {
 it('opens fixed connections as before', function () {
     $this->actingAs($this->user)->get('/c/'.$this->fixed->id)
         ->assertInertia(fn (Assert $page) => $page->component('workspace/show')
-            ->where('workspace.ref', (string) $this->fixed->id)
-            ->where('workspace.database', null));
+            ->where('connection.ref', (string) $this->fixed->id)
+            ->where('connection.database', 'app'));
     $this->actingAs($this->user)->get('/c/'.$this->fixed->id.'/other')->assertNotFound();
     $this->actingAs($this->user)->get('/c/'.$this->fixed->id.'/app')->assertRedirect('/c/'.$this->fixed->id);
 });

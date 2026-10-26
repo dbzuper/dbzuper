@@ -66,6 +66,7 @@ import type {
 import { useDrawerSlot } from './drawer-slot';
 import { Pagination } from './pagination';
 import { RowDrawer, RowDrawerLoading, type DrawerMotion } from './row-drawer';
+import type { WorkspaceRef } from '@/types/connection';
 
 /** The filter bar's first control; Ctrl+F focuses it. */
 export const TABLE_FILTER_ID = 'table-filter-bar';
@@ -93,7 +94,7 @@ const ResultGrid = lazy(() =>
 const NO_COLUMNS: QueryColumn[] = [];
 
 type Props = {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     snapshot: SchemaSnapshot;
     table: TableSchema;
     tab: TableTab;

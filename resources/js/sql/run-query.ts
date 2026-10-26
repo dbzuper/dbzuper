@@ -2,6 +2,7 @@ import { ApiError } from '@/lib/http';
 import { dbErrorFrom } from '@/lib/workspace-api';
 import type { ConfirmationPayload, DbErrorPayload } from '@/types/schema';
 import { queryApi, type RunResponse, type StatementInput } from './query-api';
+import type { WorkspaceRef } from '@/types/connection';
 
 export type ConfirmAnswer = { confirmed: true; typed?: string } | null;
 
@@ -32,7 +33,7 @@ export function outcomeFromError(e: unknown): RunOutcome {
 }
 
 export async function runWithConfirmations(args: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     statements: string[];
     maxRows: number;
     signal: AbortSignal;

@@ -46,7 +46,7 @@ describe('editingApi', () => {
         fetchMock.mockResolvedValueOnce(json(200, { statements }));
 
         await expect(
-            editingApi.preview(4, 'my table', changes),
+            editingApi.preview('4', 'my table', changes),
         ).resolves.toEqual({
             statements,
         });
@@ -60,7 +60,7 @@ describe('editingApi', () => {
         fetchMock.mockResolvedValueOnce(
             json(200, { applied: { inserted: 1, updated: 1, deleted: 0 } }),
         );
-        await expect(editingApi.commit(4, 't', changes)).resolves.toEqual({
+        await expect(editingApi.commit('4', 't', changes)).resolves.toEqual({
             applied: { inserted: 1, updated: 1, deleted: 0 },
         });
         expect(JSON.parse(fetchMock.mock.calls[0][1].body).preview).toBe(false);
@@ -77,7 +77,7 @@ describe('editingApi', () => {
                 },
             }),
         );
-        expect(await failure(editingApi.commit(4, 't', changes))).toEqual({
+        expect(await failure(editingApi.commit('4', 't', changes))).toEqual({
             kind: 'row_mismatch',
             message: 'row changed since you loaded it',
             index: 1,
@@ -98,15 +98,15 @@ describe('editingApi', () => {
                 index: 0,
             }),
         );
-        expect(await failure(editingApi.commit(4, 't', changes))).toMatchObject(
-            {
-                kind: 'constraint',
-                message: 'duplicate key',
-                index: 0,
-                sqlstate: '23505',
-                status: 422,
-            },
-        );
+        expect(
+            await failure(editingApi.commit('4', 't', changes)),
+        ).toMatchObject({
+            kind: 'constraint',
+            message: 'duplicate key',
+            index: 0,
+            sqlstate: '23505',
+            status: 422,
+        });
 
         fetchMock.mockResolvedValueOnce(
             json(422, {
@@ -114,12 +114,12 @@ describe('editingApi', () => {
                 index: null,
             }),
         );
-        expect(await failure(editingApi.commit(4, 't', changes))).toMatchObject(
-            {
-                message: 'could not commit',
-                index: null,
-            },
-        );
+        expect(
+            await failure(editingApi.commit('4', 't', changes)),
+        ).toMatchObject({
+            message: 'could not commit',
+            index: null,
+        });
     });
 
     it('takes the index of a refused change from its validation key', async () => {
@@ -134,7 +134,7 @@ describe('editingApi', () => {
             }),
         );
         expect(
-            await failure(editingApi.preview(4, 't', changes)),
+            await failure(editingApi.preview('4', 't', changes)),
         ).toMatchObject({
             kind: 'validation',
             message: 'The original value of "name" is missing.',
@@ -148,7 +148,7 @@ describe('editingApi', () => {
             }),
         );
         expect(
-            await failure(editingApi.preview(4, 't', changes)),
+            await failure(editingApi.preview('4', 't', changes)),
         ).toMatchObject({
             message: 'The change set is too large.',
             index: null,
@@ -159,13 +159,13 @@ describe('editingApi', () => {
         fetchMock.mockResolvedValueOnce(
             json(403, { message: 'the connection is read-only' }),
         );
-        expect(await failure(editingApi.commit(4, 't', changes))).toMatchObject(
-            {
-                kind: 'read_only',
-                message: 'the connection is read-only',
-                index: null,
-                status: 403,
-            },
-        );
+        expect(
+            await failure(editingApi.commit('4', 't', changes)),
+        ).toMatchObject({
+            kind: 'read_only',
+            message: 'the connection is read-only',
+            index: null,
+            status: 403,
+        });
     });
 });

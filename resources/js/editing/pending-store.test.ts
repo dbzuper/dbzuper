@@ -9,7 +9,7 @@ import {
     type PendingRow,
 } from './pending-store';
 
-const C = 1;
+const C = '1';
 const T = 'orders';
 const row = (id: number) => ({
     ref: refOf({ key: { id } }),
@@ -145,13 +145,13 @@ describe('usePending', () => {
         s.setCell(C, T, row(1), 'status', 'a');
         s.setCell(C, T, row(2), 'status', 'b');
         s.setCell(C, 'users', row(1), 'status', 'c');
-        s.setCell(2, T, row(1), 'status', 'd');
+        s.setCell('2', T, row(1), 'status', 'd');
         expect(Object.keys(pending())).toHaveLength(2);
         expect(s.count(C, T)).toEqual({ inserted: 0, updated: 2, deleted: 0 });
         s.discard(C, T);
         expect(pending()).toEqual({});
         expect(s.count(C, 'users').updated).toBe(1);
-        expect(s.count(2, T).updated).toBe(1);
+        expect(s.count('2', T).updated).toBe(1);
     });
 
     it('counts new, edited and deleted rows', () => {
@@ -400,7 +400,7 @@ describe('reconcile with a refreshed schema', () => {
 
     it('leaves other connections alone', () => {
         const s = usePending.getState();
-        s.setCell(2, T, row(1), 'status', 'paid');
+        s.setCell('2', T, row(1), 'status', 'paid');
         expect(s.reconcile(C, tables([]))).toEqual([]);
         expect(usePending.getState().byTable[`2:${T}`]).toBeDefined();
     });

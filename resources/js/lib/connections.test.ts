@@ -5,6 +5,7 @@ import {
     isServerDriver,
     mysqlSslMode,
     testFailureMessage,
+    workspaceUrl,
 } from './connections';
 
 describe('connection helpers', () => {
@@ -87,5 +88,16 @@ describe('mysqlSslMode', () => {
         expect(mysqlSslMode({ ssl_ca: '/ca.pem', ssl_verify: false })).toBe(
             'required',
         );
+    });
+});
+
+describe('workspaceUrl', () => {
+    it('opens a fixed connection or the database list by id', () => {
+        expect(workspaceUrl(5, null)).toBe('/c/5');
+    });
+
+    it('opens one database of a server-level connection', () => {
+        expect(workspaceUrl(5, 'données')).toBe('/c/5/donn%C3%A9es');
+        expect(workspaceUrl(5, 'a b')).toBe('/c/5/a%20b');
     });
 });

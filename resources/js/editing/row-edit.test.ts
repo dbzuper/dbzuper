@@ -24,7 +24,7 @@ const columns: QueryColumn[] = [
 ];
 
 const editing = (over: Partial<GridEditing> = {}): GridEditing => ({
-    connectionId: 1,
+    connectionId: '1',
     table: 'users',
     dialect: 'mysql',
     rowIds: [{ key: { id: 1 } }, null],

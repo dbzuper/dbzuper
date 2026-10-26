@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { writeClipboard } from '@/grid/copy';
 import { cn } from '@/lib/utils';
+import type { WorkspaceRef } from '@/types/connection';
 
 export const panelDomId = 'browse-panel';
 export const tabDomId = (id: string) =>
@@ -59,7 +60,7 @@ function TabMenu({
     tab,
     children,
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     tab: BrowseTab;
     children: React.ReactNode;
 }) {
@@ -139,7 +140,7 @@ function TabMenu({
 export function TabBar({
     connectionId,
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     actions: TableActions;
 }) {
     const tabs =

@@ -20,36 +20,36 @@ describe('sql tabs store', () => {
     afterEach(() => vi.useRealTimers());
 
     it('ensures one empty tab per connection', () => {
-        s().ensure(1);
+        s().ensure('1');
         expect(s().byConnection[1].tabs).toHaveLength(1);
-        s().ensure(1);
+        s().ensure('1');
         expect(s().byConnection[1].tabs).toHaveLength(1);
     });
 
     it('opens, activates, edits and closes tabs', () => {
-        s().ensure(1);
-        const id = s().openTab(1, 'select 1', 'Path');
+        s().ensure('1');
+        const id = s().openTab('1', 'select 1', 'Path');
         expect(s().byConnection[1].activeId).toBe(id);
-        s().setSql(1, id, 'select 2');
+        s().setSql('1', id, 'select 2');
         expect(s().byConnection[1].tabs.find((t) => t.id === id)?.sql).toBe(
             'select 2',
         );
-        s().closeTab(1, id);
+        s().closeTab('1', id);
         expect(s().byConnection[1].tabs.some((t) => t.id === id)).toBe(false);
         expect(s().byConnection[1].tabs.length).toBeGreaterThan(0);
     });
 
     it('keeps connections separate', () => {
-        s().openTab(1, 'select 1');
-        s().openTab(2, 'select 2');
+        s().openTab('1', 'select 1');
+        s().openTab('2', 'select 2');
         expect(s().byConnection[1].tabs.map((t) => t.sql)).not.toContain(
             'select 2',
         );
     });
 
     it('writes only the changed connection, keeping what another browser tab stored for the others', () => {
-        s().openTab(1, 'mine 1');
-        s().openTab(2, 'mine 2');
+        s().openTab('1', 'mine 1');
+        s().openTab('2', 'mine 2');
         flushSqlTabs();
         // Another browser tab saves its own drafts for connection 2.
         localStorage.setItem(
@@ -62,7 +62,7 @@ describe('sql tabs store', () => {
             }),
         );
 
-        s().setSql(1, s().byConnection[1].activeId, 'mine 1 edited');
+        s().setSql('1', s().byConnection[1].activeId, 'mine 1 edited');
         flushSqlTabs();
 
         expect(stored()[1].tabs.map((t: { sql: string }) => t.sql)).toContain(
@@ -72,7 +72,7 @@ describe('sql tabs store', () => {
     });
 
     it('reloads drafts when another browser tab saves them', async () => {
-        s().openTab(1, 'mine');
+        s().openTab('1', 'mine');
         flushSqlTabs();
         localStorage.setItem(
             KEY,
@@ -93,9 +93,9 @@ describe('sql tabs store', () => {
 
     it('debounces persistence by 250 ms and flushes on pagehide', () => {
         vi.useFakeTimers();
-        s().openTab(1, 'a');
-        s().setSql(1, s().byConnection[1].activeId, 'ab');
-        s().setSql(1, s().byConnection[1].activeId, 'abc');
+        s().openTab('1', 'a');
+        s().setSql('1', s().byConnection[1].activeId, 'ab');
+        s().setSql('1', s().byConnection[1].activeId, 'abc');
         expect(localStorage.getItem(KEY)).toBeNull();
 
         vi.advanceTimersByTime(249);
@@ -105,7 +105,7 @@ describe('sql tabs store', () => {
             'abc',
         );
 
-        s().setSql(1, s().byConnection[1].activeId, 'abcd');
+        s().setSql('1', s().byConnection[1].activeId, 'abcd');
         window.dispatchEvent(new Event('pagehide'));
         expect(stored()[1].tabs.map((t: { sql: string }) => t.sql)).toContain(
             'abcd',
@@ -113,9 +113,9 @@ describe('sql tabs store', () => {
     });
 
     it('prunes tabs of connections that no longer exist', () => {
-        s().openTab(1, 'one');
-        s().openTab(2, 'two');
-        s().openTab(3, 'three');
+        s().openTab('1', 'one');
+        s().openTab('2', 'two');
+        s().openTab('3', 'three');
         flushSqlTabs();
 
         s().prune([1, 3]);
@@ -125,29 +125,44 @@ describe('sql tabs store', () => {
         expect(Object.keys(stored()).sort()).toEqual(['1', '3']);
     });
 
+    it('prunes the database workspaces of a deleted server-level connection', () => {
+        s().openTab('1:shop', 'one');
+        s().openTab('1:blog', 'two');
+        s().openTab('2:shop', 'three');
+        flushSqlTabs();
+
+        s().prune([1]);
+        flushSqlTabs();
+
+        expect(Object.keys(s().byConnection).sort()).toEqual([
+            '1:blog',
+            '1:shop',
+        ]);
+    });
+
     it('names new tabs one past the highest Query N, never duplicating a title', () => {
-        s().ensure(1);
-        const second = s().openTab(1);
-        s().openTab(1);
-        s().closeTab(1, second);
-        s().openTab(1);
+        s().ensure('1');
+        const second = s().openTab('1');
+        s().openTab('1');
+        s().closeTab('1', second);
+        s().openTab('1');
 
         expect(s().byConnection[1].tabs.map((t) => t.title)).toEqual([
             'Query 1',
             'Query 3',
             'Query 4',
         ]);
-        s().openTab(1, '', 'Custom');
+        s().openTab('1', '', 'Custom');
         expect(s().byConnection[1].tabs.at(-1)?.title).toBe('Custom');
-        expect(s().openTab(1)).toBeTruthy();
+        expect(s().openTab('1')).toBeTruthy();
         expect(s().byConnection[1].tabs.at(-1)?.title).toBe('Query 5');
     });
 
     it('keeps the active tab of this window when another window save is rehydrated', async () => {
-        s().ensure(1);
+        s().ensure('1');
         const first = s().byConnection[1].activeId;
-        const second = s().openTab(1, 'b');
-        s().setActive(1, first);
+        const second = s().openTab('1', 'b');
+        s().setActive('1', first);
         flushSqlTabs();
         // Another window saved the same tabs with the second one active.
         const saved = JSON.parse(localStorage.getItem(KEY) as string);
@@ -164,7 +179,7 @@ describe('sql tabs store', () => {
     });
 
     it('falls back to the stored active tab when the local one was removed elsewhere', async () => {
-        s().ensure(1);
+        s().ensure('1');
         const local = s().byConnection[1].activeId;
         flushSqlTabs();
         localStorage.setItem(
@@ -188,12 +203,18 @@ describe('sql tabs store', () => {
             s().byConnection[1].tabs.find((t) => t.id === tabId)?.link;
 
         it('opens one linked editor tab per table tab and reuses it', () => {
-            s().ensure(1);
-            const id = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q1');
-            const other = s().openTab(1, 'x');
+            s().ensure('1');
+            const id = s().openLinkedTab('1', 't:a', 'orders', 'orders', 'q1');
+            const other = s().openTab('1', 'x');
             expect(s().byConnection[1].activeId).toBe(other);
 
-            const again = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q2');
+            const again = s().openLinkedTab(
+                '1',
+                't:a',
+                'orders',
+                'orders',
+                'q2',
+            );
 
             expect(again).toBe(id);
             expect(s().byConnection[1].activeId).toBe(id);
@@ -203,16 +224,16 @@ describe('sql tabs store', () => {
                 sql: 'q1',
                 link: { browseTabId: 't:a', table: 'orders', syncedSql: 'q1' },
             });
-            expect(s().findLinked(1, 't:a')?.id).toBe(id);
-            expect(s().findLinked(2, 't:a')).toBeUndefined();
+            expect(s().findLinked('1', 't:a')?.id).toBe(id);
+            expect(s().findLinked('2', 't:a')).toBeUndefined();
         });
 
         it('never activates a closed link for a live table tab: it opens a fresh linked tab', () => {
-            const old = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q1');
-            s().setLink(1, old, { ...link(old)!, closed: true });
-            s().openTab(1, 'x');
+            const old = s().openLinkedTab('1', 't:a', 'orders', 'orders', 'q1');
+            s().setLink('1', old, { ...link(old)!, closed: true });
+            s().openTab('1', 'x');
 
-            const id = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q2');
+            const id = s().openLinkedTab('1', 't:a', 'orders', 'orders', 'q2');
 
             expect(id).not.toBe(old);
             expect(s().byConnection[1].activeId).toBe(id);
@@ -226,19 +247,25 @@ describe('sql tabs store', () => {
             expect(
                 s().byConnection[1].tabs.find((t) => t.id === old)?.sql,
             ).toBe('q1');
-            expect(s().findLinked(1, 't:a')?.id).toBe(id);
+            expect(s().findLinked('1', 't:a')?.id).toBe(id);
         });
 
         it('links two views of a table to two editor tabs', () => {
-            const a = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q');
-            const b = s().openLinkedTab(1, 't:b', 'orders', 'orders (2)', 'q');
+            const a = s().openLinkedTab('1', 't:a', 'orders', 'orders', 'q');
+            const b = s().openLinkedTab(
+                '1',
+                't:b',
+                'orders',
+                'orders (2)',
+                'q',
+            );
             expect(a).not.toBe(b);
-            expect(s().findLinked(1, 't:b')?.title).toBe('orders (2)');
+            expect(s().findLinked('1', 't:b')?.title).toBe('orders (2)');
         });
 
         it('sets and removes a link', () => {
-            const id = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q');
-            s().setLink(1, id, {
+            const id = s().openLinkedTab('1', 't:a', 'orders', 'orders', 'q');
+            s().setLink('1', id, {
                 browseTabId: 't:a',
                 table: 'orders',
                 title: 'orders',
@@ -246,23 +273,23 @@ describe('sql tabs store', () => {
                 stale: true,
             });
             expect(link(id)?.stale).toBe(true);
-            s().setLink(1, id, undefined);
+            s().setLink('1', id, undefined);
             expect(link(id)).toBeUndefined();
-            expect(s().findLinked(1, 't:a')).toBeUndefined();
+            expect(s().findLinked('1', 't:a')).toBeUndefined();
         });
 
         it('ends a closed link once the user edits the text', () => {
-            const id = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q');
-            s().setLink(1, id, { ...link(id)!, closed: true });
-            s().setSql(1, id, 'q');
+            const id = s().openLinkedTab('1', 't:a', 'orders', 'orders', 'q');
+            s().setLink('1', id, { ...link(id)!, closed: true });
+            s().setSql('1', id, 'q');
             expect(link(id)?.closed).toBe(true);
-            s().setSql(1, id, 'q edited');
+            s().setSql('1', id, 'q edited');
             expect(link(id)).toBeUndefined();
         });
 
         it('keeps a live link when the text is edited', () => {
-            const id = s().openLinkedTab(1, 't:a', 'orders', 'orders', 'q');
-            s().setSql(1, id, 'q edited');
+            const id = s().openLinkedTab('1', 't:a', 'orders', 'orders', 'q');
+            s().setSql('1', id, 'q edited');
             expect(link(id)?.syncedSql).toBe('q');
         });
 

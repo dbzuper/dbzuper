@@ -18,12 +18,12 @@ afterEach(() => {
 
 describe('local prefs', () => {
     it('round-trips grid layouts per connection and table', () => {
-        writeGridLayout(1, 'a.b', { widths: { id: 80 }, hidden: ['secret'] });
-        expect(readGridLayout(1, 'a.b')).toEqual({
+        writeGridLayout('1', 'a.b', { widths: { id: 80 }, hidden: ['secret'] });
+        expect(readGridLayout('1', 'a.b')).toEqual({
             widths: { id: 80 },
             hidden: ['secret'],
         });
-        expect(readGridLayout(2, 'a.b')).toEqual({ widths: {}, hidden: [] });
+        expect(readGridLayout('2', 'a.b')).toEqual({ widths: {}, hidden: [] });
     });
 
     it('clamps sidebar width and falls back on garbage', () => {
@@ -44,7 +44,7 @@ describe('local prefs', () => {
             throw new Error('blocked');
         });
         expect(() =>
-            writeGridLayout(1, 't', { widths: {}, hidden: [] }),
+            writeGridLayout('1', 't', { widths: {}, hidden: [] }),
         ).not.toThrow();
         expect(readSidebarPrefs()).toEqual({
             width: SIDEBAR_DEFAULT,
@@ -55,14 +55,14 @@ describe('local prefs', () => {
 
 describe('group prefs', () => {
     it('round-trips open groups per connection', () => {
-        writeGroupPrefs(1, { open: ['courier_'] });
-        expect(readGroupPrefs(1)).toEqual({ open: ['courier_'] });
-        expect(readGroupPrefs(2)).toEqual({ open: [] });
+        writeGroupPrefs('1', { open: ['courier_'] });
+        expect(readGroupPrefs('1')).toEqual({ open: ['courier_'] });
+        expect(readGroupPrefs('2')).toEqual({ open: [] });
     });
 
     it('reads corrupt JSON as nothing open', () => {
         localStorage.setItem('dbsuperb.sidebar-groups', '{nope');
-        expect(readGroupPrefs(1)).toEqual({ open: [] });
+        expect(readGroupPrefs('1')).toEqual({ open: [] });
     });
 
     it('defaults grouping to on and persists the toggle', () => {

@@ -39,7 +39,7 @@ vi.mock('@/components/grid/result-grid', () => ({
 import { TableTabView, tableHeadingId } from './table-tab';
 import { tableTabOf } from '@/test/browse-tabs';
 
-const connection = { id: 1, driver: 'mysql' } as ConnectionSummary;
+const connection = { id: 1, ref: '1', driver: 'mysql' } as ConnectionSummary;
 const snapshot = makeSnapshot([{ name: 'orders' }], [], 'mysql');
 const actions = {
     open: vi.fn(),
@@ -48,7 +48,7 @@ const actions = {
     showInUniverse: vi.fn(),
 };
 
-const tabOf = (table: string) => tableTabOf(1, table) as TableTab;
+const tabOf = (table: string) => tableTabOf('1', table) as TableTab;
 
 function Harness({
     table = 'orders',
@@ -89,7 +89,7 @@ beforeEach(() => {
 
 describe('TableTabView', () => {
     it('labels the panel with the table name and switches to Structure', () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         render(<Harness />);
         expect(
             screen.getByRole('heading', { level: 2, name: 'orders' }),
@@ -106,7 +106,7 @@ describe('TableTabView', () => {
     });
 
     it('opens a quoted SELECT in the SQL dock', () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         render(<Harness />);
         fireEvent.click(screen.getByRole('button', { name: 'Open in SQL' }));
         const tabs = useSqlTabs.getState().byConnection[1].tabs;
@@ -117,10 +117,10 @@ describe('TableTabView', () => {
     });
 
     it('opens one linked editor tab however often Open in SQL is pressed', () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         render(<Harness />);
         fireEvent.click(screen.getByRole('button', { name: 'Open in SQL' }));
-        useSqlTabs.getState().openTab(1, 'other');
+        useSqlTabs.getState().openTab('1', 'other');
         fireEvent.click(screen.getByRole('button', { name: 'Open in SQL' }));
         const sql = useSqlTabs.getState().byConnection[1];
         const linked = sql.tabs.filter((t) => t.link);
@@ -166,14 +166,14 @@ describe('TableTabView', () => {
     };
 
     it('opens the SQL of the cached rows when they answer the current request', () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         cacheWith(1, 'select * from `orders` limit 100 offset 0');
         render(<Harness />);
         expect(openedSql()).toBe('select * from `orders` limit 100 offset 0');
     });
 
     it('builds the SELECT when the cached rows answer an older request', () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         cacheWith(2, 'select * from `orders` limit 100 offset 100');
         render(<Harness />);
         expect(openedSql()).toBe('SELECT * FROM `orders` LIMIT 100');
@@ -197,11 +197,11 @@ describe('TableTabView', () => {
     };
 
     it('adds a new row for an editable table, shared by every view of it', async () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         api.rows.mockResolvedValue(editableRows);
         render(<Harness />);
         fireEvent.click(await screen.findByRole('button', { name: 'Add row' }));
-        expect(usePending.getState().count(1, 'orders')).toEqual({
+        expect(usePending.getState().count('1', 'orders')).toEqual({
             inserted: 1,
             updated: 0,
             deleted: 0,
@@ -211,7 +211,7 @@ describe('TableTabView', () => {
     });
 
     it('offers no Add row for a table that cannot be edited or a read-only connection', async () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         api.rows.mockResolvedValue({
             ...editableRows,
             editing: { method: 'none', reason: 'x', read_only_columns: [] },
@@ -231,9 +231,9 @@ describe('TableTabView', () => {
     });
 
     it('commits from Review: clears the changes, drops the cached rows of every view and refetches', async () => {
-        useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
-        const second = useBrowse.getState().openNewView(1, 'orders');
-        useBrowse.getState().activate(1, tabOf('orders').id);
+        useBrowse.getState().openTable('1', 'orders', { mode: 'permanent' });
+        const second = useBrowse.getState().openNewView('1', 'orders');
+        useBrowse.getState().activate('1', tabOf('orders').id);
         api.rows.mockResolvedValue(editableRows);
         render(<Harness />);
         await screen.findByRole('button', { name: 'Add row' });
@@ -271,7 +271,7 @@ describe('TableTabView', () => {
     });
 
     it('says when the table no longer exists', () => {
-        useBrowse.getState().openTable(1, 'gone');
+        useBrowse.getState().openTable('1', 'gone');
         render(<Harness table="gone" />);
         expect(
             screen.getByText(/This table no longer exists/),
@@ -280,7 +280,7 @@ describe('TableTabView', () => {
     });
 
     it('refreshes the data even when Refresh is clicked in Structure', async () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         rowsCache.set(`1:${tabOf('orders').id}`, {
             requestKey: JSON.stringify({
                 filters: [],
@@ -318,7 +318,7 @@ describe('TableTabView', () => {
 
 describe('TableTabView toolbar', () => {
     it('keeps Open in SQL as the one filled button and the rest icon-only', async () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         render(<Harness />);
         const primary = screen.getByRole('button', { name: 'Open in SQL' });
         expect(primary.className).toContain('bg-primary');

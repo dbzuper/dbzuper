@@ -86,13 +86,13 @@ describe('useBrowseUrl', () => {
             '',
             '/c/1?tab=order+items&r=x',
         );
-        const { rerender } = renderHook(({ snap }) => useBrowseUrl(1, snap), {
+        const { rerender } = renderHook(({ snap }) => useBrowseUrl('1', snap), {
             initialProps: { snap: null as typeof snapshot | null },
         });
-        expect(st().get(1).activeId).toBe('universe');
+        expect(st().get('1').activeId).toBe('universe');
         rerender({ snap: snapshot });
-        expect(st().get(1).activeId).toBe(tableTabOf(1, 'order items')?.id);
-        expect(st().get(1).tabs[1]).toMatchObject({ preview: false });
+        expect(st().get('1').activeId).toBe(tableTabOf('1', 'order items')?.id);
+        expect(st().get('1').tabs[1]).toMatchObject({ preview: false });
         expect(new URL(window.location.href).searchParams.get('tab')).toBe(
             'order items',
         );
@@ -102,61 +102,61 @@ describe('useBrowseUrl', () => {
 
     it('drops an unknown table and says so', () => {
         window.history.replaceState(null, '', '/c/1?tab=gone&keep=1');
-        renderHook(() => useBrowseUrl(1, snapshot));
+        renderHook(() => useBrowseUrl('1', snapshot));
         expect(toast.error).toHaveBeenCalledWith('Table not found: gone');
-        expect(st().get(1).activeId).toBe('universe');
+        expect(st().get('1').activeId).toBe('universe');
         expect(window.location.search).toBe('?keep=1');
     });
 
     it('lands on the Universe tab for an unknown table even when a table tab was active', () => {
-        st().openTable(1, 'users', { mode: 'permanent' });
+        st().openTable('1', 'users', { mode: 'permanent' });
         window.history.replaceState(null, '', '/c/1?tab=gone');
-        renderHook(() => useBrowseUrl(1, snapshot));
+        renderHook(() => useBrowseUrl('1', snapshot));
         expect(toast.error).toHaveBeenCalledWith('Table not found: gone');
-        expect(st().get(1).activeId).toBe('universe');
+        expect(st().get('1').activeId).toBe('universe');
         expect(
             st()
-                .get(1)
-                .tabs.some((t) => t.id === tableTabOf(1, 'users')?.id),
+                .get('1')
+                .tabs.some((t) => t.id === tableTabOf('1', 'users')?.id),
         ).toBe(true);
         expect(window.location.search).toBe('');
     });
 
     it('follows the active tab', () => {
         window.history.replaceState(null, '', '/c/1?r=x');
-        renderHook(() => useBrowseUrl(1, snapshot));
-        act(() => void st().openTable(1, 'users'));
+        renderHook(() => useBrowseUrl('1', snapshot));
+        act(() => void st().openTable('1', 'users'));
         expect(window.location.search).toBe('?r=x&tab=users');
-        act(() => st().activate(1, 'universe'));
+        act(() => st().activate('1', 'universe'));
         expect(window.location.search).toBe('?r=x');
-        act(() => st().showRecords(1, 'Records · users #1'));
+        act(() => st().showRecords('1', 'Records · users #1'));
         expect(window.location.search).toBe('?r=x');
     });
 
     it('restores the view named by &view=', () => {
-        const first = st().openTable(1, 'order items', { mode: 'permanent' });
-        const second = st().duplicateTab(1, first);
+        const first = st().openTable('1', 'order items', { mode: 'permanent' });
+        const second = st().duplicateTab('1', first);
         // The first view was active last, so only &view= points at the second.
-        st().activate(1, first);
-        st().activate(1, 'universe');
+        st().activate('1', first);
+        st().activate('1', 'universe');
         window.history.replaceState(null, '', '/c/1?tab=order+items&view=2');
-        renderHook(() => useBrowseUrl(1, snapshot));
-        expect(st().get(1).activeId).toBe(second);
-        expect(st().get(1).tabs).toHaveLength(3);
+        renderHook(() => useBrowseUrl('1', snapshot));
+        expect(st().get('1').activeId).toBe(second);
+        expect(st().get('1').tabs).toHaveLength(3);
         expect(window.location.search).toBe('?tab=order+items&view=2');
     });
 
     it('opens the latest tab of the table for a view that is not open', () => {
-        const first = st().openTable(1, 'users', { mode: 'permanent' });
-        const second = st().duplicateTab(1, first);
-        st().activate(1, first);
-        st().activate(1, 'universe');
+        const first = st().openTable('1', 'users', { mode: 'permanent' });
+        const second = st().duplicateTab('1', first);
+        st().activate('1', first);
+        st().activate('1', 'universe');
         window.history.replaceState(null, '', '/c/1?tab=users&view=5');
-        renderHook(() => useBrowseUrl(1, snapshot));
-        expect(st().get(1).activeId).toBe(first);
+        renderHook(() => useBrowseUrl('1', snapshot));
+        expect(st().get('1').activeId).toBe(first);
         expect(
             st()
-                .get(1)
+                .get('1')
                 .tabs.map((t) => t.id),
         ).toEqual(['universe', first, second]);
         expect(window.location.search).toBe('?tab=users');
@@ -164,25 +164,25 @@ describe('useBrowseUrl', () => {
 
     it('opens a new tab for a view of a table that is not open', () => {
         window.history.replaceState(null, '', '/c/1?tab=users&view=2');
-        renderHook(() => useBrowseUrl(1, snapshot));
-        expect(st().get(1).activeId).toBe(tableTabOf(1, 'users')?.id);
+        renderHook(() => useBrowseUrl('1', snapshot));
+        expect(st().get('1').activeId).toBe(tableTabOf('1', 'users')?.id);
         expect(window.location.search).toBe('?tab=users');
     });
 
     it('writes &view= for the second view of a table', () => {
         window.history.replaceState(null, '', '/c/1');
-        renderHook(() => useBrowseUrl(1, snapshot));
-        const first = st().openTable(1, 'users', { mode: 'permanent' });
-        act(() => void st().duplicateTab(1, first));
+        renderHook(() => useBrowseUrl('1', snapshot));
+        const first = st().openTable('1', 'users', { mode: 'permanent' });
+        act(() => void st().duplicateTab('1', first));
         expect(window.location.search).toBe('?tab=users&view=2');
-        act(() => st().activate(1, first));
+        act(() => st().activate('1', first));
         expect(window.location.search).toBe('?tab=users');
     });
 
     it('ignores other connections', () => {
         window.history.replaceState(null, '', '/c/1');
-        renderHook(() => useBrowseUrl(1, snapshot));
-        act(() => void st().openTable(2, 'users'));
+        renderHook(() => useBrowseUrl('1', snapshot));
+        act(() => void st().openTable('2', 'users'));
         expect(window.location.search).toBe('');
     });
 });

@@ -9,7 +9,7 @@ import { dockShortcutHint } from '@/lib/platform';
 import { cn } from '@/lib/utils';
 import { toggleDock } from '@/lib/workspace-shortcuts';
 import { useRecords } from '@/records/records-store';
-import type { ConnectionSummary } from '@/types/connection';
+import type { ConnectionSummary, WorkspaceRef } from '@/types/connection';
 import type { SchemaSnapshot } from '@/types/schema';
 import { useWorkspace } from '@/universe/store';
 
@@ -42,7 +42,7 @@ export function StatusBar({
     snapshot: SchemaSnapshot | null;
     storedAt: string | null;
 }) {
-    const active = useActiveTab(connection.id);
+    const active = useActiveTab(connection.ref);
     const dockOpen = useWorkspace((s) => s.dockOpen);
 
     return (
@@ -72,7 +72,7 @@ export function StatusBar({
             {connection.read_only && <span className={ITEM}>read-only</span>}
 
             <TabItems
-                connectionId={connection.id}
+                connectionId={connection.ref}
                 active={active}
                 snapshot={snapshot}
             />
@@ -109,7 +109,7 @@ function TabItems({
     active,
     snapshot,
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     active: BrowseTab;
     snapshot: SchemaSnapshot | null;
 }) {
@@ -130,7 +130,7 @@ function TableItems({
     tabId,
     table,
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     tabId: string;
     table: string;
 }) {
