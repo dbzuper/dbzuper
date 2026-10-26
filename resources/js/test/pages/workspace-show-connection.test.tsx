@@ -55,6 +55,7 @@ import WorkspaceShow from '@/pages/workspace/show';
 
 const conn = (id: number) => ({
     id,
+    ref: String(id),
     name: `Shop ${id}`,
     driver: 'sqlite' as const,
     driver_label: 'SQLite',
@@ -68,6 +69,8 @@ const conn = (id: number) => ({
     color: null,
     store_history: true,
     last_opened_at: null,
+    server_level: false,
+    last_database: null,
 });
 
 const response = (...names: string[]): SchemaResponse => ({
@@ -126,8 +129,8 @@ describe('universe render failure', () => {
 describe('connection change', () => {
     it('ignores a slow load from the previous connection', async () => {
         let resolveOld!: (r: SchemaResponse) => void;
-        api.schema.mockImplementation((id: number) =>
-            id === 1
+        api.schema.mockImplementation((ref: string) =>
+            ref === '1'
                 ? new Promise<SchemaResponse>((r) => (resolveOld = r))
                 : Promise.resolve(response('new_table')),
         );
@@ -154,7 +157,7 @@ describe('connection change', () => {
         expect(api.saveLayout).not.toHaveBeenCalled();
         view.rerender(<WorkspaceShow connection={conn(2)} />);
         expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(
-            1,
+            '1',
             [at('users', 99)],
             { keepalive: true, merge: true },
         );
@@ -170,7 +173,7 @@ describe('connection change', () => {
         );
         act(() => void window.dispatchEvent(new Event('pagehide')));
         expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(
-            1,
+            '1',
             [at('users', 99)],
             { keepalive: true, merge: true },
         );
@@ -188,7 +191,7 @@ describe('connection change', () => {
             );
             await act(async () => void vi.advanceTimersByTime(1000));
             expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(
-                1,
+                '1',
                 [at('users', 99)],
                 { keepalive: false, merge: true },
             );
@@ -216,7 +219,7 @@ describe('kept layout positions', () => {
             return { positions: [at('users', 55), at('orders', 10)] };
         });
         await mount();
-        expect(api.saveLayout).toHaveBeenCalledWith(1, [at('users', 55)], {
+        expect(api.saveLayout).toHaveBeenCalledWith('1', [at('users', 55)], {
             keepalive: false,
             merge: true,
         });

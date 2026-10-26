@@ -85,7 +85,7 @@ const actions = {
 
 const renderSidebar = () =>
     render(
-        <TableSidebar connectionId={1} snapshot={snapshot} actions={actions} />,
+        <TableSidebar connectionId="1" snapshot={snapshot} actions={actions} />,
     );
 
 /** Moves focus as Tab would: to the next element in the tab order after `from`. */
@@ -152,9 +152,10 @@ describe('TableSidebar', () => {
 
     it('opens a new default view from Open in new tab when the table is already open', () => {
         const filters = [{ column: 'id', op: 'eq' as const, value: '1' }];
-        const first = useBrowse
-            .getState()
-            .openTable(1, 'orders', { mode: 'permanent', state: { filters } });
+        const first = useBrowse.getState().openTable('1', 'orders', {
+            mode: 'permanent',
+            state: { filters },
+        });
         renderSidebar();
         fireEvent.contextMenu(
             screen.getAllByRole('treeitem', { name: /^orders/ })[0],
@@ -162,14 +163,14 @@ describe('TableSidebar', () => {
         fireEvent.click(
             screen.getByRole('menuitem', { name: 'Open in new tab' }),
         );
-        const view = tableTabOf(1, 'orders', 2);
+        const view = tableTabOf('1', 'orders', 2);
         expect(view).toMatchObject({
             preview: false,
             state: { filters: [], page: 1 },
         });
-        expect(useBrowse.getState().get(1).activeId).toBe(view?.id);
-        expect(tableTabOf(1, 'orders')?.id).toBe(first);
-        expect(tableTabOf(1, 'orders')?.state.filters).toEqual(filters);
+        expect(useBrowse.getState().get('1').activeId).toBe(view?.id);
+        expect(tableTabOf('1', 'orders')?.id).toBe(first);
+        expect(tableTabOf('1', 'orders')?.state.filters).toEqual(filters);
     });
 
     it('opens a background tab from Open in new tab when the table is not open', () => {
@@ -178,8 +179,8 @@ describe('TableSidebar', () => {
         fireEvent.click(
             screen.getByRole('menuitem', { name: 'Open in new tab' }),
         );
-        expect(tableTabOf(1, 'users')).toMatchObject({ preview: false });
-        expect(useBrowse.getState().get(1).activeId).toBe('universe');
+        expect(tableTabOf('1', 'users')).toMatchObject({ preview: false });
+        expect(useBrowse.getState().get('1').activeId).toBe('universe');
     });
 
     describe('Recent after a click', () => {
@@ -192,8 +193,8 @@ describe('TableSidebar', () => {
                 .flatMap((el) => el.getAttribute('data-table') ?? []);
 
         it('holds still for a double-click, then catches up without the pointer moving', () => {
-            useBrowse.getState().openTable(1, 'users');
-            useBrowse.getState().openTable(1, 'orders');
+            useBrowse.getState().openTable('1', 'users');
+            useBrowse.getState().openTable('1', 'orders');
             renderSidebar();
             const row = within(
                 screen.getByRole('group', { name: 'Recent' }),
@@ -201,7 +202,7 @@ describe('TableSidebar', () => {
             // Both clicks of a double-click on the Recent row: the rows do not move in between.
             fireEvent.pointerDown(row);
             act(() => {
-                useBrowse.getState().openTable(1, 'users');
+                useBrowse.getState().openTable('1', 'users');
             });
             expect(recentNames()).toEqual(['users']);
             act(() => {
@@ -217,8 +218,8 @@ describe('TableSidebar', () => {
         });
 
         it('highlights a table clicked in All tables there at once, and drops it from Recent', () => {
-            useBrowse.getState().openTable(1, 'users');
-            useBrowse.getState().openTable(1, 'orders');
+            useBrowse.getState().openTable('1', 'users');
+            useBrowse.getState().openTable('1', 'orders');
             renderSidebar();
             const all = screen.getByRole('group', { name: /All tables/ });
             const clicked = within(all).getByRole('treeitem', {
@@ -226,7 +227,7 @@ describe('TableSidebar', () => {
             });
             fireEvent.pointerDown(clicked);
             act(() => {
-                useBrowse.getState().openTable(1, 'users');
+                useBrowse.getState().openTable('1', 'users');
             });
             // Highlighted where it was clicked, never in Recent, even while Recent holds still.
             expect(clicked).toHaveAttribute('aria-current', 'true');
@@ -244,8 +245,8 @@ describe('TableSidebar', () => {
     });
 
     it('filters by search and hides the pinned and recent sections while searching', () => {
-        useBrowse.getState().openTable(1, 'users');
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'users');
+        useBrowse.getState().openTable('1', 'orders');
         renderSidebar();
         expect(
             screen.getByRole('treeitem', { name: 'Recent' }),
@@ -309,19 +310,19 @@ describe('TableSidebar', () => {
     it('pins from the row star without opening the table', () => {
         renderSidebar();
         fireEvent.click(screen.getByRole('button', { name: 'Pin orders' }));
-        expect(usePins.getState().isPinned(1, 'orders')).toBe(true);
+        expect(usePins.getState().isPinned('1', 'orders')).toBe(true);
         expect(actions.open).not.toHaveBeenCalled();
     });
 
     it('leaves pinned tables and the open table out of Recent and shows at most five recent tables', () => {
         const names = ['t1', 't2', 't3', 't4', 't5', 't6', 't7'];
         const many = { ...snapshot, tables: names.map((n) => table(n)) };
-        names.forEach((n) => useBrowse.getState().openTable(1, n));
+        names.forEach((n) => useBrowse.getState().openTable('1', n));
         usePins.setState({
             byConnection: { 1: [{ id: 1, table: 't6', position: 1 }] },
         });
         render(
-            <TableSidebar connectionId={1} snapshot={many} actions={actions} />,
+            <TableSidebar connectionId="1" snapshot={many} actions={actions} />,
         );
         const recent = within(screen.getByRole('group', { name: 'Recent' }))
             .getAllByRole('treeitem')
@@ -331,8 +332,8 @@ describe('TableSidebar', () => {
     });
 
     it('highlights the open table once: in Pinned when pinned, otherwise in All tables', () => {
-        useBrowse.getState().openTable(1, 'users');
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'users');
+        useBrowse.getState().openTable('1', 'orders');
         const { unmount } = renderSidebar();
         const current = () =>
             screen
@@ -401,7 +402,7 @@ describe('TableSidebar', () => {
         fireEvent.keyDown(gone, { key: 'Enter' });
         expect(actions.open).not.toHaveBeenCalled();
         fireEvent.keyDown(gone, { key: 'Delete' });
-        expect(usePins.getState().isPinned(1, 'gone')).toBe(false);
+        expect(usePins.getState().isPinned('1', 'gone')).toBe(false);
         const lost = screen.getByRole('treeitem', {
             name: 'lost (no longer exists)',
         });
@@ -409,12 +410,12 @@ describe('TableSidebar', () => {
         fireEvent.keyDown(lost, { key: '*' });
         // Pin operations on a connection run one after another.
         await waitFor(() =>
-            expect(usePins.getState().isPinned(1, 'lost')).toBe(false),
+            expect(usePins.getState().isPinned('1', 'lost')).toBe(false),
         );
     });
 
     it("highlights the active tab's table", () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         renderSidebar();
         const all = screen.getByRole('group', { name: /All tables/ });
         expect(
@@ -423,7 +424,7 @@ describe('TableSidebar', () => {
     });
 
     it('sets the active table apart from a hovered one', () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         renderSidebar();
         const all = screen.getByRole('group', { name: /All tables/ });
         const active = within(all).getByRole('treeitem', { name: /^orders/ });
@@ -444,7 +445,7 @@ describe('TableSidebar', () => {
         const row = screen.getByRole('treeitem', { name: /^orders/ });
         row.focus();
         fireEvent.keyDown(row, { key: '*' });
-        expect(usePins.getState().isPinned(1, 'orders')).toBe(true);
+        expect(usePins.getState().isPinned('1', 'orders')).toBe(true);
     });
 
     it('makes the clicked row the tab stop', () => {
@@ -471,7 +472,7 @@ describe('TableSidebar prefix groups', () => {
     const renderGrouped = () =>
         render(
             <TableSidebar
-                connectionId={1}
+                connectionId="1"
                 snapshot={grouped}
                 actions={actions}
             />,
@@ -551,14 +552,14 @@ describe('TableSidebar prefix groups', () => {
         renderGrouped();
         expect(group()).toHaveAttribute('aria-expanded', 'false');
         act(() => {
-            useBrowse.getState().openTable(1, 'courier_zones');
+            useBrowse.getState().openTable('1', 'courier_zones');
         });
         expect(group()).toHaveAttribute('aria-expanded', 'true');
         const all = screen.getByRole('group', { name: /All tables/ });
         expect(
             within(all).getByRole('treeitem', { name: /^courier_zones/ }),
         ).toHaveAttribute('aria-current', 'true');
-        expect(readGroupPrefs(1).open).toEqual([]);
+        expect(readGroupPrefs('1').open).toEqual([]);
     });
 
     it("starts another connection from its own groups, not the previous connection's", () => {
@@ -568,24 +569,24 @@ describe('TableSidebar prefix groups', () => {
                 (n) => table(n),
             ),
         } as SchemaSnapshot;
-        writeGroupPrefs(1, { open: ['courier_'] });
-        useBrowse.getState().openTable(2, 'ship_a');
+        writeGroupPrefs('1', { open: ['courier_'] });
+        useBrowse.getState().openTable('2', 'ship_a');
         const view = render(
-            <TableSidebar connectionId={1} snapshot={two} actions={actions} />,
+            <TableSidebar connectionId="1" snapshot={two} actions={actions} />,
         );
         expect(group()).toHaveAttribute('aria-expanded', 'true');
         view.rerender(
-            <TableSidebar connectionId={2} snapshot={two} actions={actions} />,
+            <TableSidebar connectionId="2" snapshot={two} actions={actions} />,
         );
         expect(group()).toHaveAttribute('aria-expanded', 'false');
         expect(
             screen.getByRole('treeitem', { name: 'ship_ group, 2 tables' }),
         ).toHaveAttribute('aria-expanded', 'true');
-        expect(readGroupPrefs(2).open).toEqual([]);
+        expect(readGroupPrefs('2').open).toEqual([]);
     });
 
     it('opens the active table group on mount', () => {
-        useBrowse.getState().openTable(1, 'courier_zones');
+        useBrowse.getState().openTable('1', 'courier_zones');
         renderGrouped();
         expect(group()).toHaveAttribute('aria-expanded', 'true');
     });
@@ -656,7 +657,7 @@ describe('TableSidebar type-ahead and levels', () => {
     const renderGrouped = () =>
         render(
             <TableSidebar
-                connectionId={1}
+                connectionId="1"
                 snapshot={grouped}
                 actions={actions}
             />,

@@ -89,7 +89,7 @@ export default function WorkspaceShow({
 
     const selected = useWorkspace((s) => s.selected);
     const universeAvailable = webgl && !renderFailed;
-    const active = useActiveTab(connection.id);
+    const active = useActiveTab(connection.ref);
     const sidebarCollapsed = useSidebarPrefs((s) => s.collapsed);
     // The universe mounts the first time its tab is shown and then stays mounted (hidden behind
     // other tabs), so switching back keeps the camera and costs no rebuild.
@@ -104,18 +104,18 @@ export default function WorkspaceShow({
     useEffect(() => {
         useWorkspace.getState().reset();
         clearPendingFlyTo();
-    }, [connection.id]);
+    }, [connection.ref]);
 
     // Keyed on the connection only: a universe render failure must not wipe the record trail.
     useEffect(() => {
         useRecords.getState().reset();
-        useRecords.getState().setConnection(connection.id);
-    }, [connection.id]);
+        useRecords.getState().setConnection(connection.ref);
+    }, [connection.ref]);
 
     // Pins are loaded here, not by the sidebar, so the table-tab star and tab menu are right while it is collapsed.
     useEffect(() => {
-        void usePins.getState().load(connection.id);
-    }, [connection.id]);
+        void usePins.getState().load(connection.ref);
+    }, [connection.ref]);
 
     // `?history=<id>` (from the global history page) opens that entry in a new tab once; it is never auto-run.
     const [historyNotice, setHistoryNotice] = useState<string | null>(null);
@@ -131,11 +131,11 @@ export default function WorkspaceShow({
         );
         if (!/^[1-9]\d{0,14}$/.test(raw)) return;
         historyApi
-            .show(connection.id, Number(raw))
+            .show(connection.ref, Number(raw))
             .then((entry) => {
                 useSqlTabs
                     .getState()
-                    .openTab(connection.id, entry.sql, 'History');
+                    .openTab(connection.ref, entry.sql, 'History');
                 useWorkspace.getState().setDockOpen(true);
             })
             .catch(() =>
@@ -157,7 +157,7 @@ export default function WorkspaceShow({
     const saver = useMemo(
         () =>
             createLayoutSaver(
-                connection.id,
+                connection.ref,
                 (id, entries, opts) =>
                     workspaceApi.saveLayout(id, entries, opts),
                 (problem) =>
@@ -167,7 +167,7 @@ export default function WorkspaceShow({
                             : 'Could not save the layout.',
                     ),
             ),
-        [connection.id],
+        [connection.ref],
     );
     useEffect(() => {
         if (saved) saver.baseline(saved);
@@ -186,9 +186,9 @@ export default function WorkspaceShow({
                 if (!refresh) await saver.replayStored();
                 const [schema, layout] = await Promise.all([
                     refresh
-                        ? workspaceApi.refresh(connection.id)
-                        : workspaceApi.schema(connection.id),
-                    workspaceApi.layout(connection.id).catch(() => ({
+                        ? workspaceApi.refresh(connection.ref)
+                        : workspaceApi.schema(connection.ref),
+                    workspaceApi.layout(connection.ref).catch(() => ({
                         positions: [] as LayoutPositionEntry[],
                     })),
                 ]);
@@ -203,12 +203,12 @@ export default function WorkspaceShow({
                 );
                 const { cleaned } = useBrowse
                     .getState()
-                    .reconcile(connection.id, tables);
+                    .reconcile(connection.ref, tables);
                 // Once per table, however many of its tabs were cleaned.
                 for (const t of new Set(cleaned))
                     toast(`Filters on removed columns of ${t} were cleared.`);
                 // Staged changes to what no longer exists could never be committed (spec §4.4).
-                reconcilePending(connection.id, tables);
+                reconcilePending(connection.ref, tables);
                 // Cached pages may predate the refreshed schema.
                 if (refresh) rowsCache.clear();
                 setData(schema);
@@ -220,7 +220,7 @@ export default function WorkspaceShow({
                 if (isCurrent()) setLoading(false);
             }
         },
-        [connection.id, saver],
+        [connection.ref, saver],
     );
 
     useEffect(() => {
@@ -321,7 +321,7 @@ export default function WorkspaceShow({
     const tableTabActive = active.kind === 'table';
     const tableTabActiveRef = useRef(tableTabActive);
     tableTabActiveRef.current = tableTabActive;
-    const connectionId = connection.id;
+    const connectionId = connection.ref;
     useEffect(() => {
         const onKey = (e: KeyboardEvent) =>
             dispatchBrowseKey(e, connectionId, tableTabActiveRef.current);
@@ -342,7 +342,7 @@ export default function WorkspaceShow({
     // come after the effect that binds the records store to the connection.
     useTrailUrl(snapshot);
     // `?tab=` names the active table tab; it is read once the snapshot is in.
-    useBrowseUrl(connection.id, snapshot);
+    useBrowseUrl(connection.ref, snapshot);
     const actions = useMemo(
         () => (snapshot ? makeTableActions(connection, snapshot) : null),
         [connection, snapshot],
@@ -418,10 +418,10 @@ export default function WorkspaceShow({
             {/* The shell tokens let a theme float the sidebar and main panel on a canvas; Classic keeps
                 them flush (no gap, radius or shadow). */}
             <div className="flex min-h-0 flex-1 gap-[var(--shell-gap)] p-[var(--shell-gap)]">
-                <LeftRail connectionId={connection.id} />
+                <LeftRail connectionId={connection.ref} />
                 {!sidebarCollapsed && snapshot && actions && (
                     <TableSidebar
-                        connectionId={connection.id}
+                        connectionId={connection.ref}
                         snapshot={snapshot}
                         actions={actions}
                     />
@@ -451,7 +451,7 @@ export default function WorkspaceShow({
 
                     {snapshot && actions && (
                         <TabBar
-                            connectionId={connection.id}
+                            connectionId={connection.ref}
                             actions={actions}
                         />
                     )}
@@ -518,7 +518,7 @@ export default function WorkspaceShow({
                                                             >
                                                                 <UniverseCanvas
                                                                     connectionId={
-                                                                        connection.id
+                                                                        connection.ref
                                                                     }
                                                                     model={
                                                                         model
@@ -604,12 +604,12 @@ export default function WorkspaceShow({
                     {snapshot && (
                         <PathDialog
                             snapshot={snapshot}
-                            connectionId={connection.id}
+                            connectionId={connection.ref}
                         />
                     )}
                     {snapshot && (
                         <CommandPalette
-                            connectionId={connection.id}
+                            connectionId={connection.ref}
                             snapshot={snapshot}
                             onRefresh={() => void load(true)}
                         />
@@ -624,11 +624,11 @@ export default function WorkspaceShow({
                         className="flex w-[420px] shrink-0 flex-col border-l"
                     >
                         <HistoryList
-                            connectionId={connection.id}
+                            connectionId={connection.ref}
                             onOpen={(e) => {
                                 useSqlTabs
                                     .getState()
-                                    .openTab(connection.id, e.sql, 'History');
+                                    .openTab(connection.ref, e.sql, 'History');
                                 useWorkspace.getState().setDockOpen(true);
                             }}
                         />
@@ -640,7 +640,7 @@ export default function WorkspaceShow({
                         className="flex w-[420px] shrink-0 flex-col border-l"
                     >
                         <InspectorPanel
-                            connectionId={connection.id}
+                            connectionId={connection.ref}
                             snapshot={snapshot!}
                             table={selectedTable}
                         />

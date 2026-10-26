@@ -22,6 +22,28 @@ interface Driver
 
     public function inspector(): SchemaInspector;
 
+    /**
+     * Databases to connect to, in order, when a server-level connection needs the server rather than one database
+     * (testing it, listing its databases). '' connects without choosing one.
+     *
+     * @return list<string>
+     */
+    public function maintenanceDatabases(): array;
+
+    /** @return list<string> databases on the server the login can see */
+    public function listDatabaseNames(Connection $db): array;
+
+    /**
+     * Table counts and sizes in bytes per database, from one catalog query; databases or values it can't cover are
+     * left out or null. May throw or time out: callers treat it as optional.
+     *
+     * @return array<string, array{tables: ?int, bytes: ?int}>
+     */
+    public function databaseStats(Connection $db): array;
+
+    /** @return list<string> databases the engine itself owns, hidden from the list by default */
+    public function systemDatabases(): array;
+
     /** SQL returning one row with a `version` column. */
     public function versionQuery(): string;
 

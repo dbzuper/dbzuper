@@ -3,10 +3,11 @@ import { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useSqlTabs } from '@/sql/tabs-store';
+import type { WorkspaceRef } from '@/types/connection';
 
 const tabDomId = (tabId: string) => `sql-tab-${tabId}`;
 
-export function SqlTabsBar({ connectionId }: { connectionId: number }) {
+export function SqlTabsBar({ connectionId }: { connectionId: WorkspaceRef }) {
     const state = useSqlTabs((s) => s.byConnection[connectionId]);
     const setActive = useSqlTabs((s) => s.setActive);
     const closeTab = useSqlTabs((s) => s.closeTab);

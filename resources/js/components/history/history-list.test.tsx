@@ -60,7 +60,7 @@ afterEach(() => {
 
 describe('HistoryList', () => {
     it('renders entries with status, first-line preview, duration and rows', async () => {
-        render(<HistoryList connectionId={7} onOpen={vi.fn()} />);
+        render(<HistoryList connectionId="7" onOpen={vi.fn()} />);
         await flush();
         expect(urls()[0]).toBe('/api/c/7/history');
         expect(screen.getByLabelText('Succeeded')).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe('HistoryList', () => {
     });
 
     it('debounces search by 250 ms', async () => {
-        render(<HistoryList connectionId={7} onOpen={vi.fn()} />);
+        render(<HistoryList connectionId="7" onOpen={vi.fn()} />);
         await flush();
         fireEvent.change(screen.getByLabelText('Search history'), {
             target: { value: 'ord' },
@@ -88,7 +88,7 @@ describe('HistoryList', () => {
     });
 
     it('filters by status', async () => {
-        render(<HistoryList connectionId={7} onOpen={vi.fn()} />);
+        render(<HistoryList connectionId="7" onOpen={vi.fn()} />);
         await flush();
         fireEvent.change(screen.getByLabelText('Status'), {
             target: { value: 'error' },
@@ -101,7 +101,7 @@ describe('HistoryList', () => {
         fetchMock.mockImplementationOnce(() =>
             json({ entries: [entry({ id: 9 })], next_before_id: 9 }),
         );
-        render(<HistoryList connectionId={7} onOpen={vi.fn()} />);
+        render(<HistoryList connectionId="7" onOpen={vi.fn()} />);
         await flush();
         fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
         await flush();
@@ -112,7 +112,7 @@ describe('HistoryList', () => {
 
     it('calls onOpen with the entry', async () => {
         const onOpen = vi.fn();
-        render(<HistoryList connectionId={7} onOpen={onOpen} />);
+        render(<HistoryList connectionId="7" onOpen={onOpen} />);
         await flush();
         fireEvent.click(screen.getAllByRole('button', { name: 'Open' })[0]);
         expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
@@ -151,7 +151,7 @@ describe('HistoryList', () => {
     });
 
     it('clears history only after an inline confirmation', async () => {
-        render(<HistoryList connectionId={7} onOpen={vi.fn()} />);
+        render(<HistoryList connectionId="7" onOpen={vi.fn()} />);
         await flush();
         fireEvent.click(screen.getByRole('button', { name: 'Clear history' }));
         expect(
@@ -167,7 +167,7 @@ describe('HistoryList', () => {
         fetchMock.mockImplementationOnce(() =>
             json({ entries: [entry({ id: 9 })], next_before_id: 9 }),
         );
-        render(<HistoryList connectionId={7} onOpen={vi.fn()} />);
+        render(<HistoryList connectionId="7" onOpen={vi.fn()} />);
         await flush();
         fetchMock.mockImplementationOnce(() => Promise.reject(new Error('x')));
         fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
@@ -182,7 +182,7 @@ describe('HistoryList', () => {
     });
 
     it('disables Confirm clear while the DELETE is in flight', async () => {
-        render(<HistoryList connectionId={7} onOpen={vi.fn()} />);
+        render(<HistoryList connectionId="7" onOpen={vi.fn()} />);
         await flush();
         fireEvent.click(screen.getByRole('button', { name: 'Clear history' }));
         fetchMock.mockImplementationOnce(() => new Promise(() => {}));
@@ -195,7 +195,7 @@ describe('HistoryList', () => {
 
     it('reloads after a run finishes in workspace mode, but not on the global page', async () => {
         const { unmount } = render(
-            <HistoryList connectionId={7} onOpen={vi.fn()} />,
+            <HistoryList connectionId="7" onOpen={vi.fn()} />,
         );
         await flush();
         expect(fetchMock).toHaveBeenCalledTimes(1);

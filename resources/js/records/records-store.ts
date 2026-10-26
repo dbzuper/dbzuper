@@ -17,6 +17,7 @@ import type {
     RecordPayload,
     RelationshipSummary,
 } from './types';
+import type { WorkspaceRef } from '@/types/connection';
 
 const PAGE = 25;
 const CONCURRENCY = 4;
@@ -56,7 +57,7 @@ export const clusterKey = (from: string, rel: string, dir: 'out' | 'in') =>
 export type Point = { x: number; y: number };
 
 type State = {
-    connectionId: number | null;
+    connectionId: WorkspaceRef | null;
     trail: Trail;
     records: Record<string, RecordEntry>;
     clusters: Record<string, ClusterState>;
@@ -75,7 +76,7 @@ type State = {
 
 type Actions = {
     /** Which connection the actions talk to; switching connections clears the trail. */
-    setConnection: (id: number | null) => void;
+    setConnection: (id: WorkspaceRef | null) => void;
     /** Replaces the trail with a single root record and fetches it. */
     open: (table: string, key: RecordKeyValues) => void;
     /** Fetches the first related page of a relationship port and adds the nodes. */

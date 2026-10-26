@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, type PersistStorage } from 'zustand/middleware';
 import { safeStorage } from '@/browse/safe-storage';
+import { isWorkspaceRef, type WorkspaceRef } from '@/types/connection';
 
 /**
  * An editor tab opened from a table tab ("Open in SQL") follows that tab's query and can set it (spec 4).
@@ -26,19 +27,23 @@ export type SqlTab = { id: string; title: string; sql: string; link?: SqlLink };
 type ConnectionTabs = { tabs: SqlTab[]; activeId: string };
 
 type State = {
-    byConnection: Record<number, ConnectionTabs>;
-    ensure: (connectionId: number) => void;
-    openTab: (connectionId: number, sql?: string, title?: string) => string;
-    closeTab: (connectionId: number, id: string) => void;
-    setActive: (connectionId: number, id: string) => void;
-    setSql: (connectionId: number, id: string, sql: string) => void;
-    rename: (connectionId: number, id: string, title: string) => void;
+    byConnection: Record<WorkspaceRef, ConnectionTabs>;
+    ensure: (connectionId: WorkspaceRef) => void;
+    openTab: (
+        connectionId: WorkspaceRef,
+        sql?: string,
+        title?: string,
+    ) => string;
+    closeTab: (connectionId: WorkspaceRef, id: string) => void;
+    setActive: (connectionId: WorkspaceRef, id: string) => void;
+    setSql: (connectionId: WorkspaceRef, id: string, sql: string) => void;
+    rename: (connectionId: WorkspaceRef, id: string, title: string) => void;
     /**
      * Activates the editor tab linked to table tab `browseTabId`, or opens one titled `title` with `sql` linked to
      * it (`requestKey`: the rows request `sql` answers, when it is the server's). Returns its id.
      */
     openLinkedTab: (
-        connectionId: number,
+        connectionId: WorkspaceRef,
         browseTabId: string,
         table: string,
         title: string,
@@ -47,13 +52,13 @@ type State = {
     ) => string;
     /** Replaces (or with undefined removes) an editor tab's link. */
     setLink: (
-        connectionId: number,
+        connectionId: WorkspaceRef,
         id: string,
         link: SqlLink | undefined,
     ) => void;
     /** The editor tab linked to table tab `browseTabId`, if any. */
     findLinked: (
-        connectionId: number,
+        connectionId: WorkspaceRef,
         browseTabId: string,
     ) => SqlTab | undefined;
     /** Drops the tabs of connections that no longer exist. */
@@ -105,12 +110,12 @@ function sanitizeLink(v: unknown): SqlLink | undefined {
 }
 
 /** Keeps only well-formed connections: tabs present and activeId pointing at one of them. */
-function sanitize(input: unknown): Record<number, ConnectionTabs> {
-    const out: Record<number, ConnectionTabs> = {};
+function sanitize(input: unknown): Record<WorkspaceRef, ConnectionTabs> {
+    const out: Record<WorkspaceRef, ConnectionTabs> = {};
     if (!input || typeof input !== 'object') return out;
     for (const [key, value] of Object.entries(input)) {
         const c = value as Partial<ConnectionTabs> | null;
-        if (!c || !Array.isArray(c.tabs)) continue;
+        if (!isWorkspaceRef(key) || !c || !Array.isArray(c.tabs)) continue;
         // One editor tab per table tab: a second link to the same table tab is dropped.
         const linked = new Set<string>();
         const tabs = c.tabs
@@ -131,7 +136,7 @@ function sanitize(input: unknown): Record<number, ConnectionTabs> {
                 return tab;
             });
         if (tabs.length === 0) continue;
-        out[Number(key)] = {
+        out[key] = {
             tabs,
             activeId: tabs.some((t) => t.id === c.activeId)
                 ? (c.activeId as string)
@@ -143,10 +148,10 @@ function sanitize(input: unknown): Record<number, ConnectionTabs> {
 
 const STORAGE_KEY = 'dbsuperb.sql-tabs';
 
-type Persisted = { byConnection: Record<number, ConnectionTabs> };
+type Persisted = { byConnection: Record<WorkspaceRef, ConnectionTabs> };
 
 /** The map as last read from or written to storage, to tell which connections this browser tab changed. */
-let lastSynced: Record<number, ConnectionTabs> = {};
+let lastSynced: Record<WorkspaceRef, ConnectionTabs> = {};
 
 const PERSIST_DELAY_MS = 250;
 let pendingWrite: (() => void) | null = null;
@@ -199,9 +204,8 @@ function writeMerged(
         };
         const ids = new Set([...Object.keys(next), ...Object.keys(lastSynced)]);
         for (const key of ids) {
-            const id = Number(key);
-            if (next[id] === lastSynced[id]) continue;
-            if (next[id]) merged[key] = next[id];
+            if (next[key] === lastSynced[key]) continue;
+            if (next[key]) merged[key] = next[key];
             else delete merged[key];
         }
         lastSynced = next;
@@ -216,7 +220,7 @@ export const useSqlTabs = create<State>()(
     persist(
         (set, get) => {
             const update = (
-                connectionId: number,
+                connectionId: WorkspaceRef,
                 fn: (c: ConnectionTabs) => ConnectionTabs,
             ) =>
                 set((s) => {
@@ -373,8 +377,9 @@ export const useSqlTabs = create<State>()(
                     set((s) => {
                         const keep = new Set(existingIds);
                         const entries = Object.entries(s.byConnection);
+                        // A ref's id is the part before any ":database".
                         const kept = entries.filter(([k]) =>
-                            keep.has(Number(k)),
+                            keep.has(Number(k.split(':')[0])),
                         );
                         if (kept.length === entries.length) return s;
                         return { byConnection: Object.fromEntries(kept) };
@@ -408,9 +413,9 @@ export const useSqlTabs = create<State>()(
                 for (const [key, local] of Object.entries(
                     current.byConnection,
                 )) {
-                    const incoming = byConnection[Number(key)];
+                    const incoming = byConnection[key];
                     if (incoming?.tabs.some((t) => t.id === local.activeId))
-                        byConnection[Number(key)] = {
+                        byConnection[key] = {
                             ...incoming,
                             activeId: local.activeId,
                         };

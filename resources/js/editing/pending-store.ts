@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { RowIdentity } from '@/lib/workspace-api';
 import type { QueryCell } from '@/types/schema';
 import type { ChangeRequest } from './editing-api';
+import type { WorkspaceRef } from '@/types/connection';
 
 /** A pending row's stable key: the JSON of its RowIdentity, or `new:<uuid>` for a row not yet inserted. */
 export type RowRef = string;
@@ -59,35 +60,39 @@ type State = {
     errors: Record<string, Record<RowRef, string>>;
     /** Stages `value` for a cell; setting it back to the original removes the change. */
     setCell(
-        connectionId: number,
+        connectionId: WorkspaceRef,
         table: string,
         row: PendingTarget,
         column: string,
         value: string | null,
     ): void;
     revertCell(
-        connectionId: number,
+        connectionId: WorkspaceRef,
         table: string,
         ref: RowRef,
         column: string,
     ): void;
     /** Drops a loaded row's pending update (every staged cell); a deleted row is restored with unmarkDelete. */
-    revertRow(connectionId: number, table: string, ref: RowRef): void;
+    revertRow(connectionId: WorkspaceRef, table: string, ref: RowRef): void;
     /** Adds an empty new row (every column at its default) and returns its ref. */
-    addRow(connectionId: number, table: string): RowRef;
+    addRow(connectionId: WorkspaceRef, table: string): RowRef;
     /** Marks a loaded row for deletion; a new row is simply removed. */
-    markDelete(connectionId: number, table: string, row: PendingTarget): void;
-    unmarkDelete(connectionId: number, table: string, ref: RowRef): void;
-    discard(connectionId: number, table: string): void;
+    markDelete(
+        connectionId: WorkspaceRef,
+        table: string,
+        row: PendingTarget,
+    ): void;
+    unmarkDelete(connectionId: WorkspaceRef, table: string, ref: RowRef): void;
+    discard(connectionId: WorkspaceRef, table: string): void;
     /** After a commit of `committed`: removes those changes that are still exactly as committed; later ones stay. */
     settle(
-        connectionId: number,
+        connectionId: WorkspaceRef,
         table: string,
         committed: Record<RowRef, PendingRow>,
     ): void;
     /** Replaces the table's row errors (empty clears them). */
     setErrors(
-        connectionId: number,
+        connectionId: WorkspaceRef,
         table: string,
         errors: Record<RowRef, string>,
     ): void;
@@ -97,14 +102,14 @@ type State = {
      * the tables `include` accepts are touched (all when it is left out).
      */
     reconcile(
-        connectionId: number,
+        connectionId: WorkspaceRef,
         tables: Map<string, string[]>,
         include?: (table: string) => boolean,
     ): PendingDrop[];
-    count(connectionId: number, table: string): PendingCounts;
+    count(connectionId: WorkspaceRef, table: string): PendingCounts;
 };
 
-export const pendingKey = (connectionId: number, table: string) =>
+export const pendingKey = (connectionId: WorkspaceRef, table: string) =>
     `${connectionId}:${table}`;
 
 /** The ref of a loaded row: its identity as JSON (the server always sends identity keys in one order). */
@@ -163,7 +168,7 @@ const without = <T extends object>(map: T, key: string): T => {
 
 export const usePending = create<State>()((set, get) => {
     const patch = (
-        connectionId: number,
+        connectionId: WorkspaceRef,
         table: string,
         fn: (rows: Table) => Table,
     ) =>

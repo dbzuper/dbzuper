@@ -36,7 +36,7 @@ beforeEach(() => {
     useWorkspace.getState().reset();
     useWorkspace.getState().setPaletteOpen(true);
     useBrowse.setState({ byConnection: {} });
-    useRecords.setState({ connectionId: 1 });
+    useRecords.setState({ connectionId: '1' });
 });
 
 describe('CommandPalette', () => {
@@ -46,17 +46,17 @@ describe('CommandPalette', () => {
     it('opens the picked table as a table tab', () => {
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
         );
         fireEvent.change(searchBox(), { target: { value: 'orders' } });
         fireEvent.keyDown(searchBox(), { key: 'Enter' });
-        expect(useBrowse.getState().get(1).activeId).toBe(
-            tableTabOf(1, 'orders')?.id,
+        expect(useBrowse.getState().get('1').activeId).toBe(
+            tableTabOf('1', 'orders')?.id,
         );
-        expect(useBrowse.getState().get(1).tabs[1]).toMatchObject({
+        expect(useBrowse.getState().get('1').tabs[1]).toMatchObject({
             table: 'orders',
             preview: false,
         });
@@ -66,7 +66,7 @@ describe('CommandPalette', () => {
     it('opens a table tab with a draft filter when a column is picked', () => {
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -75,23 +75,23 @@ describe('CommandPalette', () => {
         fireEvent.click(
             screen.getAllByRole('option', { name: /users\.id/ })[0],
         );
-        expect(useBrowse.getState().get(1).activeId).toBe(
-            tableTabOf(1, 'users')?.id,
+        expect(useBrowse.getState().get('1').activeId).toBe(
+            tableTabOf('1', 'users')?.id,
         );
     });
 
     it('keeps the filters and page of an already-open tab when a column is picked', () => {
         const filters = [{ column: 'id', op: 'eq' as const, value: '7' }];
-        useBrowse.getState().openTable(1, 'users', {
+        useBrowse.getState().openTable('1', 'users', {
             mode: 'permanent',
             state: { filters, view: 'structure' },
         });
         useBrowse
             .getState()
-            .updateTable(1, tableTabOf(1, 'users')!.id, { page: 2 });
+            .updateTable('1', tableTabOf('1', 'users')!.id, { page: 2 });
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -100,17 +100,17 @@ describe('CommandPalette', () => {
         fireEvent.click(
             screen.getAllByRole('option', { name: /users\.id/ })[0],
         );
-        expect(useBrowse.getState().get(1).tabs[1]).toMatchObject({
+        expect(useBrowse.getState().get('1').tabs[1]).toMatchObject({
             state: { filters, page: 2, view: 'data' },
         });
     });
 
     it('keeps the inspector behaviour on Shift+Enter', () => {
         const fly = vi.spyOn(universe, 'flyTo');
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -118,7 +118,7 @@ describe('CommandPalette', () => {
         fireEvent.change(searchBox(), { target: { value: 'users' } });
         fireEvent.keyDown(searchBox(), { key: 'Enter', shiftKey: true });
         expect(useWorkspace.getState().selected).toBe('users');
-        expect(useBrowse.getState().get(1).activeId).toBe('universe');
+        expect(useBrowse.getState().get('1').activeId).toBe('universe');
         expect(fly).toHaveBeenCalledWith('users');
         expect(useWorkspace.getState().paletteOpen).toBe(false);
     });
@@ -127,7 +127,7 @@ describe('CommandPalette', () => {
         useWorkspace.getState().setPaletteOpen(true, 'tables');
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -140,17 +140,17 @@ describe('CommandPalette', () => {
         expect(screen.queryByText(/Open record/)).toBeNull();
         fireEvent.change(input, { target: { value: 'users' } });
         fireEvent.keyDown(input, { key: 'Enter' });
-        expect(useBrowse.getState().get(1).activeId).toBe(
-            tableTabOf(1, 'users')?.id,
+        expect(useBrowse.getState().get('1').activeId).toBe(
+            tableTabOf('1', 'users')?.id,
         );
         expect(useWorkspace.getState().paletteOpen).toBe(false);
     });
 
     it('activates the Universe tab before acting on the universe', () => {
-        useBrowse.getState().openTable(1, 'orders');
+        useBrowse.getState().openTable('1', 'orders');
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -158,7 +158,7 @@ describe('CommandPalette', () => {
         fireEvent.click(
             screen.getByRole('option', { name: 'Fit everything on screen' }),
         );
-        expect(useBrowse.getState().get(1).activeId).toBe('universe');
+        expect(useBrowse.getState().get('1').activeId).toBe('universe');
     });
 
     it('moves focus to the inspector heading after a Shift+Enter pick', async () => {
@@ -168,7 +168,7 @@ describe('CommandPalette', () => {
                     users
                 </h2>
                 <CommandPalette
-                    connectionId={1}
+                    connectionId="1"
                     snapshot={snap}
                     onRefresh={() => {}}
                 />
@@ -190,7 +190,7 @@ describe('CommandPalette', () => {
             <>
                 <textarea aria-label="sql" />
                 <CommandPalette
-                    connectionId={1}
+                    connectionId="1"
                     snapshot={snap}
                     onRefresh={() => {}}
                 />
@@ -214,7 +214,7 @@ describe('CommandPalette', () => {
                     users
                 </h2>
                 <CommandPalette
-                    connectionId={1}
+                    connectionId="1"
                     snapshot={snap}
                     onRefresh={() => {}}
                 />
@@ -235,7 +235,7 @@ describe('CommandPalette', () => {
         useWorkspace.getState().startPath('users');
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -256,7 +256,7 @@ describe('CommandPalette', () => {
         useWorkspace.getState().startPath('users');
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -271,7 +271,7 @@ describe('CommandPalette', () => {
         useWorkspace.getState().startPath('users');
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -296,7 +296,7 @@ describe('CommandPalette', () => {
         useWorkspace.getState().startPath('users');
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -311,7 +311,7 @@ describe('CommandPalette', () => {
         useWorkspace.getState().select('orders');
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -328,7 +328,7 @@ describe('CommandPalette', () => {
         window.addEventListener('dbzuper:wish', wished);
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -350,7 +350,7 @@ describe('CommandPalette', () => {
     it('offers no list or universe view switch', () => {
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -367,7 +367,7 @@ describe('CommandPalette', () => {
         const onRefresh = vi.fn();
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={onRefresh}
             />,
@@ -381,7 +381,7 @@ describe('CommandPalette', () => {
         useRecords.setState({ open });
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,
@@ -394,7 +394,7 @@ describe('CommandPalette', () => {
         expect(options[0]).toHaveTextContent('Open record users · 2');
         fireEvent.click(options[0]);
         expect(open).toHaveBeenCalledWith('users', { id: 2 });
-        expect(useBrowse.getState().get(1).activeId).toBe('records');
+        expect(useBrowse.getState().get('1').activeId).toBe('records');
         expect(useWorkspace.getState().paletteOpen).toBe(false);
     });
 
@@ -402,7 +402,7 @@ describe('CommandPalette', () => {
         const keyless = makeSnapshot([{ name: 'logs', primary_key: [] }]);
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={keyless}
                 onRefresh={() => {}}
             />,
@@ -421,7 +421,7 @@ describe('CommandPalette theme action', () => {
         initializeTheme();
         render(
             <CommandPalette
-                connectionId={1}
+                connectionId="1"
                 snapshot={snap}
                 onRefresh={() => {}}
             />,

@@ -253,7 +253,7 @@ describe('openRecord', () => {
     beforeEach(() => {
         useWorkspace.getState().reset();
         useBrowse.setState({ byConnection: {} });
-        useRecords.setState({ connectionId: 1 });
+        useRecords.setState({ connectionId: '1' });
     });
 
     it('opens the record in the store and activates the records tab', () => {
@@ -261,7 +261,7 @@ describe('openRecord', () => {
         useRecords.setState({ open });
         openRecord({ table: 'users', key: { id: 42 } });
         expect(open).toHaveBeenCalledWith('users', { id: 42 });
-        const browse = useBrowse.getState().get(1);
+        const browse = useBrowse.getState().get('1');
         expect(browse.activeId).toBe('records');
         expect(browse.tabs.find((t) => t.id === 'records')).toEqual({
             id: 'records',

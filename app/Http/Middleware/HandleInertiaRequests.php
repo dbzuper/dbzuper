@@ -71,7 +71,7 @@ class HandleInertiaRequests extends Middleware
             // Ids rise with inserts; ordering by id rides the (connection_id, id) index, created_at has none.
             ->latest('id')
             ->limit(3)
-            ->get(['id', 'connection_id', 'sql', 'created_at']);
+            ->get(['id', 'connection_id', 'database', 'sql', 'created_at']);
 
         return [
             'recentConnections' => $connections
@@ -90,6 +90,8 @@ class HandleInertiaRequests extends Middleware
                 'id' => $q->id,
                 'connection_id' => $q->connection_id,
                 'connection_name' => $connections[$q->connection_id]->name,
+                'database' => $q->database === '' ? null : $q->database,
+                'workspace_ref' => $q->workspaceRef(),
                 'color' => $connections[$q->connection_id]->color,
                 'sql' => mb_substr(self::firstLine($q->sql), 0, 120),
                 'created_at' => $q->created_at?->toIso8601String(),

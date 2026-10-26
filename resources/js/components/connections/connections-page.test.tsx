@@ -38,6 +38,8 @@ const ago = (minutes: number) =>
 function card(over: Partial<ConnectionCard>): ConnectionCard {
     return {
         id: 1,
+
+        ref: '1',
         name: 'Conn',
         driver: 'mysql',
         driver_label: 'MySQL',
@@ -51,6 +53,9 @@ function card(over: Partial<ConnectionCard>): ConnectionCard {
         color: null,
         store_history: true,
         last_opened_at: null,
+        server_level: false,
+        database_label: 'db',
+        last_database: null,
         tables: null,
         views: null,
         snapshot_at: null,
@@ -63,6 +68,8 @@ function card(over: Partial<ConnectionCard>): ConnectionCard {
 const fixtures: ConnectionCard[] = [
     card({
         id: 1,
+
+        ref: '1',
         name: 'Shipitlah Production',
         port: 13306,
         database: 'shipitlah',
@@ -72,16 +79,22 @@ const fixtures: ConnectionCard[] = [
         views: 4,
         snapshot_at: ago(12),
         last_opened_at: ago(12),
+        server_level: false,
+        last_database: null,
         pins: ['orders', 'shipments', 'couriers', 'users', 'zones'],
     }),
     card({
         id: 2,
+
+        ref: '2',
         name: 'Continental localhost',
         database: 'continental',
         tables: 48,
         views: 0,
         snapshot_at: ago(2 * 1440),
         last_opened_at: ago(1440),
+        server_level: false,
+        last_database: null,
     }),
     card({
         id: 3,
@@ -180,6 +193,31 @@ describe('connections page', () => {
         expect(
             screen.getByRole('list', { name: 'Connections' }),
         ).toBeInTheDocument();
+    });
+
+    it('shows a server-level connection as all databases', () => {
+        render(
+            <ConnectionsIndex
+                connections={[
+                    card({
+                        name: 'Local server',
+                        host: 'localhost',
+                        database: null,
+                        server_level: true,
+                        database_label: 'All databases',
+                    }),
+                ]}
+            />,
+        );
+        expect(
+            screen.getByText('localhost:3306 · All databases'),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByText('Pick a database to start'),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('link', { name: 'Open Local server' }),
+        ).toHaveAttribute('href', '/c/1');
     });
 
     it('shows the empty state without the summary or tools', () => {

@@ -30,7 +30,7 @@ vi.mock('@/grid/copy', async (orig) => ({
 
 import { ReviewDialog } from './review-dialog';
 
-const C = 1;
+const C = '1';
 const T = 'orders';
 const id1 = { key: { id: 1 } };
 const ref1 = refOf(id1);

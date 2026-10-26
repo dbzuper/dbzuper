@@ -1,7 +1,7 @@
 import type { TableActions } from '@/components/browse/table-context-menu';
 import { quoteIdent } from '@/grid/copy';
 import { useSqlTabs } from '@/sql/tabs-store';
-import type { ConnectionSummary } from '@/types/connection';
+import type { ConnectionSummary, WorkspaceRef } from '@/types/connection';
 import type { SchemaSnapshot } from '@/types/schema';
 import { universe } from '@/universe/controller';
 import { useWorkspace } from '@/universe/store';
@@ -15,7 +15,7 @@ import {
 
 /** Opens (or focuses) a table tab; the history panel closes so the tab is not hidden behind it. */
 export function openTableTab(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     table: string,
     opts?: {
         mode?: OpenMode;
@@ -31,7 +31,10 @@ export function openTableTab(
  * "Open in new tab": a further view of the table with default state when it is already open, else a
  * background tab as before.
  */
-export function openTableInNewTab(connectionId: number, table: string): void {
+export function openTableInNewTab(
+    connectionId: WorkspaceRef,
+    table: string,
+): void {
     if (latestTableTab(connectionId, table)) {
         useBrowse.getState().openNewView(connectionId, table);
         useWorkspace.getState().setHistoryOpen(false);
@@ -43,7 +46,7 @@ export function openTableInNewTab(connectionId: number, table: string): void {
  * of the table gets these filters in place of its own, else a new tab opens.
  */
 export function openTableFiltered(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     table: string,
     pairs: { column: string; value: string }[],
 ): void {
@@ -60,7 +63,10 @@ export function openTableFiltered(
 }
 
 /** Activates the Universe tab and selects (and flies to) a table there. */
-export function showInUniverse(connectionId: number, table: string): void {
+export function showInUniverse(
+    connectionId: WorkspaceRef,
+    table: string,
+): void {
     useBrowse.getState().activate(connectionId, 'universe');
     useWorkspace.getState().select(table);
     universe.flyTo(table);
@@ -74,7 +80,7 @@ export function makeTableActions(
     connection: ConnectionSummary,
     snapshot: SchemaSnapshot,
 ): TableActions {
-    const c = connection.id;
+    const c = connection.ref;
     return {
         open: (table, mode) => openTableTab(c, table, { mode }),
         structure: (table) =>

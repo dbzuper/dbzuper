@@ -1,4 +1,5 @@
-import { apiFetch } from '@/lib/http';
+import type { WorkspaceRef } from '@/types/connection';
+import { apiFetch, apiBase } from '@/lib/http';
 import type { StatementResultPayload } from '@/types/schema';
 
 export type StatementInput = {
@@ -15,18 +16,18 @@ export type RunResponse = {
 
 export const queryApi = {
     run: (
-        id: number,
+        id: WorkspaceRef,
         statements: StatementInput[],
         maxRows: number,
         signal?: AbortSignal,
     ) =>
-        apiFetch<RunResponse>(`/api/c/${id}/query`, {
+        apiFetch<RunResponse>(`${apiBase(id)}/query`, {
             method: 'POST',
             body: { statements, max_rows: maxRows },
             signal,
         }),
-    explain: (id: number, sql: string, signal?: AbortSignal) =>
-        apiFetch<RunResponse>(`/api/c/${id}/query/explain`, {
+    explain: (id: WorkspaceRef, sql: string, signal?: AbortSignal) =>
+        apiFetch<RunResponse>(`${apiBase(id)}/query/explain`, {
             method: 'POST',
             body: { sql },
             signal,

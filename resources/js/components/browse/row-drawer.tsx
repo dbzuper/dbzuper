@@ -64,12 +64,13 @@ import type {
     SchemaSnapshot,
     TableSchema,
 } from '@/types/schema';
+import type { WorkspaceRef } from '@/types/connection';
 
 /** How the drawer arrives: sliding in when it opens, or a header flash when it switches rows. */
 export type DrawerMotion = 'open' | 'change';
 
 type Props = {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     snapshot: SchemaSnapshot;
     table: TableSchema;
     columns: QueryColumn[];

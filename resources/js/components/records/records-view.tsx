@@ -298,7 +298,7 @@ function Explorer({
                                 type="button"
                                 aria-label={`Open ${noticeTable} in table tab`}
                                 onClick={() =>
-                                    openTableTab(connection.id, noticeTable, {
+                                    openTableTab(connection.ref, noticeTable, {
                                         mode: 'permanent',
                                     })
                                 }
@@ -334,7 +334,7 @@ export default function RecordsView({
     snapshot: SchemaSnapshot;
 }) {
     return (
-        <ReactFlowProvider key={connection.id}>
+        <ReactFlowProvider key={connection.ref}>
             <RecordsSnapshotContext.Provider value={snapshot}>
                 <Explorer connection={connection} snapshot={snapshot} />
             </RecordsSnapshotContext.Provider>

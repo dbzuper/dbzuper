@@ -9,6 +9,7 @@ describe('WorkspaceHeader shortcut help', () => {
                 connection={
                     {
                         id: 1,
+                        ref: '1',
                         name: 'x',
                         driver_label: 'MySQL',
                         read_only: false,
@@ -35,6 +36,7 @@ describe('WorkspaceHeader snapshot age', () => {
                 connection={
                     {
                         id: 1,
+                        ref: '1',
                         name: 'x',
                         driver_label: 'MySQL',
                         read_only: false,
@@ -57,6 +59,7 @@ describe('WorkspaceHeader connection pill', () => {
                 connection={
                     {
                         id: 1,
+                        ref: '1',
                         name: 'x',
                         driver_label: 'MySQL',
                         read_only: false,

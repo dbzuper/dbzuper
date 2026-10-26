@@ -39,6 +39,7 @@ const items = [
         id: 41,
         connection_id: 3,
         connection_name: 'Shipitlah',
+        database: null,
         color: '#e8590c',
         sql: '  select status, count(*) FROM orders\nGROUP BY status',
         created_at: minutesAgo(12),
@@ -47,6 +48,7 @@ const items = [
         id: 40,
         connection_id: 7,
         connection_name: 'Continental',
+        database: 'shop staging',
         color: null,
         sql: 'UPDATE couriers SET active = 1',
         created_at: minutesAgo(90),
@@ -87,7 +89,7 @@ describe('RecentQueries', () => {
         ).toHaveAttribute('href', '/c/3?history=41');
         expect(screen.getByRole('link', { name: /couriers/ })).toHaveAttribute(
             'href',
-            '/c/7?history=40',
+            '/c/7/shop%20staging?history=40',
         );
         expect(screen.getByRole('link', { name: 'All' })).toHaveAttribute(
             'href',

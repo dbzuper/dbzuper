@@ -28,6 +28,12 @@ class QueryHistoryEntry extends Model
         return $this->belongsTo(SavedConnection::class, 'connection_id');
     }
 
+    /** The workspace this entry ran in: see SavedConnection::workspaceRef(). */
+    public function workspaceRef(): string
+    {
+        return $this->database === '' ? (string) $this->connection_id : $this->connection_id.':'.$this->database;
+    }
+
     public function toApiArray(): array
     {
         return [

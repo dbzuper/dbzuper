@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type { SchemaSnapshot } from '@/types/schema';
 import { useActiveTab, useBrowse } from './browse-store';
+import type { WorkspaceRef } from '@/types/connection';
 
 const PARAM = 'tab';
 const VIEW_PARAM = 'view';
@@ -52,14 +53,14 @@ function writeTab(target: TabTarget | null) {
  * records tab removes them (records keep their own `?r=`).
  */
 export function useBrowseUrl(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     snapshot: SchemaSnapshot | null,
 ): void {
     const active = useActiveTab(connectionId);
     // Ids are stable and a tab's table and ordinal never change, so the id says when to rewrite.
     const activeTableId = active.kind === 'table' ? active.id : null;
     // The connection whose `?tab=` has been read; writes wait for it so the param is not lost first.
-    const restored = useRef<number | null>(null);
+    const restored = useRef<WorkspaceRef | null>(null);
 
     useEffect(() => {
         if (!snapshot || restored.current === connectionId) return;

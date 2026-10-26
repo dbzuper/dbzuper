@@ -1,4 +1,5 @@
 import type { LayoutPositionEntry } from '@/types/schema';
+import type { WorkspaceRef } from '@/types/connection';
 
 /**
  * Browsers reject `keepalive` bodies beyond 64 KiB in flight (summed over requests). The unload flush
@@ -42,7 +43,7 @@ export function changedEntries(
 }
 
 export type SendLayout = (
-    connectionId: number,
+    connectionId: WorkspaceRef,
     positions: LayoutPositionEntry[],
     opts: { keepalive: boolean; merge: boolean },
 ) => Promise<unknown>;
@@ -69,10 +70,10 @@ export type LayoutSaver = {
     replayStored: () => Promise<void>;
 };
 
-const storageKey = (connectionId: number) =>
+const storageKey = (connectionId: WorkspaceRef) =>
     `dbsuperb.layout-pending.${connectionId}`;
 
-function readStored(connectionId: number): LayoutPositionEntry[] {
+function readStored(connectionId: WorkspaceRef): LayoutPositionEntry[] {
     try {
         const raw = localStorage.getItem(storageKey(connectionId));
         const parsed: unknown = raw ? JSON.parse(raw) : [];
@@ -82,7 +83,10 @@ function readStored(connectionId: number): LayoutPositionEntry[] {
     }
 }
 
-function writeStored(connectionId: number, entries: LayoutPositionEntry[]) {
+function writeStored(
+    connectionId: WorkspaceRef,
+    entries: LayoutPositionEntry[],
+) {
     try {
         if (entries.length === 0)
             localStorage.removeItem(storageKey(connectionId));
@@ -107,7 +111,7 @@ const statusOf = (e: unknown) =>
  * unload flush uses keepalive.
  */
 export function createLayoutSaver(
-    connectionId: number,
+    connectionId: WorkspaceRef,
     send: SendLayout,
     onProblem: (problem: SaveProblem) => void,
 ): LayoutSaver {

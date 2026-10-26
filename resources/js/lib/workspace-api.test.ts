@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError } from './http';
+import { ApiError, apiBase } from './http';
 import { dbErrorFrom, workspaceApi } from './workspace-api';
 
 afterEach(() => vi.restoreAllMocks());
@@ -12,12 +12,31 @@ const ok = (body: unknown) =>
         }),
     );
 
+describe('apiBase', () => {
+    it('addresses a fixed connection by id', () => {
+        expect(apiBase('5')).toBe('/api/c/5');
+    });
+
+    it('encodes the database part of a ref but keeps the colon', () => {
+        expect(apiBase('5:shop staging/x')).toBe('/api/c/5:shop%20staging%2Fx');
+        expect(apiBase('5:données')).toBe('/api/c/5:donn%C3%A9es');
+    });
+});
+
 describe('workspaceApi', () => {
+    it('calls the API of the database a ref names', async () => {
+        const fetchMock = vi
+            .spyOn(globalThis, 'fetch')
+            .mockImplementation(() => ok({ tables: [] }));
+        await workspaceApi.schema('5:a b');
+        expect(fetchMock.mock.calls[0][0]).toBe('/api/c/5:a%20b/schema');
+    });
+
     it('encodes table names in sample and ddl URLs', async () => {
         const fetchMock = vi
             .spyOn(globalThis, 'fetch')
             .mockImplementation(() => ok({ ddl: null }));
-        await workspaceApi.ddl(7, 'my table/é');
+        await workspaceApi.ddl('7', 'my table/é');
         expect(fetchMock.mock.calls[0][0]).toBe(
             '/api/c/7/tables/my%20table%2F%C3%A9/ddl',
         );
@@ -27,7 +46,7 @@ describe('workspaceApi', () => {
         const fetchMock = vi
             .spyOn(globalThis, 'fetch')
             .mockImplementation(() => ok({ saved: true }));
-        await workspaceApi.saveLayout(3, [
+        await workspaceApi.saveLayout('3', [
             { table: 'a', x: 1, y: 2, pinned: true },
         ]);
         const [url, init] = fetchMock.mock.calls[0];

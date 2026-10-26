@@ -5,6 +5,13 @@ import type {
     MySqlSslMode,
 } from '@/types/connection';
 
+/** The workspace page of a connection, or of one database of a server-level connection. */
+export function workspaceUrl(id: number, database: string | null): string {
+    return database === null
+        ? `/c/${id}`
+        : `/c/${id}/${encodeURIComponent(database)}`;
+}
+
 export function isServerDriver(driver: DriverValue): boolean {
     return driver !== 'sqlite';
 }

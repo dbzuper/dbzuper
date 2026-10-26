@@ -34,9 +34,10 @@ import { firstViewRatio, zoomLevelFor } from '@/universe/zoom';
 import { ClusterLabels } from './cluster-labels';
 import { Legend } from './legend';
 import { TableCards } from './table-cards';
+import type { WorkspaceRef } from '@/types/connection';
 
 type Props = {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     model: UniverseModel;
     snapshot: SchemaSnapshot;
     onRelayout: () => void;

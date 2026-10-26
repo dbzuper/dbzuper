@@ -87,7 +87,7 @@ describe('InspectorPanel', () => {
     it('has a programmatically focusable heading for the command palette to land on', () => {
         render(
             <InspectorPanel
-                connectionId={1}
+                connectionId="1"
                 snapshot={snapshot}
                 table={orders}
             />,
@@ -100,7 +100,7 @@ describe('InspectorPanel', () => {
     it('reads a power level over 9,000 rows', () => {
         const { rerender } = render(
             <InspectorPanel
-                connectionId={1}
+                connectionId="1"
                 snapshot={snapshot}
                 table={orders}
             />,
@@ -109,7 +109,7 @@ describe('InspectorPanel', () => {
 
         rerender(
             <InspectorPanel
-                connectionId={1}
+                connectionId="1"
                 snapshot={snapshot}
                 table={{ ...orders, row_count: { count: 9001, kind: 'exact' } }}
             />,
@@ -123,7 +123,7 @@ describe('InspectorPanel', () => {
     it('lists columns with key markers', () => {
         render(
             <InspectorPanel
-                connectionId={1}
+                connectionId="1"
                 snapshot={snapshot}
                 table={orders}
             />,
@@ -142,7 +142,7 @@ describe('InspectorPanel', () => {
         useWorkspace.getState().setInspectorTab('relationships');
         render(
             <InspectorPanel
-                connectionId={1}
+                connectionId="1"
                 snapshot={snapshot}
                 table={orders}
             />,
@@ -156,7 +156,7 @@ describe('InspectorPanel', () => {
         useWorkspace.getState().setInspectorTab('ddl');
         render(
             <InspectorPanel
-                connectionId={1}
+                connectionId="1"
                 snapshot={snapshot}
                 table={orders}
             />,
@@ -172,7 +172,7 @@ describe('InspectorPanel', () => {
     it('starts the path finder and focus mode from the header', () => {
         render(
             <InspectorPanel
-                connectionId={1}
+                connectionId="1"
                 snapshot={snapshot}
                 table={orders}
             />,
@@ -189,16 +189,16 @@ describe('InspectorPanel', () => {
     it('opens the table data in a tab', () => {
         render(
             <InspectorPanel
-                connectionId={1}
+                connectionId="1"
                 snapshot={snapshot}
                 table={snapshot.tables[1]}
             />,
         );
         expect(screen.queryByRole('tab', { name: 'Data' })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Open data' }));
-        const browse = useBrowse.getState().get(1);
-        expect(browse.activeId).toBe(tableTabOf(1, 'users')?.id);
-        expect(tableTabOf(1, 'users')).toMatchObject({
+        const browse = useBrowse.getState().get('1');
+        expect(browse.activeId).toBe(tableTabOf('1', 'users')?.id);
+        expect(tableTabOf('1', 'users')).toMatchObject({
             preview: false,
         });
     });

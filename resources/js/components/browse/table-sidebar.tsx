@@ -38,6 +38,7 @@ import type { Pin } from '@/lib/pins-api';
 import { searchSchema } from '@/universe/search';
 import type { SchemaSnapshot, TableSchema } from '@/types/schema';
 import { TableContextMenu, type TableActions } from './table-context-menu';
+import type { WorkspaceRef } from '@/types/connection';
 
 export const SIDEBAR_SEARCH_ID = 'table-sidebar-search';
 const ROW_HEIGHT = 28;
@@ -77,7 +78,7 @@ const rowLabel = (name: string, count: string) =>
         : `${name}, ${count} ${count === '1' ? 'row' : 'rows'}`;
 
 type RowProps = {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     table: TableSchema;
     section: Section;
     active: boolean;
@@ -337,7 +338,7 @@ export function TableSidebar({
     snapshot,
     actions,
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     snapshot: SchemaSnapshot;
     actions: TableActions;
 }) {
@@ -445,7 +446,7 @@ export function TableSidebar({
 
     // On mount and whenever the active table changes, its group opens (not saved to the prefs).
     const [seenActive, setSeenActive] = useState<{
-        connectionId: number;
+        connectionId: WorkspaceRef;
         table: string | null;
     } | null>(null);
     if (

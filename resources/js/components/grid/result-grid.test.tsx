@@ -884,7 +884,7 @@ describe('editing', () => {
         ['Linus', 3],
     ];
     const editing = (over: Partial<GridEditing> = {}): GridEditing => ({
-        connectionId: 1,
+        connectionId: '1',
         table: 'users',
         dialect: 'pgsql',
         rowIds: [{ key: { id: 1 } }, { key: { id: 2 } }, null],
@@ -943,7 +943,7 @@ describe('editing', () => {
     it('stages the open editor’s draft before Ctrl+S opens Review, so the preview includes it', () => {
         flushBrowse();
         useBrowse.setState({ byConnection: {} });
-        useBrowse.getState().openTable(1, 'users', { mode: 'permanent' });
+        useBrowse.getState().openTable('1', 'users', { mode: 'permanent' });
         useReview.setState({ open: null, nonce: 0 });
         renderGrid();
         const input = edit('Ada');
@@ -956,11 +956,11 @@ describe('editing', () => {
             cancelable: true,
         });
         act(() => {
-            dispatchBrowseKey(e, 1, true);
+            dispatchBrowseKey(e, '1', true);
         });
         expect(pending()[ref1]).toMatchObject({ values: { name: 'Ada L.' } });
         expect(useReview.getState().open).toEqual({
-            connectionId: 1,
+            connectionId: '1',
             table: 'users',
         });
         expect(screen.queryByRole('textbox')).toBeNull();
@@ -1119,7 +1119,7 @@ describe('editing', () => {
         const first = screen.getAllByRole('gridcell', { name: /^Same/ })[0];
         fireEvent.mouseDown(first);
         fireEvent.keyDown(first, { key: 'Delete' });
-        expect(usePending.getState().count(1, 'users')).toEqual({
+        expect(usePending.getState().count('1', 'users')).toEqual({
             inserted: 0,
             updated: 0,
             deleted: 2,
@@ -1135,12 +1135,12 @@ describe('editing', () => {
     it('outlines a row whose change failed to commit, with the error in its tooltip, until it is edited', () => {
         renderGrid();
         act(() => {
-            usePending.getState().markDelete(1, 'users', {
+            usePending.getState().markDelete('1', 'users', {
                 ref: ref1,
                 id: { key: { id: 1 } },
                 original: {},
             });
-            usePending.getState().setErrors(1, 'users', {
+            usePending.getState().setErrors('1', 'users', {
                 [ref1]: 'row changed since you loaded it',
             });
         });
@@ -1150,7 +1150,7 @@ describe('editing', () => {
             row.querySelector('[title*="row changed since you loaded it"]'),
         ).not.toBeNull();
         expect(row).toHaveTextContent('row changed since you loaded it');
-        act(() => usePending.getState().unmarkDelete(1, 'users', ref1));
+        act(() => usePending.getState().unmarkDelete('1', 'users', ref1));
         expect(cell(/Ada/).closest('[role="row"]')).not.toHaveClass(
             'rdg-row-error',
         );
@@ -1173,7 +1173,7 @@ describe('editing', () => {
         fireEvent.click(
             within(toolbar()!).getByRole('button', { name: 'Delete 2 rows' }),
         );
-        expect(usePending.getState().count(1, 'users')).toEqual({
+        expect(usePending.getState().count('1', 'users')).toEqual({
             inserted: 0,
             updated: 0,
             deleted: 2,
@@ -1189,7 +1189,7 @@ describe('editing', () => {
         fireEvent.click(
             within(toolbar()!).getByRole('button', { name: 'Restore 1 row' }),
         );
-        expect(usePending.getState().count(1, 'users').deleted).toBe(1);
+        expect(usePending.getState().count('1', 'users').deleted).toBe(1);
         expect(toolbar()).toBeNull();
         // A mix of marked and unmarked rows still offers Delete.
         fireEvent.click(boxes()[0]);
@@ -1258,7 +1258,7 @@ describe('editing', () => {
         renderGrid({ onOpenRow: vi.fn() });
         const columnsBefore = screen.getAllByRole('columnheader').length;
         act(() =>
-            usePending.getState().markDelete(1, 'users', {
+            usePending.getState().markDelete('1', 'users', {
                 ref: ref1,
                 id: { key: { id: 1 } },
                 original: {},
@@ -1277,7 +1277,7 @@ describe('editing', () => {
     });
 
     it('shows new rows at the top with default placeholders and flags required columns', () => {
-        const ref = usePending.getState().addRow(1, 'users');
+        const ref = usePending.getState().addRow('1', 'users');
         renderGrid();
         const first = screen.getAllByRole('row')[1];
         expect(first).toHaveClass('rdg-row-new');
@@ -1373,9 +1373,9 @@ describe('editing', () => {
 
     it('keeps a selected new row selected when an older new row goes', async () => {
         const store = usePending.getState();
-        const a = store.addRow(1, 'users');
-        const b = store.addRow(1, 'users');
-        const c = store.addRow(1, 'users');
+        const a = store.addRow('1', 'users');
+        const b = store.addRow('1', 'users');
+        const c = store.addRow('1', 'users');
         renderGrid();
         // Newest first: c, b, a.
         const boxes = () => screen.getAllByRole('checkbox', { name: 'Select' });
@@ -1471,7 +1471,7 @@ describe('editing a date cell', () => {
         comment: null,
     });
     const dateEditing = (): GridEditing => ({
-        connectionId: 1,
+        connectionId: '1',
         table: 'orders',
         dialect: 'pgsql',
         rowIds: [{ key: { id: 1 } }],
@@ -1616,7 +1616,7 @@ describe('clearing a cell', () => {
                     ]}
                     rows={[[value]]}
                     editing={{
-                        connectionId: 1,
+                        connectionId: '1',
                         table: 'things',
                         dialect: 'mysql',
                         rowIds: [{ key: { id: 1 } }],
@@ -1676,7 +1676,7 @@ describe('clearing a cell', () => {
     });
 
     it('stages NULL for a typed integer cleared in a new row', () => {
-        const added = usePending.getState().addRow(1, 'things');
+        const added = usePending.getState().addRow('1', 'things');
         renderColumn(meta('created_by', 'int'), 7);
         fireEvent.doubleClick(
             screen.getByRole('gridcell', { name: /\(default\)/ }),

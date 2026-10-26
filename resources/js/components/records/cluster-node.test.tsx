@@ -97,13 +97,13 @@ describe('ClusterNode', () => {
 
     it('Open in table tab opens the table tab filtered on every key column', () => {
         mount(5);
-        useRecords.setState({ connectionId: 1 });
+        useRecords.setState({ connectionId: '1' });
         fireEvent.click(
             screen.getByRole('button', { name: 'Open in table tab' }),
         );
-        const browse = useBrowse.getState().get(1);
-        expect(browse.activeId).toBe(tableTabOf(1, 'order_items')?.id);
-        expect(tableTabOf(1, 'order_items')).toMatchObject({
+        const browse = useBrowse.getState().get('1');
+        expect(browse.activeId).toBe(tableTabOf('1', 'order_items')?.id);
+        expect(tableTabOf('1', 'order_items')).toMatchObject({
             preview: false,
             state: {
                 filters: [

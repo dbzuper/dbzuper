@@ -12,7 +12,7 @@ import {
 import type { CSSProperties } from 'react';
 import { ConnectionMenu } from '@/components/connections/connection-menu';
 import { StarMap } from '@/components/connections/star-map';
-import { formatConnectionTarget, formatSnapshotAge } from '@/lib/format';
+import { formatCardTarget, formatSnapshotAge } from '@/lib/format';
 import { prefetchWorkspace } from '@/lib/prefetch-workspace';
 import { cn } from '@/lib/utils';
 import type { ConnectionCard as Card, DriverValue } from '@/types/connection';
@@ -139,7 +139,7 @@ export function ConnectionCard({
                     </Link>
                 </h2>
                 <div className="truncate font-mono text-xs text-muted-foreground">
-                    {formatConnectionTarget(c)}
+                    {formatCardTarget(c)}
                 </div>
                 <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-muted-foreground [&_svg]:size-[13px] [&_svg]:shrink-0">
                     {c.tables !== null && (
@@ -168,7 +168,9 @@ export function ConnectionCard({
                 <div className="flex flex-wrap items-center gap-1.5">
                     {c.pins.length === 0 ? (
                         <span className="text-xs text-muted-foreground">
-                            No pinned tables yet
+                            {c.server_level
+                                ? 'Pick a database to start'
+                                : 'No pinned tables yet'}
                         </span>
                     ) : (
                         c.pins.slice(0, PIN_CHIPS).map((table) => (

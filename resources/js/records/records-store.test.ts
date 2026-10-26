@@ -66,7 +66,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 beforeEach(() => {
     vi.resetAllMocks();
     s().reset();
-    s().setConnection(7);
+    s().setConnection('7');
     api.show.mockImplementation(
         (_c: number, table: string, key: { id: number }) =>
             Promise.resolve(payload(table, key.id)),
@@ -82,7 +82,7 @@ describe('open', () => {
         await vi.waitFor(() => expect(s().records[root].status).toBe('ready'));
         expect(s().records[root].payload?.values[1]).toBe('orders 1');
         expect(api.show.mock.calls[0].slice(0, 3)).toEqual([
-            7,
+            '7',
             'orders',
             { id: 1 },
         ]);
@@ -695,7 +695,7 @@ describe('Back/Forward payload cache', () => {
         await expanded(1);
         const full = structuredClone(s().trail);
         s().setTrail(openRoot('orders', { id: 1 }));
-        s().setConnection(8);
+        s().setConnection('8');
         api.show.mockClear();
         s().setTrail(full);
         await vi.waitFor(() => expect(api.show).toHaveBeenCalledTimes(2));
@@ -735,7 +735,7 @@ describe('dragged positions', () => {
         s().open('orders', { id: 2 });
         expect(s().dragged).toEqual({});
         s().moveNodes({ x: { x: 1, y: 1 } });
-        s().setConnection(9);
+        s().setConnection('9');
         expect(s().dragged).toEqual({});
         s().moveNodes({ x: { x: 1, y: 1 } });
         s().reset();

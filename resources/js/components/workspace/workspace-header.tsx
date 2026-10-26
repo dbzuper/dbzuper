@@ -4,6 +4,7 @@ import { ArrowLeft, Keyboard, RefreshCw, Search } from 'lucide-react';
 import { SHORTCUTS } from '@/browse/shortcuts';
 import { AppearanceMenu } from '@/components/appearance-menu';
 import { Button } from '@/components/ui/button';
+import { DatabaseSwitcher } from '@/components/workspace/database-switcher';
 import { paletteShortcutHint } from '@/lib/platform';
 import type { ConnectionSummary } from '@/types/connection';
 import { useWorkspace } from '@/universe/store';
@@ -44,6 +45,12 @@ export function WorkspaceHeader({ connection, loading, onRefresh }: Props) {
                     {connection.driver_label}
                 </span>
             </div>
+            {connection.server_level && (
+                <>
+                    <span className="text-muted-foreground/40">/</span>
+                    <DatabaseSwitcher connection={connection} />
+                </>
+            )}
             {connection.read_only && (
                 <span className="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">
                     read-only

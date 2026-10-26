@@ -99,7 +99,7 @@ describe('UniverseCanvas', () => {
 
         render(
             <UniverseCanvas
-                connectionId={1}
+                connectionId="1"
                 model={model}
                 snapshot={snapshot}
                 onRelayout={() => undefined}
@@ -131,7 +131,7 @@ describe('UniverseCanvas', () => {
 
         render(
             <UniverseCanvas
-                connectionId={1}
+                connectionId="1"
                 model={model}
                 snapshot={snapshot}
                 onRelayout={() => undefined}
@@ -187,7 +187,7 @@ describe('UniverseCanvas resize', () => {
         const model = { graph, clusters: assignClusters(graph) };
         const { unmount } = render(
             <UniverseCanvas
-                connectionId={1}
+                connectionId="1"
                 model={model}
                 snapshot={snapshot}
                 onRelayout={() => undefined}
@@ -243,7 +243,7 @@ describe('UniverseCanvas resize', () => {
 
         render(
             <UniverseCanvas
-                connectionId={1}
+                connectionId="1"
                 model={model}
                 snapshot={snapshot}
                 onRelayout={() => undefined}
@@ -276,7 +276,7 @@ describe('UniverseCanvas resize', () => {
         const model = { graph, clusters: assignClusters(graph) };
         render(
             <UniverseCanvas
-                connectionId={7}
+                connectionId="7"
                 model={model}
                 snapshot={snapshot}
                 onRelayout={() => undefined}
@@ -293,8 +293,8 @@ describe('UniverseCanvas resize', () => {
             }),
         );
         expect(preventSigmaDefault).toHaveBeenCalled();
-        const browse = useBrowse.getState().get(7);
-        expect(browse.activeId).toBe(tableTabOf(7, node)?.id);
+        const browse = useBrowse.getState().get('7');
+        expect(browse.activeId).toBe(tableTabOf('7', node)?.id);
         expect(browse.tabs[1]).toMatchObject({ preview: false });
     });
 });

@@ -10,6 +10,7 @@ import {
     ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { writeClipboard } from '@/grid/copy';
+import type { WorkspaceRef } from '@/types/connection';
 
 export type TableActions = {
     open: (table: string, mode: OpenMode) => void;
@@ -24,7 +25,7 @@ export function TableContextMenu({
     actions,
     children,
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     table: string;
     actions: TableActions;
     children: ReactNode;

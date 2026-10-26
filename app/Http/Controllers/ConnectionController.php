@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Database\Schema\StarMap;
 use App\Enums\DriverName;
 use App\Http\Requests\ConnectionRequest;
+use App\Models\LayoutPosition;
 use App\Models\SavedConnection;
 use App\Models\StoredSnapshot;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -30,7 +32,8 @@ class ConnectionController extends Controller
         $snapshots = StoredSnapshot::query()
             ->select('id', 'connection_id', 'table_count', 'view_count', 'preview', 'created_at')
             ->whereIn('id', StoredSnapshot::query()->selectRaw('max(id)')
-                ->whereIn('connection_id', $connections->modelKeys())->groupBy('connection_id'))
+                // Server-level connections have no connection-wide snapshot: theirs belong to single databases.
+                ->whereIn('connection_id', $connections->modelKeys())->where('database', '')->groupBy('connection_id'))
             ->get()->keyBy('connection_id');
 
         return Inertia::render('connections/index', [
@@ -39,6 +42,7 @@ class ConnectionController extends Controller
 
                 return [
                     ...$connection->toClientArray(),
+                    'database_label' => $connection->isServerLevel() ? 'All databases' : $connection->database,
                     'tables' => $latest?->table_count,
                     'views' => $latest?->view_count,
                     'snapshot_at' => $latest?->created_at->toIso8601String(),
@@ -72,12 +76,31 @@ class ConnectionController extends Controller
     {
         Gate::authorize('update', $connection);
         $before = $this->schemaSource($connection);
+        $oldDatabase = $connection->database;
         $connection->update($request->connectionAttributes());
+        $after = $this->schemaSource($connection);
+        if ($after === $before) {
+            return redirect()->route('connections.index');
+        }
+
+        $sameServer = array_diff_key($after, ['database' => 1]) === array_diff_key($before, ['database' => 1]);
+        if ($sameServer && filled($oldDatabase) && $connection->isServerLevel()) {
+            // Fixed → server-level on the same server: what was saved still describes that one database.
+            foreach (self::PER_DATABASE_TABLES as $table) {
+                DB::table($table)->where('connection_id', $connection->id)->where('database', '')->update(['database' => $oldDatabase]);
+            }
+
+            return redirect()->route('connections.index');
+        }
 
         // A snapshot describes one server/database/schema; once the connection points elsewhere it is stale.
-        if ($this->schemaSource($connection) !== $before) {
-            $connection->snapshots()->delete();
-            $connection->layout()->delete();
+        StoredSnapshot::query()->where('connection_id', $connection->id)->delete();
+        LayoutPosition::query()->where('connection_id', $connection->id)->delete();
+        if (blank($oldDatabase) && ! $connection->isServerLevel()) {
+            // Server-level → fixed: pins and history of single databases have nowhere to go.
+            foreach (['pinned_tables', 'query_history'] as $table) {
+                DB::table($table)->where('connection_id', $connection->id)->where('database', '<>', '')->delete();
+            }
         }
 
         return redirect()->route('connections.index');
@@ -91,15 +114,18 @@ class ConnectionController extends Controller
         return redirect()->route('connections.index');
     }
 
+    /** Tables whose rows describe one database of a connection (see the `database` column). */
+    private const PER_DATABASE_TABLES = ['schema_snapshots', 'layout_positions', 'pinned_tables', 'query_history'];
+
     /** The values that decide which schema a snapshot describes. */
     private function schemaSource(SavedConnection $connection): array
     {
         return [
-            $connection->driver->value,
-            (string) $connection->host,
-            (int) $connection->port,
-            (string) $connection->database,
-            (string) ($connection->options['schema'] ?? 'public'),
+            'driver' => $connection->driver->value,
+            'host' => (string) $connection->host,
+            'port' => (int) $connection->port,
+            'database' => (string) $connection->database,
+            'schema' => (string) ($connection->options['schema'] ?? 'public'),
         ];
     }
 

@@ -7,6 +7,7 @@ import { formatSnapshotAge } from '@/lib/format';
 import { historyApi } from '@/lib/history-api';
 import type { HistoryEntry, HistoryParams } from '@/lib/history-api';
 import { useWorkspace } from '@/universe/store';
+import type { WorkspaceRef } from '@/types/connection';
 
 type StatusFilter = 'all' | 'ok' | 'error';
 
@@ -25,7 +26,7 @@ export function HistoryList({
     connections,
     onOpen,
 }: {
-    connectionId: number | null;
+    connectionId: WorkspaceRef | null;
     connections?: { id: number; name: string }[];
     onOpen: (entry: HistoryEntry) => void;
 }) {
@@ -222,7 +223,9 @@ export function HistoryList({
                                 <p className="mt-0.5 text-xs text-muted-foreground">
                                     {e.connection && (
                                         <span className="mr-2 font-medium">
-                                            {e.connection.name}
+                                            {e.database
+                                                ? `${e.connection.name} · ${e.database}`
+                                                : e.connection.name}
                                         </span>
                                     )}
                                     {formatSnapshotAge(e.created_at)} ·{' '}

@@ -4,7 +4,7 @@ import { refOf, usePending } from '@/editing/pending-store';
 import { useReview } from '@/editing/review-store';
 import { PendingBar } from './pending-bar';
 
-const C = 1;
+const C = '1';
 const T = 'orders';
 
 function stage() {

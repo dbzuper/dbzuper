@@ -29,6 +29,7 @@ import {
 import { useReview } from '@/editing/review-store';
 import { writeClipboard } from '@/grid/copy';
 import { cn } from '@/lib/utils';
+import type { WorkspaceRef } from '@/types/connection';
 
 const NO_ROWS: Record<RowRef, PendingRow> = {};
 
@@ -72,7 +73,7 @@ export function ReviewDialog({
     table,
     onCommitted,
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     table: string;
     /** After a successful commit, once the pending changes are cleared: refetch the rows. */
     onCommitted: () => void;

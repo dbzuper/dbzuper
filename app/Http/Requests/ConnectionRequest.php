@@ -24,6 +24,7 @@ class ConnectionRequest extends FormRequest
     public function rules(): array
     {
         $server = Rule::requiredIf(fn () => $this->input('driver') !== DriverName::Sqlite->value);
+        $sqlite = Rule::requiredIf(fn () => $this->input('driver') === DriverName::Sqlite->value);
 
         $dsn = $this->dsnSafe();
 
@@ -33,7 +34,8 @@ class ConnectionRequest extends FormRequest
             'driver' => ['required', Rule::enum(DriverName::class)],
             'host' => [$server, 'nullable', 'string', 'max:255', $dsn],
             'port' => ['nullable', 'integer', 'between:1,65535'],
-            'database' => ['required', 'string', 'max:1024', $dsn],
+            // Blank for a server driver: a server-level connection that can open every database.
+            'database' => [$sqlite, 'nullable', 'string', 'max:1024', $dsn],
             'username' => [$server, 'nullable', 'string', 'max:255', $dsn],
             'password' => ['nullable', 'string', 'max:1024'],
             'clear_password' => ['sometimes', 'boolean'],
@@ -177,7 +179,7 @@ class ConnectionRequest extends FormRequest
             'driver' => $driver,
             'host' => $driver->isServer() ? $this->input('host') : null,
             'port' => $driver->isServer() ? ($this->input('port') ?: $driver->defaultPort()) : null,
-            'database' => $this->input('database'),
+            'database' => filled($this->input('database')) ? $this->input('database') : null,
             'username' => $driver->isServer() ? $this->input('username') : null,
             'options' => self::persistedOptions($driver, (array) $this->input('options', [])),
             'read_only' => $this->boolean('read_only'),

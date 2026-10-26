@@ -53,7 +53,7 @@ class LayoutController extends Controller
         // Saves of one connection run one at a time, so a merge never reads a layout a concurrent
         // save is about to replace.
         try {
-            Cache::lock("layout:{$connection->id}", 10)->block(self::LOCK_WAIT_SECONDS, function () use ($request, $connection, $positions) {
+            Cache::lock('layout:'.$connection->workspaceRef(), 10)->block(self::LOCK_WAIT_SECONDS, function () use ($request, $connection, $positions) {
                 if ($request->boolean('merge')) {
                     $positions = $this->merged($connection, $positions);
                 }

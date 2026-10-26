@@ -18,14 +18,14 @@ class HistoryController extends Controller
     {
         Gate::authorize('view', $connection);
 
-        return $this->page($request, QueryHistoryEntry::query()->where('connection_id', $connection->id), false);
+        return $this->page($request, $connection->history()->getQuery(), false);
     }
 
     public function show(SavedConnection $connection, int $entry): JsonResponse
     {
         Gate::authorize('view', $connection);
 
-        $found = QueryHistoryEntry::query()->where('connection_id', $connection->id)->findOrFail($entry);
+        $found = $connection->history()->findOrFail($entry);
 
         return response()->json($found->toApiArray());
     }
@@ -74,7 +74,11 @@ class HistoryController extends Controller
         $entries = $entries->take(self::PER_PAGE);
 
         return response()->json([
-            'entries' => $entries->map(fn (QueryHistoryEntry $e) => $e->toApiArray() + ($withConnection ? ['connection' => ['id' => $e->connection->id, 'name' => $e->connection->name]] : []))->values(),
+            'entries' => $entries->map(fn (QueryHistoryEntry $e) => $e->toApiArray() + ($withConnection ? [
+                'connection' => ['id' => $e->connection->id, 'name' => $e->connection->name],
+                'database' => $e->database === '' ? null : $e->database,
+                'workspace_ref' => $e->workspaceRef(),
+            ] : []))->values(),
             'next_before_id' => $more ? $entries->last()->id : null,
         ]);
     }

@@ -41,6 +41,8 @@ import WorkspaceShow from '@/pages/workspace/show';
 
 const connection = {
     id: 1,
+
+    ref: '1',
     name: 'Shop',
     driver: 'sqlite' as const,
     driver_label: 'SQLite',
@@ -54,6 +56,8 @@ const connection = {
     color: null,
     store_history: true,
     last_opened_at: null,
+    server_level: false,
+    last_database: null,
 };
 
 const savedLayout: LayoutPositionEntry[] = [
@@ -95,7 +99,7 @@ describe('workspace layout saving', () => {
         expect(api.saveLayout).not.toHaveBeenCalled();
         act(() => void window.dispatchEvent(new Event('pagehide')));
         expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(
-            1,
+            '1',
             [dragged[0]],
             {
                 keepalive: true,
@@ -113,7 +117,7 @@ describe('workspace layout saving', () => {
         act(() => void document.dispatchEvent(new Event('visibilitychange')));
         visibility.mockRestore();
         expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(
-            1,
+            '1',
             [dragged[0]],
             {
                 keepalive: true,
@@ -127,7 +131,7 @@ describe('workspace layout saving', () => {
         act(() => canvas.props!.onPositionsChanged(dragged));
         view.unmount();
         expect(api.saveLayout).toHaveBeenCalledExactlyOnceWith(
-            1,
+            '1',
             [dragged[0]],
             {
                 keepalive: true,

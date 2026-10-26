@@ -19,6 +19,7 @@ import {
 import { pickPathTarget } from '@/universe/path-pick';
 import { searchSchema } from '@/universe/search';
 import { useWorkspace } from '@/universe/store';
+import type { WorkspaceRef } from '@/types/connection';
 
 const itemClass =
     'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm aria-selected:bg-muted';
@@ -28,7 +29,7 @@ export function CommandPalette({
     snapshot,
     onRefresh,
 }: {
-    connectionId: number;
+    connectionId: WorkspaceRef;
     snapshot: SchemaSnapshot;
     onRefresh: () => void;
 }) {

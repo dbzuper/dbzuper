@@ -11,17 +11,17 @@ const actions = {
     showInUniverse: vi.fn(),
 };
 const st = () => useBrowse.getState();
-const tableTabId = (table: string) => tableTabOf(1, table)?.id;
+const tableTabId = (table: string) => tableTabOf('1', table)?.id;
 
 beforeEach(() => {
     useBrowse.setState({ byConnection: {} });
-    st().openTable(1, 'users', { mode: 'permanent' });
-    st().openTable(1, 'orders');
+    st().openTable('1', 'users', { mode: 'permanent' });
+    st().openTable('1', 'orders');
 });
 
 describe('TabBar', () => {
     it('renders Universe first, marks the preview tab and selects the active one', () => {
-        render(<TabBar connectionId={1} actions={actions} />);
+        render(<TabBar connectionId="1" actions={actions} />);
         const tabs = screen.getAllByRole('tab');
         expect(tabs.map((t) => t.textContent)).toEqual([
             'Universe',
@@ -34,11 +34,11 @@ describe('TabBar', () => {
     });
 
     it('activates on click, promotes on double-click, closes on middle-click and ×', () => {
-        render(<TabBar connectionId={1} actions={actions} />);
+        render(<TabBar connectionId="1" actions={actions} />);
         fireEvent.click(screen.getByRole('tab', { name: /users/ }));
-        expect(st().get(1).activeId).toBe(tableTabId('users'));
+        expect(st().get('1').activeId).toBe(tableTabId('users'));
         fireEvent.doubleClick(screen.getByRole('tab', { name: /orders/ }));
-        const orders = st().get(1).tabs[2];
+        const orders = st().get('1').tabs[2];
         expect(orders.kind === 'table' && orders.preview).toBe(false);
         fireEvent(
             screen.getByRole('tab', { name: /orders/ }),
@@ -46,19 +46,19 @@ describe('TabBar', () => {
         );
         expect(
             st()
-                .get(1)
+                .get('1')
                 .tabs.map((t) => t.id),
         ).toEqual(['universe', tableTabId('users')]);
         fireEvent.click(screen.getByTitle('Close users'));
         expect(
             st()
-                .get(1)
+                .get('1')
                 .tabs.map((t) => t.id),
         ).toEqual(['universe']);
     });
 
     it('supports arrow-key focus movement and Delete to close', () => {
-        render(<TabBar connectionId={1} actions={actions} />);
+        render(<TabBar connectionId="1" actions={actions} />);
         const active = screen.getByRole('tab', { selected: true });
         active.focus();
         fireEvent.keyDown(active, { key: 'ArrowLeft' });
@@ -68,7 +68,7 @@ describe('TabBar', () => {
         fireEvent.keyDown(document.activeElement!, { key: 'Delete' });
         expect(
             st()
-                .get(1)
+                .get('1')
                 .tabs.map((t) => t.id),
         ).toEqual(['universe', tableTabId('orders')]);
     });
@@ -77,8 +77,8 @@ describe('TabBar', () => {
         const filters = [
             { column: 'status', op: 'eq' as const, value: 'paid' },
         ];
-        st().updateTable(1, tableTabId('orders')!, { filters });
-        render(<TabBar connectionId={1} actions={actions} />);
+        st().updateTable('1', tableTabId('orders')!, { filters });
+        render(<TabBar connectionId="1" actions={actions} />);
         fireEvent.contextMenu(screen.getByRole('tab', { name: 'orders' }));
         fireEvent.click(
             screen.getByRole('menuitem', { name: 'Duplicate tab' }),
@@ -93,7 +93,7 @@ describe('TabBar', () => {
             'aria-selected',
             'true',
         );
-        expect(tableTabOf(1, 'orders', 2)).toMatchObject({
+        expect(tableTabOf('1', 'orders', 2)).toMatchObject({
             preview: false,
             state: { filters },
         });
@@ -101,7 +101,7 @@ describe('TabBar', () => {
     });
 
     it('offers no Duplicate tab on the Universe tab', () => {
-        render(<TabBar connectionId={1} actions={actions} />);
+        render(<TabBar connectionId="1" actions={actions} />);
         fireEvent.contextMenu(screen.getByRole('tab', { name: 'Universe' }));
         expect(
             screen.getByRole('menuitem', { name: 'Close all' }),
@@ -112,13 +112,13 @@ describe('TabBar', () => {
     });
 
     it("shows a tab's filters as its tooltip", () => {
-        st().updateTable(1, tableTabId('orders')!, {
+        st().updateTable('1', tableTabId('orders')!, {
             filters: [
                 { column: 'status', op: 'eq', value: 'paid' },
                 { column: 'total', op: 'gt', value: '100' },
             ],
         });
-        render(<TabBar connectionId={1} actions={actions} />);
+        render(<TabBar connectionId="1" actions={actions} />);
         expect(screen.getByRole('tab', { name: 'orders' })).toHaveAttribute(
             'title',
             'status = paid · total > 100',
@@ -129,7 +129,7 @@ describe('TabBar', () => {
     });
 
     it('keeps focus in the tab bar after closing the focused tab', () => {
-        render(<TabBar connectionId={1} actions={actions} />);
+        render(<TabBar connectionId="1" actions={actions} />);
         const active = screen.getByRole('tab', { selected: true });
         active.focus();
         fireEvent.keyDown(active, { key: 'Delete' });

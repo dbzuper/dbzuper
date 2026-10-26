@@ -19,7 +19,27 @@ final class ConnectionTester
     public function test(SavedConnection $connection): array
     {
         $started = hrtime(true);
+        if (! $connection->isServerLevel()) {
+            return $this->attempt($connection, $started);
+        }
 
+        // A server-level connection is fine when any maintenance database accepts it; otherwise the first error,
+        // usually the most telling (a wrong password fails them all alike), is reported.
+        $first = null;
+        foreach ($this->drivers->for($connection->driver)->maintenanceDatabases() as $database) {
+            $result = $this->attempt($connection->forMaintenance($database), $started);
+            if ($result['ok']) {
+                return $result;
+            }
+            $first ??= $result;
+        }
+
+        return $first;
+    }
+
+    /** @return array{ok: bool, version: ?string, latency_ms: int, error: ?array} */
+    private function attempt(SavedConnection $connection, int $started): array
+    {
         try {
             $version = $this->factory->using(
                 $connection,

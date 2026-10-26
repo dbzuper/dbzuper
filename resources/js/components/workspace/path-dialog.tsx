@@ -6,13 +6,14 @@ import { useSqlTabs } from '@/sql/tabs-store';
 import type { Dialect, SchemaSnapshot } from '@/types/schema';
 import { buildJoinSql } from '@/universe/path';
 import { useWorkspace } from '@/universe/store';
+import type { WorkspaceRef } from '@/types/connection';
 
 export function PathDialog({
     snapshot,
     connectionId,
 }: {
     snapshot: SchemaSnapshot;
-    connectionId: number;
+    connectionId: WorkspaceRef;
 }) {
     const pathFrom = useWorkspace((s) => s.pathFrom);
     const pathTo = useWorkspace((s) => s.pathTo);

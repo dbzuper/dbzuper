@@ -97,6 +97,7 @@ import SqlDock from './sql-dock';
 
 const connection = {
     id: 1,
+    ref: '1',
     name: 'Shop',
     driver: 'sqlite',
 } as ConnectionSummary;
@@ -143,11 +144,11 @@ describe('SqlDock', () => {
     it('lets a linked tab follow its table tab through the editor model, so the change is undoable', async () => {
         const id = useSqlTabs
             .getState()
-            .openLinkedTab(1, 't:a', 'orders', 'orders', 'select 1');
+            .openLinkedTab('1', 't:a', 'orders', 'orders', 'select 1');
         render(<SqlDock connection={connection} snapshot={null} />);
         await screen.findByTestId('editor');
 
-        act(() => onTableQuery(1, 't:a', 'select 2'));
+        act(() => onTableQuery('1', 't:a', 'select 2'));
 
         expect(pushEdits).toHaveBeenCalledWith(
             [],
@@ -168,7 +169,7 @@ describe('SqlDock', () => {
 
         await waitFor(() =>
             expect(api.run).toHaveBeenCalledWith(
-                1,
+                '1',
                 [{ sql: 'select 1' }],
                 expect.any(Number),
                 expect.any(AbortSignal),
@@ -239,8 +240,8 @@ describe('SqlDock', () => {
         hangingRun();
         render(<SqlDock connection={connection} snapshot={null} />);
         const first = useSqlTabs.getState().byConnection[1].activeId;
-        const second = useSqlTabs.getState().openTab(1, 'select 2');
-        act(() => useSqlTabs.getState().setActive(1, first));
+        const second = useSqlTabs.getState().openTab('1', 'select 2');
+        act(() => useSqlTabs.getState().setActive('1', first));
 
         fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
         // Toolbar indicator plus the panel of the running tab.
@@ -248,7 +249,7 @@ describe('SqlDock', () => {
             expect(screen.getAllByText('Running…')).toHaveLength(2),
         );
 
-        act(() => useSqlTabs.getState().setActive(1, second));
+        act(() => useSqlTabs.getState().setActive('1', second));
         expect(screen.getAllByText('Running…')).toHaveLength(1);
         expect(
             screen.getByText('Run a statement to see its results here.'),
@@ -256,7 +257,7 @@ describe('SqlDock', () => {
 
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
         await waitFor(() => expect(screen.queryByText('Running…')).toBeNull());
-        act(() => useSqlTabs.getState().setActive(1, first));
+        act(() => useSqlTabs.getState().setActive('1', first));
         expect(screen.getByText('Cancelled.')).toBeInTheDocument();
     });
 
@@ -350,8 +351,8 @@ const snapshotWith = (tables: TableSchema[]): SchemaSnapshot => ({
 });
 
 describe('linked editor tabs', () => {
-    const orders = () => tableTabOf(1, 'orders') as TableTab;
-    const browse = () => useBrowse.getState().get(1);
+    const orders = () => tableTabOf('1', 'orders') as TableTab;
+    const browse = () => useBrowse.getState().get('1');
     const editorTab = (id: string) =>
         useSqlTabs.getState().byConnection[1].tabs.find((t) => t.id === id);
     const renderDock = (tables: TableSchema[] | null = [ordersTable]) =>
@@ -364,11 +365,11 @@ describe('linked editor tabs', () => {
 
     /** `orders` open in a table tab, its linked editor tab active, and another table tab active in the browser. */
     function setup(text: string) {
-        useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
-        const id = openTableTabInSql(1, orders(), 'sqlite', []);
-        useSqlTabs.getState().setSql(1, id, text);
+        useBrowse.getState().openTable('1', 'orders', { mode: 'permanent' });
+        const id = openTableTabInSql('1', orders(), 'sqlite', []);
+        useSqlTabs.getState().setSql('1', id, text);
         editorText.value = text;
-        useBrowse.getState().openTable(1, 'users', { mode: 'permanent' });
+        useBrowse.getState().openTable('1', 'users', { mode: 'permanent' });
         return id;
     }
 
@@ -465,7 +466,7 @@ describe('linked editor tabs', () => {
             const link = editorTab(id)!.link!;
             useSqlTabs
                 .getState()
-                .setLink(1, id, { ...link, browseTabId: 'gone' });
+                .setLink('1', id, { ...link, browseTabId: 'gone' });
             renderDock();
             fireEvent.click(screen.getByRole('button', { name: /^Run$/ }));
             await waitFor(() => expect(api.run).toHaveBeenCalled());
@@ -490,7 +491,7 @@ describe('linked editor tabs', () => {
                 "select * from orders where status = 'paid'",
             );
             // A later table change marks the link stale instead of replacing the text.
-            act(() => onTableQuery(1, orders().id, 'select 2'));
+            act(() => onTableQuery('1', orders().id, 'select 2'));
             expect(editorTab(id)?.sql).toBe(
                 "select * from orders where status = 'paid' order by id desc",
             );
@@ -514,7 +515,7 @@ describe('linked editor tabs', () => {
             fireEvent.click(screen.getByRole('button', { name: /^Explain/ }));
             await waitFor(() =>
                 expect(api.explain).toHaveBeenCalledWith(
-                    1,
+                    '1',
                     "select * from orders where status = 'paid'",
                     expect.anything(),
                 ),
@@ -563,7 +564,7 @@ describe('linked editor tabs', () => {
         it('a closed link never applies, and the chip says the table tab was closed', async () => {
             api.run.mockResolvedValue(ok);
             setup('select * from orders');
-            act(() => useBrowse.getState().closeTab(1, orders().id));
+            act(() => useBrowse.getState().closeTab('1', orders().id));
             renderDock();
             expect(screen.getByText(/^Unlinked:/)).toHaveTextContent(
                 'Unlinked: orders was closed',
@@ -612,7 +613,7 @@ describe('linked editor tabs', () => {
 
         it('when stale, Update SQL replaces the text with the table query', async () => {
             const id = setup('my edit');
-            act(() => onTableQuery(1, orders().id, 'select 2'));
+            act(() => onTableQuery('1', orders().id, 'select 2'));
             renderDock();
             expect(screen.getByText(/changed/)).toHaveTextContent(
                 'orders changed',
@@ -627,12 +628,12 @@ describe('linked editor tabs', () => {
 
         it('Update SQL is disabled, with a reason, when no table query is known', () => {
             const id = setup('my edit');
-            act(() => onTableQuery(1, orders().id, 'select 2'));
+            act(() => onTableQuery('1', orders().id, 'select 2'));
             const link = editorTab(id)!.link!;
             act(() =>
                 useSqlTabs
                     .getState()
-                    .setLink(1, id, { ...link, browseTabId: 'gone' }),
+                    .setLink('1', id, { ...link, browseTabId: 'gone' }),
             );
             renderDock();
             const button = screen.getByRole('button', { name: 'Update SQL' });

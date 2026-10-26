@@ -35,6 +35,7 @@ const drivers: DriverChoice[] = [
 function saved(overrides: Partial<ConnectionSummary>): ConnectionSummary {
     return {
         id: 1,
+        ref: '1',
         name: 'Prod',
         driver: 'mysql',
         driver_label: 'MySQL',
@@ -48,6 +49,8 @@ function saved(overrides: Partial<ConnectionSummary>): ConnectionSummary {
         color: null,
         store_history: true,
         last_opened_at: null,
+        server_level: false,
+        last_database: null,
         ...overrides,
     };
 }
@@ -141,5 +144,39 @@ describe('ConnectionForm SSL mode', () => {
             />,
         );
         expect(sslSelect()).toBeNull();
+    });
+});
+
+describe('ConnectionForm database', () => {
+    it.each(['mysql', 'mariadb', 'pgsql'] as const)(
+        'lets %s connections leave the database empty to browse the server',
+        (driver) => {
+            render(
+                <ConnectionForm
+                    connection={saved({
+                        driver,
+                        database: null,
+                        server_level: true,
+                    })}
+                    drivers={drivers}
+                />,
+            );
+            const input = screen.getByLabelText('Database');
+            expect(input).not.toBeRequired();
+            expect(input).toHaveValue('');
+            expect(input).toHaveAccessibleDescription(
+                "Leave empty to browse every database on the server. A filled-in database limits this connection to it in DBZuper; the database user's permissions are what actually restrict access.",
+            );
+        },
+    );
+
+    it('still requires the SQLite file path', () => {
+        render(
+            <ConnectionForm
+                connection={saved({ driver: 'sqlite', database: '/x.sqlite' })}
+                drivers={drivers}
+            />,
+        );
+        expect(screen.getByLabelText('SQLite file path')).toBeRequired();
     });
 });

@@ -1,13 +1,14 @@
 import { create } from 'zustand';
 import { flushOpenEdits } from './flush-edits';
+import type { WorkspaceRef } from '@/types/connection';
 
 /** Which table's Review & commit dialog is open (spec §4.3); one at a time. */
 type State = {
-    open: { connectionId: number; table: string } | null;
+    open: { connectionId: WorkspaceRef; table: string } | null;
     /** Bumped on every open: the dialog fetches a fresh preview each time (pending changes may have changed). */
     nonce: number;
     /** Stages any open editor's draft first, so the preview includes it. */
-    openReview(connectionId: number, table: string): void;
+    openReview(connectionId: WorkspaceRef, table: string): void;
     closeReview(): void;
     /** By pendingKey: tables whose commit is on its way (a schema refresh must not rebuild their changes). */
     committing: Record<string, true>;

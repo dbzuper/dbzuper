@@ -75,7 +75,7 @@ describe('createLayoutSaver', () => {
     const make = () => {
         const send = vi.fn().mockResolvedValue({ saved: true });
         const onProblem = vi.fn();
-        const saver = createLayoutSaver(1, send, onProblem);
+        const saver = createLayoutSaver('1', send, onProblem);
         return { saver, send, onProblem };
     };
     const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -85,7 +85,7 @@ describe('createLayoutSaver', () => {
         saver.baseline([entry('a'), entry('b')]);
         saver.saveChanged([entry('a'), entry('b', 5)], saver.generation());
         await settle();
-        expect(send).toHaveBeenCalledExactlyOnceWith(1, [entry('b', 5)], {
+        expect(send).toHaveBeenCalledExactlyOnceWith('1', [entry('b', 5)], {
             keepalive: false,
             merge: true,
         });
@@ -120,7 +120,7 @@ describe('createLayoutSaver', () => {
         const { saver, send } = make();
         saver.saveFull([entry('a'), entry('b')]);
         expect(send).toHaveBeenCalledExactlyOnceWith(
-            1,
+            '1',
             [entry('a'), entry('b')],
             { keepalive: false, merge: false },
         );
@@ -190,7 +190,7 @@ describe('createLayoutSaver', () => {
         expect(onProblem).toHaveBeenCalledWith('failed');
         saver.saveChanged([entry('a'), entry('b')], saver.generation());
         await settle();
-        expect(send).toHaveBeenLastCalledWith(1, [entry('a'), entry('b')], {
+        expect(send).toHaveBeenLastCalledWith('1', [entry('a'), entry('b')], {
             keepalive: false,
             merge: true,
         });
@@ -217,7 +217,7 @@ describe('createLayoutSaver', () => {
             saver.saveChanged([entry('a', 4)], saver.generation());
             saver.unload();
             await settle();
-            expect(send).toHaveBeenCalledExactlyOnceWith(1, [entry('a', 4)], {
+            expect(send).toHaveBeenCalledExactlyOnceWith('1', [entry('a', 4)], {
                 keepalive: true,
                 merge: true,
             });
@@ -248,10 +248,14 @@ describe('createLayoutSaver', () => {
             saver.saveFull([entry('a'), entry('b')]);
             saver.unload();
             await settle();
-            expect(send).toHaveBeenLastCalledWith(1, [entry('a'), entry('b')], {
-                keepalive: true,
-                merge: true,
-            });
+            expect(send).toHaveBeenLastCalledWith(
+                '1',
+                [entry('a'), entry('b')],
+                {
+                    keepalive: true,
+                    merge: true,
+                },
+            );
         });
     });
 
@@ -264,7 +268,7 @@ describe('createLayoutSaver', () => {
             const { saver, send } = make();
             await saver.replayStored();
             expect(send).toHaveBeenCalledExactlyOnceWith(
-                1,
+                '1',
                 [entry('a', 9), entry('b', 8)],
                 { keepalive: false, merge: true },
             );

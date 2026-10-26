@@ -125,7 +125,7 @@ type Over = Partial<React.ComponentProps<typeof RowDrawer>>;
 
 function setup(over: Over = {}) {
     const props = {
-        connectionId: 1,
+        connectionId: '1',
         snapshot,
         table: snapshot.tables.find((t) => t.name === 'orders')!,
         columns: [
@@ -214,7 +214,7 @@ describe('RowDrawer', () => {
             screen.getByRole('button', { name: 'order_items (12)' }),
         ).toBeInTheDocument();
         expect(api.show).toHaveBeenCalledWith(
-            1,
+            '1',
             'orders',
             { id: 1 },
             expect.any(AbortSignal),
@@ -271,7 +271,7 @@ describe('RowDrawer', () => {
         reference.focus();
         fireEvent.click(reference);
         expect(api.related).toHaveBeenCalledWith(
-            1,
+            '1',
             'orders',
             { id: 1 },
             { rel: 'r1', dir: 'out', limit: 1 },
@@ -514,7 +514,7 @@ describe('RowDrawer editing', () => {
         true,
     ];
     const editing = (over: Partial<GridEditing> = {}): GridEditing => ({
-        connectionId: 1,
+        connectionId: '1',
         table: 'orders',
         dialect: 'pgsql',
         rowIds: [{ key: { id: 1 } }],
@@ -804,7 +804,7 @@ describe('RowDrawer date fields', () => {
             ],
             row: [1, '2026-10-01 12:00:00'],
             editing: {
-                connectionId: 1,
+                connectionId: '1',
                 table: 'orders',
                 dialect: 'pgsql',
                 rowIds: [{ key: { id: 1 } }],
@@ -890,7 +890,7 @@ describe('RowDrawer clearing a field', () => {
             ],
             row: [1, 7, 3, 'x'],
             editing: {
-                connectionId: 1,
+                connectionId: '1',
                 table: 'orders',
                 dialect: 'mysql',
                 rowIds: [{ key: { id: 1 } }],

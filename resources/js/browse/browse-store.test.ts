@@ -12,7 +12,7 @@ import {
 import type { RowFilter } from '@/lib/workspace-api';
 import { rowsCache } from './rows-cache';
 
-const C = 1;
+const C = '1';
 const st = () => useBrowse.getState();
 const tabs = () =>
     st()
@@ -305,8 +305,8 @@ describe('persistence', () => {
             .map((t: { table: string }) => t.table);
 
     it('writes only the connections this window changed, keeping what another window stored', () => {
-        st().openTable(1, 'mine', { mode: 'permanent' });
-        st().openTable(2, 'mine too', { mode: 'permanent' });
+        st().openTable('1', 'mine', { mode: 'permanent' });
+        st().openTable('2', 'mine too', { mode: 'permanent' });
         flushBrowse();
         // Another window saves its own tabs for connection 2.
         const other = JSON.parse(localStorage.getItem(KEY) ?? '{}');
@@ -321,7 +321,7 @@ describe('persistence', () => {
         });
         localStorage.setItem(KEY, JSON.stringify(other));
 
-        st().openTable(1, 'mine later', { mode: 'permanent' });
+        st().openTable('1', 'mine later', { mode: 'permanent' });
         flushBrowse();
 
         expect(storedTables(1)).toEqual(['mine', 'mine later']);
@@ -329,7 +329,7 @@ describe('persistence', () => {
     });
 
     it('rehydrates when another window saves', async () => {
-        st().openTable(1, 'mine', { mode: 'permanent' });
+        st().openTable('1', 'mine', { mode: 'permanent' });
         flushBrowse();
         const other = JSON.parse(localStorage.getItem(KEY) ?? '{}');
         other.state.byConnection[3] = {
@@ -356,7 +356,7 @@ describe('persistence', () => {
         await vi.waitFor(() =>
             expect(
                 st()
-                    .get(3)
+                    .get('3')
                     .tabs.map((t) => t.id),
             ).toEqual(['universe', 't:theirs-1']),
         );
@@ -753,13 +753,13 @@ describe('saved tabs version 2', () => {
                 },
             },
         });
-        st().openTable(1, 'mine', { mode: 'permanent' });
+        st().openTable('1', 'mine', { mode: 'permanent' });
         flushBrowse();
         useBrowse.setState({ byConnection: {} });
         await useBrowse.persist.rehydrate();
-        expect(tableTabs(2).map((x) => x.table)).toEqual(['x y']);
-        expect(st().get(2).activeId).toBe(tableTabs(2)[0].id);
-        expect(tableTabs(1).map((x) => x.table)).toEqual(['mine']);
+        expect(tableTabs('2').map((x) => x.table)).toEqual(['x y']);
+        expect(st().get('2').activeId).toBe(tableTabs('2')[0].id);
+        expect(tableTabs('1').map((x) => x.table)).toEqual(['mine']);
     });
 });
 
@@ -815,19 +815,24 @@ describe('fix round 1', () => {
             },
         });
         expect(
-            tableTabs(1).map((t) => [t.id, t.table, t.ordinal, t.activatedAt]),
+            tableTabs('1').map((t) => [
+                t.id,
+                t.table,
+                t.ordinal,
+                t.activatedAt,
+            ]),
         ).toEqual([
             ['t:aaa-1', 'orders', 1, 3],
             ['t:bbb-2', 'orders', 2, 5],
             ['t:ccc-3', 'users', 1, 4],
         ]);
-        expect(tableTabs(1)[1].state.page).toBe(2);
-        expect(st().get(1).activeId).toBe('t:bbb-2');
-        const [legacy] = tableTabs(2);
+        expect(tableTabs('1')[1].state.page).toBe(2);
+        expect(st().get('1').activeId).toBe('t:bbb-2');
+        const [legacy] = tableTabs('2');
         expect(legacy.table).toBe('legacy');
         expect(legacy.id).not.toBe('t:legacy');
         expect(legacy.ordinal).toBe(1);
-        expect(st().get(2).activeId).toBe(legacy.id);
+        expect(st().get('2').activeId).toBe(legacy.id);
     });
 
     it('migrates an unversioned blob', async () => {
@@ -918,7 +923,7 @@ describe('fix round 1', () => {
 
 describe('close guard (pending changes, spec §4.4)', () => {
     const held: { tables: string[]; proceed: () => void }[] = [];
-    const guard = vi.fn((_c: number, tables: string[], proceed: () => void) => {
+    const guard = vi.fn((_c: string, tables: string[], proceed: () => void) => {
         held.push({ tables, proceed });
         return true;
     });

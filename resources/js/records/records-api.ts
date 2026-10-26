@@ -1,12 +1,13 @@
-import { apiFetch } from '@/lib/http';
+import type { WorkspaceRef } from '@/types/connection';
+import { apiFetch, apiBase } from '@/lib/http';
 import type { RecordKeyValues, RecordPayload, RelatedPayload } from './types';
 
-const base = (id: number, table: string) =>
-    `/api/c/${id}/records/${encodeURIComponent(table)}`;
+const base = (id: WorkspaceRef, table: string) =>
+    `${apiBase(id)}/records/${encodeURIComponent(table)}`;
 
 export const recordsApi = {
     show: (
-        id: number,
+        id: WorkspaceRef,
         table: string,
         key: RecordKeyValues,
         signal?: AbortSignal,
@@ -16,7 +17,7 @@ export const recordsApi = {
             { signal },
         ),
     related: (
-        id: number,
+        id: WorkspaceRef,
         table: string,
         key: RecordKeyValues,
         p: {

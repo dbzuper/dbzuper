@@ -193,7 +193,8 @@ const deferred = <T,>() => {
 };
 
 /** The id of the (first) tab of `table`. */
-const tabId = (table = 'orders') => tableTabOf(1, table)?.id ?? `none:${table}`;
+const tabId = (table = 'orders') =>
+    tableTabOf('1', table)?.id ?? `none:${table}`;
 
 const requestKey = (filters: RowFilter[], p = 1) =>
     JSON.stringify({ filters, sort: [], page: p, perPage: 100 });
@@ -226,7 +227,7 @@ function Harness({
     const snapshot = snapshotWith(rowCount);
     return (
         <DataView
-            connectionId={1}
+            connectionId="1"
             snapshot={snapshot}
             table={snapshot.tables.find((t) => t.name === table)!}
             tab={tab}
@@ -241,7 +242,7 @@ function Harness({
 const open = (table = 'orders', filters: RowFilter[] = []) =>
     useBrowse
         .getState()
-        .openTable(1, table, { mode: 'preview', state: { filters } });
+        .openTable('1', table, { mode: 'preview', state: { filters } });
 
 const tabState = (table = 'orders') =>
     (
@@ -375,13 +376,13 @@ describe('DataView editing', () => {
             usePending
                 .getState()
                 .setCell(
-                    1,
+                    '1',
                     'orders',
                     { ref: refOf(id), id, original: { name: 'x' } },
                     'name',
                     'y',
                 );
-            usePending.getState().addRow(1, 'orders');
+            usePending.getState().addRow('1', 'orders');
         });
         expect(screen.getByRole('status')).toHaveTextContent(
             '2 pending changes · 1 new · 1 edited · 0 deleted',
@@ -393,7 +394,7 @@ describe('DataView editing', () => {
             '2 pending changes',
         );
         // Discarding clears it.
-        act(() => usePending.getState().discard(1, 'orders'));
+        act(() => usePending.getState().discard('1', 'orders'));
         expect(screen.queryByRole('status')).toBeNull();
     });
 });
@@ -405,17 +406,17 @@ describe('DataView', () => {
         const { rerender } = render(<Harness refreshNonce={0} />);
         await waitFor(() =>
             expect(reportTableRows).toHaveBeenCalledWith(
-                1,
+                '1',
                 tabId(),
                 requestKey([]),
                 'select one',
             ),
         );
         api.rows.mockResolvedValue(page(2, 2, { sql: 'select two' }));
-        act(() => useBrowse.getState().updateTable(1, tabId(), { page: 2 }));
+        act(() => useBrowse.getState().updateTable('1', tabId(), { page: 2 }));
         await waitFor(() =>
             expect(reportTableRows).toHaveBeenLastCalledWith(
-                1,
+                '1',
                 tabId(),
                 requestKey([], 2),
                 'select two',
@@ -447,8 +448,8 @@ describe('DataView', () => {
     it('keeps separate cached rows for two views of one table', async () => {
         open();
         const first = tabId();
-        const second = useBrowse.getState().duplicateTab(1, first);
-        useBrowse.getState().updateTable(1, second, { page: 2 });
+        const second = useBrowse.getState().duplicateTab('1', first);
+        useBrowse.getState().updateTable('1', second, { page: 2 });
         rowsCache.set(`1:${first}`, {
             requestKey: requestKey([]),
             rows: page(1, 'one', { rows: [['one', 'a']] }),
@@ -481,7 +482,7 @@ describe('DataView', () => {
         render(<Harness />);
         expect(await screen.findByText('100 rows')).toBeInTheDocument();
         expect(api.rows).toHaveBeenCalledWith(
-            1,
+            '1',
             'orders',
             { filters: [], sort: [], page: 1, per_page: 100 },
             expect.any(AbortSignal),
@@ -501,7 +502,7 @@ describe('DataView', () => {
         render(<Harness rowCount={{ count: 120, kind: 'estimate' }} />);
         expect(await screen.findByText('Rows 1–100 of ~120')).toBeVisible();
         expect(api.count).toHaveBeenCalledWith(
-            1,
+            '1',
             'orders',
             { filters: [], exact: false },
             expect.any(AbortSignal),
@@ -522,7 +523,7 @@ describe('DataView', () => {
         render(<Harness />);
         expect(await screen.findByText('Rows 1–100 of 100+')).toBeVisible();
         expect(api.count).toHaveBeenCalledWith(
-            1,
+            '1',
             'orders',
             { filters, exact: false },
             expect.any(AbortSignal),
@@ -530,7 +531,7 @@ describe('DataView', () => {
         api.count.mockResolvedValue({ count: 4321, kind: 'exact' });
         fireEvent.click(screen.getByRole('button', { name: 'Count exactly' }));
         expect(api.count).toHaveBeenLastCalledWith(
-            1,
+            '1',
             'orders',
             { filters, exact: true },
             expect.any(AbortSignal),
@@ -567,7 +568,7 @@ describe('DataView', () => {
         expect(api.rows).toHaveBeenCalledTimes(1);
         // The user moves to page 2 before page 1 has answered.
         act(() =>
-            useBrowse.getState().updateTable(1, tabId('orders'), { page: 2 }),
+            useBrowse.getState().updateTable('1', tabId('orders'), { page: 2 }),
         );
         expect(await screen.findByText('Rows 101–200 of 10')).toBeVisible();
         expect(screen.getByTestId('first-cell')).toHaveTextContent('B');
@@ -580,8 +581,8 @@ describe('DataView', () => {
     });
 
     it('ignores a slow response for a previous table', async () => {
-        useBrowse.getState().openTable(1, 'orders', { mode: 'permanent' });
-        useBrowse.getState().openTable(1, 'users', { mode: 'permanent' });
+        useBrowse.getState().openTable('1', 'orders', { mode: 'permanent' });
+        useBrowse.getState().openTable('1', 'users', { mode: 'permanent' });
         const slow = deferred<RowsResponse>();
         api.rows
             .mockReturnValueOnce(slow.promise)
@@ -613,7 +614,7 @@ describe('DataView', () => {
     });
 
     it('resets to page 1 and promotes the tab when filters change', async () => {
-        useBrowse.getState().openTable(1, 'orders', {
+        useBrowse.getState().openTable('1', 'orders', {
             mode: 'preview',
             state: { page: 3 },
         });
@@ -772,7 +773,7 @@ describe('DataView', () => {
     });
 
     it('steps past the end of a page into the next one', async () => {
-        useBrowse.getState().openTable(1, 'orders', {
+        useBrowse.getState().openTable('1', 'orders', {
             mode: 'preview',
             state: { drawerRow: 99 },
         });
@@ -790,7 +791,7 @@ describe('DataView', () => {
     });
 
     it('steps back to the previous page and closes on Escape', async () => {
-        useBrowse.getState().openTable(1, 'orders', {
+        useBrowse.getState().openTable('1', 'orders', {
             mode: 'preview',
             state: { page: 2, drawerRow: 0 },
         });
@@ -813,7 +814,7 @@ describe('DataView', () => {
     });
 
     it('returns focus to the button of the row that was open', async () => {
-        useBrowse.getState().openTable(1, 'orders', {
+        useBrowse.getState().openTable('1', 'orders', {
             mode: 'preview',
             state: { drawerRow: 3 },
         });
@@ -830,7 +831,7 @@ describe('DataView', () => {
     });
 
     it('clears the drawer row when it is past a short page', async () => {
-        useBrowse.getState().openTable(1, 'orders', {
+        useBrowse.getState().openTable('1', 'orders', {
             mode: 'preview',
             state: { drawerRow: 50 },
         });
@@ -877,7 +878,7 @@ describe('DataView', () => {
         expect(api.count).not.toHaveBeenCalled();
         fireEvent.click(screen.getByRole('button', { name: 'Count exactly' }));
         expect(api.count).toHaveBeenCalledWith(
-            1,
+            '1',
             'orders',
             { filters, exact: true },
             expect.any(AbortSignal),
@@ -907,7 +908,7 @@ describe('DataView', () => {
         api.rows.mockReturnValue(new Promise(() => {}));
         api.count.mockResolvedValue({ count: 5, kind: 'exact' });
         act(() =>
-            useBrowse.getState().updateTable(1, tabId('orders'), {
+            useBrowse.getState().updateTable('1', tabId('orders'), {
                 filters: [{ column: 'name', op: 'eq', value: 'z' }],
             }),
         );
@@ -930,7 +931,7 @@ describe('DataView status', () => {
         api.rows.mockResolvedValue(page(2, 101));
         useBrowse
             .getState()
-            .openTable(1, 'orders', { mode: 'preview', state: { page: 2 } });
+            .openTable('1', 'orders', { mode: 'preview', state: { page: 2 } });
         const { unmount } = render(
             <Harness rowCount={{ count: 1234, kind: 'exact' }} />,
         );

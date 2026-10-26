@@ -7,11 +7,12 @@ import { modalOpen, togglePalette } from '@/lib/workspace-shortcuts';
 import { useBrowse } from './browse-store';
 import { browseKeyAction, isTypingTarget } from './shortcuts';
 import { useSidebarPrefs } from './sidebar-prefs';
+import type { WorkspaceRef } from '@/types/connection';
 
 /** Handles one window keydown for the browse shortcuts. Returns true when it claimed the key. */
 export function dispatchBrowseKey(
     e: KeyboardEvent,
-    connectionId: number,
+    connectionId: WorkspaceRef,
     tableTabActive: boolean,
 ): boolean {
     const action = browseKeyAction(e, {
