@@ -32,6 +32,11 @@ class MySqlDriver implements Driver
         return DriverName::MySql;
     }
 
+    public function maintenanceDatabases(): array
+    {
+        return [''];
+    }
+
     public function config(SavedConnection $connection, bool $countMatchedRows = false): array
     {
         $options = $connection->options ?? [];

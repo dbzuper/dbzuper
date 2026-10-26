@@ -70,3 +70,34 @@ it('diagnoses a missing SQLite file', function () {
 
     expect($result['error']['reason'])->toBe('sqlite_missing');
 });
+
+it('tests a server-level connection without a database', function (string $engine, ?string $database) {
+    Engines::skipUnlessAvailable($engine);
+
+    $result = app(ConnectionTester::class)->test(Engines::savedConnection($engine, ['database' => $database]));
+
+    expect($result['ok'])->toBeTrue()->and($result['error'])->toBeNull();
+})->with(['mysql', 'mariadb', 'pgsql'])->with([null, '']);
+
+it('diagnoses a wrong password on a server-level connection', function (string $engine) {
+    Engines::skipUnlessAvailable($engine);
+
+    $result = app(ConnectionTester::class)->test(Engines::savedConnection($engine, ['database' => null, 'password' => 'definitely-wrong']));
+
+    expect($result['ok'])->toBeFalse()->and($result['error']['kind'])->toBe('auth');
+})->with(['mysql', 'mariadb', 'pgsql']);
+
+it('tests a PostgreSQL server-level connection whose user has no database of its own', function () {
+    Engines::skipUnlessAvailable('pgsql');
+    $pdo = Engines::serverPdo('pgsql');
+    $pdo->exec('drop role if exists dbsuperb_test_lonely');
+    $pdo->exec("create role dbsuperb_test_lonely login password 'lonely'");
+
+    try {
+        $result = app(ConnectionTester::class)->test(Engines::savedConnection('pgsql', ['database' => null, 'username' => 'dbsuperb_test_lonely', 'password' => 'lonely']));
+    } finally {
+        $pdo->exec('drop role if exists dbsuperb_test_lonely');
+    }
+
+    expect($result['error'])->toBeNull()->and($result['ok'])->toBeTrue();
+});

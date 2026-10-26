@@ -121,6 +121,12 @@ final class Engines
         return self::rawPdo($engine, self::params($engine)['database']);
     }
 
+    /** A connection to the server rather than the test database, for creating test databases and roles. */
+    public static function serverPdo(string $engine): PDO
+    {
+        return self::rawPdo($engine, $engine === 'pgsql' ? 'postgres' : '');
+    }
+
     private static function rawPdo(string $engine, string $database): PDO
     {
         $p = self::params($engine);

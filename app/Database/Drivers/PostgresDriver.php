@@ -36,6 +36,12 @@ class PostgresDriver implements Driver
         return DriverName::Postgres;
     }
 
+    /** libpq would otherwise pick the database named after the user, which often doesn't exist. */
+    public function maintenanceDatabases(): array
+    {
+        return ['postgres', 'template1'];
+    }
+
     public function config(SavedConnection $connection, bool $countMatchedRows = false): array
     {
         $options = $connection->options ?? [];

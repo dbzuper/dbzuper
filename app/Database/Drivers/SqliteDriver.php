@@ -24,6 +24,11 @@ class SqliteDriver implements Driver
         return DriverName::Sqlite;
     }
 
+    public function maintenanceDatabases(): array
+    {
+        return [];
+    }
+
     public function config(SavedConnection $connection, bool $countMatchedRows = false): array
     {
         return [

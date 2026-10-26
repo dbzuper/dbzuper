@@ -27,6 +27,9 @@ class SavedConnection extends Model
     /** The database a server-level connection is scoped to; null for the saved model. Never persisted. */
     private ?string $scopedDatabase = null;
 
+    /** Set on copies that reach the server through a maintenance database; they can't be saved either. */
+    private bool $maintenance = false;
+
     protected function casts(): array
     {
         return [
@@ -43,7 +46,7 @@ class SavedConnection extends Model
     /** A server driver saved without a database: it can open any database on the server. */
     public function isServerLevel(): bool
     {
-        return $this->driver->isServer() && ($this->scopedDatabase !== null || blank($this->database));
+        return $this->driver->isServer() && ($this->scopedDatabase !== null || $this->maintenance || blank($this->database));
     }
 
     /**
@@ -62,6 +65,24 @@ class SavedConnection extends Model
         $scoped->setRelations([]);
 
         return $scoped;
+    }
+
+    /**
+     * A copy that connects to a server-level connection's server through $database (see
+     * Driver::maintenanceDatabases()) to test it or list its databases. It owns no snapshots, pins or history.
+     */
+    public function forMaintenance(string $database): static
+    {
+        if (! $this->isServerLevel()) {
+            throw new LogicException('Only a server-level connection has maintenance databases.');
+        }
+
+        $copy = clone $this;
+        $copy->maintenance = true;
+        $copy->setAttribute('database', $database);
+        $copy->setRelations([]);
+
+        return $copy;
     }
 
     public function scopedDatabase(): ?string
@@ -121,7 +142,7 @@ class SavedConnection extends Model
 
     public function save(array $options = []): bool
     {
-        if ($this->scopedDatabase !== null) {
+        if ($this->scopedDatabase !== null || $this->maintenance) {
             throw new LogicException('A database-scoped connection cannot be saved.');
         }
 

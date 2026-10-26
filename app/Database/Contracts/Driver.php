@@ -22,6 +22,14 @@ interface Driver
 
     public function inspector(): SchemaInspector;
 
+    /**
+     * Databases to connect to, in order, when a server-level connection needs the server rather than one database
+     * (testing it, listing its databases). '' connects without choosing one.
+     *
+     * @return list<string>
+     */
+    public function maintenanceDatabases(): array;
+
     /** SQL returning one row with a `version` column. */
     public function versionQuery(): string;
 
