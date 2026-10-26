@@ -8,11 +8,21 @@ export function runLayout(
     if (typeof Worker === 'undefined')
         return Promise.resolve(computeLayout(input, iterations));
 
+    let worker: Worker;
+    try {
+        worker = new Worker(new URL('./layout.worker.ts', import.meta.url), {
+            type: 'module',
+        });
+    } catch {
+        // Browsers refuse a worker script from another origin, as the Vite dev server serves it.
+        try {
+            return Promise.resolve(computeLayout(input, iterations));
+        } catch (err) {
+            return Promise.reject(err);
+        }
+    }
+
     return new Promise((resolve, reject) => {
-        const worker = new Worker(
-            new URL('./layout.worker.ts', import.meta.url),
-            { type: 'module' },
-        );
         const fallback = () => {
             worker.terminate();
             try {
