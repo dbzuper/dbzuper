@@ -42,6 +42,30 @@ class PostgresDriver implements Driver
         return ['postgres', 'template1'];
     }
 
+    /** Databases that refuse connections (template0) can't be browsed, so they aren't listed. */
+    public function listDatabaseNames(Connection $db): array
+    {
+        return array_map(fn ($row) => (string) $row->datname, $db->select('SELECT datname FROM pg_database WHERE datallowconn ORDER BY datname'));
+    }
+
+    /** Sizes only: counting tables would take a connection per database. */
+    public function databaseStats(Connection $db): array
+    {
+        $rows = $db->select("SELECT datname, pg_database_size(datname) AS bytes FROM pg_database
+            WHERE datallowconn AND has_database_privilege(datname, 'CONNECT')");
+        $stats = [];
+        foreach ($rows as $row) {
+            $stats[(string) $row->datname] = ['tables' => null, 'bytes' => (int) $row->bytes];
+        }
+
+        return $stats;
+    }
+
+    public function systemDatabases(): array
+    {
+        return ['template0', 'template1'];
+    }
+
     public function config(SavedConnection $connection, bool $countMatchedRows = false): array
     {
         $options = $connection->options ?? [];

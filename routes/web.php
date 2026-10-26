@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\DatabaseController;
 use App\Http\Controllers\Api\HistoryController;
 use App\Http\Controllers\Api\LayoutController;
 use App\Http\Controllers\Api\PinController;
@@ -32,6 +33,9 @@ Route::middleware('auth')->group(function () {
 
     Route::get('history', HistoryPageController::class)->name('history.index');
     Route::get('api/history', [HistoryController::class, 'all'])->middleware('throttle:dbsuperb-api')->name('api.history.all');
+
+    Route::get('api/c/{connection}/databases', DatabaseController::class)
+        ->middleware('throttle:dbsuperb-api')->name('api.databases.index');
 
     Route::prefix('api/c/{connection}')->name('api.')->middleware(['throttle:dbsuperb-api', RequireDatabase::class])->group(function () {
         Route::get('schema', [SchemaController::class, 'show'])->name('schema.show');

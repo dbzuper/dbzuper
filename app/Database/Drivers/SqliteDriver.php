@@ -29,6 +29,21 @@ class SqliteDriver implements Driver
         return [];
     }
 
+    public function listDatabaseNames(Connection $db): array
+    {
+        return [];
+    }
+
+    public function databaseStats(Connection $db): array
+    {
+        return [];
+    }
+
+    public function systemDatabases(): array
+    {
+        return [];
+    }
+
     public function config(SavedConnection $connection, bool $countMatchedRows = false): array
     {
         return [

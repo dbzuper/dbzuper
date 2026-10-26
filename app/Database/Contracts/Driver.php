@@ -30,6 +30,20 @@ interface Driver
      */
     public function maintenanceDatabases(): array;
 
+    /** @return list<string> databases on the server the login can see */
+    public function listDatabaseNames(Connection $db): array;
+
+    /**
+     * Table counts and sizes in bytes per database, from one catalog query; databases or values it can't cover are
+     * left out or null. May throw or time out: callers treat it as optional.
+     *
+     * @return array<string, array{tables: ?int, bytes: ?int}>
+     */
+    public function databaseStats(Connection $db): array;
+
+    /** @return list<string> databases the engine itself owns, hidden from the list by default */
+    public function systemDatabases(): array;
+
     /** SQL returning one row with a `version` column. */
     public function versionQuery(): string;
 

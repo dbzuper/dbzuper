@@ -37,6 +37,29 @@ class MySqlDriver implements Driver
         return [''];
     }
 
+    public function listDatabaseNames(Connection $db): array
+    {
+        return array_map(fn ($row) => (string) array_values((array) $row)[0], $db->select('SHOW DATABASES'));
+    }
+
+    public function databaseStats(Connection $db): array
+    {
+        $rows = $db->select('SELECT table_schema AS name, COUNT(*) AS tables_count,
+            SUM(COALESCE(data_length, 0) + COALESCE(index_length, 0)) AS bytes
+            FROM information_schema.tables GROUP BY table_schema');
+        $stats = [];
+        foreach ($rows as $row) {
+            $stats[(string) $row->name] = ['tables' => (int) $row->tables_count, 'bytes' => (int) $row->bytes];
+        }
+
+        return $stats;
+    }
+
+    public function systemDatabases(): array
+    {
+        return ['information_schema', 'performance_schema', 'mysql', 'sys'];
+    }
+
     public function config(SavedConnection $connection, bool $countMatchedRows = false): array
     {
         $options = $connection->options ?? [];
