@@ -7,6 +7,8 @@
 
 **One Workspace. Every Database.** A self-hosted, visual database workspace for MySQL, MariaDB, PostgreSQL and SQLite.
 
+![DBZuper Schema Universe: a shop database mapped as a graph, with the customers table selected and its columns in the inspector](docs/images/screenshot-universe.png)
+
 - **Schema Universe**: your schema as a zoomable graph of tables, relationships (declared and inferred) and clusters, with path finding and JOIN generation.
 - **SQL workspace**: Monaco editor with schema-aware autocompletion, tabs per connection, explain, confirm-before-write safety, read-only connections and query history.
 - **Data explorer**: server-side filters, sorting and paging per table, plus a record explorer that follows a row through its relationships.
