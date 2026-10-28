@@ -7,6 +7,10 @@ return [
         explode(',', (string) env('DBZUPER_SQLITE_PATHS', '')),
     ))),
 
+    // Set by the Docker image: there `localhost` is the container itself, so the connection form points
+    // people at host.docker.internal instead.
+    'in_container' => (bool) env('DBZUPER_IN_CONTAINER', false),
+
     // API requests per user per minute, at least 1 (the e2e server raises it: every spec signs in as the same user).
     'api_per_minute' => max(1, (int) env('DBZUPER_API_PER_MINUTE') ?: 120),
 

@@ -38,6 +38,12 @@ Compose reads an optional `.env.docker` next to `docker-compose.yml` (plain `KEY
 
 The image defaults are `APP_NAME=DBZuper`, `APP_ENV=production`, `APP_DEBUG=false`, `LOG_CHANNEL=stderr` (read logs with `docker compose logs app`), `DB_CONNECTION=sqlite`, `DB_DATABASE=/app/storage/database/database.sqlite`, `DB_JOURNAL_MODE=WAL`, `DB_TRANSACTION_MODE=IMMEDIATE`, `DB_BUSY_TIMEOUT=5000` and `DBZUPER_SQLITE_PATHS=/data/sqlite`. The three SQLite lock settings let the multi-threaded server share the application database without "database is locked" errors; keep them.
 
+## Connecting to a database on the same computer
+
+Inside the container, `localhost` and `127.0.0.1` are the DBZuper container itself, not the computer running Docker. To connect to a database server running on that computer, use the host `host.docker.internal`. Docker Desktop provides that name; on Linux the `extra_hosts` entry in `docker-compose.yml` maps it to the host (with `docker run`, add `--add-host=host.docker.internal:host-gateway`). The connection form shows this hint when you type a local address.
+
+The database server must also accept connections from the Docker network, not only from `127.0.0.1`: MySQL and MariaDB listen on localhost only when `bind-address = 127.0.0.1`, and PostgreSQL needs `listen_addresses` and a matching `pg_hba.conf` entry.
+
 ## Adding SQLite files
 
 SQLite connections may only open files inside the directories listed in `DBZUPER_SQLITE_PATHS` (comma-separated). The image points it at `/data/sqlite`, which is the `dbzuper-sqlite` volume. Copy a database in and connect to its in-container path:
@@ -149,6 +155,7 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 
 ## Troubleshooting
 
+- **Connection refused to `localhost` or `127.0.0.1`**: that is the container itself. Use `host.docker.internal`; see [Connecting to a database on the same computer](#connecting-to-a-database-on-the-same-computer).
 - **`SQLSTATE[HY000]: General error: 5 database is locked`** in `docker compose logs app`: the application database is SQLite and the server handles requests in parallel. Check that `DB_JOURNAL_MODE`, `DB_TRANSACTION_MODE` and `DB_BUSY_TIMEOUT` are not overridden in `.env.docker` (`docker compose exec app env | grep ^DB_`) and that the storage volume is on a local disk (SQLite locking is unreliable over network file systems). To check a deployment, sign in, copy the session cookie (`dbzuper-session`) from the browser and fire parallel requests, for example 64 schema reads, 16 at a time:
 
       seq 64 | xargs -P16 -I{} curl -s -o /dev/null -w '%{http_code}\n' -b 'dbzuper-session=<value>' http://localhost:8080/api/c/1/schema | sort | uniq -c

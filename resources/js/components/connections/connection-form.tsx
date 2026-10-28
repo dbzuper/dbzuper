@@ -23,15 +23,21 @@ import type {
 import { useForm } from '@inertiajs/react';
 import { type FormEvent, useState } from 'react';
 
+/** Names that mean "this machine": inside a container that is the container, not the computer running Docker. */
+const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '::1'];
+
 const inputClass =
     'h-9 rounded-md border border-input bg-transparent px-3 text-sm';
 
 export function ConnectionForm({
     connection,
     drivers,
+    inContainer = false,
 }: {
     connection: ConnectionSummary | null;
     drivers: DriverChoice[];
+    /** DBZuper runs in Docker, where localhost is the container itself. */
+    inContainer?: boolean;
 }) {
     const form = useForm<ConnectionFormData>({
         connection_id: connection?.id ?? null,
@@ -52,6 +58,9 @@ export function ConnectionForm({
     const [testing, setTesting] = useState(false);
     const server = isServerDriver(form.data.driver);
     const mysqlSsl = mysqlSslMode(form.data.options);
+    const loopbackInContainer =
+        inContainer &&
+        LOOPBACK_HOSTS.includes((form.data.host ?? '').trim().toLowerCase());
 
     const changeDriver = (driver: DriverValue) =>
         form.setData({ ...form.data, ...defaultsFor(driver), driver });
@@ -153,9 +162,27 @@ export function ConnectionForm({
 
             {server ? (
                 <>
-                    <div className="grid grid-cols-[1fr_8rem] gap-4">
-                        {field('host', 'Host', { required: true })}
-                        {field('port', 'Port', { type: 'number' })}
+                    <div className="grid gap-1.5">
+                        <div className="grid grid-cols-[1fr_8rem] gap-4">
+                            {field('host', 'Host', {
+                                required: true,
+                                ...(loopbackInContainer && {
+                                    'aria-describedby': 'host-hint',
+                                }),
+                            })}
+                            {field('port', 'Port', { type: 'number' })}
+                        </div>
+                        {loopbackInContainer && (
+                            <p
+                                id="host-hint"
+                                className="text-xs text-muted-foreground"
+                            >
+                                DBZuper runs in Docker, where {form.data.host}{' '}
+                                is the DBZuper container itself. For a database
+                                on the computer running Docker, use{' '}
+                                <code>host.docker.internal</code>.
+                            </p>
+                        )}
                     </div>
                     <div className="grid gap-1.5">
                         {field('database', 'Database', {

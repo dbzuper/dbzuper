@@ -57,6 +57,7 @@ ENV APP_NAME=DBZuper \
     DB_BUSY_TIMEOUT=5000 \
     DB_JOURNAL_MODE=WAL \
     DBZUPER_SQLITE_PATHS=/data/sqlite \
+    DBZUPER_IN_CONTAINER=1 \
     APP_URL=http://localhost:8080 \
     SERVER_NAME=:8080 \
     XDG_CONFIG_HOME=/config \

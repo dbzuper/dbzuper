@@ -5,6 +5,10 @@ services:
         image: dbzuper:local
         ports:
             - '8080:8080'
+        # Lets connections reach a database on the computer running Docker as host.docker.internal
+        # (Docker Desktop provides the name already; Linux needs this mapping).
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
         env_file:
             - path: .env.docker
               required: false
