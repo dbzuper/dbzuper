@@ -38,3 +38,29 @@ it('uses explicit environment values', function () {
         'schema_max_objects' => 42,
     ]);
 });
+
+function loadDbzuperSqlitePaths(string $value): array
+{
+    $_ENV['DBZUPER_SQLITE_PATHS'] = $_SERVER['DBZUPER_SQLITE_PATHS'] = $value;
+    putenv("DBZUPER_SQLITE_PATHS={$value}");
+
+    try {
+        return (require config_path('dbzuper.php'))['sqlite_paths'];
+    } finally {
+        unset($_ENV['DBZUPER_SQLITE_PATHS'], $_SERVER['DBZUPER_SQLITE_PATHS']);
+        putenv('DBZUPER_SQLITE_PATHS');
+    }
+}
+
+it('resolves relative SQLite directories against the app directory and keeps absolute ones', function () {
+    expect(loadDbzuperSqlitePaths('storage/app/sqlite, /data/sqlite, C:\dbs ,, D:/more'))->toBe([
+        base_path('storage/app/sqlite'),
+        '/data/sqlite',
+        'C:\dbs',
+        'D:/more',
+    ]);
+});
+
+it('allows no SQLite directory when the setting is blank', function () {
+    expect(loadDbzuperSqlitePaths(''))->toBe([]);
+});

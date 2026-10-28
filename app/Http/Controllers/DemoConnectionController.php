@@ -41,11 +41,20 @@ class DemoConnectionController extends Controller
         return redirect()->route('workspace.show', $connection->workspaceRef());
     }
 
-    /** Where the demo database lives, or null when no SQLite directory is allowed (DBZUPER_SQLITE_PATHS). */
+    /**
+     * Where the demo database lives, or null when no SQLite directory is allowed (DBZUPER_SQLITE_PATHS) or the first
+     * one can't be created. A missing directory is created, so a fresh install needs no setup step for it.
+     */
     public static function path(): ?string
     {
         $dir = config('dbzuper.sqlite_paths')[0] ?? null;
+        if (! is_string($dir)) {
+            return null;
+        }
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
 
-        return is_string($dir) && is_dir($dir) ? rtrim($dir, '/\\').DIRECTORY_SEPARATOR.self::FILE : null;
+        return is_dir($dir) ? rtrim($dir, '/\\').DIRECTORY_SEPARATOR.self::FILE : null;
     }
 }
