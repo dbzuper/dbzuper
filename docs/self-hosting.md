@@ -4,25 +4,45 @@ DBZuper ships as a single Docker image (FrankenPHP 1.13 on PHP 8.4, running as a
 
 ## Requirements
 
-- Docker with the Compose plugin (v2.24 or newer, for the optional `env_file`).
+- Docker. The Compose plugin (v2.24 or newer, for the optional `env_file`) is only needed to build from source or to use Compose.
 - About 750 MB of disk for the image, plus space for your SQLite files and the app database.
 - Network access from the container to the databases you want to explore.
 
 ## Quick start
 
-    git clone <repository-url> dbzuper && cd dbzuper
+With the published image (linux/amd64 and linux/arm64):
+
+    docker run -d --name dbzuper -p 8080:8080 --restart unless-stopped \
+      --add-host=host.docker.internal:host-gateway \
+      -v dbzuper-storage:/app/storage -v dbzuper-sqlite:/data/sqlite \
+      ghcr.io/dbzuper/dbzuper:latest
+
+Then open <http://localhost:8080> and create the administrator with the setup code from `docker logs dbzuper` (see [First administrator](#first-administrator)). Pin a version (`ghcr.io/dbzuper/dbzuper:1.2`) instead of `latest` if you want upgrades to be deliberate.
+
+The same with Compose, in a `docker-compose.yml` of your own:
+
+    services:
+        app:
+            image: ghcr.io/dbzuper/dbzuper:latest
+            ports: ['8080:8080']
+            extra_hosts: ['host.docker.internal:host-gateway']
+            env_file: [{ path: .env.docker, required: false }]
+            volumes: ['dbzuper-storage:/app/storage', 'dbzuper-sqlite:/data/sqlite']
+            restart: unless-stopped
+    volumes:
+        dbzuper-storage:
+        dbzuper-sqlite:
+
+From source, with the `docker-compose.yml` in the repository:
+
+    git clone https://github.com/dbzuper/dbzuper && cd dbzuper
     docker compose up -d --build --wait
 
-`--wait` returns once the container is healthy (or check `docker compose ps`, or that `curl http://localhost:8080/up` returns 200). Then open <http://localhost:8080> and create the administrator with the setup code from `docker compose logs app` (see [First administrator](#first-administrator)).
+`--wait` returns once the container is healthy (or check `docker compose ps`, or that `curl http://localhost:8080/up` returns 200). The setup code is in `docker compose logs app`.
 
 On first start the entrypoint creates the storage directories and the application SQLite database, generates an `APP_KEY` (see [Backups](#backups-and-the-app_key)), runs the migrations and caches the configuration, routes and views. Every later start repeats the migrations and caching, so upgrades need no manual step.
 
-One-off commands run through the same entrypoint (key, storage and database prepared, server not started): `docker compose run --rm app php artisan --version`.
-
-Build and run without Compose:
-
-    docker build -t dbzuper:local .
-    docker run -d -p 8080:8080 -v dbzuper-storage:/app/storage -v dbzuper-sqlite:/data/sqlite dbzuper:local
+One-off commands run through the same entrypoint (key, storage and database prepared, server not started): `docker compose run --rm app php artisan --version`, or `docker exec dbzuper php artisan --version` on a running container.
 
 ## First administrator
 
@@ -136,10 +156,18 @@ Back up `dbzuper-sqlite` the same way if it holds your only copy of the SQLite f
 
 ## Upgrades
 
+Take a backup first. Then, with the published image:
+
+    docker pull ghcr.io/dbzuper/dbzuper:latest
+    docker rm -f dbzuper    # the volumes keep your data
+    docker run -d --name dbzuper ...   # the same command as before
+
+with Compose and the published image, `docker compose pull && docker compose up -d`; from source:
+
     git pull
     docker compose up -d --build
 
-The volumes survive, the entrypoint runs `php artisan migrate --force` on start, and the key is reused. Take a backup first. Changes users will notice (such as the dark default theme, which keeps an appearance already saved in the browser) are listed under "Upgrading" in the README.
+The volumes survive, the entrypoint runs `php artisan migrate --force` on start, and the key is reused. Changes that need action on your side are listed in the [changelog](../CHANGELOG.md).
 
 ## Environment reference
 
@@ -172,7 +200,11 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 ## Security notes
 
 - Only the administrator can sign in and create connections, but DBZuper connects to **any host reachable from the container**, including your internal network. Do not expose it to people you would not give that reach.
-- Saved credentials are encrypted at rest with `APP_KEY`; anyone holding both the storage volume and the key can read them. Treat backups accordingly.
-- Serve it over HTTPS and keep the container port off the public network.
-- SQLite files are opened only inside `DBZUPER_SQLITE_PATHS`; `ATTACH`, `VACUUM INTO` and similar are refused.
+- Until the administrator exists, the setup screen asks for the one-time setup code from the server log. Keep the log private until setup is done.
+- Saved credentials are encrypted at rest with `APP_KEY`; anyone holding both the storage volume and the key can read them. Treat backups accordingly, and back the key up: losing it makes saved passwords unrecoverable.
+- Serve it over HTTPS and keep the container port off the public network. Behind a reverse proxy, set `TRUSTED_PROXIES` (see [HTTPS behind a reverse proxy](#https-behind-a-reverse-proxy)); leave it unset when the app is reached directly, so no `X-Forwarded-*` header is trusted.
+- Changing anything that reaches the connection string (driver, host, port, username, database, SSL options or PostgreSQL schema) requires re-entering the stored password. PostgreSQL host, database, username and CA path may not contain spaces, quotes or backslashes.
+- Connections marked read-only are enforced by the database session (MySQL/MariaDB `READ ONLY` transactions, PostgreSQL read-only session, SQLite read-only open mode).
+- SQLite files are opened only inside `DBZUPER_SQLITE_PATHS`. The SQL editor therefore refuses `ATTACH`, `DETACH`, `VACUUM INTO` and the `temp_store_directory`/`data_store_directory` pragmas on SQLite connections, which would reach other files.
 - Query history stores SQL as typed (password literals in `PASSWORD`/`IDENTIFIED BY` clauses are redacted). Turn history off per connection for sensitive work.
+- Accounts cannot be deleted from the UI: DBZuper has a single administrator.
