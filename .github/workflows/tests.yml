@@ -37,6 +37,7 @@ jobs:
       # After the build, which generates the Wayfinder route files tsc checks.
       - run: composer types:check -- --memory-limit=1G
       - run: npm run types:check
+      - run: npm run check
       - run: php artisan test
       - run: npm run test
       - run: npx playwright install --with-deps chromium && npm run e2e
