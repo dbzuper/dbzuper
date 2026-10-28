@@ -116,3 +116,8 @@ Engine integration tests use real servers and skip any that are unreachable (set
 - PostgreSQL 18 on port 5432: the tests create and use only the `dbzuper_test` database.
 
 Credentials come from the `TEST_*` variables in `.env`.
+
+## License
+
+DBZuper is open source under the [MIT license](LICENSE). The DBZuper name and logo are not covered by it: see
+[TRADEMARKS.md](TRADEMARKS.md) before publishing a fork.

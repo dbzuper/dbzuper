@@ -1,11 +1,15 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/react-starter-kit",
+    "name": "dbzuper/dbzuper",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "A self-hosted, visual database workspace for MySQL, MariaDB, PostgreSQL and SQLite.",
     "keywords": [
-        "laravel",
-        "framework"
+        "database",
+        "mysql",
+        "mariadb",
+        "postgresql",
+        "sqlite",
+        "self-hosted"
     ],
     "license": "MIT",
     "require": {

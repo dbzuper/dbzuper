@@ -1,6 +1,8 @@
 {
     "$schema": "https://www.schemastore.org/package.json",
+    "name": "dbzuper",
     "private": true,
+    "license": "MIT",
     "type": "module",
     "scripts": {
         "build": "vp build && node scripts/check-chunks.mjs",
