@@ -4,6 +4,10 @@ namespace App\Database\Schema;
 
 use Carbon\CarbonImmutable;
 
+/**
+ * @phpstan-import-type TableArray from TableInfo
+ * @phpstan-import-type RelationshipArray from Relationship
+ */
 final readonly class SchemaSnapshot
 {
     /**
@@ -41,6 +45,7 @@ final readonly class SchemaSnapshot
         ], JSON_THROW_ON_ERROR));
     }
 
+    /** @return array{driver: string, database: string, schema: ?string, generated_at: string, hash: string, tables: list<TableArray>, relationships: list<RelationshipArray>, truncated: bool, total_objects: int} */
     public function toArray(): array
     {
         return [

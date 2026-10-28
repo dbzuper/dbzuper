@@ -15,7 +15,7 @@ final class ConnectionTester
         private readonly DbErrorMapper $errors,
     ) {}
 
-    /** @return array{ok: bool, version: ?string, latency_ms: int, error: ?array} */
+    /** @return array{ok: bool, version: ?string, latency_ms: int, error: ?array{kind: string, message: string, sqlstate: ?string, reason: ?string, position?: array{line: int, column: ?int}}} */
     public function test(SavedConnection $connection): array
     {
         $started = hrtime(true);
@@ -37,7 +37,7 @@ final class ConnectionTester
         return $first;
     }
 
-    /** @return array{ok: bool, version: ?string, latency_ms: int, error: ?array} */
+    /** @return array{ok: bool, version: ?string, latency_ms: int, error: ?array{kind: string, message: string, sqlstate: ?string, reason: ?string, position?: array{line: int, column: ?int}}} */
     private function attempt(SavedConnection $connection, int $started): array
     {
         try {

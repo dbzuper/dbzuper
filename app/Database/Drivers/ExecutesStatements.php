@@ -61,6 +61,8 @@ trait ExecutesStatements
     /**
      * Reads rows into $rows until the statement is exhausted or a cap is hit.
      *
+     * @param  list<list<string|int|float|bool|null>>  $rows
+     * @param-out  list<list<string|int|float|bool|null>>  $rows
      * @return bool true when a cap stopped the read (more rows exist or the byte budget ran out)
      */
     protected function appendRows(PDOStatement $statement, array &$rows, int &$bytes, int $maxRows, int $maxBytes): bool

@@ -11,6 +11,7 @@ final class SnapshotSummary
      * Nodes are the most connected tables by declared foreign keys (ties alphabetical), then filled alphabetically;
      * edges are index pairs into the nodes, declared foreign keys only.
      *
+     * @param  array<string, mixed>  $payload  a stored snapshot payload, possibly from an older version
      * @return array{table_count: int, view_count: int, preview: array{nodes: list<string>, edges: list<array{0: int, 1: int}>}}
      */
     public static function of(array $payload): array

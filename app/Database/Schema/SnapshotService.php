@@ -53,11 +53,8 @@ final class SnapshotService
         ]);
 
         $keep = (int) config('dbzuper.snapshot_keep');
-        $stale = $connection->snapshots()->orderByDesc('id')->pluck('id')->slice($keep);
-
-        if ($stale->isNotEmpty()) {
-            StoredSnapshot::whereIn('id', $stale->all())->delete();
-        }
+        $newest = $connection->snapshots()->orderByDesc('id')->limit($keep)->pluck('id');
+        $connection->snapshots()->whereNotIn('id', $newest)->delete();
 
         return $stored;
     }

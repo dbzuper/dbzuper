@@ -2,6 +2,13 @@
 
 namespace App\Database\Schema;
 
+/**
+ * @phpstan-import-type ColumnArray from ColumnInfo
+ * @phpstan-import-type IndexArray from IndexInfo
+ * @phpstan-import-type RowCountArray from RowCount
+ *
+ * @phpstan-type TableArray array{name: string, kind: string, row_count?: RowCountArray, size_bytes?: ?int, primary_key: list<string>, columns: list<ColumnArray>, indexes: list<IndexArray>}
+ */
 final readonly class TableInfo
 {
     /**
@@ -31,6 +38,7 @@ final readonly class TableInfo
         return null;
     }
 
+    /** @return TableArray */
     public function toArray(bool $withStats = true): array
     {
         return array_merge(

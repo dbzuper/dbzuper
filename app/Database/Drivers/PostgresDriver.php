@@ -45,7 +45,7 @@ class PostgresDriver implements Driver
     /** Databases that refuse connections (template0) can't be browsed, so they aren't listed. */
     public function listDatabaseNames(Connection $db): array
     {
-        return array_map(fn ($row) => (string) $row->datname, $db->select('SELECT datname FROM pg_database WHERE datallowconn ORDER BY datname'));
+        return array_values(array_map(fn ($row) => (string) $row->datname, $db->select('SELECT datname FROM pg_database WHERE datallowconn ORDER BY datname')));
     }
 
     /** Sizes only: counting tables would take a connection per database. */
@@ -204,8 +204,8 @@ class PostgresDriver implements Driver
 
             return $result;
         } catch (Throwable $t) {
-            if ($ownTransaction && $pdo->inTransaction()) {
-                $pdo->rollBack();
+            if ($ownTransaction) {
+                self::rollBackIfOpen($pdo);
             }
 
             throw $t;
@@ -215,6 +215,14 @@ class PostgresDriver implements Driver
     public function inspector(): SchemaInspector
     {
         return app(PostgresInspector::class);
+    }
+
+    /** The transaction may already be gone (a failed COMMIT, a dropped connection), so check before rolling back. */
+    private static function rollBackIfOpen(PDO $pdo): void
+    {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
     }
 
     public function serverInfo(Connection $db, SavedConnection $connection): array

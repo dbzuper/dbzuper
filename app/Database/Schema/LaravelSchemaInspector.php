@@ -7,6 +7,13 @@ use App\Models\SavedConnection;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Connection;
 
+/**
+ * Row shapes returned by Laravel's schema post-processors.
+ *
+ * @phpstan-type LaravelColumn array{name: string, type: string, type_name: string, collation: string|null, nullable: bool, default: mixed, auto_increment: bool, comment: string|null, generation: array{type: string|null, expression: string|null}|null}
+ * @phpstan-type LaravelIndex array{name: string, columns: list<string>, type: string|null, unique: bool, primary: bool}
+ * @phpstan-type LaravelForeignKey array{name: string|null, columns: list<string>, foreign_schema: string|null, foreign_table: string, foreign_columns: list<string>, on_update: string|null, on_delete: string|null}
+ */
 abstract class LaravelSchemaInspector implements SchemaInspector
 {
     public function __construct(private readonly RelationshipInferrer $inferrer) {}
@@ -47,7 +54,7 @@ abstract class LaravelSchemaInspector implements SchemaInspector
 
         foreach ($rawTables as $raw) {
             $indexes = array_map(
-                fn (array $i) => new IndexInfo((string) $i['name'], array_values($i['columns']), (bool) $i['unique'], (bool) $i['primary']),
+                fn (array $i) => new IndexInfo((string) $i['name'], $i['columns'], (bool) $i['unique'], (bool) $i['primary']),
                 $described['indexes'][$raw['name']] ?? [],
             );
             usort($indexes, fn (IndexInfo $a, IndexInfo $b) => strcmp($a->name, $b->name));
@@ -58,7 +65,7 @@ abstract class LaravelSchemaInspector implements SchemaInspector
                 $counts[$raw['name']] ?? RowCount::unknown(),
                 isset($raw['size']) ? (int) $raw['size'] : null,
                 array_map(ColumnInfo::fromLaravel(...), $described['columns'][$raw['name']] ?? []),
-                $primary?->columns ?? [],
+                $primary->columns ?? [],
                 $indexes,
             );
 
@@ -104,7 +111,7 @@ abstract class LaravelSchemaInspector implements SchemaInspector
      *
      * @param  list<string>  $tableNames
      * @param  list<string>  $viewNames
-     * @return array{columns: array<string, list<array>>, indexes: array<string, list<array>>, foreignKeys: array<string, list<array>>}
+     * @return array{columns: array<string, list<LaravelColumn>>, indexes: array<string, list<LaravelIndex>>, foreignKeys: array<string, list<LaravelForeignKey>>}
      */
     protected function describe(Connection $db, string $schema, array $tableNames, array $viewNames): array
     {
@@ -124,18 +131,31 @@ abstract class LaravelSchemaInspector implements SchemaInspector
     }
 
     /**
-     * @param  list<object>  $rows  rows carrying a `table_name` property
-     * @param  callable(list<object>): list<array>  $process  a Laravel post-processor method
-     * @return array<string, list<array>>
+     * @template TProcessed
+     *
+     * @param  array<object>  $rows  rows carrying a `table_name` property
+     * @param  callable(list<array<string, mixed>>): list<TProcessed>  $process  a Laravel post-processor method
+     * @return array<string, list<TProcessed>>
      */
     protected function groupByTable(array $rows, callable $process): array
     {
         $grouped = [];
-        foreach ($rows as $row) {
-            $grouped[$row->table_name][] = $row;
+        foreach (self::asArrays($rows) as $row) {
+            $grouped[(string) $row['table_name']][] = $row;
         }
 
         return array_map(fn (array $group) => $process($group), $grouped);
+    }
+
+    /**
+     * Query rows as the arrays Laravel's post-processors take.
+     *
+     * @param  array<object>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected static function asArrays(array $rows): array
+    {
+        return array_values(array_map(fn (object $row) => (array) $row, $rows));
     }
 
     /** Whether a foreign key's target schema is the inspected one (null means the same schema). */

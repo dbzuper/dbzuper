@@ -5,7 +5,6 @@ namespace App\Database\Errors;
 use App\Database\Exceptions\InvalidConnectionOption;
 use App\Database\Exceptions\OffsetQueryException;
 use App\Database\Exceptions\SqlitePathNotAllowed;
-use Illuminate\Database\QueryException;
 use PDOException;
 use Throwable;
 
@@ -30,16 +29,16 @@ final class DbErrorMapper
         }
 
         $pdo = $e instanceof PDOException ? $e : ($e->getPrevious() instanceof PDOException ? $e->getPrevious() : null);
-        if ($pdo === null && ! $e instanceof QueryException) {
+        if ($pdo === null) {
             // Not a database error, so most likely a bug: the user sees a generic message, the log gets the details.
             report($e);
 
             return new DbError('unknown', 'An unexpected error occurred.', null, null);
         }
 
-        $raw = ($pdo ?? $e)->getMessage();
-        $sqlstate = $pdo?->errorInfo[0] ?? (preg_match('/SQLSTATE\[(\w{5})\]/', $raw, $m) ? $m[1] : null);
-        $driverCode = $pdo?->errorInfo[1] ?? (preg_match('/SQLSTATE\[\w{5}\]\s*\[(\d+)\]/', $raw, $m) ? (int) $m[1] : null);
+        $raw = $pdo->getMessage();
+        $sqlstate = $pdo->errorInfo[0] ?? (preg_match('/SQLSTATE\[(\w{5})\]/', $raw, $m) ? $m[1] : null);
+        $driverCode = $pdo->errorInfo[1] ?? (preg_match('/SQLSTATE\[\w{5}\]\s*\[(\d+)\]/', $raw, $m) ? (int) $m[1] : null);
         $message = $this->clean($raw);
         $position = $this->position($raw, $columnOffset);
         // Match on the cleaned message only: the raw QueryException suffix embeds user SQL text.
@@ -47,7 +46,7 @@ final class DbErrorMapper
         $lower = strtolower((string) strtok($message, "\n"));
         $connectionClass = str_starts_with((string) $sqlstate, '08')
             || in_array($driverCode, [2002, 2003, 2005, 2006, 2026, 3159], true)
-            || ($pdo !== null && $pdo->errorInfo === null);
+            || $pdo->errorInfo === null;
 
         [$kind, $reason] = match (true) {
             $connectionClass && (str_contains($lower, 'getaddrinfo') || str_contains($lower, 'could not translate host name') || str_contains($lower, 'name or service not known')) => ['connection', 'dns'],
