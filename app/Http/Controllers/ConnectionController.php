@@ -50,6 +50,7 @@ class ConnectionController extends Controller
                     'star' => StarMap::for($connection, $latest),
                 ];
             })->values(),
+            'canTryDemo' => DemoConnectionController::path() !== null,
         ]);
     }
 

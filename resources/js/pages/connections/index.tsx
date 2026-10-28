@@ -29,8 +29,11 @@ function isTyping(el: Element | null) {
 
 export default function ConnectionsIndex({
     connections,
+    canTryDemo = false,
 }: {
     connections: Card[];
+    /** An allowed SQLite directory exists, so "Try it with demo data" can build the demo there. */
+    canTryDemo?: boolean;
 }) {
     // Drafts of connections that were removed (here or elsewhere) would otherwise stay in localStorage forever.
     useEffect(() => {
@@ -146,7 +149,7 @@ export default function ConnectionsIndex({
                 </ConnectionsHero>
 
                 {connections.length === 0 ? (
-                    <ConnectionsEmpty />
+                    <ConnectionsEmpty canTryDemo={canTryDemo} />
                 ) : shown.length === 0 ? (
                     <div className="flex flex-col items-center gap-3 px-6 py-16 text-center text-sm text-muted-foreground">
                         <p>No connection matches "{query.trim()}"</p>

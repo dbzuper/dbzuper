@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const routerDelete = vi.fn();
+const routerPost = vi.fn();
 
 vi.mock('@inertiajs/react', () => ({
     Head: () => null,
@@ -18,7 +19,10 @@ vi.mock('@inertiajs/react', () => ({
             {children}
         </a>
     ),
-    router: { delete: (...args: unknown[]) => routerDelete(...args) },
+    router: {
+        delete: (...args: unknown[]) => routerDelete(...args),
+        post: (...args: unknown[]) => routerPost(...args),
+    },
     usePage: () => ({
         props: { auth: { user: { name: 'Farhan Ahmad', email: 'f@x.y' } } },
     }),
@@ -117,6 +121,7 @@ describe('connections page', () => {
         vi.setSystemTime(NOW);
         localStorage.clear();
         routerDelete.mockReset();
+        routerPost.mockReset();
     });
 
     afterEach(() => {
@@ -218,6 +223,25 @@ describe('connections page', () => {
         expect(
             screen.getByRole('link', { name: 'Open Local server' }),
         ).toHaveAttribute('href', '/c/1');
+    });
+
+    it('offers the demo database on an empty install that allows it', () => {
+        render(<ConnectionsIndex connections={[]} canTryDemo />);
+        fireEvent.click(
+            screen.getByRole('button', { name: 'Try it with demo data' }),
+        );
+        expect(routerPost).toHaveBeenCalledWith(
+            '/connections/demo',
+            {},
+            expect.anything(),
+        );
+    });
+
+    it('offers no demo where no SQLite directory is allowed', () => {
+        render(<ConnectionsIndex connections={[]} canTryDemo={false} />);
+        expect(
+            screen.queryByRole('button', { name: 'Try it with demo data' }),
+        ).toBeNull();
     });
 
     it('shows the empty state without the summary or tools', () => {

@@ -1,12 +1,30 @@
-import { Link } from '@inertiajs/react';
-import { Plus } from 'lucide-react';
+import { Link, router } from '@inertiajs/react';
+import { Plus, Sparkles } from 'lucide-react';
+import { useState } from 'react';
 import { StarMap } from '@/components/connections/star-map';
+import { RadarSweep } from '@/components/radar';
 import { Button } from '@/components/ui/button';
 
 const EMPTY_SEED = 5;
 
 /** Shown instead of the summary, tools and grid when there are no connections yet. */
-export function ConnectionsEmpty() {
+export function ConnectionsEmpty({
+    canTryDemo = false,
+}: {
+    canTryDemo?: boolean;
+}) {
+    const [building, setBuilding] = useState(false);
+
+    const tryDemo = () =>
+        router.post(
+            '/connections/demo',
+            {},
+            {
+                onStart: () => setBuilding(true),
+                onFinish: () => setBuilding(false),
+            },
+        );
+
     return (
         <section className="grid flex-1 place-items-center p-10 text-center">
             <div>
@@ -24,12 +42,34 @@ export function ConnectionsEmpty() {
                     file. It maps the schema into a universe you can fly
                     through, browse and edit.
                 </p>
-                <Button asChild>
-                    <Link href="/connections/create">
-                        <Plus aria-hidden />
-                        New connection
-                    </Link>
-                </Button>
+                <div className="flex flex-wrap justify-center gap-3">
+                    <Button asChild>
+                        <Link href="/connections/create">
+                            <Plus aria-hidden />
+                            New connection
+                        </Link>
+                    </Button>
+                    {canTryDemo && (
+                        <Button
+                            variant="outline"
+                            onClick={tryDemo}
+                            disabled={building}
+                        >
+                            {building ? (
+                                <RadarSweep className="size-4" />
+                            ) : (
+                                <Sparkles aria-hidden />
+                            )}
+                            Try it with demo data
+                        </Button>
+                    )}
+                </div>
+                {canTryDemo && (
+                    <p className="mx-auto mt-3 max-w-[420px] text-xs text-muted-foreground">
+                        A small online shop in SQLite (users, products and
+                        orders), added as a connection you can delete any time.
+                    </p>
+                )}
             </div>
         </section>
     );

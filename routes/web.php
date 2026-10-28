@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\TableCountController;
 use App\Http\Controllers\Api\TableRowsController;
 use App\Http\Controllers\ConnectionController;
 use App\Http\Controllers\ConnectionTestController;
+use App\Http\Controllers\DemoConnectionController;
 use App\Http\Controllers\HistoryPageController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\WorkspaceController;
@@ -27,6 +28,7 @@ Route::middleware('auth')->group(function () {
     Route::redirect('dashboard', '/connections')->name('dashboard');
     Route::post('connections/test', ConnectionTestController::class)
         ->middleware('throttle:dbzuper-api')->name('connections.test');
+    Route::post('connections/demo', DemoConnectionController::class)->name('connections.demo');
     Route::resource('connections', ConnectionController::class)->except('show')->where(['connection' => '[0-9]+']);
 
     Route::get('c/{connection}/{database?}', WorkspaceController::class)->where(['connection' => '[0-9]+', 'database' => '[^/]+'])->name('workspace.show');
