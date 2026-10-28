@@ -11,7 +11,7 @@ use Tests\Support\Engines;
  * (REQUIRE SSL), so each result shows whether an SSL mode really encrypts. The containers' certificates are
  * self-signed and name no host, like a cloud database reached through an SSH tunnel on 127.0.0.1.
  */
-const SSL_PROBE_USER = 'dbsuperb_ssl_probe';
+const SSL_PROBE_USER = 'dbzuper_ssl_probe';
 const SSL_PROBE_PASSWORD = 'ssl-probe-pw';
 const UNRELATED_CA = 'tests/fixtures/tls/unrelated-ca.pem';
 

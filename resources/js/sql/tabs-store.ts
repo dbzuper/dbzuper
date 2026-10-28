@@ -146,7 +146,7 @@ function sanitize(input: unknown): Record<WorkspaceRef, ConnectionTabs> {
     return out;
 }
 
-const STORAGE_KEY = 'dbsuperb.sql-tabs';
+const STORAGE_KEY = 'dbzuper.sql-tabs';
 
 type Persisted = { byConnection: Record<WorkspaceRef, ConnectionTabs> };
 

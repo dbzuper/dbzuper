@@ -11,11 +11,11 @@ use Tests\Support\Engines;
 it('keeps per-database rows of names differing only in case or accents apart', function (string $engine) {
     Engines::skipUnlessAvailable($engine);
     $server = Engines::serverPdo($engine);
-    $server->exec('DROP DATABASE IF EXISTS dbsuperb_test_appdb');
-    $server->exec('CREATE DATABASE dbsuperb_test_appdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+    $server->exec('DROP DATABASE IF EXISTS dbzuper_test_appdb');
+    $server->exec('CREATE DATABASE dbzuper_test_appdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
     $p = Engines::params($engine);
     config(['database.connections.appdb' => array_merge(config('database.connections.mysql'), [
-        'driver' => $engine, 'host' => $p['host'], 'port' => $p['port'], 'database' => 'dbsuperb_test_appdb',
+        'driver' => $engine, 'host' => $p['host'], 'port' => $p['port'], 'database' => 'dbzuper_test_appdb',
         'username' => $p['username'], 'password' => $p['password'], 'collation' => 'utf8mb4_unicode_ci',
     ])]);
 
@@ -33,6 +33,6 @@ it('keeps per-database rows of names differing only in case or accents apart', f
             ->and($db->table('pinned_tables')->where('database', 'cafe')->count())->toBe(1);
     } finally {
         DB::purge('appdb');
-        $server->exec('DROP DATABASE IF EXISTS dbsuperb_test_appdb');
+        $server->exec('DROP DATABASE IF EXISTS dbzuper_test_appdb');
     }
 })->with(['mysql', 'mariadb']);

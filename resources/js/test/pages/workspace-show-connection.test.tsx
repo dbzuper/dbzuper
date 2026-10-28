@@ -207,7 +207,7 @@ describe('kept layout positions', () => {
 
     it('are replayed as a merge before the layout is read, then cleared', async () => {
         localStorage.setItem(
-            'dbsuperb.layout-pending.1',
+            'dbzuper.layout-pending.1',
             JSON.stringify([at('users', 55)]),
         );
         const order: string[] = [];
@@ -225,6 +225,6 @@ describe('kept layout positions', () => {
             merge: true,
         });
         expect(order.slice(0, 2)).toEqual(['save', 'layout']);
-        expect(localStorage.getItem('dbsuperb.layout-pending.1')).toBeNull();
+        expect(localStorage.getItem('dbzuper.layout-pending.1')).toBeNull();
     });
 });

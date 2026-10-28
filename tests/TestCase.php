@@ -14,7 +14,7 @@ abstract class TestCase extends BaseTestCase
         RedirectToSetup::flush();
         parent::setUp();
 
-        config(['dbsuperb.sqlite_paths' => [Engines::sqliteDirectory()]]);
+        config(['dbzuper.sqlite_paths' => [Engines::sqliteDirectory()]]);
     }
 
     protected function skipUnlessFortifyHas(string $feature, ?string $message = null): void

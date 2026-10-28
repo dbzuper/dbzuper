@@ -21,7 +21,7 @@ class CreateFirstAdmin
     public function handle(array $input, int $waitSeconds = 5): ?User
     {
         try {
-            return Cache::lock('dbsuperb:setup', 10)->block($waitSeconds, function () use ($input): ?User {
+            return Cache::lock('dbzuper:setup', 10)->block($waitSeconds, function () use ($input): ?User {
                 if (User::query()->exists()) {
                     return null;
                 }

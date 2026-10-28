@@ -29,7 +29,7 @@ class PostgresDriver implements Driver
 
     private const FETCH_PAGE = 200;
 
-    private const CURSOR_PREFIX = 'DECLARE dbsuperb_cursor NO SCROLL CURSOR FOR ';
+    private const CURSOR_PREFIX = 'DECLARE dbzuper_cursor NO SCROLL CURSOR FOR ';
 
     public function name(): DriverName
     {
@@ -93,7 +93,7 @@ class PostgresDriver implements Driver
             'prefix' => '',
             'search_path' => $schema,
             'sslmode' => $sslmode,
-            'options' => [PDO::ATTR_TIMEOUT => (int) config('dbsuperb.connect_timeout')],
+            'options' => [PDO::ATTR_TIMEOUT => (int) config('dbzuper.connect_timeout')],
             // Sent in the startup packet, so it holds on every (re)connect: backslashes in '...' stay literal,
             // matching SqlLexer.
             'server_options' => ['standard_conforming_strings' => 'on'],
@@ -183,7 +183,7 @@ class PostgresDriver implements Driver
             $truncated = false;
             while (true) {
                 $size = min(self::FETCH_PAGE, $maxRows + 1 - count($rows));
-                $fetch = $pdo->prepare('FETCH FORWARD '.max(1, $size).' FROM dbsuperb_cursor');
+                $fetch = $pdo->prepare('FETCH FORWARD '.max(1, $size).' FROM dbzuper_cursor');
                 $fetch->execute();
                 if ($columns === []) {
                     $columns = $this->columnsOf($fetch);
@@ -195,7 +195,7 @@ class PostgresDriver implements Driver
                     break;
                 }
             }
-            $pdo->prepare('CLOSE dbsuperb_cursor')->execute();
+            $pdo->prepare('CLOSE dbzuper_cursor')->execute();
             $result = new StatementResult($sql, $classification, $columns, $rows, $truncated, null, $this->elapsed($started), null, $bytes);
 
             if ($ownTransaction) {

@@ -1236,7 +1236,7 @@ export function ResultGrid({
     const grid = (
         <DataGrid
             ref={gridRef}
-            className="rdg-dbsuperb h-full font-mono text-xs"
+            className="rdg-dbzuper h-full font-mono text-xs"
             columns={gridColumns}
             rows={data}
             rowKeyGetter={(r) => r.__i}

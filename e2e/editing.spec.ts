@@ -8,7 +8,7 @@ import { addSqliteConnection, newSignedInContext } from './support/auth';
 
 /**
  * Staged editing writes to the database, so this spec works on its own copy of the demo database (inside the
- * directory DBSUPERB_SQLITE_PATHS allows) and never touches the shared one other specs read.
+ * directory DBZUPER_SQLITE_PATHS allows) and never touches the shared one other specs read.
  */
 const DEMO = path.resolve('storage/app/demo/commerce.sqlite');
 const COPY = path.resolve('storage/app/demo/editing-e2e.sqlite');

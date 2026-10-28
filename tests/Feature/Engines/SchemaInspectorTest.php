@@ -69,11 +69,11 @@ it('only includes the connection’s own database or schema', function (string $
     Engines::skipUnlessAvailable($engine);
     $pdo = Engines::pdo($engine);
     if ($engine === 'pgsql') {
-        $pdo->exec('create schema if not exists dbsuperb_other');
-        $pdo->exec('create table if not exists dbsuperb_other.foreign_thing (id int primary key)');
+        $pdo->exec('create schema if not exists dbzuper_other');
+        $pdo->exec('create table if not exists dbzuper_other.foreign_thing (id int primary key)');
     } else {
-        $pdo->exec('create database if not exists dbsuperb_other');
-        $pdo->exec('create table if not exists dbsuperb_other.foreign_thing (id int primary key)');
+        $pdo->exec('create database if not exists dbzuper_other');
+        $pdo->exec('create table if not exists dbzuper_other.foreign_thing (id int primary key)');
     }
 
     $names = collect(inspectEngine($engine)->tables)->pluck('name');

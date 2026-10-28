@@ -12,7 +12,7 @@ import { chunkModulesFile } from './scripts/chunk-rules.mjs';
 // @monaco-editor/loader ships a default CDN URL it never uses once
 // loader.config({ monaco }) is set. Blank it so no CDN reference reaches the bundle.
 const noMonacoCdn = {
-    name: 'dbsuperb:no-monaco-cdn',
+    name: 'dbzuper:no-monaco-cdn',
     enforce: 'pre' as const,
     transform(code: string, id: string) {
         if (!id.includes('@monaco-editor/loader')) return null;
@@ -24,7 +24,7 @@ const noMonacoCdn = {
 // scripts/check-chunks.mjs can prove which libraries ship in which chunk. Written to
 // storage/build (not public/build), so the web server never serves it.
 const chunkModules = {
-    name: 'dbsuperb:chunk-modules',
+    name: 'dbzuper:chunk-modules',
     // Client build only: `build:ssr` runs a second, SSR build after the check, which must not
     // overwrite the client's map.
     apply: (_config: unknown, env: { command: string; isSsrBuild?: boolean }) =>

@@ -592,9 +592,9 @@ describe('linked tabs follow each other', () => {
         flushBrowse();
         flushSqlTabs();
         // Another window activates t2; both tabs stay open, so this window's previous tab survives.
-        const raw = JSON.parse(localStorage.getItem('dbsuperb.browse')!);
+        const raw = JSON.parse(localStorage.getItem('dbzuper.browse')!);
         raw.state.byConnection[1].activeId = t2;
-        localStorage.setItem('dbsuperb.browse', JSON.stringify(raw));
+        localStorage.setItem('dbzuper.browse', JSON.stringify(raw));
         // An active id that changes while the store hydrates (whatever merge decides) is not followed.
         const off = useBrowse.persist.onHydrate(() =>
             useBrowse.setState((s) => ({

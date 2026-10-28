@@ -18,7 +18,7 @@ function saved(array $attributes): SavedConnection
 }
 
 it('builds a MySQL config with timeout, default port and optional TLS', function () {
-    config(['dbsuperb.connect_timeout' => 4]);
+    config(['dbzuper.connect_timeout' => 4]);
     $config = app(DriverRegistry::class)->for(DriverName::MySql)
         ->config(saved(['driver' => DriverName::MySql, 'options' => ['ssl_ca' => '/ca.pem', 'ssl_verify' => true]]));
 

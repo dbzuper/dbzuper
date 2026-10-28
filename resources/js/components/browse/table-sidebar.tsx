@@ -45,7 +45,7 @@ const ROW_HEIGHT = 28;
 const TYPE_AHEAD_MS = 500;
 /** How long Recent holds still after a click: long enough for the second click of a double-click. */
 const DOUBLE_CLICK_MS = 500;
-const PIN_DRAG_TYPE = 'text/x-dbsuperb-pin';
+const PIN_DRAG_TYPE = 'text/x-dbzuper-pin';
 
 const NO_PINS: Pin[] = [];
 const NO_RECENTS: string[] = [];

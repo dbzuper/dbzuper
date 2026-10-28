@@ -67,7 +67,7 @@ class DatabaseLister
                     }
 
                     return [$names, $stats, $version];
-                }, (int) config('dbsuperb.introspection_timeout'));
+                }, (int) config('dbzuper.introspection_timeout'));
             } catch (Throwable $e) {
                 $first ??= $e;
             }

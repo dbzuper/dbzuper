@@ -2,17 +2,17 @@
 services:
     app:
         build: .
-        image: dbsuperb:local
+        image: dbzuper:local
         ports:
             - '8080:8080'
         env_file:
             - path: .env.docker
               required: false
         volumes:
-            - dbsuperb-storage:/app/storage
-            - dbsuperb-sqlite:/data/sqlite
+            - dbzuper-storage:/app/storage
+            - dbzuper-sqlite:/data/sqlite
         restart: unless-stopped
 
 volumes:
-    dbsuperb-storage:
-    dbsuperb-sqlite:
+    dbzuper-storage:
+    dbzuper-sqlite:

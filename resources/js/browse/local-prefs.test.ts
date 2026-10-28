@@ -29,7 +29,7 @@ describe('local prefs', () => {
     it('clamps sidebar width and falls back on garbage', () => {
         writeSidebarPrefs({ width: 9999, collapsed: true });
         expect(readSidebarPrefs()).toEqual({ width: 480, collapsed: true });
-        localStorage.setItem('dbsuperb.sidebar', '"nope"');
+        localStorage.setItem('dbzuper.sidebar', '"nope"');
         expect(readSidebarPrefs()).toEqual({
             width: SIDEBAR_DEFAULT,
             collapsed: false,
@@ -61,7 +61,7 @@ describe('group prefs', () => {
     });
 
     it('reads corrupt JSON as nothing open', () => {
-        localStorage.setItem('dbsuperb.sidebar-groups', '{nope');
+        localStorage.setItem('dbzuper.sidebar-groups', '{nope');
         expect(readGroupPrefs('1')).toEqual({ open: [] });
     });
 

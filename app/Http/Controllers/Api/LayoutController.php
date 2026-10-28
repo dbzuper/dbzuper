@@ -20,7 +20,7 @@ class LayoutController extends Controller
     /** Saved positions allowed per layout: at least MAX_ENTRIES, and never fewer than the schema object cap. */
     public static function maxEntries(): int
     {
-        return max(self::MAX_ENTRIES, (int) config('dbsuperb.schema_max_objects'));
+        return max(self::MAX_ENTRIES, (int) config('dbzuper.schema_max_objects'));
     }
 
     public function show(SavedConnection $connection): JsonResponse

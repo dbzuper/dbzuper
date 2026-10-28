@@ -34,7 +34,7 @@ it('returns a snapshot, creating it on first request and reusing it after', func
 });
 
 it('stores a new snapshot on refresh and prunes old ones', function () {
-    config(['dbsuperb.snapshot_keep' => 2]);
+    config(['dbzuper.snapshot_keep' => 2]);
 
     foreach (range(1, 3) as $_) {
         $this->actingAs($this->user)->postJson(route('api.schema.refresh', $this->connection))->assertOk();

@@ -82,7 +82,7 @@ describe('defineThemes', () => {
 
         defineThemes(monaco);
 
-        for (const name of ['dbsuperb-dark', 'dbsuperb-light']) {
+        for (const name of ['dbzuper-dark', 'dbzuper-light']) {
             expect(defined[name]).toMatchObject({
                 'editorSuggestWidget.background': expect.any(String),
                 'editorSuggestWidget.selectedBackground': expect.any(String),

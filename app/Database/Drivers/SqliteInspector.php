@@ -21,7 +21,7 @@ class SqliteInspector extends LaravelSchemaInspector
 
     protected function rowCounts(Connection $db, string $schema, array $tables): array
     {
-        $cap = (int) config('dbsuperb.sqlite_count_cap');
+        $cap = (int) config('dbzuper.sqlite_count_cap');
 
         $counts = [];
         foreach ($tables as $table) {

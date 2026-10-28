@@ -24,13 +24,13 @@ it('diagnoses a wrong password', function (string $engine) {
     expect($result['ok'])->toBeFalse()
         ->and($result['error']['kind'])->toBe('auth')
         ->and(json_encode($result))->not->toContain('definitely-wrong')
-        ->and(json_encode($result))->not->toContain('dbsuperb_');
+        ->and(json_encode($result))->not->toContain('dbzuper_');
 })->with(['mysql', 'mariadb', 'pgsql']);
 
 it('diagnoses an unknown database', function (string $engine) {
     Engines::skipUnlessAvailable($engine);
 
-    $result = app(ConnectionTester::class)->test(Engines::savedConnection($engine, ['database' => 'dbsuperb_nope']));
+    $result = app(ConnectionTester::class)->test(Engines::savedConnection($engine, ['database' => 'dbzuper_nope']));
 
     expect($result['error']['reason'])->toBe('unknown_database');
 })->with(['mysql', 'mariadb', 'pgsql']);
@@ -41,7 +41,7 @@ it('diagnoses a refused port quickly', function (string $engine) {
     expect($result['ok'])->toBeFalse()
         ->and($result['error']['kind'])->toBe('connection')
         ->and($result['error']['reason'])->toBe('refused')
-        ->and(json_encode($result))->not->toContain('dbsuperb_');
+        ->and(json_encode($result))->not->toContain('dbzuper_');
 })->with(['mysql', 'pgsql']);
 
 it('rejects unsafe option values with an invalid_option reason', function () {
@@ -54,7 +54,7 @@ it('rejects unsafe option values with an invalid_option reason', function () {
 });
 
 it('gives up on an unroutable host within the connect timeout', function () {
-    config(['dbsuperb.connect_timeout' => 2]);
+    config(['dbzuper.connect_timeout' => 2]);
     $started = microtime(true);
 
     $result = app(ConnectionTester::class)->test(Engines::savedConnection('mysql', ['host' => '10.255.255.1', 'port' => 3306]));
@@ -90,13 +90,13 @@ it('diagnoses a wrong password on a server-level connection', function (string $
 it('tests a PostgreSQL server-level connection whose user has no database of its own', function () {
     Engines::skipUnlessAvailable('pgsql');
     $pdo = Engines::serverPdo('pgsql');
-    $pdo->exec('drop role if exists dbsuperb_test_lonely');
-    $pdo->exec("create role dbsuperb_test_lonely login password 'lonely'");
+    $pdo->exec('drop role if exists dbzuper_test_lonely');
+    $pdo->exec("create role dbzuper_test_lonely login password 'lonely'");
 
     try {
-        $result = app(ConnectionTester::class)->test(Engines::savedConnection('pgsql', ['database' => null, 'username' => 'dbsuperb_test_lonely', 'password' => 'lonely']));
+        $result = app(ConnectionTester::class)->test(Engines::savedConnection('pgsql', ['database' => null, 'username' => 'dbzuper_test_lonely', 'password' => 'lonely']));
     } finally {
-        $pdo->exec('drop role if exists dbsuperb_test_lonely');
+        $pdo->exec('drop role if exists dbzuper_test_lonely');
     }
 
     expect($result['error'])->toBeNull()->and($result['ok'])->toBeTrue();

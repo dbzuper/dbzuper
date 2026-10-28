@@ -13,8 +13,8 @@ const MYSQL = {
     user: process.env.TEST_MYSQL_USERNAME ?? 'root',
     password: process.env.TEST_MYSQL_PASSWORD ?? 'secret',
 };
-const ALPHA = 'dbsuperb_test_e2e_alpha';
-const BETA = 'dbsuperb_test_e2e_beta';
+const ALPHA = 'dbzuper_test_e2e_alpha';
+const BETA = 'dbzuper_test_e2e_beta';
 const NAME = 'Local MySQL server';
 const SHOTS = path.resolve('test-results/server-connections');
 

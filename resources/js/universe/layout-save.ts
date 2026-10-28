@@ -71,7 +71,7 @@ export type LayoutSaver = {
 };
 
 const storageKey = (connectionId: WorkspaceRef) =>
-    `dbsuperb.layout-pending.${connectionId}`;
+    `dbzuper.layout-pending.${connectionId}`;
 
 function readStored(connectionId: WorkspaceRef): LayoutPositionEntry[] {
     try {

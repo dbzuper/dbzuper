@@ -599,7 +599,7 @@
 }
 
 /* react-data-grid: map its variables to the app theme tokens (follows light/dark). */
-.rdg-dbsuperb {
+.rdg-dbzuper {
     --rdg-background-color: var(--background);
     --rdg-color: var(--foreground);
     --rdg-border-color: var(--border);
@@ -631,16 +631,16 @@
     block-size: 100%;
 }
 
-.dark .rdg-dbsuperb {
+.dark .rdg-dbzuper {
     color-scheme: dark;
 }
 
 /* The row button fills its cell (rdg's cell padding sits in a layer that would beat a utility). */
-.rdg-dbsuperb .rdg-row-button-cell {
+.rdg-dbzuper .rdg-row-button-cell {
     padding-inline: 0;
 }
 
-.rdg-dbsuperb .rdg-row-active {
+.rdg-dbzuper .rdg-row-active {
     /* Light enough that muted text (NULL cells) keeps 4.5:1 contrast on it. */
     background: color-mix(
         in oklab,
@@ -650,13 +650,13 @@
 }
 
 /* Column lines come from the theme (Layered has none); row lines stay. */
-.rdg-dbsuperb .rdg-cell {
+.rdg-dbzuper .rdg-cell {
     border-inline-end-color: var(--grid-column-line);
 }
 
 /* Row checkboxes: a small outlined box, filled with the primary colour once ticked. The tick is dark on a
    dark theme's light primary, and white on a light theme's dark primary. */
-.rdg-dbsuperb .rdg-checkbox-input {
+.rdg-dbzuper .rdg-checkbox-input {
     appearance: none;
     inline-size: 14px;
     block-size: 14px;
@@ -688,7 +688,7 @@
     }
 }
 
-.dark .rdg-dbsuperb .rdg-checkbox-input {
+.dark .rdg-dbzuper .rdg-checkbox-input {
     &:checked {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%230b0e14' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-6.5'/%3E%3C/svg%3E");
     }
@@ -699,27 +699,27 @@
 }
 
 /* Staged editing (spec 4.1): every state also has a text label (marker column, sr-only "edited"). */
-.rdg-dbsuperb .rdg-row-new {
+.rdg-dbzuper .rdg-row-new {
     background: color-mix(in oklab, var(--success) 12%, var(--background));
 }
 
-.rdg-dbsuperb .rdg-row-deleted {
+.rdg-dbzuper .rdg-row-deleted {
     background: color-mix(in oklab, var(--destructive) 10%, var(--background));
     text-decoration: line-through;
     text-decoration-color: var(--destructive);
 }
 
-.rdg-dbsuperb .rdg-cell-edited {
+.rdg-dbzuper .rdg-cell-edited {
     background: color-mix(in oklab, var(--warning) 22%, transparent);
 }
 
 /* A row whose change failed to commit; the marker column says why (text, not colour alone). */
-.rdg-dbsuperb .rdg-row-error {
+.rdg-dbzuper .rdg-row-error {
     outline: 2px solid var(--destructive);
     outline-offset: -2px;
 }
 
-.rdg-dbsuperb .rdg-cell-required {
+.rdg-dbzuper .rdg-cell-required {
     box-shadow: inset 0 0 0 1px var(--destructive);
 }
 

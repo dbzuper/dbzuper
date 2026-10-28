@@ -43,7 +43,7 @@ export function SqlEditor({ path, value, dialect, onChange, onMount }: Props) {
         if (!ready) return;
         void setupMonaco().then((monaco) => {
             defineThemes(monaco);
-            monaco.editor.setTheme(dark ? 'dbsuperb-dark' : 'dbsuperb-light');
+            monaco.editor.setTheme(dark ? 'dbzuper-dark' : 'dbzuper-light');
         });
     }, [ready, dark, themeNonce]);
 
@@ -59,7 +59,7 @@ export function SqlEditor({ path, value, dialect, onChange, onMount }: Props) {
             path={path}
             value={value}
             language={languageFor(dialect)}
-            theme={dark ? 'dbsuperb-dark' : 'dbsuperb-light'}
+            theme={dark ? 'dbzuper-dark' : 'dbzuper-light'}
             onChange={(v) => onChange(v ?? '')}
             onMount={onMount as OnMount}
             options={{

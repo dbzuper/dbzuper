@@ -18,7 +18,7 @@
 ## Quick start (Docker)
 
     docker compose up -d --build --wait
-    docker compose exec app php artisan dbsuperb:install --name=Admin --email=admin@example.com --password='Str0ng-passphrase' --no-interaction
+    docker compose exec app php artisan dbzuper:install --name=Admin --email=admin@example.com --password='Str0ng-passphrase' --no-interaction
 
 `--wait` returns once the container's healthcheck passes. Then open <http://localhost:8080> (or skip the second command and use the setup screen). HTTPS, SQLite files, backups, upgrades and the full environment reference are in [docs/self-hosting.md](docs/self-hosting.md).
 
@@ -29,14 +29,14 @@ Requires PHP 8.4 (pdo_mysql, pdo_pgsql, pdo_sqlite), Composer 2 and Node 24.
     composer install && npm install
     cp .env.example .env && php artisan key:generate
     php artisan migrate
-    php artisan dbsuperb:install      # create the admin user
+    php artisan dbzuper:install      # create the admin user
     composer run dev
 
 ## Try it with demo data
 
-    php artisan dbsuperb:demo-database          # add --force to re-create an existing demo database
+    php artisan dbzuper:demo-database          # add --force to re-create an existing demo database
 
-Then add `storage/app/demo` (absolute path) to `DBSUPERB_SQLITE_PATHS` in `.env` and create a SQLite connection to `storage/app/demo/commerce.sqlite`.
+Then add `storage/app/demo` (absolute path) to `DBZUPER_SQLITE_PATHS` in `.env` and create a SQLite connection to `storage/app/demo/commerce.sqlite`.
 
 ## The Schema Universe
 
@@ -48,8 +48,8 @@ Open a connection to see its schema as a graph: tables are nodes (sized by row c
 - Drag a table to pin it; layouts are saved per connection.
 - ⌘K / Ctrl+K searches tables, columns and actions. Esc clears the path, focus, then selection.
 - "Find path to…" in the inspector shows the relationship chain between two tables and a ready-to-copy JOIN.
-- Large schemas: `php artisan dbsuperb:demo-database storage/app/demo/large.sqlite --tables=2000` builds a test schema.
-  Snapshots keep at most `DBSUPERB_SCHEMA_MAX_OBJECTS` (default 5000) tables and views.
+- Large schemas: `php artisan dbzuper:demo-database storage/app/demo/large.sqlite --tables=2000` builds a test schema.
+  Snapshots keep at most `DBZUPER_SCHEMA_MAX_OBJECTS` (default 5000) tables and views.
 
 ## SQL workspace
 
@@ -61,11 +61,11 @@ Open the SQL editor with Ctrl/⌘+J or the rail. It autocompletes tables, column
 - Explain shows the query plan. It refuses `EXPLAIN ANALYZE` of writes, which would execute them.
 - Writes, DDL and session statements need a confirm click. Destructive ones (`UPDATE`/`DELETE` without `WHERE`, `DROP`, `TRUNCATE`) need the target table (or the keyword, when there is no target) typed back. A statement naming several objects (`DROP TABLE a, b`, `TRUNCATE a, b`) needs all of them typed back as listed, separated by a comma and a space (`a, b`).
 - Read-only connections refuse everything except reads and transactions, and re-assert read-only before every statement.
-- Limits: the row limit defaults to 1,000 and goes up to 10,000, cells are cut at 4,000 characters, a batch response is capped at 20 MB, and statements have a timeout (`DBSUPERB_QUERY_TIMEOUT`, default 15 seconds). The timeout covers every statement on MariaDB (`max_statement_time`) and PostgreSQL (`statement_timeout`), only `SELECT` statements on MySQL (`max_execution_time`), and nothing on SQLite, which runs in-process.
+- Limits: the row limit defaults to 1,000 and goes up to 10,000, cells are cut at 4,000 characters, a batch response is capped at 20 MB, and statements have a timeout (`DBZUPER_QUERY_TIMEOUT`, default 15 seconds). The timeout covers every statement on MariaDB (`max_statement_time`) and PostgreSQL (`statement_timeout`), only `SELECT` statements on MySQL (`max_execution_time`), and nothing on SQLite, which runs in-process.
 - Cancel stops waiting for the response; the server may still finish the statement.
 - The SQL editor also works when the schema could not be loaded; only autocompletion is off until the schema loads.
 - The Data tab in the inspector adds server-side filters, sorting (click a column header) and paging; "Open in SQL" opens the equivalent query in the editor. `contains`, `starts with` and `ends with` ignore case on every engine: PostgreSQL uses `ILIKE`, while MySQL, MariaDB and SQLite use `LIKE`, which is case-insensitive for ASCII with their default collations (a column with a case-sensitive or binary collation stays case-sensitive). Comparison operators (`=`, `≠`, `<`, `≤`, `>`, `≥`) need a value.
-- History is kept per connection (rail > History) and across connections on `/history`, trimmed to `DBSUPERB_HISTORY_KEEP` entries per connection (default 5000). SQL is stored as typed, except that the literal after `PASSWORD`, `IDENTIFIED BY` and `IDENTIFIED WITH … BY` (also `ENCRYPTED PASSWORD`) is replaced by `'***'`; still avoid putting other secrets in SQL on connections with history enabled.
+- History is kept per connection (rail > History) and across connections on `/history`, trimmed to `DBZUPER_HISTORY_KEEP` entries per connection (default 5000). SQL is stored as typed, except that the literal after `PASSWORD`, `IDENTIFIED BY` and `IDENTIFIED WITH … BY` (also `ENCRYPTED PASSWORD`) is replaced by `'***'`; still avoid putting other secrets in SQL on connections with history enabled.
 
 ## Record explorer
 
@@ -81,13 +81,13 @@ Follow a single row through its relationships. The Records view (rail > Records)
 
 ## Security notes
 
-- The setup screen is public until the first administrator exists. Run `php artisan dbsuperb:install` before exposing the app to a network.
+- The setup screen is public until the first administrator exists. Run `php artisan dbzuper:install` before exposing the app to a network.
 - Behind a reverse proxy, set `TRUSTED_PROXIES` (comma-separated IPs/CIDRs, or `*`) so client IPs and HTTPS are detected. Leave it unset when the app is reached directly: then no `X-Forwarded-*` header is trusted.
 - Saved credentials are encrypted with `APP_KEY`. Back it up: losing it makes saved passwords unrecoverable.
 - DBZuper connects to any host reachable from the server. Only the administrator can create connections.
 - Changing anything that reaches the connection string (driver, host, port, username, database, SSL options or PostgreSQL schema) requires re-entering the stored password. PostgreSQL host, database, username and CA path may not contain spaces, quotes or backslashes.
 - Accounts cannot be deleted from the UI: DBZuper has a single administrator.
-- SQLite files are only opened inside directories listed in `DBSUPERB_SQLITE_PATHS`. The SQL editor therefore refuses `ATTACH`, `DETACH`, `VACUUM INTO` and the `temp_store_directory`/`data_store_directory` pragmas on SQLite connections, which would reach other files.
+- SQLite files are only opened inside directories listed in `DBZUPER_SQLITE_PATHS`. The SQL editor therefore refuses `ATTACH`, `DETACH`, `VACUUM INTO` and the `temp_store_directory`/`data_store_directory` pragmas on SQLite connections, which would reach other files.
 - Connections marked read-only are enforced by the database session (MySQL/MariaDB `READ ONLY` transactions, PostgreSQL read-only session, SQLite read-only open mode).
 
 ## Performance
@@ -109,10 +109,10 @@ Follow a single row through its relationships. The Records view (rail > Records)
     npm run test         # Vitest
     npm run e2e          # Playwright (run `npm run build` first)
 
-Engine integration tests use real servers and skip any that are unreachable (set `DBSUPERB_REQUIRE_ENGINES=1`, as CI does, to fail instead):
+Engine integration tests use real servers and skip any that are unreachable (set `DBZUPER_REQUIRE_ENGINES=1`, as CI does, to fail instead):
 
 - MySQL 8.4 (port 3307) and MariaDB 11.4 (port 3308): `docker compose -f docker-compose.test.yml up -d`
   (on Windows: `wsl -d Ubuntu -- docker compose -f /mnt/c/<path>/docker-compose.test.yml up -d`).
-- PostgreSQL 18 on port 5432: the tests create and use only the `dbsuperb_test` database.
+- PostgreSQL 18 on port 5432: the tests create and use only the `dbzuper_test` database.
 
 Credentials come from the `TEST_*` variables in `.env`.

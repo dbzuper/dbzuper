@@ -6,7 +6,7 @@ use Tests\Support\Engines;
 
 it('returns a timeout result instead of an error when the capped count is too slow', function () {
     Engines::skipUnlessAvailable('pgsql');
-    config(['dbsuperb.count_cap_seconds' => 1]);
+    config(['dbzuper.count_cap_seconds' => 1]);
     $saved = Engines::savedConnection('pgsql');
     $saved->user()->associate(User::factory()->create())->save();
     $factory = app(ConnectionFactory::class);

@@ -106,7 +106,7 @@ it('uses a constant number of queries regardless of table count', function (stri
 })->with(['mysql', 'mariadb', 'pgsql']);
 
 it('applies the introspection timeout when refreshing a snapshot', function () {
-    config(['dbsuperb.introspection_timeout' => 9]);
+    config(['dbzuper.introspection_timeout' => 9]);
     Engines::skipUnlessAvailable('mysql');
     $user = User::factory()->create();
     $p = Engines::params('mysql');

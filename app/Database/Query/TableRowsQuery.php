@@ -19,7 +19,7 @@ final class TableRowsQuery
     public const OPS = ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'contains', 'starts_with', 'ends_with', 'is_null', 'is_not_null', 'on', 'between', 'after'];
 
     /** Alias prefix for the raw identity columns; extended when a real column starts with it. */
-    private const ALIAS_PREFIX = '__dbsuperb_';
+    private const ALIAS_PREFIX = '__dbzuper_';
 
     private const COMPARE = ['eq' => '=', 'neq' => '<>', 'lt' => '<', 'lte' => '<=', 'gt' => '>', 'gte' => '>='];
 

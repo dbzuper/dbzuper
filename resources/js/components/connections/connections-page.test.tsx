@@ -183,7 +183,7 @@ describe('connections page', () => {
         expect(cards()).toHaveLength(0);
         const list = screen.getByRole('list', { name: 'Connections' });
         expect(within(list).getAllByRole('listitem')).toHaveLength(3);
-        expect(localStorage.getItem('dbsuperb.connections-view')).toBe('list');
+        expect(localStorage.getItem('dbzuper.connections-view')).toBe('list');
         expect(
             screen.getByRole('button', { name: 'List view' }),
         ).toHaveAttribute('aria-pressed', 'true');

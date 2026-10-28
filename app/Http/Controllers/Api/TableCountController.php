@@ -35,7 +35,7 @@ class TableCountController extends Controller
         }
         DateFilters::validate($filters, $info['columns']);
         $exact = $request->boolean('exact');
-        $timeout = $exact ? (int) config('dbsuperb.query_timeout') : (int) config('dbsuperb.count_cap_seconds');
+        $timeout = $exact ? (int) config('dbzuper.query_timeout') : (int) config('dbzuper.count_cap_seconds');
 
         try {
             $count = $factory->using($connection, fn (Connection $db) => TableCountQuery::run($db, $drivers->for($connection->driver), $info, $filters), $timeout);

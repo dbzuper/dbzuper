@@ -28,7 +28,7 @@ final class SqlitePathPolicy
             }
         }
 
-        throw new SqlitePathNotAllowed('outside', 'The SQLite file is outside the directories allowed by DBSUPERB_SQLITE_PATHS.');
+        throw new SqlitePathNotAllowed('outside', 'The SQLite file is outside the directories allowed by DBZUPER_SQLITE_PATHS.');
     }
 
     private function normalize(string $path): string

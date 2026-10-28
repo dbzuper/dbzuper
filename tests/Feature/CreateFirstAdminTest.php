@@ -28,7 +28,7 @@ it('returns null and creates nothing when a user exists', function () {
 });
 
 it('fails cleanly when another holder owns the setup lock', function () {
-    $lock = Cache::lock('dbsuperb:setup', 10);
+    $lock = Cache::lock('dbzuper:setup', 10);
     expect($lock->get())->toBeTrue();
 
     expect(app(CreateFirstAdmin::class)->handle(adminInput(), 0))->toBeNull()
@@ -38,7 +38,7 @@ it('fails cleanly when another holder owns the setup lock', function () {
 });
 
 it('re-checks inside the lock', function () {
-    $lock = Cache::lock('dbsuperb:setup', 10);
+    $lock = Cache::lock('dbzuper:setup', 10);
     $lock->get();
 
     // Simulate a racing request that wins while we wait: it creates the admin, then releases.

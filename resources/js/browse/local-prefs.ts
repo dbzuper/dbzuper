@@ -8,8 +8,8 @@ export const SIDEBAR_MIN = 180;
 export const SIDEBAR_MAX = 480;
 export const SIDEBAR_DEFAULT = 240;
 
-const GRID_KEY = 'dbsuperb.grid-layout';
-const SIDEBAR_KEY = 'dbsuperb.sidebar';
+const GRID_KEY = 'dbzuper.grid-layout';
+const SIDEBAR_KEY = 'dbzuper.sidebar';
 /** Layouts are kept for at most this many tables; the oldest are forgotten first. */
 const MAX_LAYOUTS = 500;
 
@@ -90,8 +90,8 @@ export function writeSidebarPrefs(p: SidebarPrefs): void {
 
 export type GroupPrefs = { open: string[] };
 
-const GROUPS_KEY = 'dbsuperb.sidebar-groups';
-const GROUPING_KEY = 'dbsuperb.sidebar-grouping';
+const GROUPS_KEY = 'dbzuper.sidebar-groups';
+const GROUPING_KEY = 'dbzuper.sidebar-grouping';
 
 export function readGroupPrefs(connectionId: WorkspaceRef): GroupPrefs {
     const all = readJson(GROUPS_KEY);

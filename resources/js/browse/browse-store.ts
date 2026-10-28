@@ -442,7 +442,7 @@ function migrateConnections(input: unknown): unknown {
     return out;
 }
 
-const STORAGE_KEY = 'dbsuperb.browse';
+const STORAGE_KEY = 'dbzuper.browse';
 const VERSION = 2;
 const PERSIST_DELAY_MS = 250;
 
