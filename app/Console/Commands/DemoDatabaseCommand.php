@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 
 class DemoDatabaseCommand extends Command
 {
-    protected $signature = 'dbsuperb:demo-database {path? : Target SQLite file (default storage/app/demo/commerce.sqlite)} {--force : Overwrite the target file if it exists} {--tables=0 : Also create N synthetic tables (0-20000) for large-schema testing}';
+    protected $signature = 'dbzuper:demo-database {path? : Target SQLite file (default storage/app/demo/commerce.sqlite)} {--force : Overwrite the target file if it exists} {--tables=0 : Also create N synthetic tables (0-20000) for large-schema testing}';
 
     protected $description = 'Create a small commerce SQLite database to explore in DBZuper';
 
@@ -50,18 +50,18 @@ class DemoDatabaseCommand extends Command
             return self::FAILURE;
         }
 
-        $db = DB::connectUsing('dbsuperb_demo', ['driver' => 'sqlite', 'database' => $path, 'prefix' => '', 'foreign_key_constraints' => true], force: true);
+        $db = DB::connectUsing('dbzuper_demo', ['driver' => 'sqlite', 'database' => $path, 'prefix' => '', 'foreign_key_constraints' => true], force: true);
         try {
             CommerceSchema::create($db);
             if ($extra > 0) {
                 SyntheticSchema::create($db, $extra);
             }
         } finally {
-            DB::purge('dbsuperb_demo');
+            DB::purge('dbzuper_demo');
         }
 
         $this->info("Demo database written to {$path}");
-        $this->line('Add its directory to DBSUPERB_SQLITE_PATHS to connect to it.');
+        $this->line('Add its directory to DBZUPER_SQLITE_PATHS to connect to it.');
 
         return self::SUCCESS;
     }

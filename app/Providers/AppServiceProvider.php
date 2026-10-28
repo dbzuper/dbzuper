@@ -19,7 +19,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->bind(SqlitePathPolicy::class, fn () => new SqlitePathPolicy(config('dbsuperb.sqlite_paths')));
+        $this->app->bind(SqlitePathPolicy::class, fn () => new SqlitePathPolicy(config('dbzuper.sqlite_paths')));
     }
 
     /**
@@ -29,9 +29,9 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
-        RateLimiter::for('dbsuperb-api', fn (Request $request) => Limit::perMinute((int) config('dbsuperb.api_per_minute'))->by($request->user()?->id ?: $request->ip()));
+        RateLimiter::for('dbzuper-api', fn (Request $request) => Limit::perMinute((int) config('dbzuper.api_per_minute'))->by($request->user()?->id ?: $request->ip()));
         // Exploring records fires a request per card and per port, far more often than the rest of the API.
-        RateLimiter::for('dbsuperb-records', fn (Request $request) => Limit::perMinute(1000)->by($request->user()?->id ?: $request->ip()));
+        RateLimiter::for('dbzuper-records', fn (Request $request) => Limit::perMinute(1000)->by($request->user()?->id ?: $request->ip()));
     }
 
     /**

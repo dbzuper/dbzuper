@@ -105,7 +105,7 @@ it('records history per statement unless disabled', function () {
 });
 
 it('prunes history beyond the configured size', function () {
-    config(['dbsuperb.history_keep' => 3]);
+    config(['dbzuper.history_keep' => 3]);
     foreach (range(1, 5) as $i) {
         ($this->run)([['sql' => "select {$i}"]]);
     }
@@ -173,7 +173,7 @@ it('reports a failed connection as one failed result', function () {
 });
 
 it('refuses SQLite statements that open files outside the allowed directories, before running anything', function (string $template) {
-    $target = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbsuperb-escape-'.uniqid().'.sqlite';
+    $target = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbzuper-escape-'.uniqid().'.sqlite';
     $sql = str_replace('{path}', str_replace("'", "''", $target), $template);
     $message = 'ATTACH, DETACH and VACUUM INTO are not allowed: SQLite files may only be opened inside the configured directories.';
 

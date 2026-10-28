@@ -79,13 +79,13 @@ export function defineThemes(monaco: typeof import('monaco-editor')): void {
             dark ? '#8a93a6' : '#6b6a63',
         ),
     };
-    monaco.editor.defineTheme('dbsuperb-dark', {
+    monaco.editor.defineTheme('dbzuper-dark', {
         base: 'vs-dark',
         inherit: true,
         rules: [],
         colors: palette,
     });
-    monaco.editor.defineTheme('dbsuperb-light', {
+    monaco.editor.defineTheme('dbzuper-light', {
         base: 'vs',
         inherit: true,
         rules: [],

@@ -50,7 +50,7 @@ class TableChangesController extends Controller
                 return $preview
                     ? ['statements' => array_map(fn (BuiltStatement $s) => $s->toPreview(), $statements)]
                     : ['applied' => $runner->commit($connection, $db, $statements)];
-            }, (int) config('dbsuperb.query_timeout'), countMatchedRows: ! $preview);
+            }, (int) config('dbzuper.query_timeout'), countMatchedRows: ! $preview);
         } catch (ChangeSetRejected $e) {
             throw ValidationException::withMessages([$e->field => $e->getMessage()]);
         } catch (RowMismatch|ChangeFailed $e) {

@@ -22,7 +22,7 @@ export const databasesApi = {
         apiFetch<DatabaseList>(`/api/c/${connectionId}/databases`),
 };
 
-const SYSTEM_KEY = 'dbsuperb.show-system-databases';
+const SYSTEM_KEY = 'dbzuper.show-system-databases';
 
 /** Whether this viewer asked to see system databases (remembered per browser). */
 export function readShowSystem(storage: Pick<Storage, 'getItem'>): boolean {

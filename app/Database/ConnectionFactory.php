@@ -40,7 +40,7 @@ final class ConnectionFactory
 
     public function make(SavedConnection $connection, bool $countMatchedRows = false): Connection
     {
-        $name = 'dbsuperb_'.($connection->getKey() ?? 'transient').'_'.bin2hex(random_bytes(8));
+        $name = 'dbzuper_'.($connection->getKey() ?? 'transient').'_'.bin2hex(random_bytes(8));
         $config = $this->drivers->for($connection->driver)->config($connection, $countMatchedRows);
 
         // Registered in config so Laravel can rebuild the connection by name on reconnect. This matters on

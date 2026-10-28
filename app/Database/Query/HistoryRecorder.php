@@ -66,7 +66,7 @@ final class HistoryRecorder
 
     public function prune(SavedConnection $connection): void
     {
-        $keep = max(1, (int) config('dbsuperb.history_keep'));
+        $keep = max(1, (int) config('dbzuper.history_keep'));
         $stale = $connection->history()->orderByDesc('id')->skip($keep)->take(1000)->pluck('id');
         if ($stale->isNotEmpty()) {
             $connection->history()->whereIn('id', $stale)->delete();

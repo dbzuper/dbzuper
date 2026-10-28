@@ -1,12 +1,12 @@
 #!/bin/sh
-# DBSUPERB container entrypoint: prepare storage, persist APP_KEY, then either run the given command
+# DBZuper container entrypoint: prepare storage, persist APP_KEY, then either run the given command
 # (one-off artisan use: `docker compose run --rm app php artisan ...`) or migrate, cache and serve.
 set -eu
 
 cd /app
 
-# DBSUPERB_SQLITE_PATHS is comma-separated: create each directory.
-sqlite_paths="${DBSUPERB_SQLITE_PATHS:-/data/sqlite}"
+# DBZUPER_SQLITE_PATHS is comma-separated: create each directory.
+sqlite_paths="${DBZUPER_SQLITE_PATHS:-/data/sqlite}"
 old_ifs="$IFS"; IFS=','
 for dir in $sqlite_paths; do
     dir="$(printf '%s' "$dir" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { dockShortcutHint, paletteShortcutHint } from '@/lib/platform';
 import { cn } from '@/lib/utils';
 
-export const TIPS_STORAGE_KEY = 'dbsuperb.tips';
+export const TIPS_STORAGE_KEY = 'dbzuper.tips';
 
 function Key({ children }: { children: ReactNode }) {
     return (

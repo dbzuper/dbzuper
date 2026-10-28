@@ -10,7 +10,7 @@ DBZuper ships as a single Docker image (FrankenPHP 1.13 on PHP 8.4, running as a
 
 ## Quick start
 
-    git clone <repository-url> dbsuperb && cd dbsuperb
+    git clone <repository-url> dbzuper && cd dbzuper
     docker compose up -d --build --wait
 
 `--wait` returns once the container is healthy (or check `docker compose ps`, or that `curl http://localhost:8080/up` returns 200). Then create the administrator (below) and open <http://localhost:8080>.
@@ -21,14 +21,14 @@ One-off commands run through the same entrypoint (key, storage and database prep
 
 Build and run without Compose:
 
-    docker build -t dbsuperb:local .
-    docker run -d -p 8080:8080 -v dbsuperb-storage:/app/storage -v dbsuperb-sqlite:/data/sqlite dbsuperb:local
+    docker build -t dbzuper:local .
+    docker run -d -p 8080:8080 -v dbzuper-storage:/app/storage -v dbzuper-sqlite:/data/sqlite dbzuper:local
 
 ## First administrator
 
 DBZuper has a single administrator. Either open the app: until an administrator exists every page redirects to the setup screen. Or create it from the command line before exposing the port:
 
-    docker compose exec app php artisan dbsuperb:install --name="Admin" --email=admin@example.com --password='Str0ng-passphrase' --no-interaction
+    docker compose exec app php artisan dbzuper:install --name="Admin" --email=admin@example.com --password='Str0ng-passphrase' --no-interaction
 
 Without options the command prompts for each value. In production the password must be at least 12 characters with upper and lower case letters, a number and a symbol, and must not appear in known data breaches. The breach check queries haveibeenpwned.com: on a host that silently drops outbound traffic the command or setup form can stall for up to about 30 seconds before the check fails open and the password is accepted. **The setup screen is public until the first administrator exists**, so create the account before publishing the service to a network.
 
@@ -36,16 +36,16 @@ Without options the command prompts for each value. In production the password m
 
 Compose reads an optional `.env.docker` next to `docker-compose.yml` (plain `KEY=value` lines) and passes it to the container. Set `APP_URL` there too (the image default is `http://localhost:8080`); nothing in `docker-compose.yml` overrides it, and variables from your shell or a project `.env` are not passed in. Environment changes apply on `docker compose up -d` or a restart: the configuration is cached from the environment at every start.
 
-The image defaults are `APP_NAME=DBZuper`, `APP_ENV=production`, `APP_DEBUG=false`, `LOG_CHANNEL=stderr` (read logs with `docker compose logs app`), `DB_CONNECTION=sqlite`, `DB_DATABASE=/app/storage/database/database.sqlite`, `DB_JOURNAL_MODE=WAL`, `DB_TRANSACTION_MODE=IMMEDIATE`, `DB_BUSY_TIMEOUT=5000` and `DBSUPERB_SQLITE_PATHS=/data/sqlite`. The three SQLite lock settings let the multi-threaded server share the application database without "database is locked" errors; keep them.
+The image defaults are `APP_NAME=DBZuper`, `APP_ENV=production`, `APP_DEBUG=false`, `LOG_CHANNEL=stderr` (read logs with `docker compose logs app`), `DB_CONNECTION=sqlite`, `DB_DATABASE=/app/storage/database/database.sqlite`, `DB_JOURNAL_MODE=WAL`, `DB_TRANSACTION_MODE=IMMEDIATE`, `DB_BUSY_TIMEOUT=5000` and `DBZUPER_SQLITE_PATHS=/data/sqlite`. The three SQLite lock settings let the multi-threaded server share the application database without "database is locked" errors; keep them.
 
 ## Adding SQLite files
 
-SQLite connections may only open files inside the directories listed in `DBSUPERB_SQLITE_PATHS` (comma-separated). The image points it at `/data/sqlite`, which is the `dbsuperb-sqlite` volume. Copy a database in and connect to its in-container path:
+SQLite connections may only open files inside the directories listed in `DBZUPER_SQLITE_PATHS` (comma-separated). The image points it at `/data/sqlite`, which is the `dbzuper-sqlite` volume. Copy a database in and connect to its in-container path:
 
     docker compose cp ./shop.sqlite app:/data/sqlite/shop.sqlite
     docker compose exec --user root app chown 10001:10001 /data/sqlite/shop.sqlite
 
-Then add a connection with driver SQLite and database `/data/sqlite/shop.sqlite`. The container user is `dbsuperb` (uid 10001): the file must be readable by it (and writable, unless the connection is read-only). To explore a directory on the host instead, bind-mount it, for example `./databases:/data/sqlite` in the `volumes` of the `app` service, and make it readable for uid 10001.
+Then add a connection with driver SQLite and database `/data/sqlite/shop.sqlite`. The container user is `dbzuper` (uid 10001): the file must be readable by it (and writable, unless the connection is read-only). To explore a directory on the host instead, bind-mount it, for example `./databases:/data/sqlite` in the `volumes` of the `app` service, and make it readable for uid 10001.
 
 The same applies to a bind-mounted storage directory (`./storage:/app/storage`): if it is owned by root the container cannot write to it, and the entrypoint fails with `Permission denied` (or the app returns 500s). Fix it on the host with `sudo chown -R 10001:10001 ./storage`.
 
@@ -91,19 +91,19 @@ nginx:
 
 ## Backups and the APP_KEY
 
-The `dbsuperb-storage` volume (`/app/storage`) holds the application database (users, saved connections, history, layouts), sessions, logs and, unless you pass `APP_KEY` yourself, the generated key in `storage/app.key`. Back the whole volume up; for a consistent copy stop the container first:
+The `dbzuper-storage` volume (`/app/storage`) holds the application database (users, saved connections, history, layouts), sessions, logs and, unless you pass `APP_KEY` yourself, the generated key in `storage/app.key`. Back the whole volume up; for a consistent copy stop the container first:
 
     docker compose stop app
-    docker run --rm -v dbsuperb_dbsuperb-storage:/s -v "$PWD":/b alpine tar czf /b/dbsuperb-storage.tgz -C /s .
+    docker run --rm -v dbzuper_dbzuper-storage:/s -v "$PWD":/b alpine tar czf /b/dbzuper-storage.tgz -C /s .
     docker compose start app
 
 (The volume name is prefixed with the Compose project name, normally the directory name; check `docker volume ls`.) To restore into an empty volume:
 
     docker compose stop app
-    docker run --rm -v dbsuperb_dbsuperb-storage:/s -v "$PWD":/b alpine sh -c 'rm -rf /s/* /s/.[!.]* ; tar xzf /b/dbsuperb-storage.tgz -C /s && chown -R 10001:10001 /s'
+    docker run --rm -v dbzuper_dbzuper-storage:/s -v "$PWD":/b alpine sh -c 'rm -rf /s/* /s/.[!.]* ; tar xzf /b/dbzuper-storage.tgz -C /s && chown -R 10001:10001 /s'
     docker compose start app
 
-Back up `dbsuperb-sqlite` the same way if it holds your only copy of the SQLite files.
+Back up `dbzuper-sqlite` the same way if it holds your only copy of the SQLite files.
 
 **Saved connection passwords are encrypted with `APP_KEY`. If the key is lost or replaced, saved credentials cannot be decrypted** and each connection's password must be re-entered. Restoring a backup restores the key with it.
 
@@ -117,7 +117,7 @@ Back up `dbsuperb-sqlite` the same way if it holds your only copy of the SQLite 
 - **Pinning the key on a brand-new install:** generate it **before the first start**, so the container never creates its own:
 
       docker compose build
-      docker run --rm --entrypoint php dbsuperb:local artisan key:generate --show
+      docker run --rm --entrypoint php dbzuper:local artisan key:generate --show
 
     Do not use `docker compose run --rm app php artisan key:generate --show` for this: the one-off container goes through the entrypoint, which on a fresh volume first writes a **different** key to `storage/app.key`.
 
@@ -133,12 +133,12 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 | Variable                         | Default                     | Meaning                                                                                                  |
 | -------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `APP_NAME`                       | `DBZuper` in the image     | Name in the page title, sidebar, session cookie and two-factor issuer.                                   |
-| `DBSUPERB_SQLITE_PATHS`          | `/data/sqlite` in the image | Comma-separated directories SQLite connection files must live in.                                        |
-| `DBSUPERB_CONNECT_TIMEOUT`       | `5`                         | Seconds to wait when opening a connection to a database server.                                          |
-| `DBSUPERB_INTROSPECTION_TIMEOUT` | `30`                        | Seconds allowed for loading a schema.                                                                    |
-| `DBSUPERB_QUERY_TIMEOUT`         | `15`                        | Seconds a SQL editor statement may run (not enforced on SQLite or for non-`SELECT` statements on MySQL). |
-| `DBSUPERB_SCHEMA_MAX_OBJECTS`    | `5000`                      | Most tables and views kept in a schema snapshot.                                                         |
-| `DBSUPERB_HISTORY_KEEP`          | `5000`                      | Query history entries kept per connection.                                                               |
+| `DBZUPER_SQLITE_PATHS`          | `/data/sqlite` in the image | Comma-separated directories SQLite connection files must live in.                                        |
+| `DBZUPER_CONNECT_TIMEOUT`       | `5`                         | Seconds to wait when opening a connection to a database server.                                          |
+| `DBZUPER_INTROSPECTION_TIMEOUT` | `30`                        | Seconds allowed for loading a schema.                                                                    |
+| `DBZUPER_QUERY_TIMEOUT`         | `15`                        | Seconds a SQL editor statement may run (not enforced on SQLite or for non-`SELECT` statements on MySQL). |
+| `DBZUPER_SCHEMA_MAX_OBJECTS`    | `5000`                      | Most tables and views kept in a schema snapshot.                                                         |
+| `DBZUPER_HISTORY_KEEP`          | `5000`                      | Query history entries kept per connection.                                                               |
 | `TRUSTED_PROXIES`                | unset                       | Reverse proxies whose `X-Forwarded-*` headers are trusted (IPs/CIDRs or `*`).                            |
 | `APP_URL`                        | `http://localhost:8080`     | Public URL of the app (set in `.env.docker`).                                                            |
 | `APP_KEY`                        | generated into the volume   | Encryption key; see above.                                                                               |
@@ -149,9 +149,9 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 
 ## Troubleshooting
 
-- **`SQLSTATE[HY000]: General error: 5 database is locked`** in `docker compose logs app`: the application database is SQLite and the server handles requests in parallel. Check that `DB_JOURNAL_MODE`, `DB_TRANSACTION_MODE` and `DB_BUSY_TIMEOUT` are not overridden in `.env.docker` (`docker compose exec app env | grep ^DB_`) and that the storage volume is on a local disk (SQLite locking is unreliable over network file systems). To check a deployment, sign in, copy the session cookie (`dbsuperb-session`) from the browser and fire parallel requests, for example 64 schema reads, 16 at a time:
+- **`SQLSTATE[HY000]: General error: 5 database is locked`** in `docker compose logs app`: the application database is SQLite and the server handles requests in parallel. Check that `DB_JOURNAL_MODE`, `DB_TRANSACTION_MODE` and `DB_BUSY_TIMEOUT` are not overridden in `.env.docker` (`docker compose exec app env | grep ^DB_`) and that the storage volume is on a local disk (SQLite locking is unreliable over network file systems). To check a deployment, sign in, copy the session cookie (`dbzuper-session`) from the browser and fire parallel requests, for example 64 schema reads, 16 at a time:
 
-      seq 64 | xargs -P16 -I{} curl -s -o /dev/null -w '%{http_code}\n' -b 'dbsuperb-session=<value>' http://localhost:8080/api/c/1/schema | sort | uniq -c
+      seq 64 | xargs -P16 -I{} curl -s -o /dev/null -w '%{http_code}\n' -b 'dbzuper-session=<value>' http://localhost:8080/api/c/1/schema | sort | uniq -c
 
     Every response should be `200`, and `docker compose logs app | grep -c "database is locked"` should print `0`.
 
@@ -160,5 +160,5 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 - Only the administrator can sign in and create connections, but DBZuper connects to **any host reachable from the container**, including your internal network. Do not expose it to people you would not give that reach.
 - Saved credentials are encrypted at rest with `APP_KEY`; anyone holding both the storage volume and the key can read them. Treat backups accordingly.
 - Serve it over HTTPS and keep the container port off the public network.
-- SQLite files are opened only inside `DBSUPERB_SQLITE_PATHS`; `ATTACH`, `VACUUM INTO` and similar are refused.
+- SQLite files are opened only inside `DBZUPER_SQLITE_PATHS`; `ATTACH`, `VACUUM INTO` and similar are refused.
 - Query history stores SQL as typed (password literals in `PASSWORD`/`IDENTIFIED BY` clauses are redacted). Turn history off per connection for sensitive work.

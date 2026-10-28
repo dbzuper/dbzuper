@@ -136,7 +136,7 @@ it('returns exact row identities and locked cells on every engine', function (st
             ->and($res->json('row_ids.0.key'))->toBe($pg ? ['code' => $long] : ['big' => '18446744073709551615', 'code' => 'pad  '])
             ->and($res->json('locked.0'))->toBe($pg ? [0, 2, 3] : [2, 3])
             ->and($res->json('rows.0'))->toHaveCount(4)
-            ->and($res->json('sql'))->not->toContain('__dbsuperb');
+            ->and($res->json('sql'))->not->toContain('__dbzuper');
 
         $res = $rows('ti_bare');
         if ($pg) {

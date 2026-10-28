@@ -15,7 +15,7 @@ import type { ConnectionCard as Card } from '@/types/connection';
 
 type View = 'cards' | 'list';
 
-const VIEW_KEY = 'dbsuperb.connections-view';
+const VIEW_KEY = 'dbzuper.connections-view';
 
 /** True when a keystroke there would type text, so a page shortcut must leave it alone. */
 function isTyping(el: Element | null) {

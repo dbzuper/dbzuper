@@ -41,7 +41,7 @@ class RecordController extends Controller
         $driver = $this->drivers->for($connection->driver);
 
         try {
-            $record = $this->factory->using($connection, fn (Connection $db) => $this->reader->read($db, $driver, $snapshot, $info, $key), (int) config('dbsuperb.query_timeout'));
+            $record = $this->factory->using($connection, fn (Connection $db) => $this->reader->read($db, $driver, $snapshot, $info, $key), (int) config('dbzuper.query_timeout'));
         } catch (Throwable $e) {
             throw new DatabaseOperationFailed($this->errors->map($e));
         }
@@ -76,7 +76,7 @@ class RecordController extends Controller
         $driver = $this->drivers->for($connection->driver);
 
         try {
-            $result = $this->factory->using($connection, fn (Connection $db) => $this->reader->related($db, $driver, $source, $key, $rel, $dir, $target, $limit, $after), (int) config('dbsuperb.query_timeout'));
+            $result = $this->factory->using($connection, fn (Connection $db) => $this->reader->related($db, $driver, $source, $key, $rel, $dir, $target, $limit, $after), (int) config('dbzuper.query_timeout'));
         } catch (Throwable $e) {
             throw new DatabaseOperationFailed($this->errors->map($e));
         }

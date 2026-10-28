@@ -8,12 +8,12 @@ jobs:
     services:
       mysql:
         image: mysql:8.4
-        env: { MYSQL_ROOT_PASSWORD: secret, MYSQL_DATABASE: dbsuperb_test }
+        env: { MYSQL_ROOT_PASSWORD: secret, MYSQL_DATABASE: dbzuper_test }
         ports: ["3307:3306"]
         options: --health-cmd="mysqladmin ping -psecret" --health-interval=5s --health-retries=20
       mariadb:
         image: mariadb:11.4
-        env: { MARIADB_ROOT_PASSWORD: secret, MARIADB_DATABASE: dbsuperb_test }
+        env: { MARIADB_ROOT_PASSWORD: secret, MARIADB_DATABASE: dbzuper_test }
         ports: ["3308:3306"]
         options: --health-cmd="healthcheck.sh --connect" --health-interval=5s --health-retries=20
       postgres:
@@ -23,7 +23,7 @@ jobs:
         options: --health-cmd="pg_isready -U postgres" --health-interval=5s --health-retries=20
     env:
       TEST_PGSQL_PASSWORD: secret
-      DBSUPERB_REQUIRE_ENGINES: 1
+      DBZUPER_REQUIRE_ENGINES: 1
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2

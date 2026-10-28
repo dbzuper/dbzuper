@@ -39,7 +39,7 @@ final class SnapshotService
                 }
 
                 return [$snapshot, $serverInfo];
-            }, (int) config('dbsuperb.introspection_timeout'));
+            }, (int) config('dbzuper.introspection_timeout'));
         } catch (Throwable $e) {
             throw new DatabaseOperationFailed($this->errors->map($e));
         }
@@ -52,7 +52,7 @@ final class SnapshotService
             ...SnapshotSummary::of($payload),
         ]);
 
-        $keep = (int) config('dbsuperb.snapshot_keep');
+        $keep = (int) config('dbzuper.snapshot_keep');
         $stale = $connection->snapshots()->orderByDesc('id')->pluck('id')->slice($keep);
 
         if ($stale->isNotEmpty()) {

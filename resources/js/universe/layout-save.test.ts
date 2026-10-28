@@ -236,7 +236,7 @@ describe('createLayoutSaver', () => {
             const total = kept.reduce((n, c) => n + bytes(c[1]), 0);
             expect(total).toBeLessThan(64 * 1024);
             const stored = JSON.parse(
-                localStorage.getItem('dbsuperb.layout-pending.1')!,
+                localStorage.getItem('dbzuper.layout-pending.1')!,
             ) as LayoutPositionEntry[];
             expect(stored.length).toBeGreaterThan(0);
             expect(kept.flatMap((c) => c[1]).length + stored.length).toBe(2500);
@@ -262,7 +262,7 @@ describe('createLayoutSaver', () => {
     describe('replayStored', () => {
         it('replays kept entries as a merge, clears them and resolves when done', async () => {
             localStorage.setItem(
-                'dbsuperb.layout-pending.1',
+                'dbzuper.layout-pending.1',
                 JSON.stringify([entry('a', 9), entry('b', 8)]),
             );
             const { saver, send } = make();
@@ -273,20 +273,20 @@ describe('createLayoutSaver', () => {
                 { keepalive: false, merge: true },
             );
             expect(
-                localStorage.getItem('dbsuperb.layout-pending.1'),
+                localStorage.getItem('dbzuper.layout-pending.1'),
             ).toBeNull();
         });
 
         it('keeps the entries when the replay fails', async () => {
             localStorage.setItem(
-                'dbsuperb.layout-pending.1',
+                'dbzuper.layout-pending.1',
                 JSON.stringify([entry('a', 9)]),
             );
             const { saver, send } = make();
             send.mockRejectedValueOnce(new Error('offline'));
             await saver.replayStored();
             expect(
-                JSON.parse(localStorage.getItem('dbsuperb.layout-pending.1')!),
+                JSON.parse(localStorage.getItem('dbzuper.layout-pending.1')!),
             ).toEqual([entry('a', 9)]);
         });
 
@@ -298,7 +298,7 @@ describe('createLayoutSaver', () => {
 
         it('is per connection', async () => {
             localStorage.setItem(
-                'dbsuperb.layout-pending.2',
+                'dbzuper.layout-pending.2',
                 JSON.stringify([entry('a')]),
             );
             const { saver, send } = make();

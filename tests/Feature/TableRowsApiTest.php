@@ -302,7 +302,7 @@ it('locks SQLite cells holding a BLOB in a text column, and never pins a row by 
 
 it('uses a rowid alias that no column shadows', function () {
     $pdo = new PDO('sqlite:'.Engines::sqlitePath());
-    $pdo->exec('CREATE TABLE "shadow" ("rowid" text, "__dbsuperb_rowid" text)');
+    $pdo->exec('CREATE TABLE "shadow" ("rowid" text, "__dbzuper_rowid" text)');
     $pdo->exec("INSERT INTO \"shadow\" VALUES ('user value', 'mine')");
 
     $res = $this->actingAs($this->user)->postJson(route('api.tables.rows', [$this->connection, 'shadow']))->assertOk();
@@ -310,7 +310,7 @@ it('uses a rowid alias that no column shadows', function () {
     expect($res->json('editing.method'))->toBe('sqlite_rowid')
         ->and($res->json('row_ids'))->toBe([['rowid' => '1']])
         ->and($res->json('rows'))->toBe([['user value', 'mine']])
-        ->and($res->json('columns.*.name'))->toBe(['rowid', '__dbsuperb_rowid']);
+        ->and($res->json('columns.*.name'))->toBe(['rowid', '__dbzuper_rowid']);
 });
 
 it('marks views as not editable with a reason', function () {

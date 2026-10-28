@@ -56,7 +56,7 @@ ENV APP_NAME=DBZuper \
     DB_TRANSACTION_MODE=IMMEDIATE \
     DB_BUSY_TIMEOUT=5000 \
     DB_JOURNAL_MODE=WAL \
-    DBSUPERB_SQLITE_PATHS=/data/sqlite \
+    DBZUPER_SQLITE_PATHS=/data/sqlite \
     APP_URL=http://localhost:8080 \
     SERVER_NAME=:8080 \
     XDG_CONFIG_HOME=/config \
@@ -78,16 +78,16 @@ RUN --mount=type=bind,from=composer:2,source=/usr/bin/composer,target=/usr/bin/c
 # gave the context, e.g. 0777 on a Windows drive); only storage, bootstrap/cache and the config/data
 # dirs belong to the app user. Storage and the SQLite directory are volume mount points, so they
 # (and their ownership) must exist in the image for named volumes to inherit them on first use.
-RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin dbsuperb \
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin dbzuper \
     && chown -R root:root /app \
     && chmod -R u=rwX,go=rX /app \
     && mkdir -p /config /data/caddy /data/sqlite storage/database storage/app/public \
         storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs \
         bootstrap/cache \
     && (setcap -r /usr/local/bin/frankenphp || true) \
-    && chown -R dbsuperb:dbsuperb /app/storage /app/bootstrap/cache /config /data
+    && chown -R dbzuper:dbzuper /app/storage /app/bootstrap/cache /config /data
 
-USER dbsuperb
+USER dbzuper
 VOLUME ["/app/storage", "/data/sqlite"]
 EXPOSE 8080
 

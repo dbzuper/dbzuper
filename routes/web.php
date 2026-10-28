@@ -26,18 +26,18 @@ Route::middleware('auth')->group(function () {
     Route::redirect('/', '/connections')->name('home');
     Route::redirect('dashboard', '/connections')->name('dashboard');
     Route::post('connections/test', ConnectionTestController::class)
-        ->middleware('throttle:dbsuperb-api')->name('connections.test');
+        ->middleware('throttle:dbzuper-api')->name('connections.test');
     Route::resource('connections', ConnectionController::class)->except('show')->where(['connection' => '[0-9]+']);
 
     Route::get('c/{connection}/{database?}', WorkspaceController::class)->where(['connection' => '[0-9]+', 'database' => '[^/]+'])->name('workspace.show');
 
     Route::get('history', HistoryPageController::class)->name('history.index');
-    Route::get('api/history', [HistoryController::class, 'all'])->middleware('throttle:dbsuperb-api')->name('api.history.all');
+    Route::get('api/history', [HistoryController::class, 'all'])->middleware('throttle:dbzuper-api')->name('api.history.all');
 
     Route::get('api/c/{connection}/databases', DatabaseController::class)
-        ->middleware('throttle:dbsuperb-api')->name('api.databases.index');
+        ->middleware('throttle:dbzuper-api')->name('api.databases.index');
 
-    Route::prefix('api/c/{connection}')->name('api.')->middleware(['throttle:dbsuperb-api', RequireDatabase::class])->group(function () {
+    Route::prefix('api/c/{connection}')->name('api.')->middleware(['throttle:dbzuper-api', RequireDatabase::class])->group(function () {
         Route::get('schema', [SchemaController::class, 'show'])->name('schema.show');
         Route::post('schema/refresh', [SchemaController::class, 'refresh'])->name('schema.refresh');
         Route::get('layout', [LayoutController::class, 'show'])->name('layout.show');
@@ -56,8 +56,8 @@ Route::middleware('auth')->group(function () {
         Route::get('history', [HistoryController::class, 'index'])->name('history.index');
         Route::delete('history', [HistoryController::class, 'clear'])->name('history.clear');
         Route::get('history/{entry}', [HistoryController::class, 'show'])->whereNumber('entry')->name('history.show');
-        // Record reads use their own, higher limit instead of the group's dbsuperb-api limit.
-        Route::withoutMiddleware('throttle:dbsuperb-api')->middleware('throttle:dbsuperb-records')->group(function () {
+        // Record reads use their own, higher limit instead of the group's dbzuper-api limit.
+        Route::withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-records')->group(function () {
             Route::get('records/{table}/related', [RecordController::class, 'related'])->where('table', '.+')->name('records.related');
             Route::get('records/{table}', [RecordController::class, 'show'])->where('table', '.+')->name('records.show');
         });

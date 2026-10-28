@@ -21,7 +21,7 @@ function inspectCommerceSqlite(): SchemaSnapshot
 }
 
 it('keeps every object below the cap', function () {
-    config(['dbsuperb.schema_max_objects' => 5000]);
+    config(['dbzuper.schema_max_objects' => 5000]);
 
     $array = inspectCommerceSqlite()->toArray();
 
@@ -31,7 +31,7 @@ it('keeps every object below the cap', function () {
 });
 
 it('keeps the first N objects alphabetically and drops dangling relationships when over the cap', function () {
-    config(['dbsuperb.schema_max_objects' => 3]);
+    config(['dbzuper.schema_max_objects' => 3]);
 
     $snapshot = inspectCommerceSqlite();
     $array = $snapshot->toArray();

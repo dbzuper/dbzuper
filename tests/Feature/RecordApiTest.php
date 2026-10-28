@@ -194,8 +194,8 @@ it('throttles record reads with their own limiter, not the general API limiter',
     $router = app('router');
     $middleware = $router->gatherRouteMiddleware($router->getRoutes()->getByName($name));
 
-    expect($middleware)->toContain('throttle:dbsuperb-records')
-        ->not->toContain('throttle:dbsuperb-api');
+    expect($middleware)->toContain('throttle:dbzuper-records')
+        ->not->toContain('throttle:dbzuper-api');
 })->with(['api.records.show', 'api.records.related']);
 
 it('allows more than the general API rate of record reads per minute', function () {

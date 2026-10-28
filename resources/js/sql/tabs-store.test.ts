@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSqlTabs, useSqlTabs } from './tabs-store';
 
 const s = () => useSqlTabs.getState();
-const KEY = 'dbsuperb.sql-tabs';
+const KEY = 'dbzuper.sql-tabs';
 const stored = () =>
     JSON.parse(localStorage.getItem(KEY) ?? '{}').state?.byConnection ?? {};
 const tab = (id: string, sql: string) => ({

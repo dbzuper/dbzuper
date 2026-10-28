@@ -16,9 +16,9 @@ afterEach(function () {
     Engines::resetSqlite();
 });
 
-function dbsuperbConfigKeys(): array
+function dbzuperConfigKeys(): array
 {
-    return array_values(array_filter(array_keys(config('database.connections')), fn ($k) => str_starts_with($k, 'dbsuperb_')));
+    return array_values(array_filter(array_keys(config('database.connections')), fn ($k) => str_starts_with($k, 'dbzuper_')));
 }
 
 function probeTable(string $engine): void
@@ -106,13 +106,13 @@ it('removes the config entry after using() returns and after the callback throws
     $factory = app(ConnectionFactory::class);
 
     $factory->using(Engines::savedConnection('sqlite'), fn ($db) => $db->selectOne('select 1'));
-    expect(dbsuperbConfigKeys())->toBe([]);
+    expect(dbzuperConfigKeys())->toBe([]);
 
     expect(fn () => $factory->using(Engines::savedConnection('sqlite'), function ($db) {
-        expect(dbsuperbConfigKeys())->toHaveCount(1);
+        expect(dbzuperConfigKeys())->toHaveCount(1);
         throw new RuntimeException('boom');
     }))->toThrow(RuntimeException::class);
-    expect(dbsuperbConfigKeys())->toBe([]);
+    expect(dbzuperConfigKeys())->toBe([]);
 });
 
 it('removes the config entry when the connection to an unreachable server fails', function () {
@@ -120,5 +120,5 @@ it('removes the config entry when the connection to an unreachable server fails'
 
     expect(fn () => app(ConnectionFactory::class)->using($saved, fn ($db) => $db->selectOne('select 1')))
         ->toThrow(QueryException::class);
-    expect(dbsuperbConfigKeys())->toBe([]);
+    expect(dbzuperConfigKeys())->toBe([]);
 });

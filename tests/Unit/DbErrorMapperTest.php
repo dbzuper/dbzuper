@@ -45,9 +45,9 @@ it('maps errors to kind and reason', function (Throwable $e, string $kind, ?stri
     'sqlite missing' => [new SqlitePathNotAllowed('missing', 'The SQLite file does not exist.'), 'not_found', 'sqlite_missing', null],
     'sqlite outside' => [new SqlitePathNotAllowed('outside', 'outside'), 'permission', 'sqlite_outside', null],
     'invalid option' => [new InvalidConnectionOption('Invalid characters in host.'), 'connection', 'invalid_option', null],
-    'plain invalid argument' => [new InvalidArgumentException('Database connection [dbsuperb_1_x] not configured.'), 'unknown', null, null],
+    'plain invalid argument' => [new InvalidArgumentException('Database connection [dbzuper_1_x] not configured.'), 'unknown', null, null],
     'table named ssl_certs' => [pdoError("SQLSTATE[42S02]: Base table or view not found: 1146 Table 'app.ssl_certs' doesn't exist", 0, ['42S02', 1146, 'x']), 'not_found', null, '42S02'],
-    'sql text contains refused' => [pdoError("SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error near 'refused' (Connection: dbsuperb_1_x, Host: h, Port: 1, Database: d, SQL: select 'refused')", 0, ['42000', 1064, 'x']), 'syntax', null, '42000'],
+    'sql text contains refused' => [pdoError("SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error near 'refused' (Connection: dbzuper_1_x, Host: h, Port: 1, Database: d, SQL: select 'refused')", 0, ['42000', 1064, 'x']), 'syntax', null, '42000'],
     'unknown' => [new RuntimeException('boom'), 'unknown', null, null],
 ]);
 
@@ -59,19 +59,19 @@ it('keeps the safe message for invalid options and hides arbitrary exception mes
 });
 
 it('strips the SQLSTATE prefix and connection details from the message', function () {
-    $error = (new DbErrorMapper)->map(pdoError("SQLSTATE[HY000] [1045] Access denied for user 'root'@'x' (Connection: dbsuperb_1_abc, SQL: select 1)", 1045));
+    $error = (new DbErrorMapper)->map(pdoError("SQLSTATE[HY000] [1045] Access denied for user 'root'@'x' (Connection: dbzuper_1_abc, SQL: select 1)", 1045));
 
     expect($error->message)->toBe("Access denied for user 'root'@'x'");
 });
 
 it('strips the full Laravel connection suffix (host, port, database, sql)', function () {
-    $error = (new DbErrorMapper)->map(pdoError("SQLSTATE[HY000] [1045] Access denied for user 'root'@'x' (using password: YES) (Connection: dbsuperb_transient_abc, Host: 127.0.0.1, Port: 3307, Database: db, SQL: select version() as version)", 1045));
+    $error = (new DbErrorMapper)->map(pdoError("SQLSTATE[HY000] [1045] Access denied for user 'root'@'x' (using password: YES) (Connection: dbzuper_transient_abc, Host: 127.0.0.1, Port: 3307, Database: db, SQL: select version() as version)", 1045));
 
     expect($error->message)->toBe("Access denied for user 'root'@'x' (using password: YES)");
 });
 
 it('maps a plain InvalidArgumentException to the generic message', function () {
-    $error = (new DbErrorMapper)->map(new InvalidArgumentException('Database connection [dbsuperb_1_x] not configured.'));
+    $error = (new DbErrorMapper)->map(new InvalidArgumentException('Database connection [dbzuper_1_x] not configured.'));
 
     expect($error->message)->toBe('An unexpected error occurred.');
 });

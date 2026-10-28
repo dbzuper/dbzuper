@@ -66,7 +66,7 @@ class MySqlDriver implements Driver
         DsnValue::assertSafe(['host' => $connection->host, 'database' => $connection->database, 'username' => $connection->username, 'ssl_ca' => $options['ssl_ca'] ?? null]);
 
         $pdo = [
-            PDO::ATTR_TIMEOUT => (int) config('dbsuperb.connect_timeout'),
+            PDO::ATTR_TIMEOUT => (int) config('dbzuper.connect_timeout'),
             Mysql::ATTR_MULTI_STATEMENTS => false,
         ];
         if ($countMatchedRows) {

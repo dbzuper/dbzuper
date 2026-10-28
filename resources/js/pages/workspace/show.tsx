@@ -403,7 +403,7 @@ export default function WorkspaceShow({
                         snapshot.total_objects ?? snapshot.tables.length
                     ).toLocaleString('en')}{' '}
                     tables and views (alphabetical). Raise
-                    DBSUPERB_SCHEMA_MAX_OBJECTS to include more.
+                    DBZUPER_SCHEMA_MAX_OBJECTS to include more.
                 </div>
             )}
             {historyNotice && (

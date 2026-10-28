@@ -37,7 +37,7 @@ function withEnv(array $vars, Closure $callback): void
 }
 
 it('fails instead of skipping an unreachable engine when engines are required', function () {
-    withEnv(['DBSUPERB_REQUIRE_ENGINES' => '1', 'TEST_MYSQL_PORT' => '1'], function () {
+    withEnv(['DBZUPER_REQUIRE_ENGINES' => '1', 'TEST_MYSQL_PORT' => '1'], function () {
         try {
             Engines::skipUnlessAvailable('mysql');
             $thrown = null;
@@ -52,7 +52,7 @@ it('fails instead of skipping an unreachable engine when engines are required', 
 });
 
 it('skips an unreachable engine when engines are not required', function () {
-    withEnv(['DBSUPERB_REQUIRE_ENGINES' => '0', 'TEST_MYSQL_PORT' => '1'], function () {
+    withEnv(['DBZUPER_REQUIRE_ENGINES' => '0', 'TEST_MYSQL_PORT' => '1'], function () {
         expect(fn () => Engines::skipUnlessAvailable('mysql'))->toThrow(SkippedWithMessageException::class);
     });
 });

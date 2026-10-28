@@ -29,7 +29,7 @@ abstract class LaravelSchemaInspector implements SchemaInspector
         $rawViews = $builder->getViews($schema);
 
         $totalObjects = count($rawTables) + count($rawViews);
-        $max = max(1, (int) config('dbsuperb.schema_max_objects'));
+        $max = max(1, (int) config('dbzuper.schema_max_objects'));
         $truncated = $totalObjects > $max;
         if ($truncated) {
             $keep = collect([...array_column($rawTables, 'name'), ...array_column($rawViews, 'name')])

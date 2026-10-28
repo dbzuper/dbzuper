@@ -265,13 +265,13 @@ describe('persistence', () => {
         await useBrowse.persist.rehydrate();
         expect(tabs()).toEqual(['universe', tableTabId('order items/数据')]);
 
-        localStorage.setItem('dbsuperb.browse', '{not json');
+        localStorage.setItem('dbzuper.browse', '{not json');
         useBrowse.setState({ byConnection: {} });
         await useBrowse.persist.rehydrate();
         expect(tabs()).toEqual(['universe']);
 
         localStorage.setItem(
-            'dbsuperb.browse',
+            'dbzuper.browse',
             JSON.stringify({
                 state: {
                     byConnection: {
@@ -296,7 +296,7 @@ describe('persistence', () => {
         });
     });
 
-    const KEY = 'dbsuperb.browse';
+    const KEY = 'dbzuper.browse';
     const stored = () =>
         JSON.parse(localStorage.getItem(KEY) ?? '{}').state?.byConnection ?? {};
     const storedTables = (connectionId: number) =>
@@ -550,7 +550,7 @@ describe('titles and filter summaries', () => {
 });
 
 describe('saved tabs version 2', () => {
-    const KEY = 'dbsuperb.browse';
+    const KEY = 'dbzuper.browse';
     const rehydrate = async (value: unknown) => {
         localStorage.setItem(KEY, JSON.stringify(value));
         useBrowse.setState({ byConnection: {} });
@@ -764,7 +764,7 @@ describe('saved tabs version 2', () => {
 });
 
 describe('fix round 1', () => {
-    const KEY = 'dbsuperb.browse';
+    const KEY = 'dbzuper.browse';
     const rehydrate = async (value: unknown) => {
         localStorage.setItem(KEY, JSON.stringify(value));
         useBrowse.setState({ byConnection: {} });

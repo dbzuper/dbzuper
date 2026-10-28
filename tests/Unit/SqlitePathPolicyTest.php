@@ -4,7 +4,7 @@ use App\Database\Exceptions\SqlitePathNotAllowed;
 use App\Database\SqlitePathPolicy;
 
 beforeEach(function () {
-    $this->root = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbsuperb-policy-'.bin2hex(random_bytes(4));
+    $this->root = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbzuper-policy-'.bin2hex(random_bytes(4));
     mkdir($this->root.'/allowed/nested', 0777, true);
     mkdir($this->root.'/allowed-evil', 0777, true);
     touch($this->root.'/allowed/app.sqlite');

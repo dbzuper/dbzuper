@@ -123,7 +123,7 @@ test('records: entry points (result row, table tab row) and tables without a pri
     );
     // The grid fills the space down to the pager (react-data-grid's own 350px default must not win).
     const fill = await panel
-        .locator('.rdg-dbsuperb')
+        .locator('.rdg-dbzuper')
         .evaluate((grid) => [
             grid.getBoundingClientRect().height,
             grid.parentElement!.getBoundingClientRect().height,

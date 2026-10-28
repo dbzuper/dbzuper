@@ -11,7 +11,7 @@ final class Engines
 {
     public const ENGINES = ['sqlite', 'mysql', 'mariadb', 'pgsql'];
 
-    public const DATABASE = 'dbsuperb_test';
+    public const DATABASE = 'dbzuper_test';
 
     private static ?string $sqlitePath = null;
 
@@ -76,11 +76,11 @@ final class Engines
         }
     }
 
-    /** Skips locally; fails when DBSUPERB_REQUIRE_ENGINES=1 (CI) so a missing engine cannot pass silently. */
+    /** Skips locally; fails when DBZUPER_REQUIRE_ENGINES=1 (CI) so a missing engine cannot pass silently. */
     private static function unavailable(string $reason): never
     {
-        if (filter_var(env('DBSUPERB_REQUIRE_ENGINES', false), FILTER_VALIDATE_BOOLEAN)) {
-            test()->fail($reason.' (DBSUPERB_REQUIRE_ENGINES=1)');
+        if (filter_var(env('DBZUPER_REQUIRE_ENGINES', false), FILTER_VALIDATE_BOOLEAN)) {
+            test()->fail($reason.' (DBZUPER_REQUIRE_ENGINES=1)');
         }
 
         test()->markTestSkipped($reason);
@@ -89,7 +89,10 @@ final class Engines
     public static function prepare(string $engine): void
     {
         if ($engine !== 'pgsql') {
-            return; // MySQL/MariaDB containers create dbsuperb_test themselves.
+            // Fresh containers create dbzuper_test themselves; older ones may predate the name.
+            self::serverPdo($engine)->exec('create database if not exists '.self::DATABASE);
+
+            return;
         }
 
         $pdo = self::rawPdo($engine, 'postgres');

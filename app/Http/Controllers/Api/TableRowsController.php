@@ -50,7 +50,7 @@ class TableRowsController extends Controller
                 $plan = $plans->for($connection, $snapshot, $info, $db);
 
                 return TableRowsQuery::run($db, $drivers->for($connection->driver), $info, $filters, $sort, $page, $perPage, $plan);
-            }, (int) config('dbsuperb.query_timeout'));
+            }, (int) config('dbzuper.query_timeout'));
         } catch (Throwable $e) {
             throw new DatabaseOperationFailed($errors->map($e));
         }

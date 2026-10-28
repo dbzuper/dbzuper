@@ -38,7 +38,7 @@ import { SqlEditor } from './sql-editor';
 import { SqlTabsBar } from './sql-tabs-bar';
 import { DEFAULT_ROW_LIMIT, SqlToolbar } from './sql-toolbar';
 
-const MARKER_OWNER = 'dbsuperb';
+const MARKER_OWNER = 'dbzuper';
 const NO_RESULTS: StatementResultPayload[] = [];
 
 type TabResults = {

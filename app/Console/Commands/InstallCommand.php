@@ -12,7 +12,7 @@ use function Laravel\Prompts\text;
 
 class InstallCommand extends Command
 {
-    protected $signature = 'dbsuperb:install {--name=} {--email=} {--password=}';
+    protected $signature = 'dbzuper:install {--name=} {--email=} {--password=}';
 
     protected $description = 'Create the DBZuper administrator account';
 

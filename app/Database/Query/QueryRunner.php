@@ -60,7 +60,7 @@ final class QueryRunner
                     $pdo->exec('ROLLBACK');
                     $rolledBack = true;
                 }
-            }, (int) config('dbsuperb.query_timeout'));
+            }, (int) config('dbzuper.query_timeout'));
         } catch (Throwable $e) {
             if ($results === []) {
                 // The connection could not be opened: report it against the first statement.
