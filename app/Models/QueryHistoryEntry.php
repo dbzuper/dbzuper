@@ -23,6 +23,7 @@ class QueryHistoryEntry extends Model
         ];
     }
 
+    /** @return BelongsTo<SavedConnection, $this> */
     public function connection(): BelongsTo
     {
         return $this->belongsTo(SavedConnection::class, 'connection_id');

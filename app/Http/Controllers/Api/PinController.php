@@ -79,6 +79,7 @@ class PinController extends Controller
         return response()->json(['pins' => $this->list($request, $connection)]);
     }
 
+    /** @return HasMany<PinnedTable, SavedConnection> */
     private function mine(Request $request, SavedConnection $connection): HasMany
     {
         return $connection->pins()->where('user_id', $request->user()->id);

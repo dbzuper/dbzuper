@@ -11,3 +11,7 @@ parameters:
         - routes/
 
     level: 7
+
+    # Read each model's casts() array: its declared return type is a plain array, so Larastan
+    # would otherwise type every cast attribute by its migration column (driver as string, etc.).
+    parseModelCastsMethod: true
