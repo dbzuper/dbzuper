@@ -54,4 +54,7 @@ php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
+# Until the first administrator exists, the setup screen asks for a one-time code: show it in the log.
+php artisan dbzuper:setup-code
+
 exec frankenphp run --config /etc/caddy/Caddyfile

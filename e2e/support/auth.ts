@@ -13,6 +13,16 @@ export const ADMIN = {
     password: 'correct-horse-battery',
 };
 
+/** The e2e server keeps its setup code here (DBZUPER_SETUP_CODE_PATH in playwright.config.ts). */
+export const SETUP_CODE = path.resolve(
+    'storage/framework/testing/e2e-setup-code',
+);
+
+/** The code the setup screen asks for; the screen issues it when it is shown. */
+export function setupCode(): string {
+    return fs.readFileSync(SETUP_CODE, 'utf8').trim();
+}
+
 /**
  * Signs in, creating the admin on a fresh install. `beforeSignIn` runs on the login or setup screen
  * before the form is filled (used for checks that need the signed-out page, without a second login).
@@ -26,6 +36,7 @@ export async function ensureSignedIn(
     if (beforeSignIn && (pathname === '/setup' || pathname === '/login'))
         await beforeSignIn(pathname);
     if (pathname === '/setup') {
+        await page.getByLabel('Setup code').fill(setupCode());
         await page.getByLabel('Name', { exact: true }).fill(ADMIN.name);
         await page.getByLabel('Email').fill(ADMIN.email);
         await page.getByLabel('Password', { exact: true }).fill(ADMIN.password);

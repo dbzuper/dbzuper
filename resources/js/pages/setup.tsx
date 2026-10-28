@@ -15,6 +15,7 @@ const labels = {
 
 export default function Setup() {
     const form = useForm({
+        setup_code: '',
         name: '',
         email: '',
         password: '',
@@ -35,6 +36,31 @@ export default function Setup() {
         >
             <Head title="Setup" />
             <form onSubmit={submit} className="flex flex-col gap-5">
+                <div className="grid gap-2">
+                    <Label htmlFor="setup_code">Setup code</Label>
+                    <Input
+                        id="setup_code"
+                        value={form.data.setup_code}
+                        onChange={(e) =>
+                            form.setData('setup_code', e.target.value)
+                        }
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder="XXXX-XXXX-XXXX"
+                        aria-describedby="setup_code_hint"
+                        className="font-mono uppercase"
+                        required
+                    />
+                    <p
+                        id="setup_code_hint"
+                        className="text-xs text-muted-foreground"
+                    >
+                        Printed in the server log when DBZuper starts (
+                        <code>docker compose logs app</code>), or run{' '}
+                        <code>php artisan dbzuper:setup-code</code>.
+                    </p>
+                    <InputError message={form.errors.setup_code} />
+                </div>
                 {(
                     [
                         'name',

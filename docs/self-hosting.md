@@ -13,7 +13,7 @@ DBZuper ships as a single Docker image (FrankenPHP 1.13 on PHP 8.4, running as a
     git clone <repository-url> dbzuper && cd dbzuper
     docker compose up -d --build --wait
 
-`--wait` returns once the container is healthy (or check `docker compose ps`, or that `curl http://localhost:8080/up` returns 200). Then create the administrator (below) and open <http://localhost:8080>.
+`--wait` returns once the container is healthy (or check `docker compose ps`, or that `curl http://localhost:8080/up` returns 200). Then open <http://localhost:8080> and create the administrator with the setup code from `docker compose logs app` (see [First administrator](#first-administrator)).
 
 On first start the entrypoint creates the storage directories and the application SQLite database, generates an `APP_KEY` (see [Backups](#backups-and-the-app_key)), runs the migrations and caches the configuration, routes and views. Every later start repeats the migrations and caching, so upgrades need no manual step.
 
@@ -26,11 +26,18 @@ Build and run without Compose:
 
 ## First administrator
 
-DBZuper has a single administrator. Either open the app: until an administrator exists every page redirects to the setup screen. Or create it from the command line before exposing the port:
+DBZuper has a single administrator. Until one exists every page redirects to the setup screen, which asks for a one-time **setup code** so nobody else who can reach the port can claim the install. The container prints the code when it starts:
+
+    docker compose logs app | grep "setup code"
+    # Open http://localhost:8080/setup and enter the setup code K7QM-4XRT-9PWD
+
+or show it at any time with `docker compose exec app php artisan dbzuper:setup-code`. Case, spaces and dashes don't matter. The code stays the same until the administrator is created, then it is deleted.
+
+You can also create the administrator from the command line, which needs no code:
 
     docker compose exec app php artisan dbzuper:install --name="Admin" --email=admin@example.com --password='Str0ng-passphrase' --no-interaction
 
-Without options the command prompts for each value. In production the password must be at least 12 characters with upper and lower case letters, a number and a symbol, and must not appear in known data breaches. The breach check queries haveibeenpwned.com: on a host that silently drops outbound traffic the command or setup form can stall for up to about 30 seconds before the check fails open and the password is accepted. **The setup screen is public until the first administrator exists**, so create the account before publishing the service to a network.
+Without options the command prompts for each value. In production the password must be at least 12 characters with upper and lower case letters, a number and a symbol, and must not appear in known data breaches. The breach check queries haveibeenpwned.com: on a host that silently drops outbound traffic the command or setup form can stall for up to about 30 seconds before the check fails open and the password is accepted.
 
 ## Configuration
 
