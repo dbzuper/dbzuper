@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# DBZuper production image: FrankenPHP 1.13 on PHP 8.4, non-root, port 8080.
+# DBZuper production image: FrankenPHP 1.13 on PHP 8.4, non-root, port 8080 (PORT changes it).
 #
 # Build-stage choice: the Vite build runs the Wayfinder plugin, which shells out to
 # `php artisan wayfinder:generate`, so the asset stage needs PHP *and* Node plus an installed vendor/.
@@ -58,8 +58,7 @@ ENV APP_NAME=DBZuper \
     DB_JOURNAL_MODE=WAL \
     DBZUPER_SQLITE_PATHS=/data/sqlite \
     DBZUPER_IN_CONTAINER=1 \
-    APP_URL=http://localhost:8080 \
-    SERVER_NAME=:8080 \
+    PORT=8080 \
     XDG_CONFIG_HOME=/config \
     XDG_DATA_HOME=/data
 
@@ -93,6 +92,6 @@ VOLUME ["/app/storage", "/data/sqlite"]
 EXPOSE 8080
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8080/up >/dev/null || exit 1
+    CMD curl -fsS "http://127.0.0.1:${PORT}/up" >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

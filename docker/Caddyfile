@@ -1,11 +1,11 @@
 {
-	# Plain HTTP on 8080: TLS is terminated by a reverse proxy (see docs/self-hosting.md).
+	# Plain HTTP on PORT (default 8080): TLS is terminated by a reverse proxy (see docs/self-hosting.md).
 	admin off
 	auto_https off
 	frankenphp
 }
 
-:8080 {
+:{$PORT:8080} {
 	root * /app/public
 	encode zstd br gzip
 

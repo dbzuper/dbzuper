@@ -41,6 +41,10 @@ if [ -z "${APP_KEY:-}" ]; then
     export APP_KEY
 fi
 
+# The address people open: the host port Compose publishes (DBZUPER_PORT), else the one the server listens on.
+# An APP_URL set explicitly (a domain behind a proxy) wins.
+export APP_URL="${APP_URL:-http://localhost:${DBZUPER_PORT:-${PORT:-8080}}}"
+
 # One-off command: run it with the prepared environment instead of starting the server.
 if [ "$#" -gt 0 ]; then
     exec "$@"
