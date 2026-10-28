@@ -6,6 +6,7 @@ use App\Database\DateKind;
 use DateTimeImmutable;
 use DateTimeZone;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 
 /**
  * Validation and calendar arithmetic for the date operators (on, between, after). Values arrive in canonical form
@@ -142,6 +143,9 @@ final class DateFilters
     public static function addDays(string $date, int $days): string
     {
         $day = DateTimeImmutable::createFromFormat('!Y-m-d', substr($date, 0, 10), new DateTimeZone('UTC'));
+        if ($day === false) {
+            throw new InvalidArgumentException("Not a date: {$date}.");
+        }
 
         return $day->modify(sprintf('%+d days', $days))->format('Y-m-d');
     }

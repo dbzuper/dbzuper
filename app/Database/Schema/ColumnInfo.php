@@ -2,6 +2,11 @@
 
 namespace App\Database\Schema;
 
+/**
+ * @phpstan-import-type LaravelColumn from LaravelSchemaInspector
+ *
+ * @phpstan-type ColumnArray array{name: string, type: string, type_name: string, nullable: bool, default: ?string, auto_increment: bool, comment: ?string}
+ */
 final readonly class ColumnInfo
 {
     public function __construct(
@@ -14,7 +19,7 @@ final readonly class ColumnInfo
         public ?string $comment,
     ) {}
 
-    /** @param array{name: string, type: string, type_name: string, nullable: bool, default: mixed, auto_increment: bool, comment: ?string} $column */
+    /** @param LaravelColumn $column */
     public static function fromLaravel(array $column): self
     {
         return new self(
@@ -28,6 +33,7 @@ final readonly class ColumnInfo
         );
     }
 
+    /** @return ColumnArray */
     public function toArray(): array
     {
         return [

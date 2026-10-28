@@ -168,7 +168,11 @@ final class SqlRedactor
         }
     }
 
-    /** Index of the token after PASSWORD, stepping over "FOR user[@host] " in SET PASSWORD FOR ... = 'x'. */
+    /**
+     * Index of the token after PASSWORD, stepping over "FOR user[@host] " in SET PASSWORD FOR ... = 'x'.
+     *
+     * @param  list<Token>  $tokens
+     */
     private static function afterPassword(array $tokens, int $i): int
     {
         if (isset($tokens[$i]) && $tokens[$i]->type === 'word' && $tokens[$i]->upper() === 'FOR') {

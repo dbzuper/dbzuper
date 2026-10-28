@@ -4,10 +4,24 @@ namespace App\Database\Records;
 
 use App\Database\CellValue;
 use App\Database\Contracts\Driver;
+use App\Database\Schema\ColumnInfo;
+use App\Database\Schema\Relationship;
+use App\Database\Schema\SchemaSnapshot;
+use App\Database\Schema\TableInfo;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\QueryException;
 
+/**
+ * @phpstan-import-type SnapshotArray from SchemaSnapshot
+ * @phpstan-import-type TableArray from TableInfo
+ * @phpstan-import-type ColumnArray from ColumnInfo
+ * @phpstan-import-type RelationshipArray from Relationship
+ *
+ * @phpstan-type Count array{value: int, capped: bool}
+ * @phpstan-type RelationSummary array{id: string, direction: 'in'|'out', table: string, columns: list<string>, other_columns: list<string>, inferred: bool, available: bool, count: Count|null}
+ * @phpstan-type CanonicalKey array<string, string|int|float|null>
+ */
 final class RecordReader
 {
     public const COUNT_CAP = 10000;
@@ -19,7 +33,11 @@ final class RecordReader
 
     public function __construct(private readonly float $countBudgetSeconds = self::COUNT_BUDGET_SECONDS) {}
 
-    /** @return array{table:string,key:array,columns:list<array{name:string,type:string}>,values:list<mixed>,relationships:list<array>}|null */
+    /**
+     * @param  SnapshotArray  $snapshot
+     * @param  TableArray  $table
+     * @return array{table: string, key: CanonicalKey, columns: list<array{name: string, type: string}>, values: list<string|int|float|bool|null>, relationships: list<RelationSummary>}|null
+     */
     public function read(Connection $db, Driver $driver, array $snapshot, array $table, RecordKey $key): ?array
     {
         // Raw copies of the key and relationship columns: the display values are truncated or replaced
@@ -31,7 +49,7 @@ final class RecordReader
             $prefix = '__r'.bin2hex(random_bytes(4)).'_';
             $clash = array_filter($names, fn ($n) => str_starts_with((string) $n, $prefix)) !== [];
         } while ($clash);
-        $select = array_map(fn ($c) => $driver->sampleColumn($db, $c['name'], strtolower((string) ($c['type_name'] ?? '')), CellValue::RESULT_CHARS), $table['columns']);
+        $select = array_map(fn ($c) => $driver->sampleColumn($db, $c['name'], strtolower($c['type_name']), CellValue::RESULT_CHARS), $table['columns']);
         foreach ($rawNames as $i => $name) {
             $select[] = $db->raw($driver->quoteIdentifier($name).' AS '.$driver->quoteIdentifier($prefix.$i));
         }
@@ -79,8 +97,12 @@ final class RecordReader
      * The parent (dir=out) or children (dir=in) of a record across one relationship, keyset-paged by the target's primary key.
      * Relationship columns, keys and cursors use raw (unbounded) values; only the displayed values are bounded.
      *
-     * @param  list<string|int|float>|null  $after  decoded cursor: the previous page's last canonical key values
-     * @return array{rows:list<array{key:array,values:list<mixed>}>,next_after:?list<string|int|float>}|null null when the source record is missing
+     * @param  TableArray  $source
+     * @param  RelationshipArray  $rel
+     * @param  'in'|'out'  $dir
+     * @param  TableArray  $target
+     * @param  list<string|int|float|null>|null  $after  decoded cursor: the previous page's last canonical key values
+     * @return array{rows: list<array{key: CanonicalKey, values: list<string|int|float|bool|null>}>, next_after: ?list<string|int|float|null>}|null null when the source record is missing
      */
     public function related(Connection $db, Driver $driver, array $source, RecordKey $key, array $rel, string $dir, array $target, int $limit, ?array $after): ?array
     {
@@ -118,7 +140,7 @@ final class RecordReader
 
         $pk = $target['primary_key'];
         $tprefix = $this->aliasPrefix($target['columns']);
-        $select = array_map(fn ($c) => $driver->sampleColumn($db, $c['name'], strtolower((string) ($c['type_name'] ?? '')), CellValue::MAX_CHARS), $target['columns']);
+        $select = array_map(fn ($c) => $driver->sampleColumn($db, $c['name'], strtolower($c['type_name']), CellValue::MAX_CHARS), $target['columns']);
         foreach ($pk as $i => $name) {
             $select[] = $db->raw($driver->quoteIdentifier($name).' AS '.$driver->quoteIdentifier($tprefix.$i));
         }
@@ -171,23 +193,30 @@ final class RecordReader
         return ['rows' => $rows, 'next_after' => $hasMore ? $last : null];
     }
 
-    /** A per-request alias prefix that no real column of the table starts with. */
+    /**
+     * A per-request alias prefix that no real column of the table starts with.
+     *
+     * @param  list<ColumnArray>  $columns
+     */
     private function aliasPrefix(array $columns): string
     {
         $names = array_column($columns, 'name');
         do {
             $prefix = '__r'.bin2hex(random_bytes(4)).'_';
-            $clash = array_filter($names, fn ($n) => str_starts_with((string) $n, $prefix)) !== [];
+            $clash = array_filter($names, fn (string $n) => str_starts_with($n, $prefix)) !== [];
         } while ($clash);
 
         return $prefix;
     }
 
-    /** @return list<string> */
+    /**
+     * @param  SnapshotArray  $snapshot
+     * @return list<string>
+     */
     private function relationshipColumns(array $snapshot, string $table): array
     {
         $names = [];
-        foreach ($snapshot['relationships'] ?? [] as $rel) {
+        foreach ($snapshot['relationships'] as $rel) {
             if ($rel['from_table'] === $table) {
                 array_push($names, ...$rel['from_columns']);
             }
@@ -199,7 +228,10 @@ final class RecordReader
         return $names;
     }
 
-    /** @param list<string> $columns @param list<mixed> $values */
+    /**
+     * @param  list<string>  $columns
+     * @param  list<mixed>  $values
+     */
     public function where(Builder $query, Driver $driver, array $columns, array $values): Builder
     {
         foreach ($columns as $i => $column) {
@@ -209,12 +241,17 @@ final class RecordReader
         return $query;
     }
 
+    /**
+     * @param  SnapshotArray  $snapshot
+     * @param  array<string, mixed>  $raw  the record's raw key and relationship column values
+     * @return list<RelationSummary>
+     */
     private function relationships(Connection $db, Driver $driver, array $snapshot, string $table, array $raw): array
     {
         $out = [];
         $counted = 0;
         $deadline = hrtime(true) + (int) ($this->countBudgetSeconds * 1e9);
-        foreach ($snapshot['relationships'] ?? [] as $rel) {
+        foreach ($snapshot['relationships'] as $rel) {
             if ($rel['from_table'] === $table) {
                 $values = array_map(fn ($c) => $raw[$c] ?? null, $rel['from_columns']);
                 $out[] = $this->summary($rel, 'out', $rel['to_table'], $rel['from_columns'], $rel['to_columns'], ! in_array(null, $values, true), null);
@@ -233,16 +270,28 @@ final class RecordReader
         return $out;
     }
 
+    /**
+     * @param  RelationshipArray  $rel
+     * @param  'in'|'out'  $direction
+     * @param  list<string>  $columns
+     * @param  list<string>  $otherColumns
+     * @param  Count|null  $count
+     * @return RelationSummary
+     */
     private function summary(array $rel, string $direction, string $other, array $columns, array $otherColumns, bool $available, ?array $count): array
     {
         return [
             'id' => $rel['id'], 'direction' => $direction, 'table' => $other,
             'columns' => $columns, 'other_columns' => $otherColumns,
-            'inferred' => (bool) ($rel['inferred'] ?? false), 'available' => $available, 'count' => $count,
+            'inferred' => $rel['inferred'], 'available' => $available, 'count' => $count,
         ];
     }
 
-    /** @return array{value:int,capped:bool}|null null when the count could not be taken (the card shows it as unknown) */
+    /**
+     * @param  list<string>  $childColumns
+     * @param  list<mixed>  $values
+     * @return Count|null null when the count could not be taken (the card shows it as unknown)
+     */
     private function count(Connection $db, Driver $driver, string $childTable, array $childColumns, array $values): ?array
     {
         $inner = $this->where($db->table($db->raw($driver->quoteIdentifier($childTable)))->selectRaw('1'), $driver, $childColumns, $values)

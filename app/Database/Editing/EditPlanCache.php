@@ -2,6 +2,7 @@
 
 namespace App\Database\Editing;
 
+use App\Database\Schema\TableInfo;
 use App\Models\SavedConnection;
 use App\Models\StoredSnapshot;
 use Illuminate\Database\Connection;
@@ -13,17 +14,20 @@ use Throwable;
  * Resolving runs a few catalogue queries (tens of milliseconds on MySQL/MariaDB), so the plan is cached per
  * snapshot: a schema refresh stores a new snapshot and so a new plan. Connection settings (read-only, schema) are
  * part of the key. A plan that can't be resolved leaves the table read-only for this request and isn't cached.
+ *
+ * @phpstan-import-type TableArray from TableInfo
  */
 final class EditPlanCache
 {
     public function __construct(private readonly EditMethodResolver $resolver) {}
 
+    /** @param TableArray $table */
     public function for(SavedConnection $connection, StoredSnapshot $snapshot, array $table, Connection $db): EditPlan
     {
-        $key = 'edit-plan:v2:'.$connection->id.':'.$snapshot->id.':'.sha1(json_encode([$table['name'], $connection->read_only, $connection->options, $connection->updated_at?->toIso8601String()]));
-        $cached = Cache::get($key);
-        if (is_array($cached)) {
-            return EditPlan::fromArray($cached);
+        $key = 'edit-plan:v2:'.$connection->id.':'.$snapshot->id.':'.sha1(json_encode([$table['name'], $connection->read_only, $connection->options, $connection->updated_at?->toIso8601String()], JSON_THROW_ON_ERROR));
+        $cached = EditPlan::fromCached(Cache::get($key));
+        if ($cached !== null) {
+            return $cached;
         }
 
         try {

@@ -6,6 +6,7 @@ use App\Models\SavedConnection;
 use Closure;
 use Illuminate\Database\Connection;
 use Illuminate\Database\DatabaseManager;
+use LogicException;
 use Throwable;
 
 final class ConnectionFactory
@@ -49,7 +50,12 @@ final class ConnectionFactory
         config(["database.connections.{$name}" => $config]);
 
         try {
-            return $this->manager->connectUsing($name, $config, force: true);
+            $db = $this->manager->connectUsing($name, $config, force: true);
+            if (! $db instanceof Connection) {
+                throw new LogicException('Database drivers are expected to build an '.Connection::class.'.');
+            }
+
+            return $db;
         } catch (Throwable $e) {
             $this->forget($name);
 

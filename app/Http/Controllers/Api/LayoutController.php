@@ -27,7 +27,7 @@ class LayoutController extends Controller
     {
         Gate::authorize('view', $connection);
 
-        return response()->json(['positions' => array_values($connection->layout?->payload ?? [])]);
+        return response()->json(['positions' => $connection->layout->payload ?? []]);
     }
 
     public function update(Request $request, SavedConnection $connection): JsonResponse
@@ -43,12 +43,12 @@ class LayoutController extends Controller
             'positions.*.pinned' => ['required', 'boolean'],
         ]);
 
-        $positions = array_map(fn (array $p) => [
+        $positions = array_values(array_map(fn (array $p) => [
             'table' => (string) $p['table'],
             'x' => (float) $p['x'],
             'y' => (float) $p['y'],
             'pinned' => (bool) $p['pinned'],
-        ], $data['positions']);
+        ], $data['positions']));
 
         // Saves of one connection run one at a time, so a merge never reads a layout a concurrent
         // save is about to replace.
@@ -76,7 +76,7 @@ class LayoutController extends Controller
     private function merged(SavedConnection $connection, array $positions): array
     {
         $merged = [];
-        foreach ($connection->layout?->payload ?? [] as $stored) {
+        foreach ($connection->layout->payload ?? [] as $stored) {
             $merged[$stored['table']] = $stored;
         }
         foreach ($positions as $position) {

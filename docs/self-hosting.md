@@ -130,22 +130,22 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 
 ## Environment reference
 
-| Variable                         | Default                     | Meaning                                                                                                  |
-| -------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `APP_NAME`                       | `DBZuper` in the image     | Name in the page title, sidebar, session cookie and two-factor issuer.                                   |
+| Variable                        | Default                     | Meaning                                                                                                  |
+| ------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `APP_NAME`                      | `DBZuper` in the image      | Name in the page title, sidebar, session cookie and two-factor issuer.                                   |
 | `DBZUPER_SQLITE_PATHS`          | `/data/sqlite` in the image | Comma-separated directories SQLite connection files must live in.                                        |
 | `DBZUPER_CONNECT_TIMEOUT`       | `5`                         | Seconds to wait when opening a connection to a database server.                                          |
 | `DBZUPER_INTROSPECTION_TIMEOUT` | `30`                        | Seconds allowed for loading a schema.                                                                    |
 | `DBZUPER_QUERY_TIMEOUT`         | `15`                        | Seconds a SQL editor statement may run (not enforced on SQLite or for non-`SELECT` statements on MySQL). |
 | `DBZUPER_SCHEMA_MAX_OBJECTS`    | `5000`                      | Most tables and views kept in a schema snapshot.                                                         |
 | `DBZUPER_HISTORY_KEEP`          | `5000`                      | Query history entries kept per connection.                                                               |
-| `TRUSTED_PROXIES`                | unset                       | Reverse proxies whose `X-Forwarded-*` headers are trusted (IPs/CIDRs or `*`).                            |
-| `APP_URL`                        | `http://localhost:8080`     | Public URL of the app (set in `.env.docker`).                                                            |
-| `APP_KEY`                        | generated into the volume   | Encryption key; see above.                                                                               |
-| `SESSION_SECURE_COOKIE`          | unset                       | Set `true` when served over HTTPS.                                                                       |
-| `DB_JOURNAL_MODE`                | `WAL` in the image          | SQLite journal mode of the application database (unset: SQLite's default).                               |
-| `DB_TRANSACTION_MODE`            | `IMMEDIATE` in the image    | How SQLite transactions on the application database start (`DEFERRED` outside the image).                |
-| `DB_BUSY_TIMEOUT`                | `5000`                      | Milliseconds a request waits for the SQLite lock before failing with "database is locked".               |
+| `TRUSTED_PROXIES`               | unset                       | Reverse proxies whose `X-Forwarded-*` headers are trusted (IPs/CIDRs or `*`).                            |
+| `APP_URL`                       | `http://localhost:8080`     | Public URL of the app (set in `.env.docker`).                                                            |
+| `APP_KEY`                       | generated into the volume   | Encryption key; see above.                                                                               |
+| `SESSION_SECURE_COOKIE`         | unset                       | Set `true` when served over HTTPS.                                                                       |
+| `DB_JOURNAL_MODE`               | `WAL` in the image          | SQLite journal mode of the application database (unset: SQLite's default).                               |
+| `DB_TRANSACTION_MODE`           | `IMMEDIATE` in the image    | How SQLite transactions on the application database start (`DEFERRED` outside the image).                |
+| `DB_BUSY_TIMEOUT`               | `5000`                      | Milliseconds a request waits for the SQLite lock before failing with "database is locked".               |
 
 ## Troubleshooting
 

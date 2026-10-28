@@ -39,7 +39,7 @@ class MySqlDriver implements Driver
 
     public function listDatabaseNames(Connection $db): array
     {
-        return array_map(fn ($row) => (string) array_values((array) $row)[0], $db->select('SHOW DATABASES'));
+        return array_values(array_map(fn ($row) => (string) array_values((array) $row)[0], $db->select('SHOW DATABASES')));
     }
 
     public function databaseStats(Connection $db): array

@@ -3,6 +3,7 @@
 namespace App\Database\Editing;
 
 use App\Database\ColumnKind;
+use App\Database\Schema\TableInfo;
 use App\Enums\DriverName;
 use App\Models\SavedConnection;
 use Illuminate\Database\Connection;
@@ -10,6 +11,7 @@ use LogicException;
 use Throwable;
 
 /** Decides per table how a row is pinned for UPDATE/DELETE (spec §5) and which columns can never be edited. */
+/** @phpstan-import-type TableArray from TableInfo */
 final class EditMethodResolver
 {
     /** SQLite names for the rowid; a column with the same name hides it. */
@@ -35,10 +37,10 @@ final class EditMethodResolver
         throw new LogicException('Every SQLite rowid alias is hidden by a column.');
     }
 
-    /** @param array{name: string, kind: string, columns: list<array>, primary_key: list<string>, indexes: list<array>} $table */
+    /** @param TableArray $table */
     public function resolve(SavedConnection $connection, array $table, Connection $db): EditPlan
     {
-        if (($table['kind'] ?? 'table') !== 'table') {
+        if ($table['kind'] !== 'table') {
             return EditPlan::none("views can't be edited");
         }
         if ($connection->read_only) {
@@ -49,36 +51,46 @@ final class EditMethodResolver
         $name = (string) $table['name'];
         $readOnly = $this->readOnlyColumns($table, $this->generatedColumns($driver, $db, $connection, $name));
         $nonComparable = $driver === DriverName::Postgres ? $this->pgNonComparableColumns($db, $connection, $name) : [];
-        $plan = fn (EditMethod $method, array $keys = [], bool $tableoid = false) => new EditPlan($method, $keys, null, $readOnly, $tableoid, $nonComparable);
 
         // A MySQL/MariaDB TIMESTAMP is shown in the session time zone, where a DST fall-back hour shows two stored
         // instants as the same text: a key holding one could pin the other row, so such a key is passed over.
         $timestamps = in_array($driver, [DriverName::MySql, DriverName::MariaDb], true) ? $this->timestampColumns($table) : [];
 
-        $pk = array_values($table['primary_key'] ?? []);
+        $pk = $table['primary_key'];
         if ($pk !== [] && array_intersect($pk, $timestamps) === []) {
-            return $plan(EditMethod::PrimaryKey, $pk);
+            return self::plan(EditMethod::PrimaryKey, $readOnly, $nonComparable, $pk);
         }
 
         $unique = $this->uniqueNotNullIndex($table, $this->unusableIndexes($driver, $db, $connection, $name), $timestamps);
         if ($unique !== null) {
-            return $plan(EditMethod::UniqueIndex, $unique);
+            return self::plan(EditMethod::UniqueIndex, $readOnly, $nonComparable, $unique);
         }
 
         return match ($driver) {
             DriverName::Sqlite => match (true) {
                 $this->sqliteWithoutRowid($db, $name) => EditPlan::none('this table has no primary key or unique index to identify rows'),
                 ! $this->sqliteRowidReachable($table) => EditPlan::none('columns named rowid, _rowid_ and oid hide the SQLite row id'),
-                default => $plan(EditMethod::SqliteRowid),
+                default => self::plan(EditMethod::SqliteRowid, $readOnly, $nonComparable),
             },
-            DriverName::Postgres => $plan(EditMethod::PgCtid, [], $this->pgNeedsTableoid($db, $connection, $name)),
-            DriverName::MySql, DriverName::MariaDb => $plan(EditMethod::MysqlAllValues),
+            DriverName::Postgres => self::plan(EditMethod::PgCtid, $readOnly, $nonComparable, tableoid: $this->pgNeedsTableoid($db, $connection, $name)),
+            DriverName::MySql, DriverName::MariaDb => self::plan(EditMethod::MysqlAllValues, $readOnly, $nonComparable),
         };
+    }
+
+    /**
+     * @param  list<string>  $readOnly
+     * @param  list<string>  $nonComparable
+     * @param  list<string>  $keys
+     */
+    private static function plan(EditMethod $method, array $readOnly, array $nonComparable, array $keys = [], bool $tableoid = false): EditPlan
+    {
+        return new EditPlan($method, $keys, null, $readOnly, $tableoid, $nonComparable);
     }
 
     /**
      * The first unique index (by name) whose columns all exist and are NOT NULL.
      *
+     * @param  TableArray  $table
      * @param  list<string>  $partial  index names that can't pin a row (partial, expression, invalid, deferrable)
      * @param  list<string>  $excluded  columns that can't be part of a key (MySQL/MariaDB TIMESTAMP)
      * @return ?list<string>
@@ -86,39 +98,42 @@ final class EditMethodResolver
     private function uniqueNotNullIndex(array $table, array $partial, array $excluded = []): ?array
     {
         $nullable = [];
-        foreach ($table['columns'] ?? [] as $column) {
-            $nullable[$column['name']] = (bool) $column['nullable'];
+        foreach ($table['columns'] as $column) {
+            $nullable[$column['name']] = $column['nullable'];
         }
 
-        $candidates = array_values(array_filter($table['indexes'] ?? [], function (array $index) use ($nullable, $partial, $excluded) {
-            if (! ($index['unique'] ?? false) || ($index['primary'] ?? false) || in_array($index['name'], $partial, true)) {
+        $candidates = array_values(array_filter($table['indexes'], function (array $index) use ($nullable, $partial, $excluded) {
+            if (! $index['unique'] || $index['primary'] || in_array($index['name'], $partial, true)) {
                 return false;
             }
-            $columns = $index['columns'] ?? [];
+            $columns = $index['columns'];
             if ($columns === []) {
                 return false;
             }
             foreach ($columns as $column) {
-                // Expression parts come back empty or unnamed; they can't be bound as a key.
-                if (! is_string($column) || ! array_key_exists($column, $nullable) || $nullable[$column] || in_array($column, $excluded, true)) {
+                // Expression parts come back empty or unnamed, so they match no column; they can't be bound as a key.
+                if (! array_key_exists($column, $nullable) || $nullable[$column] || in_array($column, $excluded, true)) {
                     return false;
                 }
             }
 
             return true;
         }));
-        usort($candidates, fn (array $a, array $b) => strcmp((string) $a['name'], (string) $b['name']));
+        usort($candidates, fn (array $a, array $b) => strcmp($a['name'], $b['name']));
 
-        return $candidates === [] ? null : array_values($candidates[0]['columns']);
+        return $candidates === [] ? null : $candidates[0]['columns'];
     }
 
-    /** @return list<string> columns of type TIMESTAMP */
+    /**
+     * @param  TableArray  $table
+     * @return list<string> columns of type TIMESTAMP
+     */
     private function timestampColumns(array $table): array
     {
         $out = [];
-        foreach ($table['columns'] ?? [] as $column) {
-            if (preg_match('/^timestamp(\(\d\))?$/i', trim((string) ($column['type_name'] ?? $column['type'] ?? '')))) {
-                $out[] = (string) $column['name'];
+        foreach ($table['columns'] as $column) {
+            if (preg_match('/^timestamp(\(\d\))?$/i', trim($column['type_name']))) {
+                $out[] = $column['name'];
             }
         }
 
@@ -126,15 +141,16 @@ final class EditMethodResolver
     }
 
     /**
+     * @param  TableArray  $table
      * @param  list<string>  $generated
      * @return list<string>
      */
     private function readOnlyColumns(array $table, array $generated): array
     {
         $out = [];
-        foreach ($table['columns'] ?? [] as $column) {
+        foreach ($table['columns'] as $column) {
             if (in_array($column['name'], $generated, true)
-                || ColumnKind::classify((string) ($column['type_name'] ?? $column['type'] ?? '')) === ColumnKind::Binary) {
+                || ColumnKind::classify($column['type_name']) === ColumnKind::Binary) {
                 $out[] = $column['name'];
             }
         }
@@ -161,7 +177,7 @@ final class EditMethodResolver
             ),
         };
 
-        return array_map(fn (object $r) => (string) $r->name, $rows);
+        return array_map(fn (mixed $name) => (string) $name, array_column($rows, 'name'));
     }
 
     /**
@@ -201,7 +217,7 @@ final class EditMethodResolver
             ),
         };
 
-        return array_map(fn (object $r) => (string) $r->name, $rows);
+        return array_map(fn (mixed $name) => (string) $name, array_column($rows, 'name'));
     }
 
     /**
@@ -249,7 +265,7 @@ final class EditMethodResolver
             [$this->pgSchema($saved), $table],
         );
 
-        return array_map(fn (object $r) => (string) $r->name, $rows);
+        return array_map(fn (mixed $name) => (string) $name, array_column($rows, 'name'));
     }
 
     /** ctid is unique only per physical relation: a partitioned table or an inheritance parent also needs tableoid. */
@@ -280,9 +296,10 @@ final class EditMethodResolver
         return (bool) preg_match('/\)\s*(?:strict\s*,\s*)?without\s+rowid(?:\s*,\s*strict)?\s*;?\s*$/i', $sql);
     }
 
+    /** @param TableArray $table */
     private function sqliteRowidReachable(array $table): bool
     {
-        $names = array_map(fn (array $c) => strtolower((string) $c['name']), $table['columns'] ?? []);
+        $names = array_map(fn (array $c) => strtolower($c['name']), $table['columns']);
 
         return array_diff(self::SQLITE_ROWID_ALIASES, $names) !== [];
     }

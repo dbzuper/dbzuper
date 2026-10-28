@@ -3,11 +3,14 @@
 namespace App\Database\Editing;
 
 use App\Database\ColumnKind;
+use App\Database\Schema\ColumnInfo;
 use App\Enums\DriverName;
 
 /**
  * Whether a column's original value can be matched reliably with `=` (spec §5.1). Columns that can't are left out
  * of optimistic and ctid value checks, and make a row read-only under the MySQL/MariaDB all-values method.
+ *
+ * @phpstan-import-type ColumnArray from ColumnInfo
  */
 final class ColumnComparability
 {
@@ -47,10 +50,14 @@ final class ColumnComparability
         };
     }
 
-    /** exact(), and not a column the edit plan found the database can't compare with `=`. */
+    /**
+     * exact(), and not a column the edit plan found the database can't compare with `=`.
+     *
+     * @param  ColumnArray  $column
+     */
     public static function forPlan(DriverName $driver, array $column, EditPlan $plan): bool
     {
-        return self::exact($driver, $column) && ! in_array($column['name'] ?? null, $plan->nonComparableColumns, true);
+        return self::exact($driver, $column) && ! in_array($column['name'], $plan->nonComparableColumns, true);
     }
 
     private static function postgres(string $type): bool

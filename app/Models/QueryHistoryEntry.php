@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/** @property string $database  '' for a fixed connection's history; added by a migration helper Larastan can't follow */
 class QueryHistoryEntry extends Model
 {
     public const UPDATED_AT = null;
@@ -23,6 +24,7 @@ class QueryHistoryEntry extends Model
         ];
     }
 
+    /** @return BelongsTo<SavedConnection, $this> */
     public function connection(): BelongsTo
     {
         return $this->belongsTo(SavedConnection::class, 'connection_id');
@@ -34,6 +36,7 @@ class QueryHistoryEntry extends Model
         return $this->database === '' ? (string) $this->connection_id : $this->connection_id.':'.$this->database;
     }
 
+    /** @return array<string, mixed> */
     public function toApiArray(): array
     {
         return [
@@ -45,7 +48,7 @@ class QueryHistoryEntry extends Model
             'row_count' => $this->row_count,
             'affected' => $this->affected,
             'error' => $this->error,
-            'created_at' => $this->created_at?->toIso8601String(),
+            'created_at' => $this->created_at->toIso8601String(),
         ];
     }
 }

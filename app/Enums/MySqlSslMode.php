@@ -21,7 +21,11 @@ enum MySqlSslMode: string
     /** TLS on, the certificate chain is checked against the CA file and the host name against the certificate. */
     case VerifyIdentity = 'verify_identity';
 
-    /** The stored mode, or the one a connection saved before the mode existed behaves as. Unknown values pass through. */
+    /**
+     * The stored mode, or the one a connection saved before the mode existed behaves as. Unknown values pass through.
+     *
+     * @param  array<string, mixed>  $options
+     */
     public static function effective(array $options): string
     {
         $mode = $options['mysql_ssl'] ?? null;
@@ -37,7 +41,11 @@ enum MySqlSslMode: string
         return (bool) ($options['ssl_verify'] ?? true) ? self::VerifyIdentity->value : self::Required->value;
     }
 
-    /** The mode to connect with; fails closed (no silent fallback to plain text) on an unusable value. */
+    /**
+     * The mode to connect with; fails closed (no silent fallback to plain text) on an unusable value.
+     *
+     * @param  array<string, mixed>  $options
+     */
     public static function fromOptions(array $options): self
     {
         $mode = self::tryFrom(self::effective($options))

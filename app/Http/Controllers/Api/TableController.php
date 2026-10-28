@@ -8,13 +8,16 @@ use App\Database\DriverRegistry;
 use App\Database\Errors\DbErrorMapper;
 use App\Database\Exceptions\DatabaseOperationFailed;
 use App\Database\Schema\SnapshotService;
+use App\Database\Schema\TableInfo;
 use App\Http\Controllers\Controller;
 use App\Models\SavedConnection;
+use Closure;
 use Illuminate\Database\Connection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
 use Throwable;
 
+/** @phpstan-import-type TableArray from TableInfo */
 class TableController extends Controller
 {
     public const SAMPLE_LIMIT = 50;
@@ -35,7 +38,7 @@ class TableController extends Controller
         $driver = $this->drivers->for($connection->driver);
         $rows = $this->run($connection, fn (Connection $db) => $db
             ->table($db->raw($driver->quoteIdentifier($info['name'])))
-            ->select(array_map(fn (array $c) => $driver->sampleColumn($db, $c['name'], strtolower((string) ($c['type_name'] ?? ''))), $info['columns']))
+            ->select(array_map(fn (array $c) => $driver->sampleColumn($db, $c['name'], strtolower($c['type_name'])), $info['columns']))
             ->limit(self::SAMPLE_LIMIT)
             ->get()->all());
 
@@ -60,16 +63,20 @@ class TableController extends Controller
         return response()->json(['ddl' => $ddl]);
     }
 
-    /** Only objects present in the current snapshot may be queried. */
+    /**
+     * Only objects present in the current snapshot may be queried.
+     *
+     * @return TableArray
+     */
     private function tableFromSnapshot(SavedConnection $connection, string $table): array
     {
-        $info = collect($this->snapshots->current($connection)->payload['tables'] ?? [])->firstWhere('name', $table);
+        $info = $this->snapshots->current($connection)->table($table);
         abort_if($info === null, 404);
 
         return $info;
     }
 
-    private function run(SavedConnection $connection, callable $callback): mixed
+    private function run(SavedConnection $connection, Closure $callback): mixed
     {
         try {
             return $this->factory->using($connection, $callback, (int) config('dbzuper.query_timeout'));

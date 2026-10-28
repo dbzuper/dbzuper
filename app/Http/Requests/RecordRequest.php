@@ -11,6 +11,7 @@ class RecordRequest extends FormRequest
         return $this->user() !== null;
     }
 
+    /** @return array<string, mixed> */
     public function rules(): array
     {
         return ['key' => ['required', 'string', 'max:8192']];

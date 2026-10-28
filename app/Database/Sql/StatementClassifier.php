@@ -414,7 +414,7 @@ final class StatementClassifier
             break;
         }
 
-        return $names === [] ? null : implode(', ', $names);
+        return implode(', ', $names);
     }
 
     /**

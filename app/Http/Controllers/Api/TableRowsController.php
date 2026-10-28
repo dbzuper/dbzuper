@@ -25,7 +25,7 @@ class TableRowsController extends Controller
     {
         Gate::authorize('view', $connection);
         $snapshot = $snapshots->current($connection);
-        $info = collect($snapshot->payload['tables'] ?? [])->firstWhere('name', $table);
+        $info = $snapshot->table($table);
         abort_if($info === null, 404);
 
         $names = array_column($info['columns'], 'name');

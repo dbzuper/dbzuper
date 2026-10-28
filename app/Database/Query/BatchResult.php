@@ -10,6 +10,7 @@ final class BatchResult
         public readonly bool $openTransactionRolledBack = false,
     ) {}
 
+    /** @return array{results: list<array<string, mixed>>, open_transaction_rolled_back: bool} */
     public function toArray(): array
     {
         return [

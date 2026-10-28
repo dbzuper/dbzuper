@@ -23,7 +23,7 @@ class TableCountController extends Controller
     public function __invoke(TableCountRequest $request, SavedConnection $connection, string $table, SnapshotService $snapshots, ConnectionFactory $factory, DriverRegistry $drivers, DbErrorMapper $errors): JsonResponse
     {
         Gate::authorize('view', $connection);
-        $info = collect($snapshots->current($connection)->payload['tables'] ?? [])->firstWhere('name', $table);
+        $info = $snapshots->current($connection)->table($table);
         abort_if($info === null, 404);
 
         $names = array_column($info['columns'], 'name');

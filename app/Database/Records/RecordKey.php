@@ -9,11 +9,13 @@ final readonly class RecordKey
     /** @param array<string, string|int|float> $pairs keyed by column, in primary-key order */
     private function __construct(private array $pairs) {}
 
+    /** @param array{primary_key: list<string>} $table */
     public static function fromJson(string $json, array $table): self
     {
         $decoded = json_decode($json, true, 4, JSON_BIGINT_AS_STRING);
-        $pk = $table['primary_key'] ?? [];
-        if (! is_array($decoded) || array_is_list($decoded) || $decoded === []) {
+        $pk = $table['primary_key'];
+        // An empty array is a list too, so `{}` and `[]` are both refused here.
+        if (! is_array($decoded) || array_is_list($decoded)) {
             throw ValidationException::withMessages(['key' => 'The key must be a JSON object of primary-key values.']);
         }
         $names = array_map('strval', array_keys($decoded));
@@ -32,15 +34,18 @@ final readonly class RecordKey
         return new self(array_combine($pk, array_map(fn ($c) => $decoded[$c], $pk)));
     }
 
-    /** @param list<string|int|float> $values */
+    /**
+     * @param  array{primary_key: list<string>}  $table
+     * @param  list<string|int|float>  $values
+     */
     public static function fromValues(array $table, array $values): self
     {
-        $pk = $table['primary_key'] ?? [];
+        $pk = $table['primary_key'];
         if (count($pk) !== count($values)) {
             throw new \InvalidArgumentException('Expected '.count($pk).' key values, got '.count($values).'.');
         }
 
-        return new self(array_combine($pk, array_values($values)));
+        return new self(array_combine($pk, $values));
     }
 
     /** @return list<string> */

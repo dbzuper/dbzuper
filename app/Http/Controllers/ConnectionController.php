@@ -117,7 +117,11 @@ class ConnectionController extends Controller
     /** Tables whose rows describe one database of a connection (see the `database` column). */
     private const PER_DATABASE_TABLES = ['schema_snapshots', 'layout_positions', 'pinned_tables', 'query_history'];
 
-    /** The values that decide which schema a snapshot describes. */
+    /**
+     * The values that decide which schema a snapshot describes.
+     *
+     * @return array{driver: string, host: string, port: int, database: string, schema: string}
+     */
     private function schemaSource(SavedConnection $connection): array
     {
         return [
@@ -129,6 +133,7 @@ class ConnectionController extends Controller
         ];
     }
 
+    /** @return list<array{value: string, label: string, default_port: ?int}> */
     private function drivers(): array
     {
         return array_map(fn (DriverName $d) => [

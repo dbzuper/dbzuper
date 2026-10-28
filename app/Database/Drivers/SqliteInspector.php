@@ -6,6 +6,9 @@ use App\Database\Schema\LaravelSchemaInspector;
 use App\Database\Schema\RowCount;
 use App\Models\SavedConnection;
 use Illuminate\Database\Connection;
+use Illuminate\Database\Query\Processors\SQLiteProcessor;
+use Illuminate\Database\Schema\Grammars\SQLiteGrammar;
+use LogicException;
 
 class SqliteInspector extends LaravelSchemaInspector
 {
@@ -43,19 +46,22 @@ class SqliteInspector extends LaravelSchemaInspector
     {
         $grammar = $db->getSchemaGrammar();
         $processor = $db->getPostProcessor();
+        if (! $grammar instanceof SQLiteGrammar || ! $processor instanceof SQLiteProcessor) {
+            throw new LogicException('SqliteInspector needs an SQLite connection.');
+        }
         $out = ['columns' => [], 'indexes' => [], 'foreignKeys' => []];
 
         $literal = fn (string $name) => str_replace("'", "''", $name);
 
         foreach ([...$tableNames, ...$viewNames] as $name) {
             $out['columns'][$name] = $processor->processColumns(
-                $db->select($grammar->compileColumns($schema, $literal($name))),
+                self::asArrays($db->select($grammar->compileColumns($schema, $literal($name)))),
                 $db->scalar($grammar->compileSqlCreateStatement($schema, $literal($name)))
             );
         }
         foreach ($tableNames as $name) {
-            $out['indexes'][$name] = $processor->processIndexes($db->select($grammar->compileIndexes($schema, $literal($name))));
-            $out['foreignKeys'][$name] = $processor->processForeignKeys($db->select($grammar->compileForeignKeys($schema, $literal($name))));
+            $out['indexes'][$name] = $processor->processIndexes(self::asArrays($db->select($grammar->compileIndexes($schema, $literal($name)))));
+            $out['foreignKeys'][$name] = $processor->processForeignKeys(self::asArrays($db->select($grammar->compileForeignKeys($schema, $literal($name)))));
         }
 
         return $out;

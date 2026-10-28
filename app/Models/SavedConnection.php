@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Database\Drivers\DsnValue;
 use App\Enums\DriverName;
+use Database\Factories\SavedConnectionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,6 +14,7 @@ use LogicException;
 
 class SavedConnection extends Model
 {
+    /** @use HasFactory<SavedConnectionFactory> */
     use HasFactory;
 
     protected $table = 'connections';
@@ -115,7 +117,9 @@ class SavedConnection extends Model
     public function resolveRouteBinding($value, $field = null): ?self
     {
         if ($field !== null || ! is_string($value) || ! preg_match('/^(\d+)(?::(.*))?$/s', $value, $m)) {
-            return $field !== null ? parent::resolveRouteBinding($value, $field) : null;
+            $found = $field !== null ? parent::resolveRouteBinding($value, $field) : null;
+
+            return $found instanceof self ? $found : null;
         }
 
         $connection = static::query()->find((int) $m[1]);
@@ -154,27 +158,31 @@ class SavedConnection extends Model
         return parent::save($options);
     }
 
+    /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    /** Safe representation for the browser: never includes the password. */
+    /** @return HasMany<StoredSnapshot, $this> */
     public function snapshots(): HasMany
     {
         return $this->hasMany(StoredSnapshot::class, 'connection_id')->withAttributes(['database' => $this->storageDatabase()]);
     }
 
+    /** @return HasOne<LayoutPosition, $this> */
     public function layout(): HasOne
     {
         return $this->hasOne(LayoutPosition::class, 'connection_id')->withAttributes(['database' => $this->storageDatabase()]);
     }
 
+    /** @return HasMany<PinnedTable, $this> */
     public function pins(): HasMany
     {
         return $this->hasMany(PinnedTable::class, 'connection_id')->withAttributes(['database' => $this->storageDatabase()]);
     }
 
+    /** @return HasMany<QueryHistoryEntry, $this> */
     public function history(): HasMany
     {
         return $this->hasMany(QueryHistoryEntry::class, 'connection_id')->withAttributes(['database' => $this->storageDatabase()]);
@@ -197,6 +205,11 @@ class SavedConnection extends Model
         $this->forceFill($values)->syncOriginalAttributes(array_keys($values));
     }
 
+    /**
+     * Safe representation for the browser: never includes the password.
+     *
+     * @return array<string, mixed>
+     */
     public function toClientArray(): array
     {
         return [

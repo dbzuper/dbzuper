@@ -14,6 +14,7 @@ final readonly class DbError
         public ?array $position = null,
     ) {}
 
+    /** @return array{kind: string, message: string, sqlstate: ?string, reason: ?string, position?: array{line: int, column: ?int}} */
     public function toArray(): array
     {
         $out = ['kind' => $this->kind, 'message' => $this->message, 'sqlstate' => $this->sqlstate, 'reason' => $this->reason];

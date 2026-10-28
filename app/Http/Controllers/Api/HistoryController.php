@@ -48,6 +48,7 @@ class HistoryController extends Controller
         return $this->page($request, $query, true);
     }
 
+    /** @param Builder<QueryHistoryEntry> $query */
     private function page(Request $request, Builder $query, bool $withConnection): JsonResponse
     {
         $data = $request->validate([
@@ -79,7 +80,7 @@ class HistoryController extends Controller
                 'database' => $e->database === '' ? null : $e->database,
                 'workspace_ref' => $e->workspaceRef(),
             ] : []))->values(),
-            'next_before_id' => $more ? $entries->last()->id : null,
+            'next_before_id' => $more ? $entries->last()?->id : null,
         ]);
     }
 }

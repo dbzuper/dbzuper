@@ -5,7 +5,9 @@ namespace App\Console\Commands;
 use App\Support\Demo\CommerceSchema;
 use App\Support\Demo\SyntheticSchema;
 use Illuminate\Console\Command;
+use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 class DemoDatabaseCommand extends Command
 {
@@ -51,6 +53,9 @@ class DemoDatabaseCommand extends Command
         }
 
         $db = DB::connectUsing('dbzuper_demo', ['driver' => 'sqlite', 'database' => $path, 'prefix' => '', 'foreign_key_constraints' => true], force: true);
+        if (! $db instanceof Connection) {
+            throw new LogicException('The SQLite driver is expected to build an '.Connection::class.'.');
+        }
         try {
             CommerceSchema::create($db);
             if ($extra > 0) {

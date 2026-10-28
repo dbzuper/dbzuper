@@ -79,6 +79,7 @@ class PinController extends Controller
         return response()->json(['pins' => $this->list($request, $connection)]);
     }
 
+    /** @return HasMany<PinnedTable, SavedConnection> */
     private function mine(Request $request, SavedConnection $connection): HasMany
     {
         return $connection->pins()->where('user_id', $request->user()->id);
@@ -87,7 +88,7 @@ class PinController extends Controller
     /** @return list<array{id: int, table: string, position: int}> */
     private function list(Request $request, SavedConnection $connection): array
     {
-        return $this->mine($request, $connection)->orderBy('position')->orderBy('id')->get()
-            ->map(fn (PinnedTable $p) => $p->toClientArray())->all();
+        return array_values($this->mine($request, $connection)->orderBy('position')->orderBy('id')->get()
+            ->map(fn (PinnedTable $p) => $p->toClientArray())->all());
     }
 }

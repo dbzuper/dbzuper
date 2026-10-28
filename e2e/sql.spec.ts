@@ -527,6 +527,8 @@ const b64urlTrail = (text: string) =>
         .replace(/=+$/, '');
 
 test('accessibility: no serious or critical axe violations on the main screens', async () => {
+    // A dozen axe scans take ~20 s, too close to the default 30 s on a busy machine.
+    test.setTimeout(60_000);
     // The login screen is checked before sign-in, in beforeAll. Everything here reuses the shared
     // signed-in page.
     await page.goto('/connections');

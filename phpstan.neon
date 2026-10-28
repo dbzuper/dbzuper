@@ -11,3 +11,15 @@ parameters:
         - routes/
 
     level: 7
+
+    # Read each model's casts() array: its declared return type is a plain array, so Larastan
+    # would otherwise type every cast attribute by its migration column (driver as string, etc.).
+    parseModelCastsMethod: true
+
+    ignoreErrors:
+        # Larastan wants raw SQL as literal strings. Ours is built at runtime on purpose, from
+        # identifiers quoted by Driver::quoteIdentifier() or the grammar's wrap(), with every value
+        # bound as a parameter; nothing user-typed reaches these strings unquoted.
+        -
+            message: '#expects (.+\|)?literal-string(\|.+)?, (non-falsy-|non-empty-)?string given#'
+            identifier: argument.type

@@ -21,6 +21,7 @@ class ConnectionRequest extends FormRequest
         return $this->user() !== null;
     }
 
+    /** @return array<string, mixed> */
     public function rules(): array
     {
         $server = Rule::requiredIf(fn () => $this->input('driver') !== DriverName::Sqlite->value);
@@ -64,6 +65,7 @@ class ConnectionRequest extends FormRequest
         return in_array($this->input('driver'), [DriverName::MySql->value, DriverName::MariaDb->value], true);
     }
 
+    /** @return list<callable(Validator): void> */
     public function after(): array
     {
         return [function (Validator $validator) {
@@ -135,6 +137,7 @@ class ConnectionRequest extends FormRequest
      * saved MySQL connection already behaved as) is not a change. For MySQL/MariaDB the SSL mode covers the
      * legacy ssl_verify flag, and the CA path only counts when the mode verifies against it.
      *
+     * @param  array<string, mixed>  $options
      * @return array{sslmode: string, mysql_ssl: string, ssl_ca: string, schema: string}
      */
     private static function dsnOptions(DriverName $driver, array $options): array
@@ -154,6 +157,9 @@ class ConnectionRequest extends FormRequest
     /**
      * Known option keys with blanks removed. An explicit MySQL SSL mode replaces the legacy ssl_verify flag and
      * keeps the CA path only when it verifies against it; other drivers never store a MySQL SSL mode.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>
      */
     private static function persistedOptions(DriverName $driver, array $input): array
     {
@@ -170,7 +176,11 @@ class ConnectionRequest extends FormRequest
         return $options;
     }
 
-    /** Attributes to persist. A blank password means "unchanged" unless clear_password is set. */
+    /**
+     * Attributes to persist. A blank password means "unchanged" unless clear_password is set.
+     *
+     * @return array<string, mixed>
+     */
     public function connectionAttributes(): array
     {
         $driver = DriverName::from($this->input('driver'));

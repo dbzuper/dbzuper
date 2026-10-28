@@ -17,6 +17,8 @@ interface Driver
     /**
      * Laravel runtime connection config, including the read-only guard. With $countMatchedRows, UPDATE reports the
      * rows its WHERE matched, not only those it changed (MySQL/MariaDB count changed rows unless told otherwise).
+     *
+     * @return array<string, mixed>
      */
     public function config(SavedConnection $connection, bool $countMatchedRows = false): array;
 
