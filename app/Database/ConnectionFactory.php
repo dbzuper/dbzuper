@@ -4,9 +4,9 @@ namespace App\Database;
 
 use App\Models\SavedConnection;
 use Closure;
-use LogicException;
 use Illuminate\Database\Connection;
 use Illuminate\Database\DatabaseManager;
+use LogicException;
 use Throwable;
 
 final class ConnectionFactory

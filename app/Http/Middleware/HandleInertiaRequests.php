@@ -94,14 +94,14 @@ class HandleInertiaRequests extends Middleware
                 'workspace_ref' => $q->workspaceRef(),
                 'color' => $connections[$q->connection_id]->color,
                 'sql' => mb_substr(self::firstLine($q->sql), 0, 120),
-                'created_at' => $q->created_at?->toIso8601String(),
+                'created_at' => $q->created_at->toIso8601String(),
             ])->all(),
         ];
     }
 
     private static function firstLine(string $sql): string
     {
-        foreach (preg_split('/\R/', $sql) as $line) {
+        foreach (preg_split('/\R/', $sql) ?: [] as $line) {
             if (trim($line) !== '') {
                 return trim($line);
             }

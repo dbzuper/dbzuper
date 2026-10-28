@@ -272,9 +272,7 @@ describe('createLayoutSaver', () => {
                 [entry('a', 9), entry('b', 8)],
                 { keepalive: false, merge: true },
             );
-            expect(
-                localStorage.getItem('dbzuper.layout-pending.1'),
-            ).toBeNull();
+            expect(localStorage.getItem('dbzuper.layout-pending.1')).toBeNull();
         });
 
         it('keeps the entries when the replay fails', async () => {

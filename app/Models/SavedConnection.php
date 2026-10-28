@@ -117,7 +117,9 @@ class SavedConnection extends Model
     public function resolveRouteBinding($value, $field = null): ?self
     {
         if ($field !== null || ! is_string($value) || ! preg_match('/^(\d+)(?::(.*))?$/s', $value, $m)) {
-            return $field !== null ? parent::resolveRouteBinding($value, $field) : null;
+            $found = $field !== null ? parent::resolveRouteBinding($value, $field) : null;
+
+            return $found instanceof self ? $found : null;
         }
 
         $connection = static::query()->find((int) $m[1]);
@@ -203,7 +205,11 @@ class SavedConnection extends Model
         $this->forceFill($values)->syncOriginalAttributes(array_keys($values));
     }
 
-    /** Safe representation for the browser: never includes the password. */
+    /**
+     * Safe representation for the browser: never includes the password.
+     *
+     * @return array<string, mixed>
+     */
     public function toClientArray(): array
     {
         return [

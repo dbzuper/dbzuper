@@ -36,7 +36,7 @@ class TableChangesController extends Controller
         Gate::authorize('view', $connection);
         abort_if($connection->read_only, 403, EditMethodResolver::READ_ONLY_REASON);
         $snapshot = $snapshots->current($connection);
-        $info = collect($snapshot->payload['tables'] ?? [])->firstWhere('name', $table);
+        $info = $snapshot->table($table);
         abort_if($info === null, 404);
         $changes = $request->changes();
         $preview = $request->boolean('preview');
