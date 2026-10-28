@@ -1,11 +1,12 @@
 <?php
 
 return [
-    // Comma-separated directories that SQLite connection files must live in.
-    'sqlite_paths' => array_values(array_filter(array_map(
-        'trim',
-        explode(',', (string) env('DBZUPER_SQLITE_PATHS', '')),
-    ))),
+    // Comma-separated directories that SQLite connection files must live in. Relative ones are relative to the
+    // app directory (not the working directory, which differs between `artisan serve`, a web server and the CLI).
+    'sqlite_paths' => array_values(array_map(
+        fn (string $dir) => preg_match('~^([/\\\\]|[A-Za-z]:[/\\\\])~', $dir) === 1 ? $dir : base_path($dir),
+        array_filter(array_map('trim', explode(',', (string) env('DBZUPER_SQLITE_PATHS', '')))),
+    )),
 
     // Where the one-time setup code is kept until the first administrator exists.
     'setup_code_path' => env('DBZUPER_SETUP_CODE_PATH') ?: storage_path('app/private/setup-code'),

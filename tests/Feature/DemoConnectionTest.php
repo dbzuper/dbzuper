@@ -44,6 +44,22 @@ it('refuses when no SQLite directory is allowed', function () {
     expect(SavedConnection::count())->toBe(0);
 });
 
+it('creates the allowed SQLite directory when it does not exist yet', function () {
+    $dir = Engines::sqliteDirectory().DIRECTORY_SEPARATOR.'fresh-'.bin2hex(random_bytes(4));
+    config(['dbzuper.sqlite_paths' => [$dir]]);
+
+    try {
+        $this->actingAs($this->user)->get('/connections')
+            ->assertInertia(fn (Assert $page) => $page->where('canTryDemo', true));
+        $this->actingAs($this->user)->post('/connections/demo')->assertRedirect();
+
+        expect(is_file($dir.DIRECTORY_SEPARATOR.'dbzuper-demo.sqlite'))->toBeTrue();
+    } finally {
+        @unlink($dir.DIRECTORY_SEPARATOR.'dbzuper-demo.sqlite');
+        @rmdir($dir);
+    }
+});
+
 it('needs a signed-in user', function () {
     $this->post('/connections/demo')->assertRedirect(route('login'));
     expect(SavedConnection::count())->toBe(0);

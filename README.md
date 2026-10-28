@@ -30,6 +30,21 @@
    ([more](docs/self-hosting.md#choosing-the-port)).
 2. Click **Try it with demo data** to explore a sample database, or add a connection to your own.
 
+### Without Docker
+
+You need PHP 8.4 with `pdo_sqlite` (and `pdo_mysql` / `pdo_pgsql` for those servers), Composer 2, and Node 24 to build
+the frontend once.
+
+    git clone https://github.com/dbzuper/dbzuper && cd dbzuper
+    composer setup    # dependencies, .env, app key, database and frontend build; prints the setup code
+    composer start    # serves http://localhost:8000
+
+Open <http://localhost:8000> and enter the setup code. No queue worker or other process is needed. To serve it with
+Herd, Valet or your own web server instead, point the site at the `public/` directory and set `APP_URL` in `.env`.
+`php artisan dbzuper:setup-code` shows the code again.
+
+### From source with Docker
+
 To build the image from source instead: `git clone https://github.com/dbzuper/dbzuper && cd dbzuper && docker compose up -d --build --wait`,
 then read the code with `docker compose logs app`.
 
