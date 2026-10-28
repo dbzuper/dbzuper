@@ -10,10 +10,13 @@ use App\Database\Editing\ColumnComparability;
 use App\Database\Editing\EditMethod;
 use App\Database\Editing\EditMethodResolver;
 use App\Database\Editing\EditPlan;
+use App\Database\Schema\TableInfo;
 use App\Enums\DriverName;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder;
+use LogicException;
 
+/** @phpstan-import-type TableArray from TableInfo */
 final class TableRowsQuery
 {
     public const OPS = ['eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'contains', 'starts_with', 'ends_with', 'is_null', 'is_not_null', 'on', 'between', 'after'];
@@ -24,11 +27,11 @@ final class TableRowsQuery
     private const COMPARE = ['eq' => '=', 'neq' => '<>', 'lt' => '<', 'lte' => '<=', 'gt' => '>', 'gte' => '>='];
 
     /**
-     * @param  array{name: string, columns: list<array{name: string, type_name: string, type: string}>}  $table
+     * @param  TableArray  $table
      * @param  list<array{column: string, op: string, value?: ?string, to?: ?string}>  $filters
      * @param  list<array{column: string, direction: string}>  $sort
      * @param  ?EditPlan  $plan  how rows are pinned for editing; null means not editable
-     * @return array{columns: list<array{name:string,type:?string,table:string}>, rows: list<list<mixed>>, has_more: bool, sql: string, editing: array{method:string,reason:?string,read_only_columns:list<string>}, row_ids: list<?array>, locked: list<list<int>>, shortened: list<list<int>>}
+     * @return array{columns: list<array{name:string,type:?string,table:string}>, rows: list<list<mixed>>, has_more: bool, sql: string, editing: array{method:string,reason:?string,read_only_columns:list<string>}, row_ids: list<?array<string, mixed>>, locked: list<list<int>>, shortened: list<list<int>>}
      *
      * `shortened` lists, per row, the cells whose shown value isn't the stored one (cut, or a non-NULL binary value): a
      * change lists these columns in its `shortened` instead of sending their originals.
@@ -57,7 +60,7 @@ final class TableRowsQuery
         };
 
         $query = $build(array_merge(array_map(
-            fn ($c) => $driver->sampleColumn($db, $c['name'], strtolower((string) ($c['type_name'] ?? '')), CellValue::RESULT_CHARS),
+            fn ($c) => $driver->sampleColumn($db, $c['name'], strtolower($c['type_name']), CellValue::RESULT_CHARS),
             $table['columns'],
         ), array_map(fn (string $sql) => $db->raw($sql), self::identitySelect($driver, $table, $plan))), $perPage + 1, false);
         // The user-facing query: raw quoted columns, values inlined with the connection's own quoting
@@ -68,7 +71,7 @@ final class TableRowsQuery
         $more = count($fetched) > $perPage;
         $width = count($table['columns']);
         $static = self::staticLocks($driver, $table, $plan);
-        $binary = array_keys(array_filter($table['columns'], fn ($c) => ColumnKind::classify((string) ($c['type_name'] ?? $c['type'] ?? '')) === ColumnKind::Binary));
+        $binary = array_keys(array_filter($table['columns'], fn ($c) => ColumnKind::classify($c['type_name']) === ColumnKind::Binary));
         $blobFlags = self::sqliteBlobFlags($driver, $table) !== null;
         $rows = $rowIds = $locked = $shortened = [];
         foreach (array_slice($fetched, 0, $perPage) as $row) {
@@ -105,6 +108,7 @@ final class TableRowsQuery
      * through sampleColumn: identity values must be exact, not shortened for display. On SQLite the BLOB flags (see
      * sqliteBlobFlags) come last.
      *
+     * @param  TableArray  $table
      * @return list<string>
      */
     private static function identitySelect(Driver $driver, array $table, EditPlan $plan): array
@@ -141,6 +145,8 @@ final class TableRowsQuery
     /**
      * SQLite only: one select expression yielding a '0'/'1' flag per column, '1' where the cell holds a BLOB. It is
      * the last identity expression, so run() reads it as the row's last value.
+     *
+     * @param  TableArray  $table
      */
     private static function sqliteBlobFlags(Driver $driver, array $table): ?string
     {
@@ -158,6 +164,7 @@ final class TableRowsQuery
      * Column indexes locked on every row: binary, generated/read-only, and under the all-values method the columns
      * that can't be compared exactly. `unmatchable` says whether such a column makes every all-values row unpinnable.
      *
+     * @param  TableArray  $table
      * @return array{locked: list<int>, unmatchable: bool}
      */
     private static function staticLocks(Driver $driver, array $table, EditPlan $plan): array
@@ -165,7 +172,7 @@ final class TableRowsQuery
         $locked = [];
         $unmatchable = false;
         foreach ($table['columns'] as $i => $column) {
-            $binary = ColumnKind::classify((string) ($column['type_name'] ?? $column['type'] ?? '')) === ColumnKind::Binary;
+            $binary = ColumnKind::classify($column['type_name']) === ColumnKind::Binary;
             $inexact = $plan->method === EditMethod::MysqlAllValues && ! ColumnComparability::forPlan($driver->name(), $column, $plan);
             $unmatchable = $unmatchable || $inexact;
             if ($binary || $inexact || in_array($column['name'], $plan->readOnlyColumns, true)) {
@@ -187,6 +194,8 @@ final class TableRowsQuery
      * @param  list<mixed>  $raw  the raw identity columns, in identitySelect order
      * @param  bool  $unmatchable  some value of this row is shortened, binary or not exactly comparable
      * @param  list<int>  $blobs  indexes of SQLite cells holding a BLOB
+     * @param  TableArray  $table
+     * @return ?array<string, mixed>
      */
     private static function rowId(EditPlan $plan, array $table, array $cells, array $raw, bool $unmatchable, array $blobs = []): ?array
     {
@@ -242,12 +251,15 @@ final class TableRowsQuery
         return is_bool($value) ? ($value ? 'true' : 'false') : $value;
     }
 
-    /** @return list<string> */
+    /**
+     * @param  TableArray  $table
+     * @return list<string>
+     */
     private static function primaryKey(array $table): array
     {
-        foreach ($table['indexes'] ?? [] as $index) {
-            if (! empty($index['primary'])) {
-                return array_values($index['columns']);
+        foreach ($table['indexes'] as $index) {
+            if ($index['primary']) {
+                return $index['columns'];
             }
         }
 
@@ -299,6 +311,7 @@ final class TableRowsQuery
             'contains' => "%{$escaped}%",
             'starts_with' => "{$escaped}%",
             'ends_with' => "%{$escaped}",
+            default => throw new LogicException("Unknown filter operator {$op}."),
         };
         $where([$driver->likeColumn($column).' '.$driver->likeOperator().' ', " ESCAPE '!'"], $pattern);
     }

@@ -9,20 +9,17 @@ final class SqlSplitter
     {
         $out = [];
         $start = null;
-        $end = null;
+        $end = 0;
         $significant = false;
 
-        $flush = function () use (&$out, &$start, &$end, &$significant, $sql) {
-            if ($start !== null && $significant) {
-                $out[] = ['sql' => substr($sql, $start, $end - $start), 'start' => $start, 'end' => $end];
-            }
-            $start = $end = null;
-            $significant = false;
-        };
-
-        foreach (SqlLexer::tokenize($sql, $dialect) as $token) {
-            if ($token->type === 'semicolon') {
-                $flush();
+        // A trailing null ends the last statement like a semicolon would.
+        foreach ([...SqlLexer::tokenize($sql, $dialect), null] as $token) {
+            if ($token === null || $token->type === 'semicolon') {
+                if ($start !== null && $significant) {
+                    $out[] = ['sql' => substr($sql, $start, $end - $start), 'start' => $start, 'end' => $end];
+                }
+                $start = null;
+                $significant = false;
 
                 continue;
             }
@@ -32,7 +29,6 @@ final class SqlSplitter
                 $significant = true;
             }
         }
-        $flush();
 
         return $out;
     }

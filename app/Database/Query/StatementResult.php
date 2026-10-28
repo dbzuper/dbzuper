@@ -28,6 +28,7 @@ final class StatementResult
         return new self($sql, $classification, [], [], false, null, $durationMs, $error);
     }
 
+    /** @return array{sql: string, kind: string, columns: list<array{name: string, type: ?string, table: ?string}>, rows: list<list<string|int|float|bool|null>>, truncated: bool, affected: ?int, duration_ms: int, error: ?array<string, mixed>} */
     public function toArray(): array
     {
         return [
