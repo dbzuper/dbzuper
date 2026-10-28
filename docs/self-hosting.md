@@ -40,6 +40,20 @@ From source, with the `docker-compose.yml` in the repository:
 
 `--wait` returns once the container is healthy (or check `docker compose ps`, or that `curl http://localhost:8080/up` returns 200). The setup code is in `docker compose logs app`.
 
+### Choosing the port
+
+DBZuper answers on port 8080 by default. To use another port on your server, change the **host** side of the mapping
+and tell the container which port that is, so the address it prints (and `APP_URL`) matches:
+
+    docker run ... -p 3000:8080 -e DBZUPER_PORT=3000 ghcr.io/dbzuper/dbzuper:latest
+    DBZUPER_PORT=3000 docker compose up -d     # or DBZUPER_PORT=3000 in a .env next to docker-compose.yml
+
+The container keeps listening on 8080 inside, which is all a published port needs. Only when there is no port mapping
+(`--network host`, or a platform that assigns the port) set `PORT` instead, the port the server itself listens on:
+`docker run --network host -e PORT=3000 ...`. `PORT` must be 1024 or higher, because the server runs as a non-root user.
+Behind a reverse proxy with its own domain, set `APP_URL` (see [HTTPS behind a reverse proxy](#https-behind-a-reverse-proxy));
+an explicit `APP_URL` always wins.
+
 On first start the entrypoint creates the storage directories and the application SQLite database, generates an `APP_KEY` (see [Backups](#backups-and-the-app_key)), runs the migrations and caches the configuration, routes and views. Every later start repeats the migrations and caching, so upgrades need no manual step.
 
 One-off commands run through the same entrypoint (key, storage and database prepared, server not started): `docker compose run --rm app php artisan --version`, or `docker exec dbzuper php artisan --version` on a running container.
@@ -61,7 +75,7 @@ Without options the command prompts for each value. In production the password m
 
 ## Configuration
 
-Compose reads an optional `.env.docker` next to `docker-compose.yml` (plain `KEY=value` lines) and passes it to the container. Set `APP_URL` there too (the image default is `http://localhost:8080`); nothing in `docker-compose.yml` overrides it, and variables from your shell or a project `.env` are not passed in. Environment changes apply on `docker compose up -d` or a restart: the configuration is cached from the environment at every start.
+Compose reads an optional `.env.docker` next to `docker-compose.yml` (plain `KEY=value` lines) and passes it to the container. Set `APP_URL` there too (by default it is `http://localhost:` plus `DBZUPER_PORT`, else `PORT`, else 8080); nothing in `docker-compose.yml` overrides it, and other variables from your shell or a project `.env` are not passed in. `DBZUPER_PORT` is the exception: Compose reads it from your shell or a `.env` next to `docker-compose.yml` to publish the port, so set it there, not in `.env.docker`. Environment changes apply on `docker compose up -d` or a restart: the configuration is cached from the environment at every start.
 
 The image defaults are `APP_NAME=DBZuper`, `APP_ENV=production`, `APP_DEBUG=false`, `LOG_CHANNEL=stderr` (read logs with `docker compose logs app`), `DB_CONNECTION=sqlite`, `DB_DATABASE=/app/storage/database/database.sqlite`, `DB_JOURNAL_MODE=WAL`, `DB_TRANSACTION_MODE=IMMEDIATE`, `DB_BUSY_TIMEOUT=5000` and `DBZUPER_SQLITE_PATHS=/data/sqlite`. The three SQLite lock settings let the multi-threaded server share the application database without "database is locked" errors; keep them.
 
@@ -171,22 +185,24 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 
 ## Environment reference
 
-| Variable                        | Default                     | Meaning                                                                                                  |
-| ------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `APP_NAME`                      | `DBZuper` in the image      | Name in the page title, sidebar, session cookie and two-factor issuer.                                   |
-| `DBZUPER_SQLITE_PATHS`          | `/data/sqlite` in the image | Comma-separated directories SQLite connection files must live in.                                        |
-| `DBZUPER_CONNECT_TIMEOUT`       | `5`                         | Seconds to wait when opening a connection to a database server.                                          |
-| `DBZUPER_INTROSPECTION_TIMEOUT` | `30`                        | Seconds allowed for loading a schema.                                                                    |
-| `DBZUPER_QUERY_TIMEOUT`         | `15`                        | Seconds a SQL editor statement may run (not enforced on SQLite or for non-`SELECT` statements on MySQL). |
-| `DBZUPER_SCHEMA_MAX_OBJECTS`    | `5000`                      | Most tables and views kept in a schema snapshot.                                                         |
-| `DBZUPER_HISTORY_KEEP`          | `5000`                      | Query history entries kept per connection.                                                               |
-| `TRUSTED_PROXIES`               | unset                       | Reverse proxies whose `X-Forwarded-*` headers are trusted (IPs/CIDRs or `*`).                            |
-| `APP_URL`                       | `http://localhost:8080`     | Public URL of the app (set in `.env.docker`).                                                            |
-| `APP_KEY`                       | generated into the volume   | Encryption key; see above.                                                                               |
-| `SESSION_SECURE_COOKIE`         | unset                       | Set `true` when served over HTTPS.                                                                       |
-| `DB_JOURNAL_MODE`               | `WAL` in the image          | SQLite journal mode of the application database (unset: SQLite's default).                               |
-| `DB_TRANSACTION_MODE`           | `IMMEDIATE` in the image    | How SQLite transactions on the application database start (`DEFERRED` outside the image).                |
-| `DB_BUSY_TIMEOUT`               | `5000`                      | Milliseconds a request waits for the SQLite lock before failing with "database is locked".               |
+| Variable                        | Default                     | Meaning                                                                                                           |
+| ------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `APP_NAME`                      | `DBZuper` in the image      | Name in the page title, sidebar, session cookie and two-factor issuer.                                            |
+| `DBZUPER_SQLITE_PATHS`          | `/data/sqlite` in the image | Comma-separated directories SQLite connection files must live in.                                                 |
+| `DBZUPER_CONNECT_TIMEOUT`       | `5`                         | Seconds to wait when opening a connection to a database server.                                                   |
+| `DBZUPER_INTROSPECTION_TIMEOUT` | `30`                        | Seconds allowed for loading a schema.                                                                             |
+| `DBZUPER_QUERY_TIMEOUT`         | `15`                        | Seconds a SQL editor statement may run (not enforced on SQLite or for non-`SELECT` statements on MySQL).          |
+| `DBZUPER_SCHEMA_MAX_OBJECTS`    | `5000`                      | Most tables and views kept in a schema snapshot.                                                                  |
+| `DBZUPER_HISTORY_KEEP`          | `5000`                      | Query history entries kept per connection.                                                                        |
+| `TRUSTED_PROXIES`               | unset                       | Reverse proxies whose `X-Forwarded-*` headers are trusted (IPs/CIDRs or `*`).                                     |
+| `APP_URL`                       | `http://localhost:<port>`   | Public URL of the app (set in `.env.docker`); the port is `DBZUPER_PORT`, else `PORT`.                            |
+| `DBZUPER_PORT`                  | `8080`                      | Host port Compose publishes, and the port in the default `APP_URL` (see [Choosing the port](#choosing-the-port)). |
+| `PORT`                          | `8080`                      | Port the server listens on inside the container (1024 or higher); only for setups without a port mapping.         |
+| `APP_KEY`                       | generated into the volume   | Encryption key; see above.                                                                                        |
+| `SESSION_SECURE_COOKIE`         | unset                       | Set `true` when served over HTTPS.                                                                                |
+| `DB_JOURNAL_MODE`               | `WAL` in the image          | SQLite journal mode of the application database (unset: SQLite's default).                                        |
+| `DB_TRANSACTION_MODE`           | `IMMEDIATE` in the image    | How SQLite transactions on the application database start (`DEFERRED` outside the image).                         |
+| `DB_BUSY_TIMEOUT`               | `5000`                      | Milliseconds a request waits for the SQLite lock before failing with "database is locked".                        |
 
 ## Troubleshooting
 

@@ -26,6 +26,8 @@
     docker logs dbzuper 2>&1 | grep "setup code"
 
 1. Open <http://localhost:8080> and enter the **setup code** from the log, then create your administrator account.
+   Another port? Use for example `-p 3000:8080 -e DBZUPER_PORT=3000` and open port 3000
+   ([more](docs/self-hosting.md#choosing-the-port)).
 2. Click **Try it with demo data** to explore a sample database, or add a connection to your own.
 
 To build the image from source instead: `git clone https://github.com/dbzuper/dbzuper && cd dbzuper && docker compose up -d --build --wait`,
