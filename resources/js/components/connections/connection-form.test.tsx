@@ -180,3 +180,60 @@ describe('ConnectionForm database', () => {
         expect(screen.getByLabelText('SQLite file path')).toBeRequired();
     });
 });
+
+describe('reaching a database on the Docker host', () => {
+    const hint = () => screen.queryByText(/host\.docker\.internal/);
+
+    it.each(['127.0.0.1', 'localhost', 'LOCALHOST', '::1'])(
+        'explains host.docker.internal when %s is typed inside a container',
+        (host) => {
+            render(
+                <ConnectionForm
+                    connection={saved({ host })}
+                    drivers={drivers}
+                    inContainer
+                />,
+            );
+            expect(hint()).toBeInTheDocument();
+            expect(screen.getByLabelText('Host')).toHaveAttribute(
+                'aria-describedby',
+                'host-hint',
+            );
+        },
+    );
+
+    it('says nothing for another host inside a container', () => {
+        render(
+            <ConnectionForm
+                connection={saved({ host: 'db.internal' })}
+                drivers={drivers}
+                inContainer
+            />,
+        );
+        expect(hint()).toBeNull();
+    });
+
+    it('says nothing outside a container, where localhost is this machine', () => {
+        render(
+            <ConnectionForm
+                connection={saved({ host: '127.0.0.1' })}
+                drivers={drivers}
+            />,
+        );
+        expect(hint()).toBeNull();
+    });
+
+    it('updates as the host is typed', () => {
+        render(
+            <ConnectionForm
+                connection={saved({ host: 'db.internal' })}
+                drivers={drivers}
+                inContainer
+            />,
+        );
+        fireEvent.change(screen.getByLabelText('Host'), {
+            target: { value: 'localhost' },
+        });
+        expect(hint()).toBeInTheDocument();
+    });
+});

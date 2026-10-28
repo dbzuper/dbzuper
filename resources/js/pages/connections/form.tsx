@@ -5,9 +5,11 @@ import { Head } from '@inertiajs/react';
 export default function ConnectionFormPage({
     connection,
     drivers,
+    inContainer,
 }: {
     connection: ConnectionSummary | null;
     drivers: DriverChoice[];
+    inContainer: boolean;
 }) {
     const title = connection ? `Edit ${connection.name}` : 'New connection';
 
@@ -18,7 +20,11 @@ export default function ConnectionFormPage({
                 <h1 className="mb-6 text-xl font-semibold tracking-tight">
                     {title}
                 </h1>
-                <ConnectionForm connection={connection} drivers={drivers} />
+                <ConnectionForm
+                    connection={connection}
+                    drivers={drivers}
+                    inContainer={inContainer}
+                />
             </div>
         </>
     );

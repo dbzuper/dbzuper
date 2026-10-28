@@ -357,3 +357,13 @@ it('keeps the stored password when the MySQL SSL mode only spells out how a save
     'a CA without verification is required' => [['ssl_ca' => '/ca.pem', 'ssl_verify' => false], ['mysql_ssl' => 'required', 'ssl_ca' => '/ca.pem']],
     'a CA path left behind in required' => [['mysql_ssl' => 'required'], ['mysql_ssl' => 'required', 'ssl_ca' => '/ignored.pem']],
 ]);
+
+it('tells the connection form whether DBZuper runs in a container', function (bool $inContainer) {
+    config(['dbzuper.in_container' => $inContainer]);
+    $connection = SavedConnection::factory()->for($this->user)->create();
+
+    $this->actingAs($this->user)->get('/connections/create')
+        ->assertInertia(fn (Assert $page) => $page->component('connections/form')->where('inContainer', $inContainer));
+    $this->actingAs($this->user)->get("/connections/{$connection->id}/edit")
+        ->assertInertia(fn (Assert $page) => $page->component('connections/form')->where('inContainer', $inContainer));
+})->with([true, false]);

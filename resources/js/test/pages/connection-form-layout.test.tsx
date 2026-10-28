@@ -57,7 +57,11 @@ describe('connection form page layout', () => {
                 <AppLayout
                     breadcrumbs={layout({ connection: null }).breadcrumbs}
                 >
-                    <ConnectionFormPage connection={null} drivers={[]} />
+                    <ConnectionFormPage
+                        connection={null}
+                        drivers={[]}
+                        inContainer={false}
+                    />
                 </AppLayout>
             </TooltipProvider>,
         );

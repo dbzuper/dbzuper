@@ -55,7 +55,7 @@ class ConnectionController extends Controller
 
     public function create(): Response
     {
-        return Inertia::render('connections/form', ['connection' => null, 'drivers' => $this->drivers()]);
+        return Inertia::render('connections/form', ['connection' => null, 'drivers' => $this->drivers(), 'inContainer' => (bool) config('dbzuper.in_container')]);
     }
 
     public function store(ConnectionRequest $request): RedirectResponse
@@ -69,7 +69,7 @@ class ConnectionController extends Controller
     {
         Gate::authorize('update', $connection);
 
-        return Inertia::render('connections/form', ['connection' => $connection->toClientArray(), 'drivers' => $this->drivers()]);
+        return Inertia::render('connections/form', ['connection' => $connection->toClientArray(), 'drivers' => $this->drivers(), 'inContainer' => (bool) config('dbzuper.in_container')]);
     }
 
     public function update(ConnectionRequest $request, SavedConnection $connection): RedirectResponse
