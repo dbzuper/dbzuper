@@ -31,19 +31,37 @@ final readonly class EditPlan
         return $this->method !== EditMethod::None;
     }
 
-    /** @param array{method: string, key_columns?: list<string>, reason?: ?string, read_only_columns?: list<string>, needs_tableoid?: bool, non_comparable_columns?: list<string>} $data */
-    public static function fromArray(array $data): self
+    /** A plan stored by toArray(), or null when the cache entry isn't one, so the caller resolves the plan afresh. */
+    public static function fromCached(mixed $data): ?self
     {
-        return new self(
-            EditMethod::from($data['method']),
-            $data['key_columns'] ?? [],
-            $data['reason'] ?? null,
-            $data['read_only_columns'] ?? [],
-            (bool) ($data['needs_tableoid'] ?? false),
-            $data['non_comparable_columns'] ?? [],
-        );
+        if (! is_array($data) || ! is_string($data['method'] ?? null)) {
+            return null;
+        }
+        $method = EditMethod::tryFrom($data['method']);
+        $keyColumns = self::stringList($data['key_columns'] ?? []);
+        $readOnlyColumns = self::stringList($data['read_only_columns'] ?? []);
+        $nonComparableColumns = self::stringList($data['non_comparable_columns'] ?? []);
+        $reason = $data['reason'] ?? null;
+        if ($method === null || $keyColumns === null || $readOnlyColumns === null || $nonComparableColumns === null
+            || ($reason !== null && ! is_string($reason))) {
+            return null;
+        }
+
+        return new self($method, $keyColumns, $reason, $readOnlyColumns, (bool) ($data['needs_tableoid'] ?? false), $nonComparableColumns);
     }
 
+    /** @return ?list<string> */
+    private static function stringList(mixed $value): ?array
+    {
+        if (! is_array($value) || ! array_is_list($value)) {
+            return null;
+        }
+        $strings = array_values(array_filter($value, is_string(...)));
+
+        return count($strings) === count($value) ? $strings : null;
+    }
+
+    /** @return array{method: string, key_columns: list<string>, reason: ?string, read_only_columns: list<string>, needs_tableoid: bool, non_comparable_columns: list<string>} */
     public function toArray(): array
     {
         return [

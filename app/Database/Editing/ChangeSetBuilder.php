@@ -5,7 +5,10 @@ namespace App\Database\Editing;
 use App\Database\CellValue;
 use App\Database\ColumnKind;
 use App\Database\Contracts\Driver;
+use App\Database\Schema\ColumnInfo;
+use App\Database\Schema\TableInfo;
 use App\Enums\DriverName;
+use Closure;
 use Illuminate\Database\Connection;
 
 /**
@@ -17,22 +20,28 @@ use Illuminate\Database\Connection;
  * all-values identity value) longer than that is therefore one the user never saw whole and is rejected; the client
  * omits the originals of locked cells. Updated columns must come with their original, which is how the server knows
  * the cell wasn't locked. New values may be longer (up to ChangeSet::MAX_VALUE_CHARS): the user typed them.
+ *
+ * @phpstan-import-type TableArray from TableInfo
+ * @phpstan-import-type ColumnArray from ColumnInfo
+ *
+ * @phpstan-type Fragment array{sql: string, preview: string, bindings: list<mixed>}
  */
 final class ChangeSetBuilder
 {
     private EditPlan $plan;
 
+    /** @var TableArray */
     private array $table;
 
     private Driver $driver;
 
     private Connection $db;
 
-    /** @var array<string, array> */
+    /** @var array<string, ColumnArray> */
     private array $columns;
 
     /**
-     * @param  array{name: string, kind?: string, columns: list<array>}  $table  the snapshot table
+     * @param  TableArray  $table  the snapshot table
      * @param  array<int, mixed>  $changes  the request's changes
      * @return list<BuiltStatement> in execution order (deletes, updates, inserts)
      *
@@ -40,7 +49,7 @@ final class ChangeSetBuilder
      */
     public function build(EditPlan $plan, array $table, Driver $driver, Connection $db, array $changes): array
     {
-        if (($table['kind'] ?? 'table') !== 'table') {
+        if ($table['kind'] !== 'table') {
             throw new ChangeSetRejected('changes', "This table can't be edited: views can't be edited.");
         }
         if (! $plan->editable()) {
@@ -76,6 +85,7 @@ final class ChangeSetBuilder
         return ChangeSet::ordered($built);
     }
 
+    /** @param array<string, mixed> $change */
     private function insert(int $i, array $change): BuiltStatement
     {
         $values = $this->writes($i, $change, insert: true);
@@ -96,6 +106,7 @@ final class ChangeSetBuilder
         return $this->statement($i, 'insert', $sql, 'new row');
     }
 
+    /** @param array<string, mixed> $change */
     private function update(int $i, array $change): BuiltStatement
     {
         [$where, $target] = $this->pin($i, $change);
@@ -138,6 +149,7 @@ final class ChangeSetBuilder
         return $this->statement($i, 'update', $sql, $target);
     }
 
+    /** @param array<string, mixed> $change */
     private function delete(int $i, array $change): BuiltStatement
     {
         [$where, $target] = $this->pin($i, $change);
@@ -156,7 +168,8 @@ final class ChangeSetBuilder
     /**
      * The WHERE conditions that pin the change's row, and a short description of the row for Review.
      *
-     * @return array{0: list<array>, 1: string}
+     * @param  array<string, mixed>  $change
+     * @return array{0: list<Fragment>, 1: string}
      */
     private function pin(int $i, array $change): array
     {
@@ -166,12 +179,11 @@ final class ChangeSetBuilder
             throw new ChangeSetRejected($field, 'An update or delete needs the row identity.');
         }
         $mismatch = fn () => new ChangeSetRejected($field, "The row identity doesn't match how this table pins rows ({$this->plan->method->value}).");
-        $shape = fn (array $keys) => $this->sameKeys($id, $keys) ? null : throw $mismatch();
 
         switch ($this->plan->method) {
             case EditMethod::PrimaryKey:
             case EditMethod::UniqueIndex:
-                $shape(['key']);
+                $this->expectKeys($id, ['key'], $mismatch);
                 $key = $id['key'];
                 if (! is_array($key) || ! $this->sameKeys($key, $this->plan->keyColumns)) {
                     throw $mismatch();
@@ -189,7 +201,7 @@ final class ChangeSetBuilder
                 return [$where, implode(', ', $target)];
 
             case EditMethod::SqliteRowid:
-                $shape(['rowid']);
+                $this->expectKeys($id, ['rowid'], $mismatch);
                 $rowid = $id['rowid'];
                 // FILTER_VALIDATE_INT refuses values outside the 64-bit range instead of saturating them.
                 $rowid = is_int($rowid) || is_string($rowid) ? filter_var($rowid, FILTER_VALIDATE_INT) : false;
@@ -201,7 +213,7 @@ final class ChangeSetBuilder
                 return [[$this->cat($this->raw("{$alias} = "), $this->param($rowid))], 'rowid '.$rowid];
 
             case EditMethod::PgCtid:
-                $shape($this->plan->needsTableoid ? ['ctid', 'xmin', 'filenode', 'tableoid'] : ['ctid', 'xmin', 'filenode']);
+                $this->expectKeys($id, $this->plan->needsTableoid ? ['ctid', 'xmin', 'filenode', 'tableoid'] : ['ctid', 'xmin', 'filenode'], $mismatch);
                 $ctid = $id['ctid'];
                 $xmin = $this->oid($id['xmin']);
                 $filenode = $this->oid($id['filenode']);
@@ -238,7 +250,7 @@ final class ChangeSetBuilder
                 return [$where, 'ctid '.$ctid.($tableoid !== null ? ' in tableoid '.$tableoid : '')];
 
             case EditMethod::MysqlAllValues:
-                $shape(['values']);
+                $this->expectKeys($id, ['values'], $mismatch);
                 $values = $id['values'];
                 if (! is_array($values) || ! $this->sameKeys($values, array_keys($this->columns))) {
                     throw $mismatch();
@@ -266,6 +278,7 @@ final class ChangeSetBuilder
     /**
      * The validated values to write, in request order.
      *
+     * @param  array<string, mixed>  $change
      * @return array<string, ?string>
      */
     private function writes(int $i, array $change, bool $insert): array
@@ -300,6 +313,7 @@ final class ChangeSetBuilder
     /**
      * The change's original values, converted for matching. Every one must have been shown whole.
      *
+     * @param  array<string, mixed>  $change
      * @return array<string, string|int|float|null>
      */
     private function originals(int $i, array $change): array
@@ -352,6 +366,7 @@ final class ChangeSetBuilder
      * can't send their original. Only types the grid can shorten qualify; such a column has no original and can't
      * be written.
      *
+     * @param  array<string, mixed>  $change
      * @return list<string>
      */
     private function shortened(int $i, array $change): array
@@ -446,6 +461,8 @@ final class ChangeSetBuilder
      * `col = ?` (`IS NULL` for a NULL original) or, null-safe, `col <=> ?`. MySQL/MariaDB text is compared byte for
      * byte: converted to utf8mb4 (the connection's charset, so the bound text has the same bytes) and cast to binary.
      * Even utf8mb4_bin is PAD SPACE, so a collation alone would let 'a' match 'a '.
+     *
+     * @return Fragment
      */
     private function compare(string $column, string|int|float|null $value, bool $nullSafe = false): array
     {
@@ -476,7 +493,7 @@ final class ChangeSetBuilder
 
     private function typeName(string $column): string
     {
-        return (string) ($this->columns[$column]['type_name'] ?? $this->columns[$column]['type'] ?? '');
+        return $this->columns[$column]['type_name'] ?? '';
     }
 
     private function mysql(): bool
@@ -489,7 +506,22 @@ final class ChangeSetBuilder
         return $this->driver->quoteIdentifier($name);
     }
 
-    /** @param list<string> $expected */
+    /**
+     * @param  array<mixed>  $id
+     * @param  list<string>  $keys
+     * @param  Closure(): ChangeSetRejected  $mismatch
+     */
+    private function expectKeys(array $id, array $keys, Closure $mismatch): void
+    {
+        if (! $this->sameKeys($id, $keys)) {
+            throw $mismatch();
+        }
+    }
+
+    /**
+     * @param  array<mixed>  $data
+     * @param  list<string>  $expected
+     */
     private function sameKeys(array $data, array $expected): bool
     {
         $keys = array_map('strval', array_keys($data));
@@ -499,6 +531,7 @@ final class ChangeSetBuilder
         return $keys === $expected;
     }
 
+    /** @param Fragment $sql */
     private function statement(int $i, string $op, array $sql, string $target): BuiltStatement
     {
         return new BuiltStatement($i, $op, $sql['sql'], $sql['bindings'], $sql['preview'], $target);
@@ -506,13 +539,16 @@ final class ChangeSetBuilder
 
     /* SQL fragments carry the placeholder form, the preview form (literals inlined like rows.sql) and the bindings. */
 
-    /** @return array{sql: string, preview: string, bindings: list<mixed>} */
+    /** @return Fragment */
     private function raw(string $sql): array
     {
         return ['sql' => $sql, 'preview' => $sql, 'bindings' => []];
     }
 
-    /** @param string $wrap the placeholder, possibly inside a cast; it holds exactly one `?` */
+    /**
+     * @param  string  $wrap  the placeholder, possibly inside a cast; it holds exactly one `?`
+     * @return Fragment
+     */
     private function param(string|int|float|null $value, string $wrap = '?'): array
     {
         if (is_float($value)) {
@@ -525,12 +561,19 @@ final class ChangeSetBuilder
         return ['sql' => $wrap, 'preview' => str_replace('?', $this->db->escape($value), $wrap), 'bindings' => [$value]];
     }
 
+    /**
+     * @param  Fragment  ...$parts
+     * @return Fragment
+     */
     private function cat(array ...$parts): array
     {
         return $this->join('', $parts);
     }
 
-    /** @param list<array> $parts */
+    /**
+     * @param  array<Fragment>  $parts
+     * @return Fragment
+     */
     private function join(string $separator, array $parts): array
     {
         return [
