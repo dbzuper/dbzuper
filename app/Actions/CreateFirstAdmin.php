@@ -4,12 +4,13 @@ namespace App\Actions;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Models\User;
+use App\Support\SetupCode;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 
 class CreateFirstAdmin
 {
-    public function __construct(private CreateNewUser $creator) {}
+    public function __construct(private CreateNewUser $creator, private SetupCode $setupCode) {}
 
     /**
      * Create the first (and only) administrator, atomically.
@@ -28,6 +29,7 @@ class CreateFirstAdmin
 
                 $user = $this->creator->create($input);
                 $user->forceFill(['email_verified_at' => now()])->save();
+                $this->setupCode->forget();
 
                 return $user;
             });

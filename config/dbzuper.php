@@ -7,6 +7,9 @@ return [
         explode(',', (string) env('DBZUPER_SQLITE_PATHS', '')),
     ))),
 
+    // Where the one-time setup code is kept until the first administrator exists.
+    'setup_code_path' => env('DBZUPER_SETUP_CODE_PATH') ?: storage_path('app/private/setup-code'),
+
     // Set by the Docker image: there `localhost` is the container itself, so the connection form points
     // people at host.docker.internal instead.
     'in_container' => (bool) env('DBZUPER_IN_CONTAINER', false),

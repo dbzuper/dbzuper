@@ -9,6 +9,10 @@ export default function globalSetup() {
     fs.rmSync(path.resolve('storage/framework/testing/e2e-auth.json'), {
         force: true,
     });
+    // A setup code left by an earlier run would still be valid; start each run with a fresh one.
+    fs.rmSync(path.resolve('storage/framework/testing/e2e-setup-code'), {
+        force: true,
+    });
     fs.writeFileSync(appDb, '');
     execSync('php artisan migrate --force', {
         stdio: 'inherit',

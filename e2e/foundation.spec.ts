@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import path from 'node:path';
+import { setupCode } from './support/auth';
 
 test('setup → add SQLite connection → test → explore schema list', async ({
     page,
@@ -7,6 +8,7 @@ test('setup → add SQLite connection → test → explore schema list', async (
     await page.goto('/');
     await expect(page).toHaveURL(/\/setup$/);
 
+    await page.getByLabel('Setup code').fill(setupCode());
     await page.getByLabel('Name', { exact: true }).fill('Admin');
     await page.getByLabel('Email').fill('admin@example.com');
     await page

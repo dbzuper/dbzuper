@@ -4,6 +4,7 @@ import path from 'node:path';
 
 const appDb = path.resolve('database/e2e.sqlite');
 const demoDir = path.resolve('storage/app/demo');
+const setupCode = path.resolve('storage/framework/testing/e2e-setup-code');
 
 /**
  * Run the e2e server with OPcache, like a production PHP setup. The ini files are added through
@@ -58,6 +59,8 @@ export default defineConfig({
         env: {
             DB_DATABASE: appDb,
             DBZUPER_SQLITE_PATHS: demoDir,
+            // Its own setup code, so a run never touches the dev install's (see SETUP_CODE in e2e/support/auth.ts).
+            DBZUPER_SETUP_CODE_PATH: setupCode,
             APP_ENV: 'local',
             // Inertia DevTools writes every request to storage/inertia-devtools, which slows the
             // single-threaded `php -S` server; production has it off.

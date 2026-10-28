@@ -81,7 +81,7 @@ Follow a single row through its relationships. The Records view (rail > Records)
 
 ## Security notes
 
-- The setup screen is public until the first administrator exists. Run `php artisan dbzuper:install` before exposing the app to a network.
+- Until the first administrator exists, the setup screen asks for a one-time setup code, printed in the server log at start and by `php artisan dbzuper:setup-code`. Keep the log private until setup is done.
 - Behind a reverse proxy, set `TRUSTED_PROXIES` (comma-separated IPs/CIDRs, or `*`) so client IPs and HTTPS are detected. Leave it unset when the app is reached directly: then no `X-Forwarded-*` header is trusted.
 - Saved credentials are encrypted with `APP_KEY`. Back it up: losing it makes saved passwords unrecoverable.
 - DBZuper connects to any host reachable from the server. Only the administrator can create connections.
