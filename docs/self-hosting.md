@@ -85,6 +85,27 @@ Inside the container, `localhost` and `127.0.0.1` are the DBZuper container itse
 
 The database server must also accept connections from the Docker network, not only from `127.0.0.1`: MySQL and MariaDB listen on localhost only when `bind-address = 127.0.0.1`, and PostgreSQL needs `listen_addresses` and a matching `pg_hba.conf` entry.
 
+The database user must be allowed to sign in from the container's address too. A MySQL or MariaDB account is tied to a host: `root@localhost`, the default on XAMPP, Laragon, MAMP and Homebrew installs, only accepts connections from the same machine, so the server answers "Host '172.x.x.x' is not allowed to connect". Create an account for DBZuper that may connect from elsewhere, and grant it only what you need:
+
+    CREATE USER 'dbzuper'@'%' IDENTIFIED BY 'a-strong-password';
+    GRANT ALL PRIVILEGES ON *.* TO 'dbzuper'@'%';
+
+`%` means any host. On a shared network, narrow it to the Docker subnet, for example `'dbzuper'@'172.%'`. For PostgreSQL, add a `pg_hba.conf` line such as `host all all 172.16.0.0/12 scram-sha-256` and reload the server.
+
+A firewall on the computer can still drop the connection. On Windows, allow inbound TCP on the database port (3306 for MySQL and MariaDB, 5432 for PostgreSQL) from the Docker or WSL network.
+
+### Docker inside WSL, database on Windows
+
+If Docker Engine runs inside a WSL distribution (not Docker Desktop) and the database runs on Windows, `host.docker.internal` points at the WSL virtual machine, not at Windows. Two ways to reach Windows:
+
+- Use the Windows address as seen from WSL. Print it in WSL with `ip route show default | awk '{print $3}'` (for example `172.20.144.1`) and enter it as the host. The address can change when WSL restarts.
+- Turn on mirrored networking so WSL shares the Windows network. Add this to `%UserProfile%\.wslconfig`, then run `wsl --shutdown`:
+
+      [wsl2]
+      networkingMode=mirrored
+
+  Then run the container with host networking (`network_mode: host` in Compose, `--network host` with `docker run`) and connect to `127.0.0.1`. With host networking the container uses the WSL network directly, so `ports` is ignored and DBZuper listens on port 8080 of WSL, which mirrored mode shares with Windows.
+
 ## Adding SQLite files
 
 SQLite connections may only open files inside the directories listed in `DBZUPER_SQLITE_PATHS` (comma-separated). The image points it at `/data/sqlite`, which is the `dbzuper-sqlite` volume. Copy a database in and connect to its in-container path:
@@ -206,7 +227,9 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 
 ## Troubleshooting
 
-- **Connection refused to `localhost` or `127.0.0.1`**: that is the container itself. Use `host.docker.internal`; see [Connecting to a database on the same computer](#connecting-to-a-database-on-the-same-computer).
+- **Connection refused to `localhost` or `127.0.0.1`**: that is the container itself. Use `host.docker.internal`; see [Connecting to a database on the same computer](#connecting-to-a-database-on-the-same-computer). If Docker runs inside WSL and the database on Windows, see [Docker inside WSL, database on Windows](#docker-inside-wsl-database-on-windows).
+- **Connection refused or timed out to `host.docker.internal`**: the database server is listening on `127.0.0.1` only, a firewall is blocking the port, or Docker runs inside WSL while the database runs on Windows. See [Connecting to a database on the same computer](#connecting-to-a-database-on-the-same-computer).
+- **`Host '172.x.x.x' is not allowed to connect to this MySQL server`**: the account exists only for `localhost` (often `root@localhost`). Create an account for `'%'` or the Docker subnet; see [Connecting to a database on the same computer](#connecting-to-a-database-on-the-same-computer).
 - **`SQLSTATE[HY000]: General error: 5 database is locked`** in `docker compose logs app`: the application database is SQLite and the server handles requests in parallel. Check that `DB_JOURNAL_MODE`, `DB_TRANSACTION_MODE` and `DB_BUSY_TIMEOUT` are not overridden in `.env.docker` (`docker compose exec app env | grep ^DB_`) and that the storage volume is on a local disk (SQLite locking is unreliable over network file systems). To check a deployment, sign in, copy the session cookie (`dbzuper-session`) from the browser and fire parallel requests, for example 64 schema reads, 16 at a time:
 
       seq 64 | xargs -P16 -I{} curl -s -o /dev/null -w '%{http_code}\n' -b 'dbzuper-session=<value>' http://localhost:8080/api/c/1/schema | sort | uniq -c
