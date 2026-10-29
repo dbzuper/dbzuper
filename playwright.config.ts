@@ -40,7 +40,12 @@ export default defineConfig({
     workers: 1,
     fullyParallel: false,
     globalSetup: './e2e/global-setup.ts',
-    use: { baseURL: 'http://127.0.0.1:8123' },
+    // CI keeps a trace of each failure (uploaded as a workflow artifact) to diagnose it from GitHub.
+    reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+    use: {
+        baseURL: 'http://127.0.0.1:8123',
+        trace: process.env.CI ? 'retain-on-failure' : 'off',
+    },
     // The foundation spec walks the first-run setup, so it must sign in before any other spec creates
     // the administrator (files otherwise run alphabetically, and browse.spec sorts before it).
     projects: [
