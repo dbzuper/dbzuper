@@ -60,7 +60,10 @@ Add a connection with the host, port and credentials of your MySQL, MariaDB or P
 SQLite file. Leave **Database** empty to browse every database on the server.
 
 - **A database on the same computer:** inside Docker, `localhost` is the DBZuper container itself. Use
-  `host.docker.internal` as the host instead.
+  `host.docker.internal` as the host instead, with a database user allowed to connect from other hosts
+  (`root@localhost` is not). See
+  [Connecting to a database on the same computer](docs/self-hosting.md#connecting-to-a-database-on-the-same-computer),
+  which also covers Docker inside WSL with the database on Windows.
 - **SQLite files:** they must sit in an allowed directory, `/data/sqlite` in the image. See
   [Adding SQLite files](docs/self-hosting.md#adding-sqlite-files).
 - **Read-only:** tick it to have the database itself refuse writes on that connection.
