@@ -45,14 +45,16 @@ class AppServiceProvider extends ServiceProvider
             app()->isProduction(),
         );
 
-        Password::defaults(fn (): ?Password => app()->isProduction()
-            ? Password::min(12)
+        Password::defaults(fn (): ?Password => match (true) {
+            ! app()->isProduction() => null,
+            // For a private, local install: any 8 characters, and no breach lookup.
+            config('dbzuper.password_policy') === 'basic' => Password::min(8),
+            default => Password::min(12)
                 ->mixedCase()
                 ->letters()
                 ->numbers()
                 ->symbols()
-                ->uncompromised()
-            : null,
-        );
+                ->uncompromised(),
+        });
     }
 }

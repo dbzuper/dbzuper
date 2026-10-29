@@ -15,6 +15,10 @@ return [
     // people at host.docker.internal instead.
     'in_container' => (bool) env('DBZUPER_IN_CONTAINER', false),
 
+    // Account passwords in production: `strong` (the default: 12+ characters, mixed case, number, symbol, not in a
+    // known breach) or `basic` (8+ characters, for a private local install).
+    'password_policy' => env('DBZUPER_PASSWORD_POLICY', 'strong'),
+
     // API requests per user per minute, at least 1 (the e2e server raises it: every spec signs in as the same user).
     'api_per_minute' => max(1, (int) env('DBZUPER_API_PER_MINUTE') ?: 120),
 

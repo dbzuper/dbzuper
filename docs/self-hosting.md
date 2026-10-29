@@ -116,6 +116,8 @@ You can also create the administrator from the command line, which needs no code
 
 Without options the command prompts for each value. In production the password must be at least 12 characters with upper and lower case letters, a number and a symbol, and must not appear in known data breaches. The breach check queries haveibeenpwned.com: on a host that silently drops outbound traffic the command or setup form can stall for up to about 30 seconds before the check fails open and the password is accepted.
 
+For a private install only you can reach, such as one on your own computer, set `DBZUPER_PASSWORD_POLICY=basic` in `.env.docker` (or `-e DBZUPER_PASSWORD_POLICY=basic` with `docker run`) and restart the container. Passwords then need only 8 characters, and the breach check is skipped. Keep the default `strong` on any install other people can reach over a network. The policy applies when a password is set or changed, so existing passwords keep working either way.
+
 ## Configuration
 
 Compose reads an optional `.env.docker` next to `docker-compose.yml` (plain `KEY=value` lines) and passes it to the container. Set `APP_URL` there too (by default it is `http://localhost:` plus `DBZUPER_PORT`, else `PORT`, else 8080); nothing in `docker-compose.yml` overrides it, and other variables from your shell or a project `.env` are not passed in. `DBZUPER_PORT` is the exception: Compose reads it from your shell or a `.env` next to `docker-compose.yml` to publish the port, so set it there, not in `.env.docker`. Environment changes apply on `docker compose up -d` or a restart: the configuration is cached from the environment at every start.
@@ -258,6 +260,7 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 | `DBZUPER_QUERY_TIMEOUT`         | `15`                        | Seconds a SQL editor statement may run (not enforced on SQLite or for non-`SELECT` statements on MySQL).          |
 | `DBZUPER_SCHEMA_MAX_OBJECTS`    | `5000`                      | Most tables and views kept in a schema snapshot.                                                                  |
 | `DBZUPER_HISTORY_KEEP`          | `5000`                      | Query history entries kept per connection.                                                                        |
+| `DBZUPER_PASSWORD_POLICY`       | `strong`                    | Account passwords: `strong` (12+ characters, mixed case, number, symbol, not breached) or `basic` (8+ characters). |
 | `TRUSTED_PROXIES`               | unset                       | Reverse proxies whose `X-Forwarded-*` headers are trusted (IPs/CIDRs or `*`).                                     |
 | `APP_URL`                       | `http://localhost:<port>`   | Public URL of the app (set in `.env.docker`); the port is `DBZUPER_PORT`, else `PORT`.                            |
 | `DBZUPER_PORT`                  | `8080`                      | Host port Compose publishes, and the port in the default `APP_URL` (see [Choosing the port](#choosing-the-port)). |
