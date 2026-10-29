@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Password policy setting**: `DBZUPER_PASSWORD_POLICY=basic` relaxes account passwords to 8 characters with no
+  breach check, for private local installs. The default stays `strong`.
+- **Readable dropdowns in dark mode**: native select lists no longer show light text on a white list.
+
 ## 0.1.0 (2026-10-29): first public release
 
 DBZuper is a self-hosted, visual database workspace for MySQL, MariaDB, PostgreSQL and SQLite: a Schema Universe
