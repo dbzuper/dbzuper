@@ -41,7 +41,13 @@ jobs:
       - run: php artisan test
       - run: npm run test
       - run: npx playwright install --with-deps chromium && npm run e2e
-      - uses: actions/upload-artifact@v4
+        env:
+          # The local budgets (2000 and 50 ms) hold on a developer machine. The runner draws the WebGL
+          # universe in software on 2 shared cores next to three database containers, and has measured
+          # 2.0-3.5 s and up to 51 ms there; these catch a regression without failing on the hardware.
+          E2E_UNIVERSE_BUDGET_MS: 5000
+          E2E_SIDEBAR_LONG_TASK_BUDGET_MS: 100
+      - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: playwright-report
