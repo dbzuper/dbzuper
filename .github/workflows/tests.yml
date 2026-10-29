@@ -2,8 +2,11 @@ name: tests
 on: [push, pull_request]
 permissions:
   contents: read
+# Three jobs run side by side (one after another they took about 10 minutes). Each one builds the
+# frontend: the Vite build generates the Wayfinder route files that tsc, Vitest and the PHP page
+# tests need.
 jobs:
-  tests:
+  php:
     runs-on: ubuntu-latest
     services:
       mysql:
@@ -34,17 +37,49 @@ jobs:
       - run: npm ci
       - run: cp .env.example .env && php artisan key:generate
       - run: npm run build
-      # After the build, which generates the Wayfinder route files tsc checks.
       - run: composer types:check -- --memory-limit=1G
+      - run: php artisan test
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.4', extensions: 'pdo_sqlite', coverage: none }
+      - uses: actions/setup-node@v7
+        with: { node-version: '24', cache: npm }
+      - run: composer install --no-interaction --prefer-dist
+      - run: npm ci
+      - run: cp .env.example .env && php artisan key:generate
+      - run: npm run build
       - run: npm run types:check
       - run: npm run check
-      - run: php artisan test
       - run: npm run test
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      # Only server-connections.spec.ts needs an engine server; it skips when MySQL is down.
+      mysql:
+        image: mysql:8.4
+        env: { MYSQL_ROOT_PASSWORD: secret, MYSQL_DATABASE: dbzuper_test }
+        ports: ["3307:3306"]
+        options: --health-cmd="mysqladmin ping -psecret" --health-interval=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.4', extensions: 'pdo_mysql, pdo_pgsql, pdo_sqlite', coverage: none }
+      - uses: actions/setup-node@v7
+        with: { node-version: '24', cache: npm }
+      - run: composer install --no-interaction --prefer-dist
+      - run: npm ci
+      - run: cp .env.example .env && php artisan key:generate
+      - run: npm run build
       - run: npx playwright install --with-deps chromium && npm run e2e
         env:
           # The local budgets (2000 and 50 ms) hold on a developer machine. The runner draws the WebGL
-          # universe in software on 2 shared cores next to three database containers, and has measured
-          # 2.0-3.5 s and up to 51 ms there; these catch a regression without failing on the hardware.
+          # universe in software on 2 shared cores, and has measured 2.0-3.5 s and up to 51 ms there;
+          # these catch a regression without failing on the hardware.
           E2E_UNIVERSE_BUDGET_MS: 5000
           E2E_SIDEBAR_LONG_TASK_BUDGET_MS: 100
       - uses: actions/upload-artifact@v7
