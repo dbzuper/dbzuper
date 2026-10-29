@@ -104,3 +104,34 @@ jobs:
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.IMAGE }}@sha256:%s ' *)
       - run: docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+
+  # After the image is published, so a release page never points at an image that failed to build.
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: merge
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          version="${TAG#v}"
+          args=(--title "DBZuper $version")
+          # Like the image tags: v1.3.0-rc1 is a pre-release and does not become the latest release.
+          [[ "$TAG" == *-* ]] && args+=(--prerelease)
+          python3 .github/scripts/release-notes.py "$version" > notes.md
+          if [ -n "$(tr -d '[:space:]' < notes.md)" ]; then
+            args+=(--notes-file notes.md)
+          else
+            echo "::warning::CHANGELOG.md has no '## $version' section; using generated notes."
+            fallback=(--generate-notes)
+          fi
+          # A re-run updates the existing release instead of failing.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" "${args[@]}"
+          else
+            gh release create "$TAG" --verify-tag "${args[@]}" "${fallback[@]}"
+          fi
