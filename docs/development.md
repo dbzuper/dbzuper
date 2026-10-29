@@ -41,6 +41,9 @@ Docker image for linux/amd64 and linux/arm64 and publishes it as `ghcr.io/dbzupe
 and `latest` (a pre-release such as `v1.3.0-rc1` gets only its own tag). Make the package public in the repository's
 package settings once, so people can pull it without signing in.
 
+A branch push that changes the image's inputs (`Dockerfile`, `.dockerignore`, `docker/`, the Composer and npm manifests,
+or the workflow itself) runs the same two-platform build without pushing, so a broken build fails before the next tag.
+
 ## Performance
 
 - **Chunks.** Sigma, graphology, Monaco, react-data-grid and React Flow are loaded on demand: the app entry and every page chunk stay free of them. `npm run build` ends with `scripts/check-chunks.mjs`, which reads `public/build/manifest.json` and `storage/build/chunk-modules.json` (written by a small plugin in `vite.config.ts`, outside `public/` so it is not served), follows only static imports from the app entry and each page, and fails the build if a banned package shows up.
