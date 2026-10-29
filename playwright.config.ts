@@ -73,6 +73,11 @@ export default defineConfig({
             // Every spec uses the API as the same user, back to back; the default 120 a minute is for one person.
             DBZUPER_API_PER_MINUTE: '1000',
             PHP_INI_SCAN_DIR: phpIniScanDir(),
+            // The Docker image's SQLite lock settings: with several server workers, a DEFERRED
+            // transaction that reads and then writes (the API rate limiter's counter) fails at once
+            // with "database is locked" instead of waiting for busy_timeout.
+            DB_JOURNAL_MODE: 'WAL',
+            DB_TRANSACTION_MODE: 'IMMEDIATE',
             // `php -S` can fork workers (so the schema and layout requests run in parallel) except
             // on Windows, where forking is not supported.
             ...(process.platform !== 'win32'

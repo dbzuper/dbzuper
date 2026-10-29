@@ -4,7 +4,11 @@ import path from 'node:path';
 
 export default function globalSetup() {
     const appDb = path.resolve('database/e2e.sqlite');
-    fs.rmSync(appDb, { force: true });
+    // The server runs it in WAL mode (playwright.config.ts): a stale -wal file would be replayed into
+    // the new database.
+    for (const file of [appDb, `${appDb}-wal`, `${appDb}-shm`]) {
+        fs.rmSync(file, { force: true });
+    }
     // A session saved by an earlier run belongs to the app database removed above.
     fs.rmSync(path.resolve('storage/framework/testing/e2e-auth.json'), {
         force: true,
