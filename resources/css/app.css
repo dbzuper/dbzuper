@@ -182,6 +182,19 @@
         @apply bg-background text-foreground;
     }
 
+    /* Native controls follow the mode before the appearance hook runs (the inline boot script only sets the class). */
+    .dark {
+        color-scheme: dark;
+    }
+
+    /* A native select's popup takes its colours from the options, not the (transparent) select, so without these
+       Chrome on Windows draws the dark mode's light text on a white list. */
+    option,
+    optgroup {
+        background-color: var(--popover);
+        color: var(--popover-foreground);
+    }
+
     /* One visible focus ring for every keyboard-reachable control. :where() keeps the specificity at
        zero, so a component's own focus-visible styles still win. */
     :where(
