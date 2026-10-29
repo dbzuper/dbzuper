@@ -7,6 +7,12 @@
 
 **One Workspace. Every Database.** A self-hosted, visual database workspace for MySQL, MariaDB, PostgreSQL and SQLite.
 
+[![Latest release](https://img.shields.io/github/v/release/dbzuper/dbzuper?sort=semver)](https://github.com/dbzuper/dbzuper/releases/latest)
+[![Tests](https://github.com/dbzuper/dbzuper/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/dbzuper/dbzuper/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Docker image](https://img.shields.io/badge/docker-ghcr.io%2Fdbzuper%2Fdbzuper-2496ED?logo=docker&logoColor=white)](https://github.com/dbzuper/dbzuper/pkgs/container/dbzuper)
+[![Platforms: amd64, arm64](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-555)](https://github.com/dbzuper/dbzuper/pkgs/container/dbzuper)
+
 ![DBZuper: the Schema Universe, the SQL editor suggesting a foreign-key JOIN, and a filtered data table](docs/images/screenshot-hero.png)
 
 - **Schema Universe**: your schema as a zoomable graph of tables, relationships (declared and inferred) and clusters, with path finding and JOIN generation.
