@@ -39,7 +39,9 @@ process (`php artisan test tests/Feature/Engines`) rather than with `--parallel`
 Pushing a version tag (`git tag v1.2.0 && git push origin v1.2.0`) runs `.github/workflows/release.yml`, which builds the
 Docker image for linux/amd64 and linux/arm64 and publishes it as `ghcr.io/dbzuper/dbzuper` with the tags `1.2.0`, `1.2`
 and `latest` (a pre-release such as `v1.3.0-rc1` gets only its own tag). Make the package public in the repository's
-package settings once, so people can pull it without signing in.
+package settings once, so people can pull it without signing in. Once the image is published, the workflow creates the
+GitHub release for the tag, with that version's `CHANGELOG.md` section as its notes (`## 1.2.0 ...`; without one it
+falls back to generated notes and warns). So before tagging, give the changelog's section its version and date.
 
 A branch push that changes the image's inputs (`Dockerfile`, `.dockerignore`, `docker/`, the Composer and npm manifests,
 or the workflow itself) runs the same two-platform build without pushing, so a broken build fails before the next tag.
