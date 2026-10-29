@@ -58,6 +58,49 @@ On first start the entrypoint creates the storage directories and the applicatio
 
 One-off commands run through the same entrypoint (key, storage and database prepared, server not started): `docker compose run --rm app php artisan --version`, or `docker exec dbzuper php artisan --version` on a running container.
 
+### Where your data lives
+
+`-v dbzuper-storage:/app/storage` attaches a **named volume**: a directory Docker creates and manages, mounted at `/app/storage` inside the container. It survives stopping, removing and upgrading the container, which is why the data is kept across `docker pull` and a new `docker run`.
+
+| Volume            | In the container | Holds                                                                                                      |
+| ----------------- | ---------------- | ---------------------------------------------------------------------------------------------------------- |
+| `dbzuper-storage` | `/app/storage`   | The application database (users, saved connections, history, layouts), sessions, logs and `app.key`.      |
+| `dbzuper-sqlite`  | `/data/sqlite`   | SQLite files you want to browse; the only directory SQLite connections may open (see [Adding SQLite files](#adding-sqlite-files)). |
+
+Compose prefixes volume names with the project name, which is the directory name unless you set one, so the same volumes are `dbzuper_dbzuper-storage` and `dbzuper_dbzuper-sqlite` there. `docker volume ls` lists them, and `docker volume inspect dbzuper-storage` prints the directory behind one as `Mountpoint`:
+
+- **Linux (Docker Engine):** `/var/lib/docker/volumes/dbzuper-storage/_data`, owned by root.
+- **Docker Engine inside WSL:** the same path inside the WSL distribution. From Windows Explorer it is `\\wsl$\<distro>\var\lib\docker\volumes\dbzuper-storage\_data` (for example `\\wsl$\Ubuntu\...`), though root ownership may stop Explorer from opening it.
+- **Docker Desktop (Windows, macOS):** the path is inside Docker Desktop's own virtual machine and is not a folder on your disk. Use the Volumes tab in Docker Desktop, or the commands below.
+
+Rather than editing a volume's directory by hand, go through the container:
+
+    docker exec dbzuper ls -la /data/sqlite               # list a volume's contents
+    docker cp ./shop.sqlite dbzuper:/data/sqlite/         # copy a file in
+    docker cp dbzuper:/app/storage ./storage-copy         # copy a directory out
+
+`docker volume rm dbzuper-storage`, `docker compose down -v` and `docker system prune --volumes` delete the volume and everything in it, including the key that decrypts saved passwords. Take a [backup](#backups-and-the-app_key) first.
+
+### Using a normal folder instead
+
+To keep the data in a folder you can open directly, give `-v` a path instead of a name (a **bind mount**). The container runs as uid 10001, so that user must own the folders:
+
+    mkdir -p ~/dbzuper/storage ~/dbzuper/sqlite
+    sudo chown -R 10001:10001 ~/dbzuper
+
+    docker run -d --name dbzuper -p 8080:8080 --restart unless-stopped \
+      --add-host=host.docker.internal:host-gateway \
+      -v ~/dbzuper/storage:/app/storage -v ~/dbzuper/sqlite:/data/sqlite \
+      ghcr.io/dbzuper/dbzuper:latest
+
+With Compose, use relative paths and drop the top-level `volumes:` block:
+
+            volumes: ['./storage:/app/storage', './sqlite:/data/sqlite']
+
+Files you add to the folder later must be readable by uid 10001 too, and writable unless the connection is read-only (`sudo chown 10001:10001 ~/dbzuper/sqlite/shop.sqlite`). If the storage folder is owned by root, the container cannot write to it and the entrypoint fails with `Permission denied`.
+
+Keep the storage folder on a local Linux disk. With Docker inside WSL, use a folder in the WSL file system (`~/dbzuper`, reachable from Windows as `\\wsl$\<distro>\home\<you>\dbzuper`), not one under `/mnt/c`: Windows drives mounted into WSL are slow, and the locking SQLite relies on is unreliable there.
+
 ## First administrator
 
 DBZuper has a single administrator. Until one exists every page redirects to the setup screen, which asks for a one-time **setup code** so nobody else who can reach the port can claim the install. The container prints the code when it starts:
@@ -115,7 +158,7 @@ SQLite connections may only open files inside the directories listed in `DBZUPER
 
 Then add a connection with driver SQLite and database `/data/sqlite/shop.sqlite`. The container user is `dbzuper` (uid 10001): the file must be readable by it (and writable, unless the connection is read-only). To explore a directory on the host instead, bind-mount it, for example `./databases:/data/sqlite` in the `volumes` of the `app` service, and make it readable for uid 10001.
 
-The same applies to a bind-mounted storage directory (`./storage:/app/storage`): if it is owned by root the container cannot write to it, and the entrypoint fails with `Permission denied` (or the app returns 500s). Fix it on the host with `sudo chown -R 10001:10001 ./storage`.
+The same applies to a bind-mounted storage directory (`./storage:/app/storage`): if it is owned by root the container cannot write to it, and the entrypoint fails with `Permission denied` (or the app returns 500s). Fix it on the host with `sudo chown -R 10001:10001 ./storage`. See [Using a normal folder instead](#using-a-normal-folder-instead).
 
 ## HTTPS behind a reverse proxy
 
