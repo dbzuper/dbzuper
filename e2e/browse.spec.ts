@@ -547,7 +547,9 @@ test('browse: 2,000-table sidebar scrolls without long tasks', async () => {
         description: String(longest),
     });
     console.log(`sidebar-longest-task-ms=${longest}`);
-    expect(longest).toBeLessThan(50);
+    expect(longest).toBeLessThan(
+        Number(process.env.E2E_SIDEBAR_LONG_TASK_BUDGET_MS ?? 50),
+    );
 });
 
 test('browse: tables sharing a prefix collapse into a group', async () => {
