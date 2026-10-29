@@ -34,6 +34,9 @@
 1. Open <http://localhost:8080> and enter the **setup code** from the log, then create your administrator account.
    Another port? Use for example `-p 3000:8080 -e DBZUPER_PORT=3000` and open port 3000
    ([more](docs/self-hosting.md#choosing-the-port)).
+   The password must be strong (12+ characters, mixed case, a number and a symbol, not in a known data leak). For a
+   private install on your own computer, add `-e DBZUPER_PASSWORD_POLICY=basic` to allow any 8+ characters
+   ([more](docs/self-hosting.md#first-administrator)).
 2. Click **Try it with demo data** to explore a sample database, or add a connection to your own.
 
 ### Without Docker
