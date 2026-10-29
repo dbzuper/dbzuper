@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased: first public release
+## 0.1.0 (2026-10-29): first public release
 
 DBZuper is a self-hosted, visual database workspace for MySQL, MariaDB, PostgreSQL and SQLite: a Schema Universe
 graph of every table and relationship, a SQL workspace with schema-aware autocompletion and confirm-before-write
@@ -15,6 +15,13 @@ Highlights of the setup:
 - **Databases on the Docker host**: the connection form explains `host.docker.internal` when you type `localhost`
   inside Docker, and the Compose file maps that name on Linux.
 - **Dark by default**: new visitors get the dark theme; an appearance already chosen in the browser is kept.
+
+### Not yet included
+
+- **Import and export** of table data and query results.
+- **Server-side query cancellation**: cancelling stops waiting for a query, but the database keeps running it until
+  it finishes or reaches its time limit.
+- **SSH tunnels**: connect to databases the DBZuper server can reach directly.
 
 ### Upgrading from a pre-release build
 
