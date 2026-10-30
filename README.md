@@ -71,6 +71,17 @@ SQLite file. Leave **Database** empty to browse every database on the server.
   [Adding SQLite files](docs/self-hosting.md#adding-sqlite-files).
 - **Read-only:** tick it to have the database itself refuse writes on that connection.
 
+## Forgot your password?
+
+DBZuper sends no email unless you set up SMTP, so passwords are reset from the server:
+
+    docker exec -it dbzuper php artisan dbzuper:reset-password
+
+With Docker Compose use `docker compose exec app php artisan dbzuper:reset-password`, and without Docker
+`php artisan dbzuper:reset-password`. Add `--reset-2fa` if the two-factor codes are lost too. To let people reset their
+own password by email instead, see
+[Resetting a forgotten password](docs/self-hosting.md#resetting-a-forgotten-password).
+
 ## Documentation
 
 - [Self-hosting](docs/self-hosting.md): Docker, HTTPS behind a reverse proxy, backups and the `APP_KEY`, upgrades,

@@ -145,6 +145,29 @@ Without options the command prompts for each value. In production the password m
 
 For a private install only you can reach, such as one on your own computer, set `DBZUPER_PASSWORD_POLICY=basic` in `.env.docker` (or `-e DBZUPER_PASSWORD_POLICY=basic` with `docker run`) and restart the container. Passwords then need only 8 characters, and the breach check is skipped. Keep the default `strong` on any install other people can reach over a network. The policy applies when a password is set or changed, so existing passwords keep working either way.
 
+## Resetting a forgotten password
+
+Out of the box DBZuper sends no email, so the login page has no reset link. It says "Forgot your password? Ask your server admin to reset it." instead: whoever can run commands on the server sets a new password with
+
+    docker compose exec app php artisan dbzuper:reset-password
+
+(`docker exec -it dbzuper php artisan dbzuper:reset-password` with `docker run`, `php artisan dbzuper:reset-password` without Docker). It prompts for the new password twice, or takes `--password='…'`, and follows the same [password policy](#first-administrator). Every browser signed in to the account is signed out. With a single account no email is needed; if there are several, pass the one to reset: `dbzuper:reset-password admin@example.com`.
+
+If two-factor authentication is on and the authenticator app and recovery codes are lost too, add `--reset-2fa`. It turns two-factor authentication off and removes the account's passkeys; set them up again under **Settings → Security** after signing in.
+
+### Reset links by email
+
+To let people reset their own password, give DBZuper an SMTP server in `.env.docker` and restart the container:
+
+    MAIL_MAILER=smtp
+    MAIL_HOST=smtp.example.com
+    MAIL_PORT=587
+    MAIL_USERNAME=dbzuper@example.com
+    MAIL_PASSWORD=app-password
+    MAIL_FROM_ADDRESS=dbzuper@example.com
+
+The login page then shows **Forgot your password?**, which emails a reset link to the account's address. Set `APP_URL` to the address people open, since the link is built from it. Any `MAIL_MAILER` other than `log` turns the link on; `dbzuper:reset-password` keeps working either way.
+
 ## Configuration
 
 Compose reads an optional `.env.docker` next to `docker-compose.yml` (plain `KEY=value` lines) and passes it to the container. Set `APP_URL` there too (by default it is `http://localhost:` plus `DBZUPER_PORT`, else `PORT`, else 8080); nothing in `docker-compose.yml` overrides it, and other variables from your shell or a project `.env` are not passed in. `DBZUPER_PORT` is the exception: Compose reads it from your shell or a `.env` next to `docker-compose.yml` to publish the port, so set it there, not in `.env.docker`. Environment changes apply on `docker compose up -d` or a restart: the configuration is cached from the environment at every start.
@@ -278,25 +301,26 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 
 ## Environment reference
 
-| Variable                        | Default                     | Meaning                                                                                                            |
-| ------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `APP_NAME`                      | `DBZuper` in the image      | Name in the page title, sidebar, session cookie and two-factor issuer.                                             |
-| `DBZUPER_SQLITE_PATHS`          | `/data/sqlite` in the image | Comma-separated directories SQLite connection files must live in.                                                  |
-| `DBZUPER_CONNECT_TIMEOUT`       | `5`                         | Seconds to wait when opening a connection to a database server.                                                    |
-| `DBZUPER_INTROSPECTION_TIMEOUT` | `30`                        | Seconds allowed for loading a schema.                                                                              |
-| `DBZUPER_QUERY_TIMEOUT`         | `15`                        | Seconds a SQL editor statement may run (not enforced on SQLite or for non-`SELECT` statements on MySQL).           |
-| `DBZUPER_SCHEMA_MAX_OBJECTS`    | `5000`                      | Most tables and views kept in a schema snapshot.                                                                   |
-| `DBZUPER_HISTORY_KEEP`          | `5000`                      | Query history entries kept per connection.                                                                         |
-| `DBZUPER_PASSWORD_POLICY`       | `strong`                    | Account passwords: `strong` (12+ characters, mixed case, number, symbol, not breached) or `basic` (8+ characters). |
-| `TRUSTED_PROXIES`               | unset                       | Reverse proxies whose `X-Forwarded-*` headers are trusted (IPs/CIDRs or `*`).                                      |
-| `APP_URL`                       | `http://localhost:<port>`   | Public URL of the app (set in `.env.docker`); the port is `DBZUPER_PORT`, else `PORT`.                             |
-| `DBZUPER_PORT`                  | `8080`                      | Host port Compose publishes, and the port in the default `APP_URL` (see [Choosing the port](#choosing-the-port)).  |
-| `PORT`                          | `8080`                      | Port the server listens on inside the container (1024 or higher); only for setups without a port mapping.          |
-| `APP_KEY`                       | generated into the volume   | Encryption key; see above.                                                                                         |
-| `SESSION_SECURE_COOKIE`         | unset                       | Set `true` when served over HTTPS.                                                                                 |
-| `DB_JOURNAL_MODE`               | `WAL` in the image          | SQLite journal mode of the application database (unset: SQLite's default).                                         |
-| `DB_TRANSACTION_MODE`           | `IMMEDIATE` in the image    | How SQLite transactions on the application database start (`DEFERRED` outside the image).                          |
-| `DB_BUSY_TIMEOUT`               | `5000`                      | Milliseconds a request waits for the SQLite lock before failing with "database is locked".                         |
+| Variable                        | Default                     | Meaning                                                                                                                            |
+| ------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_NAME`                      | `DBZuper` in the image      | Name in the page title, sidebar, session cookie and two-factor issuer.                                                             |
+| `DBZUPER_SQLITE_PATHS`          | `/data/sqlite` in the image | Comma-separated directories SQLite connection files must live in.                                                                  |
+| `DBZUPER_CONNECT_TIMEOUT`       | `5`                         | Seconds to wait when opening a connection to a database server.                                                                    |
+| `DBZUPER_INTROSPECTION_TIMEOUT` | `30`                        | Seconds allowed for loading a schema.                                                                                              |
+| `DBZUPER_QUERY_TIMEOUT`         | `15`                        | Seconds a SQL editor statement may run (not enforced on SQLite or for non-`SELECT` statements on MySQL).                           |
+| `DBZUPER_SCHEMA_MAX_OBJECTS`    | `5000`                      | Most tables and views kept in a schema snapshot.                                                                                   |
+| `DBZUPER_HISTORY_KEEP`          | `5000`                      | Query history entries kept per connection.                                                                                         |
+| `DBZUPER_PASSWORD_POLICY`       | `strong`                    | Account passwords: `strong` (12+ characters, mixed case, number, symbol, not breached) or `basic` (8+ characters).                 |
+| `MAIL_MAILER`                   | `log` (sends nothing)       | Set to `smtp` with the other `MAIL_*` variables to offer reset links by email (see [Reset links by email](#reset-links-by-email)). |
+| `TRUSTED_PROXIES`               | unset                       | Reverse proxies whose `X-Forwarded-*` headers are trusted (IPs/CIDRs or `*`).                                                      |
+| `APP_URL`                       | `http://localhost:<port>`   | Public URL of the app (set in `.env.docker`); the port is `DBZUPER_PORT`, else `PORT`.                                             |
+| `DBZUPER_PORT`                  | `8080`                      | Host port Compose publishes, and the port in the default `APP_URL` (see [Choosing the port](#choosing-the-port)).                  |
+| `PORT`                          | `8080`                      | Port the server listens on inside the container (1024 or higher); only for setups without a port mapping.                          |
+| `APP_KEY`                       | generated into the volume   | Encryption key; see above.                                                                                                         |
+| `SESSION_SECURE_COOKIE`         | unset                       | Set `true` when served over HTTPS.                                                                                                 |
+| `DB_JOURNAL_MODE`               | `WAL` in the image          | SQLite journal mode of the application database (unset: SQLite's default).                                                         |
+| `DB_TRANSACTION_MODE`           | `IMMEDIATE` in the image    | How SQLite transactions on the application database start (`DEFERRED` outside the image).                                          |
+| `DB_BUSY_TIMEOUT`               | `5000`                      | Milliseconds a request waits for the SQLite lock before failing with "database is locked".                                         |
 
 ## Troubleshooting
 
@@ -320,3 +344,4 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 - SQLite files are opened only inside `DBZUPER_SQLITE_PATHS`. The SQL editor therefore refuses `ATTACH`, `DETACH`, `VACUUM INTO` and the `temp_store_directory`/`data_store_directory` pragmas on SQLite connections, which would reach other files.
 - Query history stores SQL as typed (password literals in `PASSWORD`/`IDENTIFIED BY` clauses are redacted). Turn history off per connection for sensitive work.
 - Accounts cannot be deleted from the UI: DBZuper has a single administrator.
+- Anyone who can run commands in the container can reset the password with `dbzuper:reset-password`, two-factor authentication included. Shell access to the server is full access to DBZuper.
