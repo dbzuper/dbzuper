@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-10-30)
 
 - **Password policy setting**: `DBZUPER_PASSWORD_POLICY=basic` relaxes account passwords to 8 characters with no
   breach check, for private local installs. The default stays `strong`.
@@ -8,6 +8,9 @@
   `--reset-2fa` for lost two-factor codes. The login page's reset link now appears only when `MAIL_MAILER` is set
   up (it is `log` by default, which sends nothing); otherwise it asks you to contact the server admin.
 - **Readable dropdowns in dark mode**: native select lists no longer show light text on a white list.
+- **Self-hosting guide**: a step-by-step Docker Compose setup with `.env.docker`, where the volumes live and how to use
+  a normal folder instead, and reaching databases on the same computer (host-bound users, firewalls, Docker inside
+  WSL).
 
 ## 0.1.0 (2026-10-29): first public release
 
