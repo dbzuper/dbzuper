@@ -89,6 +89,13 @@ export default function Login({ status, canResetPassword }: Props) {
                                 {processing && <Spinner />}
                                 Log in
                             </Button>
+
+                            {!canResetPassword && (
+                                <p className="text-center text-sm text-muted-foreground">
+                                    Forgot your password? Ask your server admin
+                                    to reset it.
+                                </p>
+                            )}
                         </div>
                     </>
                 )}

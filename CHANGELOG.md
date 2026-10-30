@@ -4,6 +4,9 @@
 
 - **Password policy setting**: `DBZUPER_PASSWORD_POLICY=basic` relaxes account passwords to 8 characters with no
   breach check, for private local installs. The default stays `strong`.
+- **Password reset without email**: `php artisan dbzuper:reset-password` sets a new password from the server, with
+  `--reset-2fa` for lost two-factor codes. The login page's reset link now appears only when `MAIL_MAILER` is set
+  up (it is `log` by default, which sends nothing); otherwise it asks you to contact the server admin.
 - **Readable dropdowns in dark mode**: native select lists no longer show light text on a white list.
 
 ## 0.1.0 (2026-10-29): first public release

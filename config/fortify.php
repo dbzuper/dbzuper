@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\RequireMailForPasswordReset;
 use Laravel\Fortify\Features;
 
 return [
@@ -101,7 +102,7 @@ return [
     |
     */
 
-    'middleware' => ['web'],
+    'middleware' => ['web', RequireMailForPasswordReset::class],
 
     /*
     |--------------------------------------------------------------------------
@@ -161,6 +162,8 @@ return [
     */
 
     'features' => [
+        // Answered only once a mailer is set up (see RequireMailForPasswordReset); the routes stay registered so
+        // the generated frontend routes don't depend on the environment.
         Features::resetPasswords(),
         Features::twoFactorAuthentication([
             'confirm' => true,
