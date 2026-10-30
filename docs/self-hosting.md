@@ -19,21 +19,48 @@ With the published image (linux/amd64 and linux/arm64):
 
 Then open <http://localhost:8080> and create the administrator with the setup code from `docker logs dbzuper` (see [First administrator](#first-administrator)). Pin a version (`ghcr.io/dbzuper/dbzuper:1.2`) instead of `latest` if you want upgrades to be deliberate.
 
-The same with Compose, in a `docker-compose.yml` of your own:
+### With Docker Compose
 
-    services:
-        app:
-            image: ghcr.io/dbzuper/dbzuper:latest
-            ports: ['8080:8080']
-            extra_hosts: ['host.docker.internal:host-gateway']
-            env_file: [{ path: .env.docker, required: false }]
-            volumes: ['dbzuper-storage:/app/storage', 'dbzuper-sqlite:/data/sqlite']
-            restart: unless-stopped
-    volumes:
-        dbzuper-storage:
-        dbzuper-sqlite:
+1. Make a directory for the install, for example `~/dbzuper`, and save this in it as `docker-compose.yml`:
 
-From source, with the `docker-compose.yml` in the repository:
+       services:
+           app:
+               image: ghcr.io/dbzuper/dbzuper:latest
+               ports: ['8080:8080']
+               extra_hosts: ['host.docker.internal:host-gateway']
+               env_file: [{ path: .env.docker, required: false }]
+               volumes: ['dbzuper-storage:/app/storage', 'dbzuper-sqlite:/data/sqlite']
+               restart: unless-stopped
+       volumes:
+           dbzuper-storage:
+           dbzuper-sqlite:
+
+2. Optionally, put settings in a `.env.docker` next to it, one `KEY=value` per line. For a private install on your own computer, for example:
+
+       # Any password of 8+ characters (see First administrator).
+       DBZUPER_PASSWORD_POLICY=basic
+
+   Behind a domain, set `APP_URL=https://dbzuper.example.com` and `SESSION_SECURE_COOKIE=true` here too. Every variable is listed in the [Environment reference](#environment-reference).
+
+3. Start it, wait until it is healthy, and print the setup code:
+
+       docker compose up -d --wait
+       docker compose logs app | grep "setup code"
+
+4. Open <http://localhost:8080>, enter the setup code and create the administrator.
+
+Day to day, from the same directory:
+
+    docker compose ps                            # status
+    docker compose logs -f app                   # follow the log
+    docker compose pull && docker compose up -d  # upgrade to the latest image
+    docker compose down                          # stop and remove the container; the volumes and data stay
+
+Do not add `-v` to `docker compose down` unless you mean to delete all data: it removes the volumes too (see [Where your data lives](#where-your-data-lives)). To keep the data in normal folders instead of volumes, see [Using a normal folder instead](#using-a-normal-folder-instead).
+
+### From source
+
+To build the image yourself, use the `docker-compose.yml` in the repository:
 
     git clone https://github.com/dbzuper/dbzuper && cd dbzuper
     docker compose up -d --build --wait
