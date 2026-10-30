@@ -40,7 +40,7 @@ Then open <http://localhost:8080> and create the administrator with the setup co
        # Any password of 8+ characters (see First administrator).
        DBZUPER_PASSWORD_POLICY=basic
 
-   Behind a domain, set `APP_URL=https://dbzuper.example.com` and `SESSION_SECURE_COOKIE=true` here too. Every variable is listed in the [Environment reference](#environment-reference).
+    Behind a domain, set `APP_URL=https://dbzuper.example.com` and `SESSION_SECURE_COOKIE=true` here too. Every variable is listed in the [Environment reference](#environment-reference).
 
 3. Start it, wait until it is healthy, and print the setup code:
 
@@ -89,9 +89,9 @@ One-off commands run through the same entrypoint (key, storage and database prep
 
 `-v dbzuper-storage:/app/storage` attaches a **named volume**: a directory Docker creates and manages, mounted at `/app/storage` inside the container. It survives stopping, removing and upgrading the container, which is why the data is kept across `docker pull` and a new `docker run`.
 
-| Volume            | In the container | Holds                                                                                                      |
-| ----------------- | ---------------- | ---------------------------------------------------------------------------------------------------------- |
-| `dbzuper-storage` | `/app/storage`   | The application database (users, saved connections, history, layouts), sessions, logs and `app.key`.      |
+| Volume            | In the container | Holds                                                                                                                              |
+| ----------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `dbzuper-storage` | `/app/storage`   | The application database (users, saved connections, history, layouts), sessions, logs and `app.key`.                               |
 | `dbzuper-sqlite`  | `/data/sqlite`   | SQLite files you want to browse; the only directory SQLite connections may open (see [Adding SQLite files](#adding-sqlite-files)). |
 
 Compose prefixes volume names with the project name, which is the directory name unless you set one, so the same volumes are `dbzuper_dbzuper-storage` and `dbzuper_dbzuper-sqlite` there. `docker volume ls` lists them, and `docker volume inspect dbzuper-storage` prints the directory behind one as `Mountpoint`:
@@ -176,7 +176,7 @@ If Docker Engine runs inside a WSL distribution (not Docker Desktop) and the dat
       [wsl2]
       networkingMode=mirrored
 
-  Then run the container with host networking (`network_mode: host` in Compose, `--network host` with `docker run`) and connect to `127.0.0.1`. With host networking the container uses the WSL network directly, so `ports` is ignored and DBZuper listens on port 8080 of WSL, which mirrored mode shares with Windows.
+    Then run the container with host networking (`network_mode: host` in Compose, `--network host` with `docker run`) and connect to `127.0.0.1`. With host networking the container uses the WSL network directly, so `ports` is ignored and DBZuper listens on port 8080 of WSL, which mirrored mode shares with Windows.
 
 ## Adding SQLite files
 
@@ -278,25 +278,25 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 
 ## Environment reference
 
-| Variable                        | Default                     | Meaning                                                                                                           |
-| ------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `APP_NAME`                      | `DBZuper` in the image      | Name in the page title, sidebar, session cookie and two-factor issuer.                                            |
-| `DBZUPER_SQLITE_PATHS`          | `/data/sqlite` in the image | Comma-separated directories SQLite connection files must live in.                                                 |
-| `DBZUPER_CONNECT_TIMEOUT`       | `5`                         | Seconds to wait when opening a connection to a database server.                                                   |
-| `DBZUPER_INTROSPECTION_TIMEOUT` | `30`                        | Seconds allowed for loading a schema.                                                                             |
-| `DBZUPER_QUERY_TIMEOUT`         | `15`                        | Seconds a SQL editor statement may run (not enforced on SQLite or for non-`SELECT` statements on MySQL).          |
-| `DBZUPER_SCHEMA_MAX_OBJECTS`    | `5000`                      | Most tables and views kept in a schema snapshot.                                                                  |
-| `DBZUPER_HISTORY_KEEP`          | `5000`                      | Query history entries kept per connection.                                                                        |
+| Variable                        | Default                     | Meaning                                                                                                            |
+| ------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `APP_NAME`                      | `DBZuper` in the image      | Name in the page title, sidebar, session cookie and two-factor issuer.                                             |
+| `DBZUPER_SQLITE_PATHS`          | `/data/sqlite` in the image | Comma-separated directories SQLite connection files must live in.                                                  |
+| `DBZUPER_CONNECT_TIMEOUT`       | `5`                         | Seconds to wait when opening a connection to a database server.                                                    |
+| `DBZUPER_INTROSPECTION_TIMEOUT` | `30`                        | Seconds allowed for loading a schema.                                                                              |
+| `DBZUPER_QUERY_TIMEOUT`         | `15`                        | Seconds a SQL editor statement may run (not enforced on SQLite or for non-`SELECT` statements on MySQL).           |
+| `DBZUPER_SCHEMA_MAX_OBJECTS`    | `5000`                      | Most tables and views kept in a schema snapshot.                                                                   |
+| `DBZUPER_HISTORY_KEEP`          | `5000`                      | Query history entries kept per connection.                                                                         |
 | `DBZUPER_PASSWORD_POLICY`       | `strong`                    | Account passwords: `strong` (12+ characters, mixed case, number, symbol, not breached) or `basic` (8+ characters). |
-| `TRUSTED_PROXIES`               | unset                       | Reverse proxies whose `X-Forwarded-*` headers are trusted (IPs/CIDRs or `*`).                                     |
-| `APP_URL`                       | `http://localhost:<port>`   | Public URL of the app (set in `.env.docker`); the port is `DBZUPER_PORT`, else `PORT`.                            |
-| `DBZUPER_PORT`                  | `8080`                      | Host port Compose publishes, and the port in the default `APP_URL` (see [Choosing the port](#choosing-the-port)). |
-| `PORT`                          | `8080`                      | Port the server listens on inside the container (1024 or higher); only for setups without a port mapping.         |
-| `APP_KEY`                       | generated into the volume   | Encryption key; see above.                                                                                        |
-| `SESSION_SECURE_COOKIE`         | unset                       | Set `true` when served over HTTPS.                                                                                |
-| `DB_JOURNAL_MODE`               | `WAL` in the image          | SQLite journal mode of the application database (unset: SQLite's default).                                        |
-| `DB_TRANSACTION_MODE`           | `IMMEDIATE` in the image    | How SQLite transactions on the application database start (`DEFERRED` outside the image).                         |
-| `DB_BUSY_TIMEOUT`               | `5000`                      | Milliseconds a request waits for the SQLite lock before failing with "database is locked".                        |
+| `TRUSTED_PROXIES`               | unset                       | Reverse proxies whose `X-Forwarded-*` headers are trusted (IPs/CIDRs or `*`).                                      |
+| `APP_URL`                       | `http://localhost:<port>`   | Public URL of the app (set in `.env.docker`); the port is `DBZUPER_PORT`, else `PORT`.                             |
+| `DBZUPER_PORT`                  | `8080`                      | Host port Compose publishes, and the port in the default `APP_URL` (see [Choosing the port](#choosing-the-port)).  |
+| `PORT`                          | `8080`                      | Port the server listens on inside the container (1024 or higher); only for setups without a port mapping.          |
+| `APP_KEY`                       | generated into the volume   | Encryption key; see above.                                                                                         |
+| `SESSION_SECURE_COOKIE`         | unset                       | Set `true` when served over HTTPS.                                                                                 |
+| `DB_JOURNAL_MODE`               | `WAL` in the image          | SQLite journal mode of the application database (unset: SQLite's default).                                         |
+| `DB_TRANSACTION_MODE`           | `IMMEDIATE` in the image    | How SQLite transactions on the application database start (`DEFERRED` outside the image).                          |
+| `DB_BUSY_TIMEOUT`               | `5000`                      | Milliseconds a request waits for the SQLite lock before failing with "database is locked".                         |
 
 ## Troubleshooting
 
