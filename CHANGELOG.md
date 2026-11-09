@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-11-10)
 
 - **Sign in automatically on your own computer**: `DBZUPER_AUTO_LOGIN=true` signs requests from this computer in as
   the administrator, with no login screen, for a private install only you can reach (laman sets it up). The setting
