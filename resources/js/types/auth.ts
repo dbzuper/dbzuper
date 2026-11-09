@@ -12,6 +12,8 @@ export type User = {
 
 export type Auth = {
     user: User;
+    /** Signed in automatically on this computer (DBZUPER_AUTO_LOGIN). */
+    automatic?: boolean;
 };
 
 export type Passkey = {

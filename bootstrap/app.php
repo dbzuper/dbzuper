@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Middleware\AutoLoginLocal;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RedirectToSetup;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -29,7 +31,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trimStrings(except: [$changeSet]);
         $middleware->convertEmptyStringsToNull(except: [$changeSet]);
 
+        // DBZUPER_AUTO_LOGIN: must sign in before `auth` checks, so it is ordered just ahead of it.
+        $middleware->prependToPriorityList(before: AuthenticatesRequests::class, prepend: AutoLoginLocal::class);
+
         $middleware->web(append: [
+            AutoLoginLocal::class,
             RedirectToSetup::class,
             HandleAppearance::class,
             HandleInertiaRequests::class,

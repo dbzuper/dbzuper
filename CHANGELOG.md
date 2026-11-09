@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Sign in automatically on your own computer**: `DBZUPER_AUTO_LOGIN=true` signs requests from this computer in as
+  the administrator, with no login screen, for a private install only you can reach (laman sets it up). The setting
+  alone does nothing: the web server must also pass a secret key as the server variable `DBZUPER_AUTO_LOGIN_KEY`
+  (matching `DBZUPER_AUTO_LOGIN_HASH`), `APP_URL` must be a local address, and the request must come from loopback
+  for a local name with no outside forwarding or tunnel headers. Copying the `.env` to a server therefore leaves it
+  inert. Each automatic sign-in is logged, a refused one logs a warning (at most hourly), and the user menu shows
+  "Signed in automatically" in place of Log out. Off by default.
+- **Add connections from the command line**: `php artisan dbzuper:connection "Name" --driver=mariadb --username=root`
+  saves a connection for the administrator, checked by the same rules as the connection form. `--if-missing` makes it
+  safe to run again, and `--user=` picks another account.
+
 ## 0.2.0 (2026-10-30)
 
 - **Password policy setting**: `DBZUPER_PASSWORD_POLICY=basic` relaxes account passwords to 8 characters with no
