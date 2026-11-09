@@ -1,5 +1,5 @@
-import { Link, router } from '@inertiajs/react';
-import { LogOut, Settings } from 'lucide-react';
+import { Link, router, usePage } from '@inertiajs/react';
+import { Laptop, LogOut, Settings } from 'lucide-react';
 import {
     DropdownMenuGroup,
     DropdownMenuItem,
@@ -18,6 +18,7 @@ type Props = {
 
 export function UserMenuContent({ user }: Props) {
     const cleanup = useMobileNavigation();
+    const automatic = usePage().props.auth.automatic === true;
 
     const handleLogout = () => {
         cleanup();
@@ -46,18 +47,33 @@ export function UserMenuContent({ user }: Props) {
                 </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-                <Link
-                    className="block w-full cursor-pointer"
-                    href={logout()}
-                    as="button"
-                    onClick={handleLogout}
-                    data-test="logout-button"
+            {automatic ? (
+                // Logging out would only sign straight back in, so the menu
+                // explains the setting instead.
+                <div
+                    className="flex items-start gap-2 px-2 py-1.5 text-xs text-muted-foreground"
+                    data-test="auto-login-note"
                 >
-                    <LogOut className="mr-2" />
-                    Log out
-                </Link>
-            </DropdownMenuItem>
+                    <Laptop className="mt-0.5 size-4 shrink-0" />
+                    <span>
+                        Signed in automatically on this computer
+                        (DBZUPER_AUTO_LOGIN).
+                    </span>
+                </div>
+            ) : (
+                <DropdownMenuItem asChild>
+                    <Link
+                        className="block w-full cursor-pointer"
+                        href={logout()}
+                        as="button"
+                        onClick={handleLogout}
+                        data-test="logout-button"
+                    >
+                        <LogOut className="mr-2" />
+                        Log out
+                    </Link>
+                </DropdownMenuItem>
+            )}
         </>
     );
 }

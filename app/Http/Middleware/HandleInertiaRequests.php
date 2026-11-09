@@ -42,6 +42,8 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'auth' => [
                 'user' => $request->user(),
+                // Signed in by DBZUPER_AUTO_LOGIN: the menu says so instead of offering a log-out that would not stick.
+                'automatic' => $request->user() !== null && $request->hasSession() && $request->session()->get('auto_login') === true,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'sidebar' => fn () => $this->sidebar($request),

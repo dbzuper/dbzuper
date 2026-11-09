@@ -19,6 +19,13 @@ return [
     // known breach) or `basic` (8+ characters, for a private local install).
     'password_policy' => env('DBZUPER_PASSWORD_POLICY', 'strong'),
 
+    // Sign requests from this computer in as the administrator, without a login screen: for a private install only
+    // its owner can reach, such as one managed by laman. On its own it does nothing: the web server must also pass
+    // the server variable DBZUPER_AUTO_LOGIN_KEY whose SHA-256 is auto_login_hash, APP_URL must be a local address,
+    // and the request must come from loopback for a local name. Never turn it on for a server.
+    'auto_login' => (bool) env('DBZUPER_AUTO_LOGIN', false),
+    'auto_login_hash' => env('DBZUPER_AUTO_LOGIN_HASH'),
+
     // API requests per user per minute, at least 1 (the e2e server raises it: every spec signs in as the same user).
     'api_per_minute' => max(1, (int) env('DBZUPER_API_PER_MINUTE') ?: 120),
 

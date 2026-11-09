@@ -145,6 +145,48 @@ Without options the command prompts for each value. In production the password m
 
 For a private install only you can reach, such as one on your own computer, set `DBZUPER_PASSWORD_POLICY=basic` in `.env.docker` (or `-e DBZUPER_PASSWORD_POLICY=basic` with `docker run`) and restart the container. Passwords then need only 8 characters, and the breach check is skipped. Keep the default `strong` on any install other people can reach over a network. The policy applies when a password is set or changed, so existing passwords keep working either way.
 
+## Signing in automatically
+
+On a private install that only you can reach, such as DBZuper on your own computer, automatic sign-in skips the login screen: requests from this computer are signed in as the administrator. laman, a local PHP environment for Windows, sets it all up when it installs DBZuper.
+
+It takes two keys, so turning the setting on by mistake, or copying a `.env` to a server, does nothing:
+
+1. In `.env`, `DBZUPER_AUTO_LOGIN=true` and `DBZUPER_AUTO_LOGIN_HASH` set to the SHA-256 (hex) of a random key.
+2. In the web server's configuration, that key passed to PHP as the server variable `DBZUPER_AUTO_LOGIN_KEY`. A server variable comes from the web server, never from the request, so a visitor cannot send it.
+
+To set it up by hand on another local web server:
+
+    php -r '$k = bin2hex(random_bytes(32)); echo "key:  $k\nhash: ", hash("sha256", $k), "\n";'
+
+Put the hash in `.env`, then pass the key to PHP for DBZuper's site only:
+
+    # nginx, in the PHP location block
+    fastcgi_param DBZUPER_AUTO_LOGIN_KEY <key>;
+
+    # Apache
+    SetEnv DBZUPER_AUTO_LOGIN_KEY <key>
+
+    # Caddy, in php_fastcgi
+    env DBZUPER_AUTO_LOGIN_KEY <key>
+
+Even with both keys, a request qualifies only when all of these also hold:
+
+- `APP_URL` is a local address: `localhost`, a loopback IP, or a reserved `*.test` / `*.localhost` name;
+- the request is for such a local name too;
+- the connection comes from a loopback address (`127.0.0.1`, `::1`), checked on the raw connection, not on `TRUSTED_PROXIES` forwarding;
+- every `X-Forwarded-For` or `Forwarded` address is loopback too, and no tunnel or CDN client-address header (`CF-Connecting-IP`, `True-Client-IP`, `X-Real-IP`, `X-Client-IP`, `Fastly-Client-IP`, ...) is present.
+
+Each automatic sign-in is written to the log. When the setting is on but a request is refused, a warning saying why is logged, at most once an hour. While signed in this way the user menu shows "Signed in automatically on this computer" instead of Log out, since logging out would sign you straight back in.
+
+Never turn it on for an install other people can reach over a network, and do not expose an install that has it through a tunnel. Inside Docker requests come from the Docker network, never loopback, so it has no effect there.
+
+## Adding connections from the command line
+
+    php artisan dbzuper:connection "Local MariaDB" --driver=mariadb --host=127.0.0.1 --port=3306 --username=root
+    php artisan dbzuper:connection "Local PostgreSQL" --driver=pgsql --username=postgres --password=secret --if-missing
+
+Leave out `--database` to browse every database on the server. The values are checked by the same rules as the connection form. `--if-missing` does nothing when the administrator already has a connection with that name, and `--user=` adds it for another account.
+
 ## Resetting a forgotten password
 
 Out of the box DBZuper sends no email, so the login page has no reset link. It says "Forgot your password? Ask your server admin to reset it." instead: whoever can run commands on the server sets a new password with
@@ -311,6 +353,8 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 | `DBZUPER_SCHEMA_MAX_OBJECTS`    | `5000`                      | Most tables and views kept in a schema snapshot.                                                                                   |
 | `DBZUPER_HISTORY_KEEP`          | `5000`                      | Query history entries kept per connection.                                                                                         |
 | `DBZUPER_PASSWORD_POLICY`       | `strong`                    | Account passwords: `strong` (12+ characters, mixed case, number, symbol, not breached) or `basic` (8+ characters).                 |
+| `DBZUPER_AUTO_LOGIN`            | `false`                     | Sign requests from this computer in as the administrator (see [Signing in automatically](#signing-in-automatically)).              |
+| `DBZUPER_AUTO_LOGIN_HASH`       | unset                       | SHA-256 (hex) of the key the web server passes as `DBZUPER_AUTO_LOGIN_KEY`; automatic sign-in needs both.                          |
 | `MAIL_MAILER`                   | `log` (sends nothing)       | Set to `smtp` with the other `MAIL_*` variables to offer reset links by email (see [Reset links by email](#reset-links-by-email)). |
 | `TRUSTED_PROXIES`               | unset                       | Reverse proxies whose `X-Forwarded-*` headers are trusted (IPs/CIDRs or `*`).                                                      |
 | `APP_URL`                       | `http://localhost:<port>`   | Public URL of the app (set in `.env.docker`); the port is `DBZUPER_PORT`, else `PORT`.                                             |
