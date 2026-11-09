@@ -418,6 +418,9 @@ describe('EditDatePicker', () => {
     });
 
     it('replaces junk after the date with the picked day', () => {
+        // Unparseable text leaves the calendar on today's month, so pin today to October.
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(2026, 9, 24, 12, 0, 0));
         const { onApply } = renderEdit();
         type('Date', '2026-10-01xyz');
         expect(screen.getByRole('alert')).toBeInTheDocument();
