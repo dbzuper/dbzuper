@@ -13,7 +13,11 @@ final class Engines
 
     public const DATABASE = 'dbzuper_test';
 
+    public const RESTORE_DATABASE = 'dbzuper_test_restore';
+
     private static ?string $sqlitePath = null;
+
+    private static ?string $restoreSqlitePath = null;
 
     /** @return array{host: ?string, port: ?int, database: string, username: ?string, password: ?string} */
     public static function params(string $engine): array
@@ -100,6 +104,50 @@ final class Engines
         if (! $exists) {
             $pdo->exec('create database '.self::DATABASE);
         }
+    }
+
+    /**
+     * Drops and recreates dbzuper_test_restore (SQLite: a fresh file) and returns a saved connection to it, so a
+     * restore never lands in dbzuper_test while that is the export source. Call skipUnlessAvailable() first.
+     */
+    public static function prepareRestoreTarget(string $engine): SavedConnection
+    {
+        self::dropRestoreTarget($engine);
+
+        if ($engine === 'sqlite') {
+            $dir = self::sqliteDirectory();
+            @mkdir($dir, 0777, true);
+            self::$restoreSqlitePath = $dir.DIRECTORY_SEPARATOR.'restore-'.bin2hex(random_bytes(4)).'.sqlite';
+            touch(self::$restoreSqlitePath);
+
+            return self::savedConnection('sqlite', ['name' => 'sqlite restore target', 'database' => self::$restoreSqlitePath]);
+        }
+
+        $server = self::serverPdo($engine);
+        if ($engine === 'pgsql') {
+            $server->exec('create database '.self::RESTORE_DATABASE);
+        } else {
+            // Same defaults as the source database, so tables created without an explicit charset match.
+            $defaults = $server->query("select default_character_set_name, default_collation_name from information_schema.schemata where schema_name = '".self::DATABASE."'")->fetch(PDO::FETCH_NUM);
+            $server->exec('create database '.self::RESTORE_DATABASE.($defaults ? " character set {$defaults[0]} collate {$defaults[1]}" : ''));
+        }
+
+        return self::savedConnection($engine, ['name' => "{$engine} restore target", 'database' => self::RESTORE_DATABASE]);
+    }
+
+    public static function dropRestoreTarget(string $engine): void
+    {
+        if ($engine === 'sqlite') {
+            if (self::$restoreSqlitePath !== null) {
+                @unlink(self::$restoreSqlitePath);
+                self::$restoreSqlitePath = null;
+            }
+
+            return;
+        }
+
+        // PostgreSQL: WITH (FORCE) ends sessions still open on the database (a connection a failed test left).
+        self::serverPdo($engine)->exec('drop database if exists '.self::RESTORE_DATABASE.($engine === 'pgsql' ? ' with (force)' : ''));
     }
 
     public static function savedConnection(string $engine, array $overrides = []): SavedConnection
