@@ -59,3 +59,10 @@ it('classifies statuses', function () {
         ->and(TransferStatus::Cancelled->isFinished())->toBeTrue()
         ->and(TransferStatus::Pending->isFinished())->toBeFalse();
 });
+
+it('counts a transfer whose row is gone as cancelled', function () {
+    $t = makeTransfer(SavedConnection::factory()->create());
+    Transfer::query()->whereKey($t->id)->delete();
+
+    expect($t->cancelRequested())->toBeTrue();
+});

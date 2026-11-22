@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Transfers\TransferStorage;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -33,6 +34,14 @@ class User extends Authenticatable implements PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
+
+    protected static function booted(): void
+    {
+        // The database cascade removes the user's connections and transfers without model events: the files go here.
+        static::deleting(function (User $user) {
+            TransferStorage::discard(Transfer::query()->where('user_id', $user->getKey()), 'The account was deleted.');
+        });
+    }
 
     /** @return HasMany<SavedConnection, $this> */
     public function connections(): HasMany

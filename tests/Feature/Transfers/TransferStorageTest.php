@@ -129,3 +129,58 @@ it('leaves an upload alone when its last chunk lands between the sweep reading i
         ->and($t->fresh()->file_path)->toBe($t->file_path)
         ->and(is_file($t->file_path))->toBeTrue();
 });
+
+it('removes the transfer files of a deleted connection, failing and cancelling active ones first', function () {
+    $done = storedTransfer(['status' => TransferStatus::Done, 'finished_at' => now()]);
+    $connection = SavedConnection::query()->findOrFail($done->saved_connection_id);
+    $running = Transfer::create([...$done->only(['user_id', 'saved_connection_id', 'database', 'direction', 'method', 'options', 'file_name']), 'status' => TransferStatus::Running]);
+    file_put_contents(TransferStorage::directory($running).'/export.sql', 'partial');
+    $other = storedTransfer(['status' => TransferStatus::Done, 'finished_at' => now()]);
+
+    // What a worker still on the running transfer would read just before the rows go.
+    $seen = null;
+    SavedConnection::deleting(function () use ($running, &$seen) {
+        $seen = Transfer::query()->find($running->id);
+    });
+
+    $connection->delete();
+
+    expect(Transfer::find($done->id))->toBeNull()
+        ->and(Transfer::find($running->id))->toBeNull()
+        ->and(is_dir(storage_path('app/private/transfers/'.$done->id)))->toBeFalse()
+        ->and(is_dir(storage_path('app/private/transfers/'.$running->id)))->toBeFalse()
+        ->and($seen->status)->toBe(TransferStatus::Failed)
+        ->and($seen->error)->toBe('The connection was deleted.')
+        ->and($seen->cancel_requested_at)->not->toBeNull()
+        ->and(is_file($other->file_path))->toBeTrue();
+});
+
+it('removes the transfer files of a deleted user', function () {
+    $mine = storedTransfer(['status' => TransferStatus::Uploading, 'direction' => TransferDirection::Import]);
+    $theirs = storedTransfer(['status' => TransferStatus::Done, 'finished_at' => now()]);
+
+    App\Models\User::query()->findOrFail($mine->user_id)->delete();
+
+    expect(Transfer::find($mine->id))->toBeNull()
+        ->and(is_dir(storage_path('app/private/transfers/'.$mine->id)))->toBeFalse()
+        ->and(is_file($theirs->file_path))->toBeTrue();
+});
+
+it('prunes directories no transfer owns once they are older than the file TTL', function () {
+    config(['dbzuper.transfer_ttl_hours' => 24]);
+    $root = storage_path('app/private/transfers');
+    $old = $root.'/'.Illuminate\Support\Str::uuid();
+    $recent = $root.'/'.Illuminate\Support\Str::uuid();
+    File::ensureDirectoryExists($old);
+    File::ensureDirectoryExists($recent);
+    file_put_contents($old.'/export.sql', 'x');
+    touch($old, now()->subHours(25)->getTimestamp());
+    $owned = storedTransfer(['status' => TransferStatus::Done, 'finished_at' => now(), 'expires_at' => now()->addHour()]);
+    touch(dirname($owned->file_path), now()->subHours(25)->getTimestamp());
+
+    TransferStorage::prune();
+
+    expect(is_dir($old))->toBeFalse()
+        ->and(is_dir($recent))->toBeTrue()
+        ->and(is_file($owned->file_path))->toBeTrue();
+});

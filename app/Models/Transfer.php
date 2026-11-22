@@ -63,10 +63,13 @@ class Transfer extends Model
         return $this->database === '' ? $connection : $connection->forDatabase($this->database);
     }
 
-    /** Read from the database every time: the request that cancels runs in another process than the worker. */
+    /**
+     * Read from the database every time: the request that cancels runs in another process than the worker. A row that
+     * is gone (its connection or user was deleted) counts as cancelled.
+     */
     public function cancelRequested(): bool
     {
-        return static::query()->whereKey($this->getKey())->whereNotNull('cancel_requested_at')->exists();
+        return ! static::query()->whereKey($this->getKey())->whereNull('cancel_requested_at')->exists();
     }
 
     public function isDownloadable(): bool

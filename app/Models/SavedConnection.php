@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Database\Drivers\DsnValue;
 use App\Enums\DriverName;
+use App\Transfers\TransferStorage;
 use Database\Factories\SavedConnectionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +32,17 @@ class SavedConnection extends Model
 
     /** Set on copies that reach the server through a maintenance database; they can't be saved either. */
     private bool $maintenance = false;
+
+    protected static function booted(): void
+    {
+        // The database cascade removes the transfer rows without model events: their files go here.
+        static::deleting(function (SavedConnection $connection) {
+            TransferStorage::discard(
+                Transfer::query()->where('saved_connection_id', $connection->getKey()),
+                'The connection was deleted.',
+            );
+        });
+    }
 
     protected function casts(): array
     {

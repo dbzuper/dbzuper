@@ -5,6 +5,7 @@ namespace App\Transfers;
 use App\Enums\TransferDirection;
 use App\Enums\TransferStatus;
 use App\Models\Transfer;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\File;
 
 /** Where transfer files live (storage/app/private/transfers/{id}) and when they are removed. */
@@ -27,6 +28,36 @@ class TransferStorage
     public static function deleteFiles(Transfer $transfer): void
     {
         File::deleteDirectory(storage_path('app/private/transfers/'.$transfer->id));
+    }
+
+    /**
+     * Removes the files of transfers whose rows are about to go (their connection or user is being deleted, and the
+     * database cascade takes the rows without model events). Active ones are failed and flagged as cancelled first,
+     * so a worker still on one stops at its next progress check.
+     *
+     * @param  Builder<Transfer>  $transfers
+     */
+    public static function discard(Builder $transfers, string $reason): void
+    {
+        $active = array_map(
+            fn (TransferStatus $s) => $s->value,
+            array_values(array_filter(TransferStatus::cases(), fn (TransferStatus $s) => $s->isActive())),
+        );
+
+        $transfers->chunkById(100, function ($chunk) use ($active, $reason) {
+            foreach ($chunk as $transfer) {
+                if ($transfer->status->isActive()) {
+                    Transfer::query()->whereKey($transfer->id)->whereIn('status', $active)->update([
+                        'status' => TransferStatus::Failed,
+                        'error' => $reason,
+                        'cancel_requested_at' => now(),
+                        'finished_at' => now(),
+                        'file_path' => null,
+                    ]);
+                }
+                self::deleteFiles($transfer);
+            }
+        });
     }
 
     /** Fails Running transfers whose worker is gone: its process no longer exists on this host, or nothing was saved for 6 hours. */
@@ -149,5 +180,30 @@ class TransferStorage
                     $transfer->delete();
                 }
             });
+
+        self::pruneOrphanDirectories($ttl);
+    }
+
+    /**
+     * Directories no row owns (left by a crash, a delete that couldn't remove an open file, or rows removed outside
+     * the app), once they are older than the file TTL: a directory created a moment before its row is never touched.
+     */
+    private static function pruneOrphanDirectories(int $ttlHours): void
+    {
+        $root = storage_path('app/private/transfers');
+        if (! is_dir($root)) {
+            return;
+        }
+
+        $cutoff = now()->subHours($ttlHours)->getTimestamp();
+        foreach (File::directories($root) as $directory) {
+            $modified = @filemtime($directory);
+            if ($modified === false || $modified > $cutoff) {
+                continue;
+            }
+            if (! Transfer::query()->whereKey(basename($directory))->exists()) {
+                File::deleteDirectory($directory);
+            }
+        }
     }
 }
