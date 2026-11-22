@@ -44,9 +44,10 @@ it('fingerprints two identical fixtures equally', function (string $engine) {
             ->and($a['tables'][$big]['rows'])->toBe(2)
             ->and(strlen(TransferFixture::bigText()))->toBeGreaterThanOrEqual(2 * 1024 * 1024);
         if ($engine !== 'pgsql') {
-            expect($a['triggers'])->toHaveCount(1);
+            expect($a['triggers'])->toHaveKeys(['rt_order_items_note', 'rt_insert_log_mark'])
+                ->and($a['tables']['rt_insert_log']['rows'])->toBe(2);
         } else {
-            expect($a['sequences'])->toHaveKeys(['public.rt_serial_id_seq', 'sales.invoice_no', 'sales.order_id_seq'])
+            expect($a['sequences'])->toHaveKeys(['public.rt_serial_id_seq', 'Sales.invoice_no', 'Sales.order_id_seq'])
                 ->and($a['enums'])->toBe(['public.mood' => ['sad', 'ok', 'happy']])
                 ->and($a['tables']['public.rt_measurements']['rows'])->toBe(3);
         }
@@ -79,6 +80,21 @@ it('notices a changed byte, a lost object or a moved sequence', function (string
             $db->update('UPDATE rt_types SET raw = '.TransferFixture::binaryLiteral($engine, TransferFixture::allBytes(254)."\x00").' WHERE id = 1');
             expect($now()['tables'][$t('rt_types')]['checksum'])->not->toBe($after['tables'][$t('rt_types')]['checksum']);
 
+            // Floats rounded the way a 14-digit (double) or 6-digit (single) text cast would round them.
+            $db->update('UPDATE rt_floats SET d = 0.3 WHERE id = 1');
+            $floats = $now()['tables'][$t('rt_floats')]['checksum'];
+            expect($floats)->not->toBe($before['tables'][$t('rt_floats')]['checksum']);
+            if ($engine !== 'sqlite') {
+                $db->update('UPDATE rt_floats SET f = 16777200 WHERE id = 1');
+                expect($now()['tables'][$t('rt_floats')]['checksum'])->not->toBe($floats);
+            }
+
+            // The INSERT trigger applied a second time, as when a restore creates it before loading the data.
+            if (! $pg) {
+                $db->update('UPDATE rt_insert_log SET note = '.($engine === 'sqlite' ? "note || '+'" : "CONCAT(note, '+')").' WHERE id = 1');
+                expect($now()['tables']['rt_insert_log']['checksum'])->not->toBe($before['tables']['rt_insert_log']['checksum']);
+            }
+
             // A view whose definition changes but keeps its name.
             $db->statement('DROP VIEW rt_big_orders');
             $db->statement('CREATE VIEW rt_big_orders AS SELECT order_id FROM rt_order_totals WHERE total > 11');
@@ -105,8 +121,8 @@ it('notices a changed byte, a lost object or a moved sequence', function (string
                 expect($now()['tables']['rt_versioned'])->not->toBe($before['tables']['rt_versioned']);
             }
             if ($pg) {
-                $db->statement('ALTER TABLE sales."order" ALTER COLUMN "we""ird" SET DEFAULT \'x\'');
-                expect($now()['tables']['sales.order']['columns'])->not->toBe($before['tables']['sales.order']['columns']);
+                $db->statement('ALTER TABLE "Sales"."order" ALTER COLUMN "we""ird" SET DEFAULT \'x\'');
+                expect($now()['tables']['Sales.order']['columns'])->not->toBe($before['tables']['Sales.order']['columns']);
                 $db->delete('DELETE FROM rt_measurements WHERE id = 150');
                 expect($now()['tables']['public.rt_measurements']['partitions'])
                     ->not->toBe($before['tables']['public.rt_measurements']['partitions']);

@@ -138,10 +138,11 @@ final class Engines
     public static function dropRestoreTarget(string $engine): void
     {
         if ($engine === 'sqlite') {
-            if (self::$restoreSqlitePath !== null) {
-                @unlink(self::$restoreSqlitePath);
-                self::$restoreSqlitePath = null;
+            // Also files left by earlier runs that died before cleaning up.
+            foreach (glob(self::sqliteDirectory().DIRECTORY_SEPARATOR.'restore-*.sqlite') ?: [] as $stale) {
+                @unlink($stale);
             }
+            self::$restoreSqlitePath = null;
 
             return;
         }

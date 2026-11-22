@@ -17,6 +17,9 @@ use PDO;
  */
 final class Fingerprint
 {
+    /** Suffix of the exact (DOUBLE) copy of a MySQL FLOAT column in a row query. */
+    private const EXACT = '#exact';
+
     /**
      * @param  list<string>|null  $schemas  PostgreSQL only: limit to these schemas (default: every non-system one)
      * @return Print
@@ -52,6 +55,7 @@ final class Fingerprint
         // information_schema is slow per query on MySQL 8, so each catalog is read once for the whole database.
         $columns = [];
         $binary = [];
+        $floats = [];
         foreach ($db->select('SELECT table_name AS tbl, column_name AS name, column_type AS type, data_type AS data_type, is_nullable AS nullable,
                 column_default AS `default`, extra AS extra, generation_expression AS `generated`, character_set_name AS charset,
                 collation_name AS collation, column_comment AS comment
@@ -63,6 +67,9 @@ final class Fingerprint
             ];
             if (in_array(strtolower((string) $c->data_type), $binaryTypes, true)) {
                 $binary[(string) $c->tbl][(string) $c->name] = true;
+            }
+            if (strtolower((string) $c->data_type) === 'float') {
+                $floats[(string) $c->tbl][] = (string) $c->name;
             }
         }
 
@@ -134,7 +141,12 @@ final class Fingerprint
                 'indexes' => $tableIndexes,
                 'checks' => $tableChecks,
                 'partitions' => [],
-                ...self::rows($db, 'SELECT * FROM '.$q($name), $primary, $q, $binary[$name] ?? []),
+                ...self::rows($db, 'SELECT *'.implode('', array_map(
+                    // FLOAT reaches PHP rounded to 6 significant digits (mysqlnd), which would hide a rounded value;
+                    // widened to DOUBLE on the server it is exact. rows() puts it back under the column's name.
+                    fn (string $c) => ', '.$q($c).' + 0e0 AS '.$q($c.self::EXACT),
+                    $floats[$name] ?? [],
+                )).' FROM '.$q($name), $primary, $q, $binary[$name] ?? []),
             ];
         }
 
@@ -438,7 +450,12 @@ final class Fingerprint
                 $row = $values;
             } else {
                 foreach ($row as $column => $value) {
-                    $row[$column] = self::value($value, isset($binary[$column]));
+                    if (str_ends_with((string) $column, self::EXACT)) {
+                        unset($row[$column]);
+                        $row[substr((string) $column, 0, -strlen(self::EXACT))] = $value;
+                    } else {
+                        $row[$column] = self::value($value, isset($binary[$column]));
+                    }
                 }
             }
             $line = json_encode($row, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION)."\n";

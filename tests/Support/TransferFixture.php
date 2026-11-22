@@ -16,7 +16,7 @@ final class TransferFixture
     public const BIG_TEXT_BYTES = 2_200_000;
 
     /** @var list<string> */
-    public const PG_SCHEMAS = ['public', 'sales'];
+    public const PG_SCHEMAS = ['public', 'Sales'];
 
     private const VIEWS = ['rt_big_orders', 'rt_order_totals'];
 
@@ -35,16 +35,17 @@ final class TransferFixture
             $db->statement("DROP VIEW IF EXISTS {$view}".($engine === 'pgsql' ? ' CASCADE' : ''));
         }
 
-        $tables = ['rt_types', 'rt_big', 'rt_order_items', 'rt_cycle_a', 'rt_cycle_b'];
+        $tables = ['rt_types', 'rt_floats', 'rt_big', 'rt_order_items', 'rt_cycle_a', 'rt_cycle_b'];
         if ($engine === 'pgsql') {
             $db->statement('DROP TABLE IF EXISTS '.implode(', ', [...$tables, 'rt_serial', 'rt_measurements']).' CASCADE');
-            $db->statement('DROP SCHEMA IF EXISTS sales CASCADE');
+            $db->statement('DROP SCHEMA IF EXISTS "Sales" CASCADE');
             $db->statement('DROP TYPE IF EXISTS mood CASCADE');
 
             return;
         }
 
         $tables[] = $engine === 'sqlite' ? '"order"' : '`order`';
+        $tables[] = 'rt_insert_log';
         if ($engine !== 'sqlite') {
             $tables[] = 'rt_quirks';
         }
@@ -66,13 +67,13 @@ final class TransferFixture
     /** Table keys as Fingerprint reports them. @return list<string> */
     public static function tableKeys(string $engine): array
     {
-        $common = ['rt_types', 'rt_big', 'rt_order_items', 'rt_cycle_a', 'rt_cycle_b'];
+        $common = ['rt_types', 'rt_floats', 'rt_big', 'rt_order_items', 'rt_cycle_a', 'rt_cycle_b'];
 
         return match ($engine) {
-            'pgsql' => [...array_map(fn ($t) => "public.{$t}", [...$common, 'rt_serial', 'rt_measurements']), 'sales.order'],
-            'sqlite' => [...$common, 'order'],
-            'mariadb' => [...$common, 'order', 'rt_quirks', 'rt_versioned'],
-            default => [...$common, 'order', 'rt_quirks'],
+            'pgsql' => [...array_map(fn ($t) => "public.{$t}", [...$common, 'rt_serial', 'rt_measurements']), 'Sales.order'],
+            'sqlite' => [...$common, 'order', 'rt_insert_log'],
+            'mariadb' => [...$common, 'order', 'rt_insert_log', 'rt_quirks', 'rt_versioned'],
+            default => [...$common, 'order', 'rt_insert_log', 'rt_quirks'],
         };
     }
 
@@ -141,6 +142,8 @@ final class TransferFixture
         $db->statement("INSERT INTO rt_types (id, code) VALUES (10, 'gone')");
         $db->delete('DELETE FROM rt_types WHERE id = 10');
 
+        self::createFloats($db, 'INT NOT NULL PRIMARY KEY', 'DOUBLE', 'FLOAT');
+
         $db->statement('CREATE TABLE rt_big (id INT NOT NULL PRIMARY KEY, body LONGTEXT NOT NULL)');
         self::insertBig($db);
 
@@ -174,6 +177,12 @@ final class TransferFixture
             $db->statement('SET SESSION sql_mode = ?', [$mode]);
         }
 
+        $db->statement('CREATE TABLE rt_insert_log (id INT NOT NULL PRIMARY KEY, note VARCHAR(50) NULL)');
+        $db->statement("CREATE TRIGGER rt_insert_log_mark BEFORE INSERT ON rt_insert_log FOR EACH ROW SET NEW.note = CONCAT(COALESCE(NEW.note, ''), '+')");
+        self::insertLog($db);
+
+        // DBZuper backups restore current rows only, so the history rows of a system-versioned table are deliberately
+        // not compared: the fingerprint sees the current rows, the table type and its WITH SYSTEM VERSIONING DDL.
         if ($engine === 'mariadb') {
             $db->statement('CREATE TABLE rt_versioned (id INT NOT NULL PRIMARY KEY, v VARCHAR(20) NULL) WITH SYSTEM VERSIONING');
             $db->insert("INSERT INTO rt_versioned (id, v) VALUES (1, 'first'), (2, 'second')");
@@ -213,6 +222,8 @@ final class TransferFixture
         $db->statement("INSERT INTO rt_types (id, code) VALUES (10, 'gone')");
         $db->delete('DELETE FROM rt_types WHERE id = 10');
 
+        self::createFloats($db, 'INTEGER PRIMARY KEY', 'REAL', null);
+
         $db->statement('CREATE TABLE rt_big (id INTEGER PRIMARY KEY, body TEXT NOT NULL)');
         self::insertBig($db);
 
@@ -240,6 +251,13 @@ final class TransferFixture
             BEGIN
                 UPDATE rt_order_items SET note = 'updated' WHERE order_id = NEW.order_id AND line_no = NEW.line_no;
             END");
+
+        $db->statement('CREATE TABLE rt_insert_log (id INTEGER PRIMARY KEY, note TEXT)');
+        $db->statement("CREATE TRIGGER rt_insert_log_mark AFTER INSERT ON rt_insert_log
+            BEGIN
+                UPDATE rt_insert_log SET note = COALESCE(note, '') || '+' WHERE id = NEW.id;
+            END");
+        self::insertLog($db);
     }
 
     private static function createPostgres(Connection $db): void
@@ -275,6 +293,8 @@ final class TransferFixture
         $db->statement($insert."(2, 'nulls', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)");
         $db->statement($insert."(3, 'edge', false, 0, -9223372036854775808, -0.0001, 'Infinity', ?, '', {$bin('')}, '[]', '{}', 'sad', '{}', '00000000-0000-0000-0000-000000000000', 'infinity', '-infinity', '1970-01-01 00:00:00+00', '00:00:00')", [self::edgeLabel()]);
 
+        self::createFloats($db, 'INTEGER PRIMARY KEY', 'DOUBLE PRECISION', 'REAL');
+
         $db->statement('CREATE TABLE rt_big (id INTEGER PRIMARY KEY, body TEXT NOT NULL)');
         self::insertBig($db);
 
@@ -305,12 +325,13 @@ final class TransferFixture
         $db->statement('CREATE TABLE rt_measurements_high PARTITION OF rt_measurements FOR VALUES FROM (100) TO (1000)');
         $db->insert('INSERT INTO rt_measurements (id, reading) VALUES (1, 1.25), (2, NULL), (150, -3.5)');
 
-        // Review Focus 1: a second schema, a reserved-word table and a column with a double quote in its name.
-        $db->statement('CREATE SCHEMA sales');
-        $db->statement('CREATE TABLE sales."order" (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "we""ird" TEXT, feeling mood NOT NULL DEFAULT \'ok\')');
-        $db->insert('INSERT INTO sales."order" ("we""ird", feeling) VALUES (?, \'happy\'), (NULL, \'sad\'), (?, DEFAULT)', ['x"y', "it's"]);
-        $db->statement('CREATE SEQUENCE sales.invoice_no START 1000 INCREMENT 5');
-        $db->select("SELECT nextval('sales.invoice_no'), nextval('sales.invoice_no')");
+        // Review Focus 1: a second, mixed-case schema (always quoted), a reserved-word table and a column with a
+        // double quote in its name.
+        $db->statement('CREATE SCHEMA "Sales"');
+        $db->statement('CREATE TABLE "Sales"."order" (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "we""ird" TEXT, feeling mood NOT NULL DEFAULT \'ok\')');
+        $db->insert('INSERT INTO "Sales"."order" ("we""ird", feeling) VALUES (?, \'happy\'), (NULL, \'sad\'), (?, DEFAULT)', ['x"y', "it's"]);
+        $db->statement('CREATE SEQUENCE "Sales".invoice_no START 1000 INCREMENT 5');
+        $db->select("SELECT nextval('\"Sales\".invoice_no'), nextval('\"Sales\".invoice_no')");
 
         self::createViews($db);
     }
@@ -329,6 +350,24 @@ final class TransferFixture
     {
         // Emoji, right-to-left text and a combining accent.
         return "🚀 עברית e\u{301}";
+    }
+
+    /**
+     * Doubles that PHP's 14-digit float-to-string cast (precision=14) would round, and single-precision values
+     * (MySQL FLOAT, PostgreSQL REAL; SQLite has only doubles) that need all their digits to come back exactly.
+     */
+    private static function createFloats(Connection $db, string $idType, string $double, ?string $single): void
+    {
+        $db->statement("CREATE TABLE rt_floats (id {$idType}, d {$double} NULL".($single === null ? '' : ", f {$single} NULL").')');
+        $db->insert($single === null
+            ? 'INSERT INTO rt_floats (id, d) VALUES (1, 0.30000000000000004), (2, 1.0000000000000002), (3, 123456789.12345679)'
+            : 'INSERT INTO rt_floats (id, d, f) VALUES (1, 0.30000000000000004, 16777215), (2, 1.0000000000000002, 1.17549435e-38), (3, 123456789.12345679, 0.1)');
+    }
+
+    /** The INSERT trigger has already run once on these rows ('a+', '+'): a restore must not run it again. */
+    private static function insertLog(Connection $db): void
+    {
+        $db->insert("INSERT INTO rt_insert_log (id, note) VALUES (1, 'a'), (2, NULL)");
     }
 
     private static function insertBig(Connection $db): void
