@@ -381,9 +381,11 @@ nginx (the example above allows 25m). Caddy has no limit by default.
 
 ### Disk space
 
-- A backup is written under `storage/app/transfers` (the storage volume) and kept for `DBZUPER_TRANSFER_TTL` hours
+- A backup is written under `storage/app/private/transfers` (the storage volume) and kept for `DBZUPER_TRANSFER_TTL` hours
   (default 24) so it can be downloaded again. Leave room for the largest backups you take in a day.
 - An uploaded restore file stays there until its restore ends; uploads are refused when the disk can't hold them.
+- Deleting a connection or an account removes its backup and upload files. A directory there that no transfer owns
+  (e.g. after a crash) is removed once it is older than `DBZUPER_TRANSFER_TTL`.
 - On Windows (outside Docker), a native backup first writes an uncompressed copy next to the result, so it needs room
   for the uncompressed dump as well.
 
