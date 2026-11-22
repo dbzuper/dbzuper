@@ -92,8 +92,8 @@ it('omits PGPASSWORD when no password is set', function () {
 it('writes a 0600 defaults file and cleans it up', function () {
     $command = ncbRestore(ncbConnection(DriverName::MySql), ncbTool('mysql', '8.4.2'));
 
-    expect($command->argv[1])->toStartWith('--defaults-extra-file=');
-    $file = substr($command->argv[1], strlen('--defaults-extra-file='));
+    expect($command->argv[1])->toStartWith('--defaults-file=');
+    $file = substr($command->argv[1], strlen('--defaults-file='));
     expect(is_file($file))->toBeTrue();
     if (PHP_OS_FAMILY !== 'Windows') {
         expect(fileperms($file) & 0777)->toBe(0600)
@@ -112,7 +112,7 @@ it('writes a 0600 defaults file and cleans it up', function () {
 
 it('maps ssl options into the defaults file', function (DriverName $driver, array $options, array $expected) {
     $command = ncbRestore(ncbConnection($driver, $options), ncbTool('mysql', '8.4.2'));
-    $content = file_get_contents(substr($command->argv[1], strlen('--defaults-extra-file=')));
+    $content = file_get_contents(substr($command->argv[1], strlen('--defaults-file=')));
     $command->cleanup();
 
     foreach ($expected as $line) {
@@ -154,7 +154,9 @@ it('maps schema/data/drop options to flags', function () {
     $my = fn (DriverName $d, ExportOptions $o, bool $r = false, bool $e = false) => ncbDump(ncbConnection($d), ncbTool('mysqldump', '8.4.2'), $o, [new DumpObject(null, 't1', 'table')], $r, $e)->argv;
 
     $argv = $my(DriverName::MySql, ncbOptions(drop: true), true, true);
-    expect($argv[1])->toStartWith('--defaults-extra-file=')
+    expect($argv[1])->toStartWith('--defaults-file=')
+        ->and($argv[2])->toBe('--no-login-paths')
+        ->and($argv)->toContain('--comments')
         ->and($argv)->toContain('--single-transaction', '--no-tablespaces', '--routines', '--triggers', '--events', '--add-drop-table', '--hex-blob', '--default-character-set=utf8mb4', '--set-gtid-purged=OFF')
         ->and($argv)->not->toContain('--column-statistics=0')
         ->and(array_slice($argv, -2))->toBe(['--', 'shop']);
@@ -176,7 +178,8 @@ it('builds restore commands', function () {
     expect($psql->argv)->toBe(['/usr/bin/psql', '-X', '-q', '--no-password', '--single-transaction', '-v', 'ON_ERROR_STOP=1', '--host=db.example.test', '--port=3307', '--username=app_user']);
 
     $my = ncbRestore(ncbConnection(DriverName::MariaDb), ncbTool('mariadb', '11.4.2'));
-    expect(array_slice($my->argv, 2))->toBe(['--database=shop', '--default-character-set=utf8mb4', '--binary-mode', '--sandbox']);
+    expect($my->argv)->not->toContain('--no-login-paths')
+        ->and(array_slice($my->argv, 2))->toBe(['--database=shop', '--default-character-set=utf8mb4', '--binary-mode', '--sandbox']);
     $my->cleanup();
 });
 

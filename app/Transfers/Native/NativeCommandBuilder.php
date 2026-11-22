@@ -30,7 +30,7 @@ final class NativeCommandBuilder
         }
 
         [$file, $temp] = self::defaultsFile($c);
-        $argv = [$path, '--defaults-extra-file='.$file, '--single-transaction', '--no-tablespaces'];
+        $argv = [...self::clientHead($c, $path, $file), '--single-transaction', '--no-tablespaces', '--comments'];
         if ($routines) {
             $argv[] = '--routines';
         }
@@ -76,7 +76,7 @@ final class NativeCommandBuilder
 
         [$file, $temp] = self::defaultsFile($c);
 
-        $argv = [$path, '--defaults-extra-file='.$file, '--database='.$c->database, '--default-character-set=utf8mb4', '--binary-mode'];
+        $argv = [...self::clientHead($c, $path, $file), '--database='.$c->database, '--default-character-set=utf8mb4', '--binary-mode'];
         // A dump is untrusted input: no `\!` / `system` shell commands, on clients that can switch them off.
         if ($c->driver === DriverName::MariaDb) {
             if (self::atLeast((string) $t->version, ['10.5.25', '10.6.18', '10.11.8', '11.0.6', '11.1.5', '11.2.4', '11.4.2'], '11.5.0')) {
@@ -245,6 +245,22 @@ final class NativeCommandBuilder
         $escaped = strtr($value, ['\\' => '\\\\', '"' => '\\"', "\n" => '\\n', "\r" => '\\r', "\t" => '\\t', "\0" => '']);
 
         return $key.'="'.$escaped.'"';
+    }
+
+    /**
+     * Tool, then our options file as the only one read (--defaults-file, not -extra-file, which still reads
+     * /etc/my.cnf, ~/.my.cnf and friends), then login paths off where they exist (MySQL 8 clients; MariaDB has none).
+     *
+     * @return list<string>
+     */
+    private static function clientHead(SavedConnection $c, string $path, string $file): array
+    {
+        $head = [$path, '--defaults-file='.$file];
+        if ($c->driver === DriverName::MySql) {
+            $head[] = '--no-login-paths';
+        }
+
+        return $head;
     }
 
     private static function toolPath(ToolCheck $t): string
