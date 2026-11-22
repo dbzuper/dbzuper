@@ -56,6 +56,39 @@ class TransferStorage
             });
     }
 
+    /**
+     * Fails every Running transfer whose worker ran on this host and removes its files: called when the server starts
+     * (the Docker entrypoint, before any worker), so none of those workers can still be alive. Returns how many.
+     */
+    public static function failRunsOnThisHost(): int
+    {
+        $host = gethostname();
+        if ($host === false || $host === '') {
+            return 0;
+        }
+
+        $failed = 0;
+        Transfer::query()
+            ->where('status', TransferStatus::Running)
+            ->where('worker_host', $host)
+            ->chunkById(100, function ($transfers) use (&$failed) {
+                foreach ($transfers as $transfer) {
+                    self::deleteFiles($transfer);
+                    $transfer->forceFill([
+                        'status' => TransferStatus::Failed,
+                        'error' => 'The server restarted while this was running.',
+                        'file_path' => null,
+                        'file_size' => null,
+                        'expires_at' => null,
+                        'finished_at' => now(),
+                    ])->save();
+                    $failed++;
+                }
+            });
+
+        return $failed;
+    }
+
     /** Removes expired files, fails abandoned uploads and deletes old history rows. Running transfers are left alone. */
     public static function prune(): void
     {

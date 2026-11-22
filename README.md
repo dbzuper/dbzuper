@@ -24,7 +24,7 @@
 
 ## Quick start
 
-    docker run -d --name dbzuper -p 8080:8080 \
+    docker run -d --name dbzuper --hostname dbzuper -p 8080:8080 \
       --add-host=host.docker.internal:host-gateway \
       -v dbzuper-storage:/app/storage -v dbzuper-sqlite:/data/sqlite \
       ghcr.io/dbzuper/dbzuper:latest

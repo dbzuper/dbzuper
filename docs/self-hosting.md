@@ -12,7 +12,7 @@ DBZuper ships as a single Docker image (FrankenPHP 1.13 on PHP 8.4, running as a
 
 With the published image (linux/amd64 and linux/arm64):
 
-    docker run -d --name dbzuper -p 8080:8080 --restart unless-stopped \
+    docker run -d --name dbzuper --hostname dbzuper -p 8080:8080 --restart unless-stopped \
       --add-host=host.docker.internal:host-gateway \
       -v dbzuper-storage:/app/storage -v dbzuper-sqlite:/data/sqlite \
       ghcr.io/dbzuper/dbzuper:latest
@@ -115,7 +115,7 @@ To keep the data in a folder you can open directly, give `-v` a path instead of 
     mkdir -p ~/dbzuper/storage ~/dbzuper/sqlite
     sudo chown -R 10001:10001 ~/dbzuper
 
-    docker run -d --name dbzuper -p 8080:8080 --restart unless-stopped \
+    docker run -d --name dbzuper --hostname dbzuper -p 8080:8080 --restart unless-stopped \
       --add-host=host.docker.internal:host-gateway \
       -v ~/dbzuper/storage:/app/storage -v ~/dbzuper/sqlite:/data/sqlite \
       ghcr.io/dbzuper/dbzuper:latest
@@ -304,16 +304,23 @@ data is [below](#backups-and-the-app_key).
 
 Backups and restores run on the `transfers` queue, other background work on the `default` queue. The image starts the
 workers next to the web server: `DBZUPER_TRANSFER_WORKERS` (default 2) transfer workers and one default worker. A
-worker that exits is restarted a second later (logged as `entrypoint: … worker exited`), and all of them stop with the
-container. Set `DBZUPER_TRANSFER_WORKERS=0` in `.env.docker` to run no transfer workers (backups then wait with "No
+worker that exits is restarted (logged as `entrypoint: … worker exited`), after 1 second and then longer, up to 30
+seconds, while it keeps failing. All of them stop with the container; if the web server itself stops, the workers get
+30 seconds to finish and the container exits so its restart policy can start it again. Set `DBZUPER_TRANSFER_WORKERS=0` in `.env.docker` to run no transfer workers (backups then wait with "No
 background worker is running"). One-off commands (`docker compose run --rm app php artisan …`) start no workers.
 
 - Each transfer worker runs one backup or restore at a time, so the worker count is how many run side by side. Only one
   runs per database at a time.
-- `docker compose stop` gives the container 10 seconds. A backup or restore still running then is killed, and is
-  marked failed once DBZuper notices its worker is gone (at the latest after 6 hours without progress); until then that
-  database can't start another one. Let it finish first, or raise `stop_grace_period` in `docker-compose.yml`.
-- Outside Docker, run a worker yourself (under systemd, Supervisor or similar):
+- `docker compose stop` gives the container 10 seconds. A backup or restore still running then is killed. When the
+  container starts again, the entrypoint marks it failed ("The server restarted while this was running.") and removes
+  its partial file before any worker starts, so the database is free at once. This matches by host name:
+  `docker-compose.yml` sets `hostname: dbzuper` so a recreated container (an upgrade, a changed `.env.docker`) counts
+  as the same host; with `docker run`, pass `--hostname dbzuper`. Otherwise, and outside Docker, an interrupted
+  transfer is marked failed once DBZuper notices its worker process is gone, at the latest after 6 hours without
+  progress; until then that database can't start another one. To avoid all this, let transfers finish before stopping,
+  or raise `stop_grace_period` in `docker-compose.yml`.
+- Outside Docker, run a worker yourself (under systemd, Supervisor or similar), and run
+  `php artisan dbzuper:transfers:recover` before starting the workers after a reboot:
 
       php artisan queue:work transfers --queue=transfers --sleep=1 --tries=1 --timeout=0
       php artisan queue:work database --queue=default --sleep=3 --tries=3
@@ -349,16 +356,19 @@ newest version first). To use a particular binary, set its path; when set, only 
 | `DBZUPER_PG_DUMP_PATH`      | `pg_dump`      |
 | `DBZUPER_PSQL_PATH`         | `psql`         |
 
-The tool must be at least the server's major version (`pg_dump` 16 can't dump a PostgreSQL 18 server) and from the
-same engine (MySQL's `mysqldump` for MySQL, MariaDB's for MariaDB). Versions are read with `--version` and cached for
+The tool must come from the same engine: MySQL's `mysqldump`/`mysql` for MySQL servers (any MariaDB tool is refused for
+MySQL), MariaDB's tools for MariaDB servers. For PostgreSQL and MySQL it must also be at least the server's major
+version (`pg_dump` 16 can't dump a PostgreSQL 18 server, `mysqldump` 8.4 can't dump MySQL 9); for MariaDB any MariaDB
+tool from 10 on is accepted. Versions are read with `--version` and cached for
 10 minutes. Passwords reach the tools through a temporary option file or the environment, never the command line.
 
 ### Uploads and the reverse proxy
 
-Restores upload the file in 4 MB pieces (the server accepts up to 8 MB). The image sets PHP's `post_max_size` and
-`upload_max_filesize` to 16M. Outside the image, PHP's default `post_max_size` of 8M is enough; a reverse proxy must
-allow request bodies of at least 16 MB, for example `client_max_body_size 16m;` in nginx (the example above allows
-25m). Caddy has no limit by default.
+Restores upload the file in 4 MB pieces (the server accepts up to 8 MB each) as raw `PUT` request bodies, not form
+uploads, so `upload_max_filesize` doesn't matter. PHP's `post_max_size` does: the app answers 413 to any request body
+larger than it, whatever the method. The image sets it to 16M; outside the image, PHP's default of 8M is enough for
+the 4 MB pieces. A reverse proxy in front must allow at least 16 MB as well, for example `client_max_body_size 16m;` in
+nginx (the example above allows 25m). Caddy has no limit by default.
 
 ### Disk space
 

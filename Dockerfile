@@ -8,9 +8,11 @@
 # PHP image as the runtime (extensions already installed, so layers are shared) with the Node 24
 # binaries copied in from the official node image. Stages:
 #   php-base -> vendor (composer --no-dev) -> assets (node + wayfinder + vite) -> runtime
-#   mysql-client (MySQL's mysqldump/mysql, amd64 only) -> runtime
+#   downloads (PGDG signing key, checked; MySQL's mysqldump/mysql, amd64 only) -> runtime
 #
-# Pinned images (checked 2026-10-16): dunglas/frankenphp:1.13-php8.4, composer:2, node:24-bookworm-slim.
+# Pinned images (checked 2026-11-23): dunglas/frankenphp:1.13-php8.4 (Debian 13 trixie), composer:2,
+# node:24-bookworm-slim, debian:bookworm-slim. Pinned downloads: MySQL 8.4.9 client tarball (sha256) and the
+# PostgreSQL apt key (fingerprint).
 
 ARG FRANKENPHP_TAG=1.13-php8.4
 
@@ -42,25 +44,33 @@ RUN cp .env.example .env \
     && php artisan key:generate --force
 RUN php artisan package:discover --ansi && npm run build
 
-# ---------------------------------------------------------------- mysql-client
+# ---------------------------------------------------------------- downloads
+# The PostgreSQL apt repository key, accepted only with its published fingerprint.
 # MySQL's mysqldump/mysql for native backups of MySQL servers. Oracle's apt package conflicts with
 # mariadb-client, so only the two clients and the libraries they need come from Oracle's minimal tarball
-# (an archived, permanent URL). It exists for x86_64 only (no small ARM build), so other platforms get an
-# empty /opt/mysql and MySQL servers use the built-in method there. The mysql client links ncurses 5,
-# which Debian 13 no longer ships: bookworm's copy goes next to the binaries (found through their RPATH).
-FROM debian:bookworm-slim AS mysql-client
+# (an archived, permanent URL; checked against its sha256). It exists for x86_64 only (no small ARM build), so
+# other platforms get an empty /opt/mysql and MySQL servers use the built-in method there. The mysql client links
+# ncurses 5, which Debian 13 no longer ships: bookworm's copy goes next to the binaries (found through their RPATH).
+FROM debian:bookworm-slim AS downloads
 ARG TARGETARCH
+ARG PGDG_KEY_FINGERPRINT=B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
 ARG MYSQL_CLIENT_VERSION=8.4.9
-RUN mkdir -p /opt/mysql \
+ARG MYSQL_CLIENT_SHA256=1e9f341e36d4fcdbb3e4d7d3dae6d6b2a42ebe8333e8f276c25e25564ce565c1
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl gnupg xz-utils \
+    && curl -fsSL -o /pgdg.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && gpg --show-keys --with-colons /pgdg.asc | grep -qx "fpr:::::::::${PGDG_KEY_FINGERPRINT}:" \
+    && mkdir -p /opt/mysql \
     && if [ "$TARGETARCH" = "amd64" ]; then \
-        apt-get update \
-        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl xz-utils libncurses5 libtinfo5 \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libncurses5 libtinfo5 \
         && curl -fsSL -o /tmp/mysql.tar.xz "https://cdn.mysql.com/archives/mysql-8.4/mysql-${MYSQL_CLIENT_VERSION}-linux-glibc2.17-x86_64-minimal.tar.xz" \
+        && echo "${MYSQL_CLIENT_SHA256}  /tmp/mysql.tar.xz" | sha256sum -c - \
         && tar -xJf /tmp/mysql.tar.xz -C /opt/mysql --strip-components=1 --wildcards \
             '*/bin/mysql' '*/bin/mysqldump' '*/lib/private/libssl.so*' '*/lib/private/libcrypto.so*' \
         && cp -a /lib/x86_64-linux-gnu/libncurses.so.5* /lib/x86_64-linux-gnu/libtinfo.so.5* /opt/mysql/lib/private/ \
-        && rm -rf /tmp/mysql.tar.xz /var/lib/apt/lists/*; \
-    fi
+        && rm /tmp/mysql.tar.xz; \
+    fi \
+    && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------- runtime
 FROM php-base AS runtime
@@ -69,18 +79,17 @@ FROM php-base AS runtime
 # apt repository (a newer pg_dump dumps older servers; Debian's own is older), mariadb-dump/mariadb from Debian,
 # and MySQL's clients from the stage above. /usr/local/bin comes first on PATH, so MySQL's mysqldump/mysql and
 # PostgreSQL 18's tools win over Debian's wrappers and compatibility names. No sqlite3: SQLite always uses built-in.
-RUN install -d /usr/share/postgresql-common/pgdg \
-    && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-    && . /etc/os-release \
+COPY --from=downloads /pgdg.asc /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+RUN . /etc/os-release \
     && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends postgresql-client-18 mariadb-client \
     && rm -rf /var/lib/apt/lists/* \
     && ln -s /usr/lib/postgresql/18/bin/pg_dump /usr/lib/postgresql/18/bin/psql /usr/local/bin/
-COPY --from=mysql-client /opt/mysql /opt/mysql
+COPY --from=downloads /opt/mysql /opt/mysql
 RUN if [ -x /opt/mysql/bin/mysqldump ]; then ln -s /opt/mysql/bin/mysqldump /opt/mysql/bin/mysql /usr/local/bin/; fi
 
-# Restore uploads arrive in pieces of at most 8 MB (the client sends 4 MB).
+# Restore pieces are raw PUT bodies of at most 8 MiB; Laravel refuses bodies above post_max_size (see the file).
 COPY docker/php.ini "$PHP_INI_DIR/conf.d/zz-dbzuper.ini"
 
 # The app database is SQLite under a multi-threaded server: WAL lets reads run beside a write,

@@ -13,11 +13,12 @@
   stay downloadable for 24 hours. See the [user guide](docs/user-guide.md#backup--restore).
 - **Docker image**: now includes `pg_dump`/`psql` 18, `mariadb-dump`/`mariadb`, and MySQL 8.4's `mysqldump`/`mysql`
   (linux/amd64 only; on arm64 MySQL servers use the built-in method), and starts two backup/restore workers
-  (`DBZUPER_TRANSFER_WORKERS`) and one default-queue worker next to the web server, restarting any that exit. PHP's
-  `post_max_size` and `upload_max_filesize` are 16M. Behind a reverse proxy, allow request bodies of at least 16 MB
-  (nginx: `client_max_body_size 16m`). Outside Docker, run `php artisan queue:work transfers --queue=transfers
-  --sleep=1 --tries=1 --timeout=0` (`composer dev` already does). See
-  [self-hosting](docs/self-hosting.md#backup-and-restore).
+  (`DBZUPER_TRANSFER_WORKERS`) and one default-queue worker next to the web server, restarting any that exit. On start
+  it marks backups and restores cut off by a restart as failed (`php artisan dbzuper:transfers:recover`), so their
+  database is free again; Compose now sets `hostname: dbzuper` for this (with `docker run`, add `--hostname dbzuper`).
+  PHP's `post_max_size` is 16M in the image. Behind a reverse proxy, allow request bodies of at least 16 MB (nginx:
+  `client_max_body_size 16m`). Outside Docker, run `php artisan queue:work transfers --queue=transfers --sleep=1
+  --tries=1 --timeout=0` (`composer dev` already does). See [self-hosting](docs/self-hosting.md#backup-and-restore).
 - **New settings**: `DBZUPER_TRANSFER_TTL`, `DBZUPER_TRANSFER_MAX_BYTES`, `DBZUPER_TRANSFER_UPLOAD_IDLE_MINUTES`,
   `DBZUPER_TRANSFER_RETRY_AFTER`, `DBZUPER_TRANSFER_WORKERS`, `DBZUPER_VERSION`, and `DBZUPER_*_PATH` to point at a
   specific native tool.
