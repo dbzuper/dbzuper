@@ -184,3 +184,29 @@ it('prunes directories no transfer owns once they are older than the file TTL', 
         ->and(is_dir($recent))->toBeTrue()
         ->and(is_file($owned->file_path))->toBeTrue();
 });
+
+it('counts a process of another user as alive (EPERM), and a missing one as gone', function () {
+    if (! function_exists('posix_kill')) {
+        $this->markTestSkipped('Needs ext-posix.');
+    }
+
+    // PID 1 always exists; as a non-root user, signalling it is refused with EPERM. As root it simply succeeds.
+    expect(TransferStorage::processAlive(1))->toBeTrue()
+        ->and(TransferStorage::processAlive(getmypid()))->toBeTrue()
+        ->and(TransferStorage::processAlive(4194999))->toBeFalse();
+});
+
+it('does not fail a dead run the worker finished in the meantime', function () {
+    $t = storedTransfer(['status' => TransferStatus::Running]);
+    $t->forceFill(['updated_at' => now()->subHours(7)])->saveQuietly();
+    Transfer::retrieved(function (Transfer $read) use ($t) {
+        if ($read->id === $t->id && $read->status === TransferStatus::Running) {
+            Transfer::query()->whereKey($t->id)->update(['status' => TransferStatus::Done->value, 'finished_at' => now()]);
+        }
+    });
+
+    TransferStorage::failDeadRuns();
+
+    expect($t->fresh()->status)->toBe(TransferStatus::Done)
+        ->and($t->fresh()->error)->toBeNull();
+});

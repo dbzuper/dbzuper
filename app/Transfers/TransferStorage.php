@@ -17,6 +17,9 @@ class TransferStorage
     /** A running transfer saves progress every second: this long without a save means its worker died. */
     private const STALE_RUN_HOURS = 6;
 
+    /** errno for "operation not permitted" (Linux, macOS and the BSDs). */
+    private const EPERM = 1;
+
     public static function directory(Transfer $transfer): string
     {
         $directory = storage_path('app/private/transfers/'.$transfer->id);
@@ -64,7 +67,7 @@ class TransferStorage
     public static function failDeadRuns(): void
     {
         $host = gethostname();
-        $canCheckPid = PHP_OS_FAMILY === 'Linux';
+        $canCheckPid = function_exists('posix_kill') || PHP_OS_FAMILY === 'Linux';
 
         Transfer::query()
             ->where('status', TransferStatus::Running)
@@ -74,17 +77,35 @@ class TransferStorage
                     $dead = $canCheckPid
                         && $transfer->worker_pid !== null
                         && $transfer->worker_host === $host
-                        && ! is_dir('/proc/'.$transfer->worker_pid);
+                        && ! self::processAlive($transfer->worker_pid);
 
+                    // Only if it is still Running: the worker may have finished it since it was read.
                     if ($stale || $dead) {
-                        $transfer->forceFill([
+                        Transfer::query()->whereKey($transfer->id)->where('status', TransferStatus::Running)->update([
                             'status' => TransferStatus::Failed,
                             'error' => 'The background worker stopped while this was running.',
                             'finished_at' => now(),
-                        ])->save();
+                        ]);
                     }
                 }
             });
+    }
+
+    /**
+     * Whether a process with this id exists on this host. Signal 0 checks without sending anything; EPERM means it
+     * exists under another user. Without ext-posix, Linux's /proc tells.
+     */
+    public static function processAlive(int $pid): bool
+    {
+        if (function_exists('posix_kill')) {
+            if (posix_kill($pid, 0)) {
+                return true;
+            }
+
+            return posix_get_last_error() === self::EPERM;
+        }
+
+        return is_dir('/proc/'.$pid);
     }
 
     /**

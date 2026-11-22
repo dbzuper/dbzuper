@@ -66,7 +66,9 @@ abstract class TransferJob implements ShouldQueue
         try {
             $this->perform($transfer, $progress);
             $progress->flush();
-            $transfer->forceFill(['status' => TransferStatus::Done, 'finished_at' => now()])->save();
+            if (! $this->finish($transfer, ['status' => TransferStatus::Done, 'finished_at' => now()])) {
+                return;
+            }
             try {
                 $this->onDone($transfer);
             } catch (Throwable $e) {
@@ -75,15 +77,16 @@ abstract class TransferJob implements ShouldQueue
             }
         } catch (TransferCancelled) {
             $progress->flush();
-            $transfer->forceFill(['status' => TransferStatus::Cancelled, 'finished_at' => now()])->save();
-            $this->onCancelled($transfer);
+            if ($this->finish($transfer, ['status' => TransferStatus::Cancelled, 'finished_at' => now()])) {
+                $this->onCancelled($transfer);
+            }
         } catch (Throwable $e) {
             try {
                 $progress->flush();
             } catch (Throwable) {
                 // Losing the last progress beats hiding the real error.
             }
-            $this->markFailed($transfer, $e);
+            $this->markFailed($transfer, $e, [TransferStatus::Running]);
         }
     }
 
@@ -93,7 +96,7 @@ abstract class TransferJob implements ShouldQueue
         $transfer = Transfer::query()->find($this->transferId);
 
         if ($transfer !== null && $transfer->status->isActive()) {
-            $this->markFailed($transfer, $e);
+            $this->markFailed($transfer, $e, array_values(array_filter(TransferStatus::cases(), fn (TransferStatus $s) => $s->isActive())));
         }
     }
 
@@ -125,7 +128,10 @@ abstract class TransferJob implements ShouldQueue
     /** Called after the transfer is marked Done. */
     protected function onDone(Transfer $transfer): void {}
 
-    /** Called after the transfer is marked Cancelled: subclasses remove partial files. */
+    /**
+     * Called after the transfer is marked Cancelled, and when it ended without this worker (failed by the dead-run
+     * sweep, or its row deleted) while the work was still going: subclasses remove partial files.
+     */
     protected function onCancelled(Transfer $transfer): void {}
 
     /** Called after the transfer is marked Failed. */
@@ -161,14 +167,49 @@ abstract class TransferJob implements ShouldQueue
         return Transfer::query()->whereKey($transfer->id)->where('status', TransferStatus::Pending)->update($changes) === 1;
     }
 
-    private function markFailed(Transfer $transfer, Throwable $e): void
+    /**
+     * Moves a Running transfer to its final status. When it is no longer Running (the dead-run sweep failed it while
+     * this worker was still busy, or its row is gone), it is left as it is and only this run's output is removed.
+     *
+     * @param  array<string, mixed>  $changes
+     */
+    private function finish(Transfer $transfer, array $changes): bool
     {
-        $transfer->forceFill([
+        return $this->conclude($transfer, $changes, [TransferStatus::Running]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $changes
+     * @param  list<TransferStatus>  $from  the statuses the transfer may still be in
+     */
+    private function conclude(Transfer $transfer, array $changes, array $from): bool
+    {
+        $changed = Transfer::query()
+            ->whereKey($transfer->id)
+            ->whereIn('status', array_map(fn (TransferStatus $s) => $s->value, $from))
+            ->update($changes) === 1;
+
+        if (! $changed) {
+            $this->onCancelled($transfer);
+
+            return false;
+        }
+        $transfer->forceFill($changes)->syncOriginal();
+
+        return true;
+    }
+
+    /** @param  list<TransferStatus>  $from */
+    private function markFailed(Transfer $transfer, Throwable $e, array $from): void
+    {
+        $changes = [
             'status' => TransferStatus::Failed,
             'error' => $this->sanitizedMessage($e, $transfer),
             'finished_at' => now(),
-        ])->save();
+        ];
 
-        $this->onFailed($transfer, $e);
+        if ($this->conclude($transfer, $changes, $from)) {
+            $this->onFailed($transfer, $e);
+        }
     }
 }

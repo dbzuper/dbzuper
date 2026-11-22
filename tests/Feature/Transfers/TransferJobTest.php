@@ -17,6 +17,13 @@ class FakeTransferJob extends TransferJob
 
     public ?string $failedWith = null;
 
+    public bool $done = false;
+
+    protected function onDone(Transfer $t): void
+    {
+        $this->done = true;
+    }
+
     protected function perform(Transfer $t, TransferProgress $p): void
     {
         (self::$perform)($t, $p);
@@ -201,4 +208,42 @@ it('moves to running only while still pending', function () {
     (new FakeTransferJob($t->id))->handle();
 
     expect($ran)->toBeFalse()->and($t->fresh()->status)->toBe(TransferStatus::Running);
+});
+
+it('leaves a transfer the dead-run sweep failed mid-run as failed, and removes its output', function (string $ending) {
+    $t = fakeJobTransfer();
+    FakeTransferJob::$perform = function (Transfer $t) use ($ending) {
+        // The sweep decided the worker was gone while it was still busy.
+        Transfer::query()->whereKey($t->id)->update([
+            'status' => TransferStatus::Failed,
+            'error' => 'The background worker stopped while this was running.',
+        ]);
+        if ($ending === 'error') {
+            throw new RuntimeException('boom');
+        }
+    };
+
+    $job = new FakeTransferJob($t->id);
+    $job->handle();
+
+    expect($t->fresh()->status)->toBe(TransferStatus::Failed)
+        ->and($t->fresh()->error)->toBe('The background worker stopped while this was running.')
+        ->and($job->done)->toBeFalse()
+        ->and($job->failedWith)->toBeNull()
+        ->and($job->cancelled)->toBeTrue();
+})->with(['success' => 'done', 'error' => 'error']);
+
+it('leaves a swept transfer failed when the cancel lands too', function () {
+    $t = fakeJobTransfer();
+    FakeTransferJob::$perform = function (Transfer $t, TransferProgress $p) {
+        Transfer::query()->whereKey($t->id)->update(['status' => TransferStatus::Failed, 'error' => 'swept', 'cancel_requested_at' => now()]);
+        $p->checkCancelled();
+    };
+
+    $job = new FakeTransferJob($t->id);
+    $job->handle();
+
+    expect($t->fresh()->status)->toBe(TransferStatus::Failed)
+        ->and($t->fresh()->error)->toBe('swept')
+        ->and($job->cancelled)->toBeTrue();
 });
