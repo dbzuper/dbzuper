@@ -1,21 +1,48 @@
 import { useEffect, useState } from 'react';
+import { ApiError } from '@/lib/http';
 import type { WorkspaceRef } from '@/types/connection';
 import { ACTIVE_STATUSES, transfersApi } from '@/lib/transfers-api';
 import type { Transfer } from '@/lib/transfers-api';
 
 export const POLL_INTERVAL_MS = 1000;
+/** Failed polls in a row before the error is shown; polling goes on meanwhile. */
+export const POLL_FAILURES_BEFORE_ERROR = 3;
 
-/** Polls one transfer every second while it is active; stops when it finishes or the component unmounts. */
+export const POLL_RETRY_MESSAGE =
+    "Couldn't reach the server to check on this transfer. Retrying…";
+
+export type TransferPoll = {
+    transfer: Transfer | null;
+    /** Set after a 4xx (polling stops) or after several failed polls in a row (polling goes on). */
+    error: string | null;
+};
+
+function messageOf(body: unknown): string | null {
+    if (body && typeof body === 'object' && 'message' in body) {
+        const m = (body as { message: unknown }).message;
+        if (typeof m === 'string' && m !== '') return m;
+    }
+    return null;
+}
+
+/**
+ * Polls one transfer every second while it is active; stops when it finishes, the component unmounts, or the
+ * server answers with a 4xx (the transfer is gone or not this user's).
+ */
 export function useTransferPoll(
     ref: WorkspaceRef,
     id: string | null,
-): Transfer | null {
-    const [transfer, setTransfer] = useState<Transfer | null>(null);
+): TransferPoll {
+    const [state, setState] = useState<TransferPoll>({
+        transfer: null,
+        error: null,
+    });
 
     useEffect(() => {
-        setTransfer(null);
+        setState({ transfer: null, error: null });
         if (id === null) return;
         let stopped = false;
+        let failures = 0;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const controller = new AbortController();
 
@@ -27,11 +54,27 @@ export function useTransferPoll(
                     controller.signal,
                 );
                 if (stopped) return;
-                setTransfer(next);
+                failures = 0;
+                setState({ transfer: next, error: null });
                 if (!ACTIVE_STATUSES.includes(next.status)) return;
-            } catch {
-                // A failed poll is retried on the next tick.
+            } catch (e) {
                 if (stopped) return;
+                if (
+                    e instanceof ApiError &&
+                    e.status >= 400 &&
+                    e.status < 500
+                ) {
+                    const error =
+                        e.status === 404
+                            ? 'This transfer no longer exists.'
+                            : (messageOf(e.body) ??
+                              `Couldn't check on this transfer (status ${e.status}).`);
+                    setState((s) => ({ ...s, error }));
+                    return;
+                }
+                failures++;
+                if (failures >= POLL_FAILURES_BEFORE_ERROR)
+                    setState((s) => ({ ...s, error: POLL_RETRY_MESSAGE }));
             }
             timer = setTimeout(tick, POLL_INTERVAL_MS);
         };
@@ -44,5 +87,5 @@ export function useTransferPoll(
         };
     }, [ref, id]);
 
-    return transfer;
+    return state;
 }

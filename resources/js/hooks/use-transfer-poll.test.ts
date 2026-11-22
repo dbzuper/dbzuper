@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/http';
 import { transfersApi } from '@/lib/transfers-api';
 import type { Transfer, TransferStatus } from '@/lib/transfers-api';
 import { useTransferPoll } from './use-transfer-poll';
@@ -22,11 +23,11 @@ describe('useTransferPoll', () => {
 
         const { result } = renderHook(() => useTransferPoll('5', 't1'));
         await act(() => vi.advanceTimersByTimeAsync(0));
-        expect(result.current?.status).toBe('pending');
+        expect(result.current.transfer?.status).toBe('pending');
         await act(() => vi.advanceTimersByTimeAsync(1000));
-        expect(result.current?.status).toBe('running');
+        expect(result.current.transfer?.status).toBe('running');
         await act(() => vi.advanceTimersByTimeAsync(1000));
-        expect(result.current?.status).toBe('done');
+        expect(result.current.transfer?.status).toBe('done');
         const calls = show.mock.calls.length;
         await act(() => vi.advanceTimersByTimeAsync(5000));
         expect(show).toHaveBeenCalledTimes(calls);
@@ -61,7 +62,52 @@ describe('useTransferPoll', () => {
         const show = vi.spyOn(transfersApi, 'show');
         const { result } = renderHook(() => useTransferPoll('5', null));
         await act(() => vi.advanceTimersByTimeAsync(3000));
-        expect(result.current).toBeNull();
+        expect(result.current.transfer).toBeNull();
         expect(show).not.toHaveBeenCalled();
+    });
+});
+
+describe('useTransferPoll failures', () => {
+    it('stops on a 404 and exposes the error', async () => {
+        const show = vi
+            .spyOn(transfersApi, 'show')
+            .mockRejectedValue(
+                new ApiError(404, { message: 'No query results.' }),
+            );
+        const { result } = renderHook(() => useTransferPoll('5', 't1'));
+        await act(() => vi.advanceTimersByTimeAsync(0));
+        expect(result.current.error).toBe('This transfer no longer exists.');
+        await act(() => vi.advanceTimersByTimeAsync(5000));
+        expect(show).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops on a 403 with its message', async () => {
+        const show = vi
+            .spyOn(transfersApi, 'show')
+            .mockRejectedValue(new ApiError(403, { message: 'Forbidden.' }));
+        const { result } = renderHook(() => useTransferPoll('5', 't1'));
+        await act(() => vi.advanceTimersByTimeAsync(0));
+        expect(result.current.error).toBe('Forbidden.');
+        await act(() => vi.advanceTimersByTimeAsync(5000));
+        expect(show).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports an error after three failures in a row and clears it on success', async () => {
+        vi.spyOn(transfersApi, 'show')
+            .mockRejectedValueOnce(new TypeError('network'))
+            .mockRejectedValueOnce(new ApiError(502, 'Bad gateway'))
+            .mockRejectedValueOnce(new TypeError('network'))
+            .mockResolvedValue(make('running'));
+        const { result } = renderHook(() => useTransferPoll('5', 't1'));
+        await act(() => vi.advanceTimersByTimeAsync(0));
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(result.current.error).toBeNull();
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(result.current.error).toBe(
+            "Couldn't reach the server to check on this transfer. Retrying…",
+        );
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(result.current.error).toBeNull();
+        expect(result.current.transfer?.status).toBe('running');
     });
 });

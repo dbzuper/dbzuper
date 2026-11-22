@@ -97,7 +97,7 @@ describe('uploadInChunks', () => {
         const fetchMock = vi
             .spyOn(globalThis, 'fetch')
             .mockRejectedValueOnce(new TypeError('network'))
-            .mockResolvedValueOnce(json(503, { message: 'busy' }))
+            .mockResolvedValueOnce(new Response('busy', { status: 503 }))
             .mockResolvedValueOnce(json(200, { offset: 10 }));
 
         const done = uploadInChunks(file(10), '/up', {
@@ -140,5 +140,22 @@ describe('uploadInChunks', () => {
             }),
         ).rejects.toMatchObject({ name: 'AbortError' });
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+});
+
+describe('uploadInChunks server errors', () => {
+    it('does not retry a 5xx that explains itself', async () => {
+        const fetchMock = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(
+                json(503, { message: "Couldn't queue the job: Redis is down" }),
+            );
+        await expect(
+            uploadInChunks(file(10), '/up', {
+                chunkBytes: 10,
+                onProgress: () => {},
+            }),
+        ).rejects.toThrow("Couldn't queue the job: Redis is down");
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 });

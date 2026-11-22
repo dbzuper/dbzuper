@@ -61,7 +61,13 @@ async function readBody(response: Response): Promise<Body> {
     }
 }
 
-/** Sends one chunk, retrying a network error or a 5xx up to three times (1 s, 2 s, 4 s). */
+/** A failure the server explained (a 5xx with a message): not retried. */
+class ServerError extends Error {}
+
+/**
+ * Sends one chunk, retrying a network error or a 5xx up to three times (1 s, 2 s, 4 s). A 5xx whose body carries a
+ * message (e.g. "Couldn't queue the job: …") is a decided failure, not a hiccup: it is surfaced at once.
+ */
 async function sendWithRetry(
     url: string,
     chunk: Blob,
@@ -73,11 +79,13 @@ async function sendWithRetry(
         try {
             const response = await send(url, chunk, offset, signal);
             if (response.status < 500) return response;
+            const { message } = await readBody(response);
+            if (message) throw new ServerError(message);
             failure = new Error(
-                (await readBody(response)).message ??
-                    `The upload failed with status ${response.status}.`,
+                `The upload failed with status ${response.status}.`,
             );
         } catch (e) {
+            if (e instanceof ServerError) throw e;
             if (signal?.aborted) throw abortError();
             failure = e;
         }
