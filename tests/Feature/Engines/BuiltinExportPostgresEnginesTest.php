@@ -253,11 +253,12 @@ it('does not depend on the settings of either session', function () {
 
         // The restorer opens a session of its own, so hostile settings go on the restore database as its defaults.
         $database = Engines::RESTORE_DATABASE;
-        foreach (["TimeZone = 'Asia/Tokyo'", "DateStyle = 'German, DMY'", "IntervalStyle = 'iso_8601'",
-            'standard_conforming_strings = off', 'search_path = "Sales"'] as $set) {
-            $target->statement("ALTER DATABASE {$database} SET {$set}");
-        }
         try {
+            // Inside the try: a setting that fails half-way still gets the ones before it reset.
+            foreach (["TimeZone = 'Asia/Tokyo'", "DateStyle = 'German, DMY'", "IntervalStyle = 'iso_8601'",
+                'standard_conforming_strings = off', 'search_path = "Sales"'] as $set) {
+                $target->statement("ALTER DATABASE {$database} SET {$set}");
+            }
             pgBuiltinRestore($target, $path);
         } finally {
             @unlink($path);

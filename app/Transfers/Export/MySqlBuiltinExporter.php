@@ -117,7 +117,7 @@ final class MySqlBuiltinExporter implements BuiltinExporter
             $columns = $this->columns($pdo);
             foreach ($tables as $table) {
                 $p->checkCancelled();
-                $this->data($pdo, $table, $columns[$table] ?? [], $w, $p);
+                $this->data($pdo, $table, self::columnsOf($columns, $table), $w, $p);
             }
             $w->write("\n");
         }
@@ -159,6 +159,22 @@ final class MySqlBuiltinExporter implements BuiltinExporter
         }
 
         return $columns;
+    }
+
+    /**
+     * A listed table's insertable columns. None at all means the column listing missed the table (a privilege or a
+     * name the two listings spell differently): its rows would be silently left out, so the backup fails instead.
+     *
+     * @param  array<string, list<array{name: string, kind: 'plain'|'binary'|'bit'|'float'}>>  $columns
+     * @return list<array{name: string, kind: 'plain'|'binary'|'bit'|'float'}>
+     */
+    public static function columnsOf(array $columns, string $table): array
+    {
+        if (($columns[$table] ?? []) === []) {
+            throw new RuntimeException("Couldn't read the columns of table {$table}, so its rows can't be backed up. Check that this login can see the table's columns.");
+        }
+
+        return $columns[$table];
     }
 
     /** @param list<array{name: string, kind: 'plain'|'binary'|'bit'|'float'}> $columns */

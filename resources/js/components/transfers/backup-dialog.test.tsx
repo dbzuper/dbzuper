@@ -41,7 +41,6 @@ const caps = (
         native: {
             usable: false,
             tool: 'mysqldump',
-            path: null,
             version: null,
             reason: 'mysqldump not found — using built-in',
         },
@@ -54,7 +53,6 @@ const caps = (
         native: {
             usable: false,
             tool: null,
-            path: null,
             version: null,
             reason: '',
         },
@@ -67,7 +65,6 @@ const nativeUsable = {
     native: {
         usable: true,
         tool: 'mysqldump',
-        path: '/usr/bin/mysqldump',
         version: '8.4.3',
         reason: 'mysqldump 8.4.3',
     },

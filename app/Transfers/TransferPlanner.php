@@ -45,13 +45,13 @@ class TransferPlanner
             'database_name' => $this->databaseName($c),
             'worker_alive' => WorkerHeartbeat::alive(),
             'export' => [
-                'native' => $export->toArray(),
+                'native' => $export->toApiArray(),
                 'default_method' => $export->usable ? TransferMethod::Native->value : TransferMethod::Builtin->value,
                 'builtin_gaps' => $this->builtin->for($c->driver)->gaps(),
                 'native_gaps' => $export->usable ? $this->native->gapsFor($c, $tables) : [],
             ],
             'import' => [
-                'native' => $import->toArray(),
+                'native' => $import->toApiArray(),
                 'default_method' => $import->usable ? TransferMethod::Native->value : TransferMethod::Builtin->value,
                 'all_or_nothing' => in_array($c->driver, [DriverName::Postgres, DriverName::Sqlite], true),
             ],

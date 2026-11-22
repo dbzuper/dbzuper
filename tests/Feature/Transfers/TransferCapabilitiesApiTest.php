@@ -6,6 +6,7 @@ use App\Enums\TransferMethod;
 use App\Models\SavedConnection;
 use App\Models\User;
 use App\Support\Demo\CommerceSchema;
+use App\Transfers\Native\ToolCheck;
 use App\Transfers\TransferPlanner;
 use App\Transfers\WorkerHeartbeat;
 use Illuminate\Support\Facades\Cache;
@@ -36,6 +37,8 @@ it('reports capabilities for SQLite: built-in only', function () {
         ->and($json['worker_alive'])->toBeFalse()
         ->and($json['export']['default_method'])->toBe('builtin')
         ->and($json['export']['native']['usable'])->toBeFalse()
+        ->and($json['export']['native'])->not->toHaveKey('path')
+        ->and($json['import']['native'])->not->toHaveKey('path')
         ->and($json['export']['builtin_gaps'])->toBeArray()
         ->and($json['export']['native_gaps'])->toBe([])
         ->and($json['import']['default_method'])->toBe('builtin')
@@ -192,4 +195,11 @@ it('caps the chosen tables at 10,000', function () {
     $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => $keys(10_000)])->assertOk();
     $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => $keys(10_001)])
         ->assertUnprocessable()->assertJsonPath('errors.tables.0', 'Choose at most 10,000 tables, or back up all of them');
+});
+
+it('keeps the tool path in the cached form but never in the browser form', function () {
+    $check = new ToolCheck(true, 'mysqldump', '/usr/bin/mysqldump', '8.4.3', 'mysqldump 8.4.3');
+
+    expect($check->toApiArray())->toBe(['usable' => true, 'tool' => 'mysqldump', 'version' => '8.4.3', 'reason' => 'mysqldump 8.4.3'])
+        ->and(ToolCheck::fromArray($check->toArray()))->toEqual($check);
 });

@@ -52,7 +52,6 @@ const caps = (
         native: {
             usable: false,
             tool: null,
-            path: null,
             version: null,
             reason: '',
         },
@@ -64,7 +63,6 @@ const caps = (
         native: {
             usable: true,
             tool: 'mysql',
-            path: '/usr/bin/mysql',
             version: '8.4.3',
             reason: 'mysql 8.4.3',
         },

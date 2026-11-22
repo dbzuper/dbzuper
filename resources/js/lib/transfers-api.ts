@@ -47,7 +47,6 @@ export type Transfer = {
 export type ToolCheck = {
     usable: boolean;
     tool: string | null;
-    path: string | null;
     version: string | null;
     reason: string;
 };
