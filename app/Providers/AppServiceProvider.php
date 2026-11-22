@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Database\SqlitePathPolicy;
 use App\Transfers\Export\BuiltinExporters;
 use App\Transfers\Export\MySqlBuiltinExporter;
+use App\Transfers\Export\SqliteBuiltinExporter;
 use App\Transfers\WorkerHeartbeat;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -25,10 +26,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Tasks 8-9 add the remaining engines (driver value => exporter class).
+        // Task 9 adds PostgreSQL (driver value => exporter class).
         $this->app->singleton(BuiltinExporters::class, fn () => new BuiltinExporters([
             'mysql' => MySqlBuiltinExporter::class,
             'mariadb' => MySqlBuiltinExporter::class,
+            'sqlite' => SqliteBuiltinExporter::class,
         ]));
         $this->app->bind(SqlitePathPolicy::class, fn () => new SqlitePathPolicy(config('dbzuper.sqlite_paths')));
     }
