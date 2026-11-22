@@ -30,7 +30,25 @@ abstract class TransferJob implements ShouldQueue
     public function handle(): void
     {
         $transfer = Transfer::query()->findOrFail($this->transferId);
-        $transfer->forceFill(['status' => TransferStatus::Running, 'started_at' => now()])->save();
+
+        // Failed by the dead-run sweep or cancelled while queued: nothing to run.
+        if (! $transfer->status->isActive()) {
+            return;
+        }
+
+        if ($transfer->cancelRequested()) {
+            $transfer->forceFill(['status' => TransferStatus::Cancelled, 'finished_at' => now()])->save();
+            $this->onCancelled($transfer);
+
+            return;
+        }
+
+        $transfer->forceFill([
+            'status' => TransferStatus::Running,
+            'started_at' => now(),
+            'worker_host' => gethostname() ?: null,
+            'worker_pid' => getmypid() ?: null,
+        ])->save();
 
         $progress = new TransferProgress($transfer);
 
@@ -39,9 +57,15 @@ abstract class TransferJob implements ShouldQueue
             $progress->flush();
             $transfer->forceFill(['status' => TransferStatus::Done, 'finished_at' => now()])->save();
         } catch (TransferCancelled) {
+            $progress->flush();
             $transfer->forceFill(['status' => TransferStatus::Cancelled, 'finished_at' => now()])->save();
             $this->onCancelled($transfer);
         } catch (Throwable $e) {
+            try {
+                $progress->flush();
+            } catch (Throwable) {
+                // Losing the last progress beats hiding the real error.
+            }
             $this->markFailed($transfer, $e);
         }
     }
@@ -51,7 +75,7 @@ abstract class TransferJob implements ShouldQueue
     {
         $transfer = Transfer::query()->find($this->transferId);
 
-        if ($transfer !== null && $transfer->status !== TransferStatus::Failed) {
+        if ($transfer !== null && $transfer->status->isActive()) {
             $this->markFailed($transfer, $e);
         }
     }

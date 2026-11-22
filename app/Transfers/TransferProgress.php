@@ -45,6 +45,9 @@ class TransferProgress
         WorkerHeartbeat::beat();
 
         if (! $this->dirty) {
+            // Keeps updated_at fresh so the dead-run sweep can tell a quiet job from a dead one.
+            $this->transfer->touch();
+
             return;
         }
 

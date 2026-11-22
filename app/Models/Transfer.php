@@ -18,7 +18,7 @@ class Transfer extends Model
         'user_id', 'saved_connection_id', 'database', 'direction', 'method', 'options', 'status',
         'bytes_done', 'bytes_total', 'rows_done', 'rows_total', 'statements_done', 'current_table',
         'file_name', 'file_path', 'file_size', 'warnings', 'error',
-        'cancel_requested_at', 'started_at', 'finished_at', 'expires_at',
+        'worker_host', 'worker_pid', 'cancel_requested_at', 'started_at', 'finished_at', 'expires_at',
     ];
 
     protected function casts(): array

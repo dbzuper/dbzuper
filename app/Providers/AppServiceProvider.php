@@ -39,7 +39,7 @@ class AppServiceProvider extends ServiceProvider
                 WorkerHeartbeat::beat();
             }
         });
-        DevCommands::artisan('queue:listen transfers --queue=transfers --tries=1 --timeout=0', 'transfers');
+        DevCommands::artisan('queue:work transfers --queue=transfers --tries=1 --timeout=0', 'transfers');
 
         RateLimiter::for('dbzuper-api', fn (Request $request) => Limit::perMinute((int) config('dbzuper.api_per_minute'))->by($request->user()?->id ?: $request->ip()));
         // Exploring records fires a request per card and per port, far more often than the rest of the API.

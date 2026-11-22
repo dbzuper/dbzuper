@@ -9,7 +9,7 @@ use App\Models\Transfer;
 use App\Transfers\TransferProgress;
 use App\Transfers\WorkerHeartbeat;
 
-class TestJob extends TransferJob
+class FakeTransferJob extends TransferJob
 {
     public static ?Closure $perform = null;
 
@@ -33,7 +33,7 @@ class TestJob extends TransferJob
     }
 }
 
-function jobTransfer(?SavedConnection $c = null): Transfer
+function fakeJobTransfer(?SavedConnection $c = null): Transfer
 {
     $c ??= SavedConnection::factory()->create();
 
@@ -50,14 +50,14 @@ function jobTransfer(?SavedConnection $c = null): Transfer
 }
 
 it('marks done', function () {
-    $t = jobTransfer();
-    TestJob::$perform = function (Transfer $t, TransferProgress $p) {
+    $t = fakeJobTransfer();
+    FakeTransferJob::$perform = function (Transfer $t, TransferProgress $p) {
         expect($t->fresh()->status)->toBe(TransferStatus::Running);
         $p->advance(10, 2, 1, 'users');
         $p->flush();
     };
 
-    (new TestJob($t->id))->handle();
+    (new FakeTransferJob($t->id))->handle();
 
     $t->refresh();
     expect($t->status)->toBe(TransferStatus::Done)
@@ -71,14 +71,14 @@ it('marks done', function () {
 });
 
 it('marks cancelled when cancel is requested during perform', function () {
-    $t = jobTransfer();
-    TestJob::$perform = function (Transfer $t, TransferProgress $p) {
+    $t = fakeJobTransfer();
+    FakeTransferJob::$perform = function (Transfer $t, TransferProgress $p) {
         Transfer::whereKey($t->id)->update(['cancel_requested_at' => now()]);
         $p->checkCancelled();
         throw new RuntimeException('not reached');
     };
 
-    $job = new TestJob($t->id);
+    $job = new FakeTransferJob($t->id);
     $job->handle();
 
     expect($t->fresh()->status)->toBe(TransferStatus::Cancelled)
@@ -88,10 +88,10 @@ it('marks cancelled when cancel is requested during perform', function () {
 
 it('marks failed with the password removed from the message', function () {
     $c = SavedConnection::factory()->create(['password' => 'hunter2-secret']);
-    $t = jobTransfer($c);
-    TestJob::$perform = fn () => throw new RuntimeException('login failed using hunter2-secret; password=abc123 PGPASSWORD=xyz ok');
+    $t = fakeJobTransfer($c);
+    FakeTransferJob::$perform = fn () => throw new RuntimeException('login failed using hunter2-secret; password=abc123 PGPASSWORD=xyz ok');
 
-    $job = new TestJob($t->id);
+    $job = new FakeTransferJob($t->id);
     $job->handle();
 
     $t->refresh();
@@ -105,28 +105,67 @@ it('marks failed with the password removed from the message', function () {
 
 it('copes with a connection without a password', function () {
     $c = SavedConnection::factory()->create(['password' => null]);
-    $t = jobTransfer($c);
-    TestJob::$perform = fn () => throw new RuntimeException('boom');
+    $t = fakeJobTransfer($c);
+    FakeTransferJob::$perform = fn () => throw new RuntimeException('boom');
 
-    (new TestJob($t->id))->handle();
+    (new FakeTransferJob($t->id))->handle();
 
     expect($t->fresh()->error)->toBe('boom');
 });
 
 it('marks failed when the worker crashes', function () {
-    $t = jobTransfer();
+    $t = fakeJobTransfer();
 
-    (new TestJob($t->id))->failed(new RuntimeException('killed'));
+    (new FakeTransferJob($t->id))->failed(new RuntimeException('killed'));
 
     expect($t->fresh()->status)->toBe(TransferStatus::Failed)
         ->and($t->fresh()->error)->toBe('killed');
 });
 
 it('is never retried and runs on the transfers queue', function () {
-    $job = new TestJob('x');
+    $job = new FakeTransferJob('x');
 
     expect($job->tries)->toBe(1)
         ->and($job->timeout)->toBe(0)
         ->and($job->connection)->toBe('transfers')
         ->and($job->queue)->toBe('transfers');
+});
+
+it('does not run a transfer the dead-run sweep already failed', function () {
+    $t = fakeJobTransfer();
+    $t->forceFill(['status' => TransferStatus::Failed])->save();
+    $ran = false;
+    FakeTransferJob::$perform = function () use (&$ran) {
+        $ran = true;
+    };
+
+    (new FakeTransferJob($t->id))->handle();
+
+    expect($ran)->toBeFalse()->and($t->fresh()->status)->toBe(TransferStatus::Failed);
+});
+
+it('cancels without running when cancel was requested while queued', function () {
+    $t = fakeJobTransfer();
+    $t->forceFill(['cancel_requested_at' => now()])->save();
+    $ran = false;
+    FakeTransferJob::$perform = function () use (&$ran) {
+        $ran = true;
+    };
+
+    (new FakeTransferJob($t->id))->handle();
+
+    expect($ran)->toBeFalse()->and($t->fresh()->status)->toBe(TransferStatus::Cancelled);
+});
+
+it('records the worker and never overwrites a finished transfer on failed()', function () {
+    $t = fakeJobTransfer();
+    FakeTransferJob::$perform = function (Transfer $t) {
+        expect($t->fresh()->worker_pid)->toBe(getmypid())
+            ->and($t->fresh()->worker_host)->toBe(gethostname());
+    };
+    (new FakeTransferJob($t->id))->handle();
+
+    (new FakeTransferJob($t->id))->failed(new RuntimeException('late'));
+
+    expect($t->fresh()->status)->toBe(TransferStatus::Done);
 });

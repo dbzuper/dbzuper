@@ -43,7 +43,7 @@ it('prunes finished exports past expiry and stale uploads', function () {
     $stale = storedTransfer(['status' => TransferStatus::Uploading, 'direction' => TransferDirection::Import]);
     $stale->forceFill(['updated_at' => now()->subHours(config('dbzuper.transfer_ttl_hours') + 1)])->saveQuietly();
     $running = storedTransfer(['status' => TransferStatus::Running, 'started_at' => now()->subDays(3)]);
-    $running->forceFill(['updated_at' => now()->subDays(3)])->saveQuietly();
+    $running->forceFill(['updated_at' => now()->subHour()])->saveQuietly();
     $old = storedTransfer(['status' => TransferStatus::Failed, 'finished_at' => now()->subDays(8)]);
 
     TransferStorage::prune();
@@ -59,4 +59,32 @@ it('prunes finished exports past expiry and stale uploads', function () {
         ->and(is_file($running->file_path))->toBeTrue()
         ->and(Transfer::find($old->id))->toBeNull()
         ->and(is_dir(storage_path('app/private/transfers/'.$old->id)))->toBeFalse();
+});
+
+it('fails a running transfer nobody has saved for six hours', function () {
+    $t = storedTransfer(['status' => TransferStatus::Running]);
+    $t->forceFill(['updated_at' => now()->subHours(7)])->saveQuietly();
+    $recent = storedTransfer(['status' => TransferStatus::Running]);
+
+    TransferStorage::prune();
+
+    expect($t->fresh()->status)->toBe(TransferStatus::Failed)
+        ->and($t->fresh()->error)->toBe('The background worker stopped while this was running.')
+        ->and($t->fresh()->finished_at)->not->toBeNull()
+        ->and($recent->fresh()->status)->toBe(TransferStatus::Running);
+});
+
+it('fails a running transfer whose worker process is gone from this host', function () {
+    if (PHP_OS_FAMILY !== 'Linux') {
+        $this->markTestSkipped('Process liveness is only checked on Linux.');
+    }
+    $dead = storedTransfer(['status' => TransferStatus::Running, 'worker_host' => gethostname(), 'worker_pid' => 4194999]);
+    $alive = storedTransfer(['status' => TransferStatus::Running, 'worker_host' => gethostname(), 'worker_pid' => getmypid()]);
+    $elsewhere = storedTransfer(['status' => TransferStatus::Running, 'worker_host' => 'another-host', 'worker_pid' => 4194999]);
+
+    TransferStorage::prune();
+
+    expect($dead->fresh()->status)->toBe(TransferStatus::Failed)
+        ->and($alive->fresh()->status)->toBe(TransferStatus::Running)
+        ->and($elsewhere->fresh()->status)->toBe(TransferStatus::Running);
 });

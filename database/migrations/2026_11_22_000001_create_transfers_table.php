@@ -29,6 +29,8 @@ return new class extends Migration
             $table->json('warnings')->nullable();
             $table->text('error')->nullable();
             $table->timestamp('cancel_requested_at')->nullable();
+            $table->string('worker_host', 255)->nullable();
+            $table->unsignedInteger('worker_pid')->nullable();
             $table->timestamp('started_at')->nullable();
             $table->timestamp('finished_at')->nullable();
             $table->timestamp('expires_at')->nullable();
