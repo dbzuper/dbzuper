@@ -5,17 +5,12 @@ use App\Transfers\Import\SqlPiece;
 use App\Transfers\Import\SqlStream;
 use App\Transfers\Io\DumpReader;
 
-/** Writes $sql to a temp file and returns every piece SqlStream yields for it. */
-function sqlStreamPieces(string $sql, string $dialect, int $chunk = 7): array
+/** Every piece SqlStream yields for $sql, read from memory (a data: URI) in $chunk-byte reads. */
+function sqlStreamPieces(string $sql, string $dialect, int $chunk = 7, int $copyPieceBytes = 4_194_304): array
 {
-    $path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'sqlstream-'.uniqid('', true).'.sql';
-    file_put_contents($path, $sql);
+    $reader = new DumpReader('data://text/plain;base64,'.base64_encode($sql));
 
-    try {
-        return iterator_to_array(SqlStream::pieces(new DumpReader($path), $dialect, $chunk), false);
-    } finally {
-        @unlink($path);
-    }
+    return iterator_to_array(SqlStream::pieces($reader, $dialect, $chunk, $copyPieceBytes), false);
 }
 
 /** @return list<array{string, string}> [kind, text] pairs */
@@ -71,10 +66,9 @@ it('matches the lexer-based reference split on random input at any chunk size', 
     $fragments = ['select', ' ', "\n", "\r\n", "\r", "\t", ';', ';', ';', '1', '1.5', 'x', "'a;b'", "'it''s'", "'\\\\'",
         "'\\';'", '"q;"', '`b;t`', "-- c;\n", '--', '-', '--x', '/* c; */', '/*', '*/', '/', '*', "'", '"', '`',
         'x$', '$', '$$', '$t$', 'E', "E'\\';'", 'e', '#', "# h;\n", '[', ']', 'é', '/*!1 ;*/', '/*M!1 ;*/',
-        '/*!', '/* a /* b; */ c */'];
-    $path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'sqlstream-fuzz-'.uniqid('', true).'.sql';
+        '/*!', '/* a /* b; */ c */', "'a\'b;'", '"a""b;"', '`a``b;`', "''", '""', "-- x\r\n"];
     $checked = 0;
-    for ($case = 0; $case < 250; $case++) {
+    for ($case = 0; $case < 600; $case++) {
         $sql = '';
         for ($n = mt_rand(1, 30); $n > 0; $n--) {
             $sql .= $fragments[mt_rand(0, count($fragments) - 1)];
@@ -83,15 +77,15 @@ it('matches the lexer-based reference split on random input at any chunk size', 
         if ($dialect === 'pgsql' && array_filter($expected, fn ($s) => str_starts_with($s, '\\')) !== []) {
             continue; // a psql meta line by construction, covered elsewhere
         }
-        file_put_contents($path, $sql);
-        foreach ([1, 2, 3, 64] as $chunk) {
-            $got = iterator_to_array(SqlStream::pieces(new DumpReader($path), $dialect, $chunk), false);
-            expect(array_map(fn (SqlPiece $p) => $p->text, $got))->toBe($expected, json_encode(['sql' => $sql, 'chunk' => $chunk]));
+        foreach ([1, 64] as $chunk) {
+            $got = array_map(fn (SqlPiece $p) => $p->text, sqlStreamPieces($sql, $dialect, $chunk));
+            if ($got !== $expected) {
+                expect($got)->toBe($expected, json_encode(['sql' => $sql, 'chunk' => $chunk]));
+            }
         }
         $checked++;
     }
-    @unlink($path);
-    expect($checked)->toBeGreaterThan(200);
+    expect($checked)->toBeGreaterThan(500);
 })->with(['mysql', 'mariadb', 'pgsql', 'sqlite']);
 
 it('keeps a statement larger than the chunk whole', function () {
@@ -138,6 +132,79 @@ it('splits a 20 MB statement read in 64 KB chunks quickly with bounded memory', 
     expect($lengths)->toBe([8, $statementBytes, 8])
         ->and($seconds)->toBeLessThan(5.0)
         ->and($growth)->toBeLessThan(5 * $statementBytes);
+});
+
+it('splits a 10 MB escape-dense string without hitting PCRE limits', function (string $dialect, string $open, string $unit) {
+    $value = str_repeat($unit, intdiv(10_500_000, strlen($unit)));
+    $insert = "INSERT INTO t VALUES (1,{$open}{$value}')";
+    $started = microtime(true);
+
+    $pieces = sqlStreamPieces("{$insert};\nSELECT 2;", $dialect, 1 << 20);
+
+    expect(microtime(true) - $started)->toBeLessThan(5.0)
+        ->and(array_map(fn (SqlPiece $p) => $p->kind, $pieces))->toBe(['sql', 'sql'])
+        ->and($pieces[0]->text === $insert)->toBeTrue()
+        ->and($pieces[1]->text)->toBe('SELECT 2');
+})->with([
+    'mysql backslash escapes' => ['mysql', "'", "ab\\0\\'\\\\c\\n"],
+    'pgsql doubled quotes' => ['pgsql', "'", "ab''c"],
+    'pgsql E string escapes' => ['pgsql', "E'", "ab\\\\c\\'"],
+]);
+
+it('yields a large COPY block as several pieces of whole lines', function (int $chunk) {
+    $rows = '';
+    for ($i = 0; $i < 200; $i++) {
+        $rows .= "{$i}\tvalue {$i}\r\n";
+    }
+    $sql = "COPY t (a, b) FROM stdin; -- data follows\r\n{$rows}\\.\r\nSELECT 1;";
+
+    $pieces = sqlStreamPieces($sql, 'pgsql', $chunk, 100);
+    $copy = array_values(array_filter($pieces, fn (SqlPiece $p) => $p->kind === 'copy_data'));
+
+    expect($pieces[0]->text)->toBe('COPY t (a, b) FROM stdin')
+        ->and($pieces[count($pieces) - 1]->text)->toBe('SELECT 1')
+        ->and(count($copy))->toBe(count($pieces) - 2)
+        ->and(count($copy))->toBeGreaterThan(20)
+        ->and(implode('', array_map(fn (SqlPiece $p) => $p->text, $copy)))->toBe(str_replace("\r\n", "\n", $rows)."\\.\n")
+        ->and($copy[count($copy) - 1]->text)->toEndWith("\\.\n");
+    foreach ($copy as $piece) {
+        expect(strlen($piece->text))->toBeLessThanOrEqual(100 + strlen("\\.\n"))
+            ->and($piece->text)->toEndWith("\n")
+            ->and(substr_count($piece->text, '\\.'))->toBe($piece === $copy[count($copy) - 1] ? 1 : 0);
+    }
+})->with([1, 7, 4096]);
+
+it('keeps a COPY line longer than the piece size whole', function () {
+    $long = str_repeat('x', 300);
+    $pieces = sqlStreamPieces("COPY t FROM stdin;\na\n{$long}\nb\n\\.\n", 'pgsql', 5, 100);
+
+    expect(sqlStreamShape($pieces))->toBe([
+        ['sql', 'COPY t FROM stdin'],
+        ['copy_data', "a\n"],
+        ['copy_data', "{$long}\n"],
+        ['copy_data', "b\n\\.\n"],
+    ]);
+});
+
+it('passes CSV COPY data through without normalising line endings', function (string $options) {
+    $sql = "COPY t (a, b) FROM stdin {$options};\r\n1,\"x\r\ny\"\r\n2,z\r\n\\.\r\nSELECT 1;";
+
+    expect(sqlStreamShape(sqlStreamPieces($sql, 'pgsql', 3)))->toBe([
+        ['sql', "COPY t (a, b) FROM stdin {$options}"],
+        ['copy_data', "1,\"x\r\ny\"\r\n2,z\r\n\\.\n"],
+        ['sql', 'SELECT 1'],
+    ]);
+})->with(['WITH (FORMAT csv)', 'WITH CSV HEADER']);
+
+it('takes only the first word after DELIMITER', function () {
+    $sql = "DELIMITER // -- switch\nSELECT 1//\nDELIMITER ;\nSELECT 2;";
+
+    expect(sqlStreamShape(sqlStreamPieces($sql, 'mysql', 4)))->toBe([
+        ['delimiter', '//'],
+        ['sql', 'SELECT 1'],
+        ['delimiter', ';'],
+        ['sql', 'SELECT 2'],
+    ]);
 });
 
 it('handles DELIMITER blocks', function () {

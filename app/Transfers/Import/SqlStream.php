@@ -27,7 +27,7 @@ final class SqlStream
 {
     private const WHITESPACE = " \t\n\r\f\x0B";
 
-    private const COPY_FROM_STDIN = '/^\s*COPY\b.*\bFROM\s+stdin\b/is';
+    private const COPY_FROM_STDIN = '/^\s*COPY\b.*\bFROM\s+stdin\b(.*)$/is';
 
     /** Bytes that must follow a custom delimiter before it is trusted (the lexer never looks further ahead). */
     private const LOOKAHEAD = 3;
@@ -49,6 +49,9 @@ final class SqlStream
     /** Null outside COPY data, -1 before the end of the COPY line, else data bytes already searched for `\.`. */
     private ?int $copyScanned = null;
 
+    /** Whether the current COPY block is CSV. */
+    private bool $copyCsv = false;
+
     private readonly bool $mysql;
 
     private readonly bool $mariadb;
@@ -64,7 +67,7 @@ final class SqlStream
     /** For a custom delimiter: skips ordinary tokens (';' is one); stops at every string, comment or dollar quote. */
     private readonly string $plainCustom;
 
-    private function __construct(string $dialect)
+    private function __construct(string $dialect, private readonly int $copyPieceBytes)
     {
         $this->mariadb = $dialect === 'mariadb';
         $this->mysql = $dialect === 'mysql' || $this->mariadb;
@@ -84,23 +87,22 @@ final class SqlStream
             $ordinary[] = '\$(?!(?:[A-Za-z_][A-Za-z0-9_]*+)?\$)';
         }
 
-        // Complete tokens SqlLexer would read the same way, whatever follows them. A line comment needs its
-        // newline so it cannot continue into the next chunk.
+        // Complete tokens SqlLexer would read the same way, whatever follows them. Each is one possessive
+        // character-class run with no repeated group, so PCRE work and backtrack state stay constant per token
+        // however long it is. A string with an escape or a doubled quote does not match: PHP's quoteEnd() finishes
+        // it in linear time. A line comment needs its newline so it cannot continue into the next chunk.
         $complete = $this->mysql ? [
-            '\'(?:[^\'\\\\]++|\\\\[\s\S]|\'\')*+\'',
-            '"(?:[^"\\\\]++|\\\\[\s\S]|"")*+"',
+            '\'[^\'\\\\]*+\'(?!\')',
+            '"[^"\\\\]*+"(?!")',
             '#[^\n]*+(?=\n)',
             '--(?=[\x00-\x20])[^\n]*+(?=\n)',
         ] : [
             // A PostgreSQL E'' string (E not preceded by a word character) takes backslash escapes: left to PHP.
-            ($this->pg ? '(?:(?<![Ee])|(?<=[A-Za-z0-9_$\x80-\xff][Ee]))' : '').'\'(?:[^\']++|\'\')*+\'',
-            '"(?:[^"]++|"")*+"',
+            ($this->pg ? '(?:(?<![Ee])|(?<=[A-Za-z0-9_$\x80-\xff][Ee]))' : '').'\'[^\']*+\'(?!\')',
+            '"[^"]*+"(?!")',
             $this->pg ? '--[^\r\n]*+(?=[\r\n])' : '--[^\n]*+(?=\n)',
         ];
-        $complete[] = '`(?:[^`]++|``)*+`';
-        if (! $this->pg) {
-            $complete[] = '\/\*(?:[^*]++|\*(?!\/))*+\*\/';
-        }
+        $complete[] = '`[^`]*+`(?!`)';
         if ($dialect === 'sqlite') {
             $complete[] = '\[[^\]]*+\]';
         }
@@ -113,13 +115,18 @@ final class SqlStream
     }
 
     /**
-     * Statements, psql meta lines, COPY data and DELIMITER lines of a dump, in file order.
+     * Statements, psql meta lines, COPY data and DELIMITER lines of a dump, in file order. One COPY block arrives
+     * as one or more consecutive copy_data pieces of whole lines (at most about $copyPieceBytes each).
      *
      * @return Generator<int, SqlPiece>
      */
-    public static function pieces(DumpReader $reader, string $dialect, int $chunkBytes = 4_194_304): Generator
-    {
-        yield from (new self($dialect))->run($reader, max(1, $chunkBytes));
+    public static function pieces(
+        DumpReader $reader,
+        string $dialect,
+        int $chunkBytes = 4_194_304,
+        int $copyPieceBytes = 4_194_304,
+    ): Generator {
+        yield from (new self($dialect, max(1, $copyPieceBytes)))->run($reader, max(1, $chunkBytes));
     }
 
     /** @return Generator<int, SqlPiece> */
@@ -196,8 +203,9 @@ final class SqlStream
                 continue; // an empty statement
             }
             $this->number++;
-            if ($this->pg && preg_match(self::COPY_FROM_STDIN, $text) === 1) {
+            if ($this->pg && preg_match(self::COPY_FROM_STDIN, $text, $copy) === 1) {
                 $this->copyScanned = -1;
+                $this->copyCsv = preg_match('/\bcsv\b/i', $copy[1]) === 1;
             }
 
             return new SqlPiece('sql', $text, $this->delimiter, $this->number);
@@ -295,7 +303,9 @@ final class SqlStream
         if ($newline === null) {
             return null;
         }
-        $delimiter = trim(substr($b, $i + 10, $newline - $i - 10), self::WHITESPACE);
+        // Like the mysql client: the delimiter is the first word; anything after it (a comment) is ignored.
+        $words = preg_split('/[ \t\r\f\x0B]+/', trim(substr($b, $i + 10, $newline - $i - 10), self::WHITESPACE));
+        $delimiter = $words === false ? '' : $words[0];
         if ($delimiter === '') {
             throw new RuntimeException('DELIMITER must be followed by a delimiter.');
         }
@@ -479,7 +489,11 @@ final class SqlStream
         return $len;
     }
 
-    /** The COPY data block at $pos; null when more input is needed. */
+    /**
+     * The next piece of the COPY data at $pos; null when more input is needed. A block is cut into pieces of whole
+     * lines of at most $copyPieceBytes (unless one line is longer), so a huge table never sits in memory whole; the
+     * last piece holds the `\.` line. Cuts fall right after a "\n", so a CRLF pair is never split across pieces.
+     */
     private function copyData(): ?SqlPiece
     {
         $b = $this->buffer;
@@ -490,7 +504,8 @@ final class SqlStream
             if ($newline === false) {
                 return $this->copyWait();
             }
-            if (trim(substr($b, $this->pos, $newline - $this->pos), self::WHITESPACE) !== '') {
+            $rest = trim(substr($b, $this->pos, $newline - $this->pos), self::WHITESPACE);
+            if ($rest !== '' && ! str_starts_with($rest, '--')) {
                 throw new RuntimeException('Unexpected text after COPY … FROM stdin on the same line.');
             }
             $this->pos = $newline + 1;
@@ -498,6 +513,45 @@ final class SqlStream
         }
 
         $data = $this->pos;
+        $terminator = $this->copyTerminator($b, $data);
+        if ($terminator !== null && $this->copyPieceBytes >= $terminator[0] - $data) {
+            $this->pos = $terminator[1];
+            $this->copyScanned = null;
+
+            return new SqlPiece('copy_data', $this->copyText(substr($b, $data, $terminator[0] - $data))."\\.\n", $this->delimiter);
+        }
+        if ($terminator === null && $this->eof) {
+            throw new RuntimeException('Unterminated COPY data');
+        }
+
+        // Bytes before $safe are data lines: no terminator line starts there.
+        $safe = $terminator[0] ?? $data + (int) $this->copyScanned;
+        if ($safe - $data < $this->copyPieceBytes) {
+            return $this->copyWait();
+        }
+        $limit = $data + $this->copyPieceBytes;
+        $cut = strrpos($b, "\n", $limit - 1 - $len);
+        if ($cut === false || $cut < $data) {
+            $cut = strpos($b, "\n", $limit); // one line longer than a piece: cut at its end
+            if ($cut === false || $cut >= $safe) {
+                return $this->copyWait();
+            }
+        }
+        $this->pos = $cut + 1;
+        $this->copyScanned = max(0, (int) $this->copyScanned - ($cut + 1 - $data));
+
+        return new SqlPiece('copy_data', $this->copyText(substr($b, $data, $cut + 1 - $data)), $this->delimiter);
+    }
+
+    /**
+     * [offset of the `\.` line, offset after it] for the first terminator line at or after $data, or null when the
+     * buffer holds none yet ($copyScanned then records where the search resumes).
+     *
+     * @return array{int, int}|null
+     */
+    private function copyTerminator(string $b, int $data): ?array
+    {
+        $len = strlen($b);
         $from = $data + (int) $this->copyScanned;
         while (($k = strpos($b, '\\.', $from)) !== false) {
             $from = $k + 1;
@@ -509,26 +563,27 @@ final class SqlStream
                 if (! $this->eof) {
                     $this->copyScanned = $k - $data; // the line might not end here
 
-                    return $this->copyWait();
+                    return null;
                 }
-                $end = $len;
-            } elseif ($after[0] === "\n") {
-                $end = $k + 3;
-            } elseif ($after === "\r\n") {
-                $end = $k + 4;
-            } else {
-                continue;
+
+                return [$k, $len];
             }
-
-            $this->pos = $end;
-            $this->copyScanned = null;
-
-            return new SqlPiece('copy_data', str_replace("\r\n", "\n", substr($b, $data, $k - $data))."\\.\n", $this->delimiter);
+            if ($after[0] === "\n") {
+                return [$k, $k + 3];
+            }
+            if ($after === "\r\n") {
+                return [$k, $k + 4];
+            }
         }
-
         $this->copyScanned = max(0, $len - 1 - $data);
 
-        return $this->copyWait();
+        return null;
+    }
+
+    /** Text-format rows get LF line endings; CSV data passes through untouched (a CR may be data there). */
+    private function copyText(string $rows): string
+    {
+        return $this->copyCsv ? $rows : str_replace("\r\n", "\n", $rows);
     }
 
     private function copyWait(): null
