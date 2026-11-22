@@ -329,3 +329,17 @@ it('fails the backup when the job cannot be queued', function () {
         ->and($transfer->error)->toBe("Couldn't queue the job: queue down")
         ->and($transfer->finished_at)->not->toBeNull();
 });
+
+it('fails a backup whose connection was changed after it started', function () {
+    $id = startExport()->json('id');
+    $other = Engines::sqlitePath().'-other.sqlite';
+    touch($other);
+    $this->connection->update(['database' => $other]);
+
+    $transfer = runExport($id);
+
+    expect($transfer->status)->toBe(TransferStatus::Failed)
+        ->and($transfer->error)->toBe('The connection was changed after this backup started. Start the backup again.')
+        ->and($transfer->file_path)->toBeNull();
+    @unlink($other);
+});

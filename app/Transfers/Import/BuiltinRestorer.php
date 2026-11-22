@@ -191,7 +191,7 @@ final class BuiltinRestorer
 
         if (is_array($row)) {
             throw new RestoreFailed(0, '', sprintf(
-                'Foreign key check failed: table "%s" has rows that point to missing rows in "%s". Nothing was restored.',
+                'Foreign key check failed: table "%s" has rows that point to missing rows in "%s".',
                 (string) $row[0],
                 (string) $row[2],
             ));

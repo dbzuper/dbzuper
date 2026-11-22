@@ -28,6 +28,7 @@ use App\Transfers\TransferConflict;
 use App\Transfers\TransferPlanner;
 use App\Transfers\TransferStarter;
 use App\Transfers\TransferStorage;
+use App\Transfers\TransferTarget;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -129,7 +130,7 @@ class TransferController extends Controller
                 $user,
                 TransferDirection::Export,
                 $method,
-                [...$options->toArray(), 'method_reason' => $check->reason],
+                [...$options->toArray(), 'method_reason' => $check->reason, 'target' => TransferTarget::fingerprint($connection)],
                 $this->fileName($connection, $planner, $options->gzip),
                 null,
             );
@@ -163,7 +164,7 @@ class TransferController extends Controller
                 $user,
                 TransferDirection::Import,
                 $method,
-                ['method_reason' => $check->reason],
+                ['method_reason' => $check->reason, 'target' => TransferTarget::fingerprint($connection)],
                 $request->fileName(),
                 (int) $request->validated('size'),
                 TransferStatus::Uploading,
@@ -195,6 +196,12 @@ class TransferController extends Controller
         }
         $offset = (int) $header;
 
+        // Raw bytes only: a form or JSON body would be parsed into memory by the framework.
+        $type = $request->headers->get('Content-Type');
+        if ($type !== null && $type !== '' && strtolower(trim(explode(';', $type)[0])) !== 'application/octet-stream') {
+            return response()->json(['message' => 'Send upload chunks as application/octet-stream.'], 415);
+        }
+
         $length = $request->header('Content-Length');
         if (is_numeric($length) && (int) $length > self::CHUNK_MAX_BYTES) {
             return $this->chunkTooLarge();
@@ -224,7 +231,7 @@ class TransferController extends Controller
                 throw new RuntimeException("Couldn't read the upload's size.");
             }
             if ($offset !== $current) {
-                return response()->json(['offset' => $current], 409);
+                return $this->conflict("The upload is at byte {$current}.", TransferStatus::Uploading, $current);
             }
 
             $allowed = min(self::CHUNK_MAX_BYTES, $total - $current);
@@ -345,10 +352,19 @@ class TransferController extends Controller
             $this->deleteUpload($transfer);
         }
 
-        return response()->json([
-            'message' => 'This upload is no longer accepting data.',
-            'status' => $transfer->status->value,
-        ], 409);
+        // Pending, Running or Done: every byte arrived (a retried last chunk lands here), so the offset is the size.
+        $complete = in_array($transfer->status, [TransferStatus::Pending, TransferStatus::Running, TransferStatus::Done], true);
+
+        return $this->conflict('This upload is no longer accepting data.', $transfer->status, $complete ? (int) $transfer->bytes_total : null);
+    }
+
+    /** Every 409 of the upload: {message, status, offset?}. offset is given whenever the client has a byte to resume from. */
+    private function conflict(string $message, TransferStatus $status, ?int $offset): JsonResponse
+    {
+        return response()->json(array_filter(
+            ['message' => $message, 'status' => $status->value, 'offset' => $offset],
+            fn ($v) => $v !== null,
+        ), 409);
     }
 
     private function chunkTooLarge(): JsonResponse

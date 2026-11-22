@@ -27,9 +27,10 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         // Change sets save values exactly as typed: no trimming, and '' stays an empty string, not NULL.
-        $changeSet = fn (Request $request) => $request->is('api/c/*/tables/*/changes');
-        $middleware->trimStrings(except: [$changeSet]);
-        $middleware->convertEmptyStringsToNull(except: [$changeSet]);
+        // Upload chunks are raw bytes, never inspected as form or JSON input.
+        $verbatim = fn (Request $request) => $request->is('api/c/*/tables/*/changes') || $request->is('api/c/*/transfers/*/upload');
+        $middleware->trimStrings(except: [$verbatim]);
+        $middleware->convertEmptyStringsToNull(except: [$verbatim]);
 
         // DBZUPER_AUTO_LOGIN: must sign in before `auth` checks, so it is ordered just ahead of it.
         $middleware->prependToPriorityList(before: AuthenticatesRequests::class, prepend: AutoLoginLocal::class);

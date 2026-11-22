@@ -36,7 +36,7 @@ class RunExport extends TransferJob
 
     protected function perform(Transfer $transfer, TransferProgress $progress): void
     {
-        $connection = $transfer->runConnection();
+        $connection = $this->targetConnection($transfer, 'backup');
         $options = ExportOptions::fromRequest($transfer->options ?? []);
         $factory = app(ConnectionFactory::class);
 

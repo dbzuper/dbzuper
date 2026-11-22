@@ -11,6 +11,7 @@ use App\Models\SavedConnection;
 use App\Models\Transfer;
 use App\Models\User;
 use App\Support\Demo\CommerceSchema;
+use App\Transfers\DiskSpace;
 use App\Transfers\Import\RestoreFailed;
 use App\Transfers\TransferStorage;
 use Illuminate\Support\Facades\Bus;
@@ -181,7 +182,11 @@ it('assembles chunks and starts the restore when complete', function () {
     Queue::assertPushed(RunImport::class, 1);
 
     // Complete: no more bytes are taken.
-    importChunk($id, 25, 'x')->assertStatus(409);
+    importChunk($id, 25, 'x')->assertStatus(409)
+        ->assertExactJson(['message' => 'This upload is no longer accepting data.', 'status' => 'pending', 'offset' => 25]);
+    // A retried last chunk: the client reads status pending + offset = size as success.
+    importChunk($id, 20, substr($bytes, 20))->assertStatus(409)->assertJson(['status' => 'pending', 'offset' => 25]);
+    Queue::assertPushed(RunImport::class, 1);
 });
 
 it('answers a wrong offset with the current offset', function () {
@@ -189,8 +194,9 @@ it('answers a wrong offset with the current offset', function () {
     importChunk($id, 0, str_repeat('a', 10))->assertOk();
 
     // A retry of the first chunk after a dropped connection, and a chunk that skips ahead.
-    importChunk($id, 0, str_repeat('a', 10))->assertStatus(409)->assertExactJson(['offset' => 10]);
-    importChunk($id, 20, str_repeat('c', 10))->assertStatus(409)->assertExactJson(['offset' => 10]);
+    importChunk($id, 0, str_repeat('a', 10))->assertStatus(409)
+        ->assertExactJson(['message' => 'The upload is at byte 10.', 'status' => 'uploading', 'offset' => 10]);
+    importChunk($id, 20, str_repeat('c', 10))->assertStatus(409)->assertJson(['status' => 'uploading', 'offset' => 10]);
 
     importChunk($id, 10, str_repeat('b', 10))->assertOk()->assertJson(['offset' => 20]);
     expect(file_get_contents(Transfer::query()->findOrFail($id)->file_path))->toBe(str_repeat('a', 10).str_repeat('b', 10));
@@ -225,7 +231,8 @@ it('rejects a chunk after the upload was abandoned', function () {
     Transfer::query()->whereKey($id)->update(['updated_at' => now()->subHours((int) config('dbzuper.transfer_ttl_hours') + 1)]);
     TransferStorage::prune();
 
-    importChunk($id, 10, str_repeat('b', 10))->assertStatus(409)->assertJson(['status' => 'failed']);
+    importChunk($id, 10, str_repeat('b', 10))->assertStatus(409)
+        ->assertExactJson(['message' => 'This upload is no longer accepting data.', 'status' => 'failed']);
 
     expect(is_dir(uploadDir($id)))->toBeFalse()
         ->and(Transfer::query()->findOrFail($id)->error)->toBe('Upload abandoned');
@@ -428,7 +435,8 @@ it('refuses a chunk whose Content-Length is over 8 MB before reading it', functi
     $id = importStart(['size' => 9 * 1024 * 1024])->json('id');
 
     $this->actingAs($this->user)->call('PUT', "{$this->base}/{$id}/upload", [], [], [], [
-        'HTTP_UPLOAD_OFFSET' => '0', 'HTTP_ACCEPT' => 'application/json', 'CONTENT_LENGTH' => (string) (8 * 1024 * 1024 + 1),
+        'HTTP_UPLOAD_OFFSET' => '0', 'HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/octet-stream',
+        'CONTENT_LENGTH' => (string) (8 * 1024 * 1024 + 1),
     ], 'abc')->assertStatus(413);
 });
 
@@ -445,4 +453,89 @@ it('describes a failed statement for each engine', function () {
         ->toBe("The restore failed at the end: deferred constraint violated\nNothing was changed.")
         ->and(RunImport::describe(new RestoreFailed(0, '', 'ERROR 1146 at line 12: no table'), DriverName::MySql, TransferMethod::Native))
         ->toBe("ERROR 1146 at line 12: no table\nStatements before it were applied.");
+});
+
+it('takes upload chunks only as raw bytes', function () {
+    $id = importStart(['size' => 6])->json('id');
+    $put = fn (string $type) => $this->actingAs($this->user)->call('PUT', "{$this->base}/{$id}/upload", [], [], [], [
+        'HTTP_UPLOAD_OFFSET' => '0', 'HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => $type,
+    ], 'a=b&c');
+
+    $put('application/x-www-form-urlencoded')->assertStatus(415);
+    $put('application/json')->assertStatus(415);
+    $put('multipart/form-data; boundary=x')->assertStatus(415);
+    // No Content-Type at all (Symfony's test requests default to a form type, so it is blanked here).
+    $put('')
+        ->assertOk()->assertJson(['offset' => 5]);
+    $put('Application/Octet-Stream; charset=binary')->assertStatus(409)->assertJson(['offset' => 5]);
+});
+
+it('refuses a file the disk has no room for', function () {
+    $free = 5 * 1024 * 1024 * 1024;
+    app()->instance(DiskSpace::class, new class($free) extends DiskSpace
+    {
+        public function __construct(private float $bytes) {}
+
+        public function free(): ?float
+        {
+            return $this->bytes;
+        }
+    });
+
+    importStart(['size' => $free - DiskSpace::MARGIN_BYTES + 1])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['size' => "There isn't enough free disk space for this file (5 GB free)"]);
+    importStart(['size' => $free - DiskSpace::MARGIN_BYTES])->assertCreated();
+});
+
+it('skips the disk space check when the system cannot tell', function () {
+    app()->instance(DiskSpace::class, new class extends DiskSpace
+    {
+        public function free(): ?float
+        {
+            return null;
+        }
+    });
+
+    importStart(['size' => 10])->assertCreated();
+});
+
+it('fails the restore when the connection was changed after it started', function () {
+    $sql = 'CREATE TABLE t (id integer);
+';
+    $id = importStart(['file_name' => 'ok.sql', 'size' => strlen($sql)])->json('id');
+    importChunk($id, 0, $sql)->assertOk()->assertJson(['status' => 'pending']);
+
+    // Pointed at the demo database between the upload and the job.
+    $this->target->update(['database' => $this->source->database]);
+    $before = sqliteTableCounts((string) $this->source->database);
+
+    $transfer = importRun($id);
+
+    expect($transfer->status)->toBe(TransferStatus::Failed)
+        ->and($transfer->error)->toBe('The connection was changed after this restore started. Start the restore again.')
+        ->and(is_dir(uploadDir($id)))->toBeFalse()
+        ->and(sqliteTableCounts((string) $this->source->database))->toBe($before);
+});
+
+it('stores the confirmed target with the restore', function () {
+    $id = importStart()->json('id');
+
+    expect(Transfer::query()->findOrFail($id)->options['target'])->toBe([
+        'driver' => 'sqlite', 'host' => null, 'port' => null, 'database' => realpath((string) $this->target->database),
+    ]);
+});
+
+it('says the upload is gone without naming the server path', function () {
+    $sql = 'CREATE TABLE t (id integer);
+';
+    $id = importStart(['file_name' => 'ok.sql', 'size' => strlen($sql)])->json('id');
+    importChunk($id, 0, $sql)->assertOk();
+    unlink(Transfer::query()->findOrFail($id)->file_path);
+
+    $transfer = importRun($id);
+
+    expect($transfer->status)->toBe(TransferStatus::Failed)
+        ->and($transfer->error)->toBe('The uploaded file is no longer available. Upload it again.')
+        ->and($transfer->error)->not->toContain(storage_path());
 });

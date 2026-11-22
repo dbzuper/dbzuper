@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Database\Query\HistoryRecorder;
 use App\Enums\TransferMethod;
 use App\Models\SavedConnection;
+use App\Transfers\DiskSpace;
 use App\Transfers\TransferPlanner;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Http\FormRequest;
@@ -51,6 +52,12 @@ class StartImportRequest extends FormRequest
             $name = app(TransferPlanner::class)->databaseName($this->connection());
             if (! $validator->errors()->has('confirm') && $this->input('confirm') !== $name) {
                 $validator->errors()->add('confirm', $this->confirmMessage($name));
+            }
+
+            // The whole file is stored before the restore starts; a disk that fills up halfway helps nobody.
+            $free = app(DiskSpace::class)->free();
+            if (! $validator->errors()->has('size') && $free !== null && (int) $this->input('size') > $free - DiskSpace::MARGIN_BYTES) {
+                $validator->errors()->add('size', "There isn't enough free disk space for this file (".HistoryRecorder::bytesForHumans((int) max(0, $free)).' free)');
             }
         }];
     }

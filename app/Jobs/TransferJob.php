@@ -3,11 +3,15 @@
 namespace App\Jobs;
 
 use App\Enums\TransferStatus;
+use App\Models\SavedConnection;
 use App\Models\Transfer;
 use App\Transfers\TransferCancelled;
 use App\Transfers\TransferProgress;
+use App\Transfers\TransferTarget;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use LogicException;
+use RuntimeException;
 use Throwable;
 
 /** Base of backup and restore jobs: runs on the `transfers` queue, once, with no time limit. */
@@ -91,6 +95,31 @@ abstract class TransferJob implements ShouldQueue
         if ($transfer !== null && $transfer->status->isActive()) {
             $this->markFailed($transfer, $e);
         }
+    }
+
+    /**
+     * The connection the transfer runs against, refused when it no longer points at the database the transfer was
+     * started (and, for a restore, confirmed) against.
+     *
+     * @param  string  $noun  "backup" or "restore"
+     */
+    protected function targetConnection(Transfer $transfer, string $noun): SavedConnection
+    {
+        $changed = "The connection was changed after this {$noun} started. Start the {$noun} again.";
+
+        try {
+            $connection = $transfer->runConnection();
+        } catch (LogicException) {
+            // A server-level connection made fixed since: it can no longer be scoped to the transfer's database.
+            throw new RuntimeException($changed);
+        }
+
+        $stored = ($transfer->options ?? [])['target'] ?? null;
+        if (! TransferTarget::matches($connection, is_array($stored) ? $stored : null)) {
+            throw new RuntimeException($changed);
+        }
+
+        return $connection;
     }
 
     /** Called after the transfer is marked Done. */

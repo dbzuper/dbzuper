@@ -29,15 +29,22 @@ use Throwable;
  */
 class RunImport extends TransferJob
 {
+    public const FILE_GONE = 'The uploaded file is no longer available. Upload it again.';
+
     protected function perform(Transfer $transfer, TransferProgress $progress): void
     {
-        $connection = $transfer->runConnection();
+        $connection = $this->targetConnection($transfer, 'restore');
         $path = (string) $transfer->file_path;
-        if ($path === '' || ! is_file($path)) {
-            throw new RuntimeException('The uploaded file is gone; upload it again.');
-        }
 
-        $reader = new DumpReader($path);
+        try {
+            if ($path === '' || ! is_file($path)) {
+                throw new RuntimeException('missing');
+            }
+            $reader = new DumpReader($path);
+        } catch (RuntimeException) {
+            // Never the server path.
+            throw new RuntimeException(self::FILE_GONE);
+        }
 
         try {
             if ($transfer->method === TransferMethod::Native) {
