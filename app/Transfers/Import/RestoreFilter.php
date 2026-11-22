@@ -67,8 +67,15 @@ final class RestoreFilter
     {
         $sql = $this->stripComments($text);
 
-        if ($this->isMySql() && preg_match('~^/\*(?:M?!)\d*\s((?:(?!\*/).)*)\*/$~s', $sql, $m) === 1) {
-            $sql = $this->stripComments($m[1]);
+        // Executable comments (/*!NNNNN ...*/, /*M!NNNNNN ...*/) in front: a whole-statement one is classified by
+        // its inner text; one followed by more text (MariaDB's sandbox marker line) is dropped for classification.
+        while ($this->isMySql() && preg_match('~^/\*M?!\d*\s*((?:(?!\*/).)*)\*/(.*)$~s', $sql, $m) === 1) {
+            $rest = $this->stripComments($m[2]);
+            $sql = $rest === '' ? $this->stripComments($m[1]) : $rest;
+
+            if ($rest === '') {
+                break;
+            }
         }
 
         return ! $this->removable($sql);
@@ -208,6 +215,15 @@ final class RestoreFilter
         foreach ($this->psqlArguments($args) as [$value, $quoted]) {
             if (! $quoted && str_starts_with($value, '-')) {
                 continue;
+            }
+
+            if (preg_match('~^postgres(?:ql)?://~i', $value) === 1) {
+                $url = parse_url($value);
+                $path = rawurldecode(ltrim($url['path'] ?? '', '/'));
+                parse_str($url['query'] ?? '', $query);
+                $name = $path !== '' ? $path : ($query['dbname'] ?? '');
+
+                return is_string($name) && $name !== '' ? $name : null;
             }
 
             if (preg_match("/(?:^|\\s)dbname\\s*=\\s*(?:'((?:[^'\\\\]|\\\\.)*)'|(\\S+))/", $value, $m) === 1) {

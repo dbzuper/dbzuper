@@ -179,3 +179,17 @@ it('ignores trailing comments when classifying', function () {
 it('removes PostgreSQL ABORT', function () {
     expect(rfRun(DriverName::Postgres, TransferMethod::Builtin, array_map('rfSql', ['ABORT', 'ABORT WORK', 'abort transaction'])))->toBe([]);
 });
+
+it('sees through the MariaDB sandbox marker line in front of a database statement', function () {
+    $mark = "/*M!999999\- enable the sandbox mode */\n";
+    expect(rfMy([$mark.'CREATE DATABASE /*!32312 IF NOT EXISTS*/ `shop` /*!40100 DEFAULT CHARACTER SET utf8mb4 */'], driver: DriverName::MariaDb))->toBe([]);
+    expect(rfMy([$mark.'USE `shop`', $mark.'DROP DATABASE IF EXISTS `shop`'], driver: DriverName::MariaDb))->toBe([]);
+    expect(fn () => rfMy([$mark.'USE `a`', 'USE `b`'], driver: DriverName::MariaDb))->toThrow(RestoreRefused::class, '(a and b)');
+    $keep = [$mark.'SET @x = 1', $mark.'CREATE TABLE t (id int)'];
+    expect(rfMy($keep, driver: DriverName::MariaDb))->toBe($keep);
+});
+
+it('parses postgres URIs in \connect', function () {
+    expect(rfPg([rfMeta('\connect postgresql://h/a'), rfMeta('\connect a'), rfMeta('\c postgres://u@h:5432/a?sslmode=require'), rfMeta('\c postgresql://h?dbname=a')], TransferMethod::Native))->toBe([]);
+    expect(fn () => rfPg([rfMeta('\connect postgresql://h/a'), rfMeta('\connect b')], TransferMethod::Native))->toThrow(RestoreRefused::class, '(a and b)');
+});
