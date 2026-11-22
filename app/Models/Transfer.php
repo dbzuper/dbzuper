@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\TransferDirection;
 use App\Enums\TransferMethod;
 use App\Enums\TransferStatus;
+use App\Transfers\WorkerHeartbeat;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -106,6 +107,8 @@ class Transfer extends Model
             'expires_at' => $this->expires_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
+            // Lets the progress display tell "waiting for a free worker" from "no worker running" without another call.
+            'worker_alive' => WorkerHeartbeat::alive(),
         ];
     }
 }

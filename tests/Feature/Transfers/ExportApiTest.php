@@ -15,6 +15,7 @@ use App\Transfers\Export\ExportOptions;
 use App\Transfers\Io\DumpWriter;
 use App\Transfers\TransferProgress;
 use App\Transfers\TransferStorage;
+use App\Transfers\WorkerHeartbeat;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\Bus;
@@ -342,4 +343,12 @@ it('fails a backup whose connection was changed after it started', function () {
         ->and($transfer->error)->toBe('The connection was changed after this backup started. Start the backup again.')
         ->and($transfer->file_path)->toBeNull();
     @unlink($other);
+});
+
+it('says on each transfer whether a worker is alive', function () {
+    $id = startExport()->assertAccepted()->json('id');
+
+    $this->actingAs($this->user)->getJson("{$this->base}/{$id}")->assertOk()->assertJsonPath('worker_alive', false);
+    WorkerHeartbeat::beat();
+    $this->actingAs($this->user)->getJson("{$this->base}/{$id}")->assertOk()->assertJsonPath('worker_alive', true);
 });

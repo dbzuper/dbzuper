@@ -1,0 +1,31 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { transfersApi } from './transfers-api';
+
+const ok = () =>
+    new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+    });
+
+afterEach(() => vi.restoreAllMocks());
+
+describe('transfersApi.capabilities', () => {
+    it('GETs without tables', async () => {
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok());
+        await transfersApi.capabilities('5');
+        expect(fetchMock.mock.calls[0][0]).toBe(
+            '/api/c/5/transfers/capabilities',
+        );
+        expect(fetchMock.mock.calls[0][1]?.method).toBe('GET');
+    });
+
+    it('POSTs a chosen set as JSON, however long', async () => {
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok());
+        const keys = Array.from({ length: 2000 }, (_, i) => `t${i}`);
+        await transfersApi.capabilities('5', keys);
+        const [url, init] = fetchMock.mock.calls[0];
+        expect(url).toBe('/api/c/5/transfers/capabilities');
+        expect(init?.method).toBe('POST');
+        expect(JSON.parse(init?.body as string)).toEqual({ tables: keys });
+    });
+});

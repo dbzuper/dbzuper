@@ -1,5 +1,13 @@
 import { Info } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+    memo,
+    useCallback,
+    useEffect,
+    useId,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -84,19 +92,68 @@ function groupObjects(objects: DumpObject[]): [string | null, DumpObject[]][] {
     return [...groups.entries()];
 }
 
+/** One checklist row. Memoised on `checked`, so a toggle re-renders only its own row. */
+const PickerRow = memo(function PickerRow({
+    object: o,
+    id,
+    checked,
+    onToggle,
+}: {
+    object: DumpObject;
+    id: string;
+    checked: boolean;
+    onToggle: (key: string, on: boolean) => void;
+}) {
+    return (
+        <li className="flex items-center gap-2 px-1 py-0.5">
+            <Checkbox
+                id={id}
+                checked={checked}
+                onCheckedChange={(v) => onToggle(o.key, v === true)}
+            />
+            <label
+                htmlFor={id}
+                className="flex min-w-0 flex-1 items-baseline gap-1.5"
+            >
+                <span className="truncate font-mono text-[12.5px]">
+                    {o.name}
+                </span>
+                {o.kind !== 'table' && (
+                    <span className="text-[10px] text-muted-foreground">
+                        {o.kind}
+                    </span>
+                )}
+            </label>
+            {o.rows !== null && (
+                <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                    {o.rows.toLocaleString('en')} rows
+                </span>
+            )}
+        </li>
+    );
+});
+
 function TablePicker({
     objects,
     chosen,
-    onChange,
+    onToggle,
+    onSetMany,
     bySchema,
 }: {
     objects: DumpObject[];
     chosen: Set<string>;
-    onChange: (next: Set<string>) => void;
+    /** Both stable (useCallback): the memoised rows rely on it. */
+    onToggle: (key: string, on: boolean) => void;
+    onSetMany: (keys: string[], on: boolean) => void;
     bySchema: boolean;
 }) {
     const [query, setQuery] = useState('');
     const baseId = useId();
+    /** Each object's position in the full list: a row id that doesn't change while filtering. */
+    const positions = useMemo(
+        () => new Map(objects.map((o, i) => [o.key, i])),
+        [objects],
+    );
     const q = query.trim().toLowerCase();
     const visible = q
         ? objects.filter((o) =>
@@ -109,50 +166,25 @@ function TablePicker({
         ? groupObjects(visible)
         : ([[null, visible]] as [string | null, DumpObject[]][]);
 
-    const toggle = (key: string, on: boolean) => {
-        const next = new Set(chosen);
-        if (on) next.add(key);
-        else next.delete(key);
-        onChange(next);
-    };
-    const setVisible = (on: boolean) => {
-        const next = new Set(chosen);
-        visible.forEach((o) => (on ? next.add(o.key) : next.delete(o.key)));
-        onChange(next);
-    };
-
-    const item = (o: DumpObject, i: number) => {
-        const id = `${baseId}-${i}`;
-        return (
-            <li key={o.key} className="flex items-center gap-2 px-1 py-0.5">
-                <Checkbox
-                    id={id}
-                    checked={chosen.has(o.key)}
-                    onCheckedChange={(v) => toggle(o.key, v === true)}
-                />
-                <label
-                    htmlFor={id}
-                    className="flex min-w-0 flex-1 items-baseline gap-1.5"
-                >
-                    <span className="truncate font-mono text-[12.5px]">
-                        {o.name}
-                    </span>
-                    {o.kind !== 'table' && (
-                        <span className="text-[10px] text-muted-foreground">
-                            {o.kind}
-                        </span>
-                    )}
-                </label>
-                {o.rows !== null && (
-                    <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
-                        {o.rows.toLocaleString('en')} rows
-                    </span>
-                )}
-            </li>
+    const setVisible = (on: boolean) =>
+        onSetMany(
+            visible.map((o) => o.key),
+            on,
         );
-    };
 
-    let index = 0;
+    const item = (o: DumpObject) => (
+        <PickerRow
+            key={o.key}
+            object={o}
+            id={`${baseId}-${positions.get(o.key) ?? 0}`}
+            checked={chosen.has(o.key)}
+            onToggle={onToggle}
+        />
+    );
+    const chosenShown = q
+        ? visible.some((o) => chosen.has(o.key))
+        : chosen.size > 0;
+
     return (
         <div className="grid gap-1.5">
             <div className="flex items-center gap-2">
@@ -178,9 +210,9 @@ function TablePicker({
                     variant="ghost"
                     size="sm"
                     onClick={() => setVisible(false)}
-                    disabled={chosen.size === 0}
+                    disabled={!chosenShown}
                 >
-                    Clear
+                    Clear {q ? 'shown' : 'all'}
                 </Button>
             </div>
             <div className="max-h-56 overflow-auto rounded-md border p-1">
@@ -203,10 +235,10 @@ function TablePicker({
                             >
                                 {schema}
                             </p>
-                            <ul>{list.map((o) => item(o, index++))}</ul>
+                            <ul>{list.map(item)}</ul>
                         </div>
                     ) : (
-                        <ul key="all">{list.map((o) => item(o, index++))}</ul>
+                        <ul key="all">{list.map(item)}</ul>
                     ),
                 )}
             </div>
@@ -276,12 +308,40 @@ export function BackupDialog({
         };
     }, [open, workspace]);
 
+    const onToggle = useCallback(
+        (key: string, on: boolean) =>
+            setChosen((prev) => {
+                const next = new Set(prev);
+                if (on) next.add(key);
+                else next.delete(key);
+                return next;
+            }),
+        [],
+    );
+    const onSetMany = useCallback(
+        (keys: string[], on: boolean) =>
+            setChosen((prev) => {
+                const next = new Set(prev);
+                keys.forEach((k) => (on ? next.add(k) : next.delete(k)));
+                return next;
+            }),
+        [],
+    );
+
+    /** Every object chosen counts as "all" (which also takes routines and events where the engine has them). */
+    const everything =
+        mode === 'all' ||
+        (objects !== null &&
+            objects.length > 0 &&
+            chosen.size === objects.length);
     // Capabilities for the chosen set: at once on open, then debounced while the choice changes.
     const keysId = useMemo(
-        () => (mode === 'all' ? '*' : JSON.stringify([...chosen].sort())),
-        [mode, chosen],
+        () => (everything ? '*' : JSON.stringify([...chosen].sort())),
+        [everything, chosen],
     );
     const capsReadOnce = useRef(false);
+    /** A re-read is due or on its way: what's included isn't known yet. */
+    const [capsPending, setCapsPending] = useState(false);
     useEffect(() => {
         if (!open) {
             capsReadOnce.current = false;
@@ -289,8 +349,13 @@ export function BackupDialog({
         }
         const keys =
             keysId === '*' ? undefined : (JSON.parse(keysId) as string[]);
-        if (keys !== undefined && keys.length === 0) return;
+        if (keys !== undefined && keys.length === 0) {
+            setCapsPending(false);
+            return;
+        }
+        // Cleared by the next run of this effect, so a slower, older answer is dropped.
         let stopped = false;
+        setCapsPending(true);
         const read = () =>
             transfersApi
                 .capabilities(workspace, keys)
@@ -305,7 +370,8 @@ export function BackupDialog({
                         setCapsError(
                             apiMessage(e, "Couldn't read the backup options."),
                         ),
-                );
+                )
+                .finally(() => !stopped && setCapsPending(false));
         if (!capsReadOnce.current) {
             capsReadOnce.current = true;
             void read();
@@ -319,6 +385,16 @@ export function BackupDialog({
             clearTimeout(timer);
         };
     }, [open, workspace, keysId]);
+
+    // Focus follows the step: the status after Back up (or Show), the form's first control after New backup.
+    const statusRef = useRef<HTMLDivElement>(null);
+    const firstControlRef = useRef<HTMLInputElement>(null);
+    const [focusTo, setFocusTo] = useState<'status' | 'form' | null>(null);
+    useEffect(() => {
+        if (focusTo === null) return;
+        (focusTo === 'status' ? statusRef : firstControlRef).current?.focus();
+        setFocusTo(null);
+    }, [focusTo, active]);
 
     const native = caps?.export.native ?? null;
     const effective: TransferMethod | null = caps
@@ -338,10 +414,11 @@ export function BackupDialog({
         effective === 'native'
             ? (caps?.export.native_gaps ?? [])
             : (caps?.export.builtin_gaps ?? []);
-    const infoLine =
-        gaps.length === 0
-            ? 'Includes everything in the chosen tables.'
-            : `Not included: ${gaps.join(', ')}.`;
+    const infoLine = capsPending
+        ? 'Checking…'
+        : gaps.length === 0
+          ? 'Includes everything in the chosen tables.'
+          : `Not included: ${gaps.join(', ')}.`;
 
     const database =
         caps?.database_name ?? connection.database ?? connection.name;
@@ -354,9 +431,16 @@ export function BackupDialog({
 
     const canStart =
         caps !== null &&
+        !capsPending &&
         !starting &&
         (structure || data) &&
         (mode === 'all' || chosen.size > 0);
+
+    // Stable: TransferStatus reports through an effect that depends on it.
+    const onDone = useCallback(() => {
+        setFinished(true);
+        setRecentKey((k) => k + 1);
+    }, []);
 
     const start = () => {
         if (!canStart) return;
@@ -364,7 +448,7 @@ export function BackupDialog({
         setStartError(null);
         transfersApi
             .startExport(workspace, {
-                tables: mode === 'all' ? 'all' : [...chosen],
+                tables: everything ? 'all' : [...chosen],
                 structure,
                 data,
                 drop: structure && drop,
@@ -376,6 +460,7 @@ export function BackupDialog({
             .then((t) => {
                 setFinished(!ACTIVE_STATUSES.includes(t.status));
                 setActive(t);
+                setFocusTo('status');
                 setRecentKey((k) => k + 1);
             })
             .catch((e: unknown) =>
@@ -406,21 +491,27 @@ export function BackupDialog({
                 </DialogHeader>
 
                 {active ? (
-                    <TransferStatus
-                        key={active.id}
-                        workspace={workspace}
-                        transfer={active}
-                        onDone={() => {
-                            setFinished(true);
-                            setRecentKey((k) => k + 1);
-                        }}
-                    />
+                    <div
+                        ref={statusRef}
+                        tabIndex={-1}
+                        role="region"
+                        aria-label="Backup progress"
+                        className="rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    >
+                        <TransferStatus
+                            key={active.id}
+                            workspace={workspace}
+                            transfer={active}
+                            onDone={onDone}
+                        />
+                    </div>
                 ) : (
                     <div className="grid gap-4">
                         <Row label="Tables">
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                                 <label className="inline-flex items-center gap-2 text-sm">
                                     <input
+                                        ref={firstControlRef}
                                         type="radio"
                                         name={`${methodName}-tables`}
                                         className={radioClass}
@@ -452,7 +543,8 @@ export function BackupDialog({
                                 <TablePicker
                                     objects={objects}
                                     chosen={chosen}
-                                    onChange={setChosen}
+                                    onToggle={onToggle}
+                                    onSetMany={onSetMany}
                                     bySchema={connection.driver === 'pgsql'}
                                 />
                             )}
@@ -585,10 +677,12 @@ export function BackupDialog({
                     <RecentTransfers
                         workspace={workspace}
                         refreshKey={recentKey}
+                        direction="export"
                         exclude={active?.id ?? null}
                         onShow={(t) => {
                             setFinished(false);
                             setActive(t);
+                            setFocusTo('status');
                         }}
                     />
                 )}
@@ -603,6 +697,7 @@ export function BackupDialog({
                                     onClick={() => {
                                         setActive(null);
                                         setFinished(false);
+                                        setFocusTo('form');
                                     }}
                                 >
                                     New backup

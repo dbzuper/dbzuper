@@ -159,3 +159,19 @@ describe('uploadInChunks server errors', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('uploadInChunks generic server errors', () => {
+    it('still retries a 5xx whose message is the framework default', async () => {
+        const fetchMock = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValueOnce(json(500, { message: 'Server Error' }))
+            .mockResolvedValueOnce(json(200, { offset: 10 }));
+        const done = uploadInChunks(file(10), '/up', {
+            chunkBytes: 10,
+            onProgress: () => {},
+        });
+        await vi.advanceTimersByTimeAsync(1000);
+        await done;
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+});

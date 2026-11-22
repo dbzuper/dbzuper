@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { transfersApi } from '@/lib/transfers-api';
-import type { Transfer, TransferCapabilities } from '@/lib/transfers-api';
+import type { Transfer } from '@/lib/transfers-api';
 import {
     NO_WORKER_MESSAGE,
     TransferStatus,
@@ -31,11 +31,9 @@ const transfer = (over: Partial<Transfer> = {}): Transfer => ({
     expires_at: null,
     created_at: null,
     updated_at: null,
+    worker_alive: true,
     ...over,
 });
-
-const caps = (alive: boolean) =>
-    ({ worker_alive: alive }) as TransferCapabilities;
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -46,12 +44,21 @@ afterEach(() => {
 const flush = (ms = 0) => act(() => vi.advanceTimersByTimeAsync(ms));
 
 describe('TransferStatus while pending', () => {
+    const NOW = new Date('2026-11-23T10:00:00Z');
+    const pending = (alive: boolean, createdSecondsAgo = 0) =>
+        transfer({
+            worker_alive: alive,
+            created_at: new Date(
+                NOW.getTime() - createdSecondsAgo * 1000,
+            ).toISOString(),
+        });
+
+    beforeEach(() => vi.setSystemTime(NOW));
+
     it('shows the no-worker message only after 10 s without a heartbeat', async () => {
-        vi.spyOn(transfersApi, 'show').mockResolvedValue(transfer());
-        const capabilities = vi
-            .spyOn(transfersApi, 'capabilities')
-            .mockResolvedValue(caps(false));
-        render(<TransferStatus workspace="5" transfer={transfer()} />);
+        vi.spyOn(transfersApi, 'show').mockResolvedValue(pending(false));
+        const capabilities = vi.spyOn(transfersApi, 'capabilities');
+        render(<TransferStatus workspace="5" transfer={pending(false)} />);
 
         await flush();
         expect(screen.getByText(WAITING_MESSAGE)).toBeInTheDocument();
@@ -60,32 +67,52 @@ describe('TransferStatus while pending', () => {
         await flush(1500);
         expect(screen.getByText(NO_WORKER_MESSAGE)).toBeInTheDocument();
         expect(screen.queryByText(WAITING_MESSAGE)).toBeNull();
-        // Re-checked every 5 s while pending.
-        expect(capabilities.mock.calls.length).toBeGreaterThanOrEqual(3);
+        // The heartbeat comes with each poll: nothing else is fetched.
+        expect(capabilities).not.toHaveBeenCalled();
+    });
+
+    it('counts the wait from the transfer creation, not from opening the dialog', async () => {
+        vi.spyOn(transfersApi, 'show').mockResolvedValue(pending(false, 30));
+        render(<TransferStatus workspace="5" transfer={pending(false, 30)} />);
+        await flush();
+        expect(screen.getByText(NO_WORKER_MESSAGE)).toBeInTheDocument();
     });
 
     it('keeps the waiting message while a worker is alive', async () => {
-        vi.spyOn(transfersApi, 'show').mockResolvedValue(transfer());
-        vi.spyOn(transfersApi, 'capabilities').mockResolvedValue(caps(true));
-        render(<TransferStatus workspace="5" transfer={transfer()} />);
+        vi.spyOn(transfersApi, 'show').mockResolvedValue(pending(true));
+        render(<TransferStatus workspace="5" transfer={pending(true)} />);
         await flush(15000);
         expect(screen.getByText(WAITING_MESSAGE)).toBeInTheDocument();
         expect(screen.queryByText(NO_WORKER_MESSAGE)).toBeNull();
     });
 
-    it('stops checking the worker once the job runs', async () => {
-        vi.spyOn(transfersApi, 'show').mockResolvedValue(
-            transfer({ status: 'running' }),
-        );
-        const capabilities = vi
-            .spyOn(transfersApi, 'capabilities')
-            .mockResolvedValue(caps(false));
-        render(<TransferStatus workspace="5" transfer={transfer()} />);
-        // Let React apply the first poll before the clock runs on.
+    it('switches to the no-worker message when the heartbeat stops', async () => {
+        vi.spyOn(transfersApi, 'show')
+            .mockResolvedValueOnce(pending(true, 20))
+            .mockResolvedValue(pending(false, 20));
+        render(<TransferStatus workspace="5" transfer={pending(true, 20)} />);
         await flush();
-        await flush(20000);
-        expect(screen.queryByText(NO_WORKER_MESSAGE)).toBeNull();
-        expect(capabilities.mock.calls.length).toBeLessThanOrEqual(1);
+        expect(screen.getByText(WAITING_MESSAGE)).toBeInTheDocument();
+        await flush(1000);
+        expect(screen.getByText(NO_WORKER_MESSAGE)).toBeInTheDocument();
+    });
+
+    it('announces state changes but not every progress tick', async () => {
+        const running = (rows: number) =>
+            transfer({ status: 'running', rows_done: rows, rows_total: 100 });
+        vi.spyOn(transfersApi, 'show')
+            .mockResolvedValueOnce(running(10))
+            .mockResolvedValue(running(20));
+        render(<TransferStatus workspace="5" transfer={pending(true)} />);
+        await flush();
+        const status = screen.getByRole('status');
+        expect(status).toHaveTextContent('The backup is running.');
+        await flush(1000);
+        expect(status).toHaveTextContent('The backup is running.');
+        expect(status).not.toHaveTextContent('rows');
+        expect(
+            screen.getByText('20 of 100 rows').closest('[aria-live]'),
+        ).toBeNull();
     });
 });
 
@@ -161,7 +188,6 @@ describe('TransferStatus progress and results', () => {
 
     it('shows a poll error', async () => {
         vi.spyOn(transfersApi, 'show').mockRejectedValue(new TypeError('x'));
-        vi.spyOn(transfersApi, 'capabilities').mockResolvedValue(caps(true));
         render(<TransferStatus workspace="5" transfer={transfer()} />);
         await flush(3000);
         expect(screen.getByRole('alert')).toHaveTextContent(

@@ -103,3 +103,53 @@ it('caches the tool check per driver and server version', function () {
     expect($second)->toEqual($first)
         ->and($other->path)->toBe($script);
 });
+
+it('takes the chosen tables as a JSON body, however many there are', function () {
+    $keys = array_map(fn (int $i) => "table_{$i}", range(1, 2000));
+    $seen = null;
+    $this->mock(TransferPlanner::class, function ($mock) use (&$seen) {
+        $mock->shouldReceive('capabilities')->andReturnUsing(function (SavedConnection $c, ?array $tables) use (&$seen) {
+            $seen = $tables;
+
+            return ['read_only' => false, 'database_name' => 'x', 'worker_alive' => false, 'export' => [], 'import' => []];
+        });
+    });
+
+    $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => $keys])
+        ->assertOk()->assertJsonPath('database_name', 'x');
+    expect($seen)->toBe($keys);
+
+    $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => 'all'])->assertOk();
+    expect($seen)->toBeNull();
+});
+
+it('reads capabilities by POST like GET', function () {
+    $json = $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => ['users']])
+        ->assertOk()->json();
+
+    expect($json['export']['default_method'])->toBe('builtin')
+        ->and($json['database_name'])->toBe(basename($this->path));
+});
+
+it('rejects a malformed table list', function (mixed $tables) {
+    $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => $tables])
+        ->assertUnprocessable()->assertJsonValidationErrors('tables');
+})->with([
+    'a string other than all' => ['some'],
+    'a non-string key' => [[1, 2]],
+    'a map' => [['a' => 'users']],
+    'an empty key' => [['']],
+]);
+
+it('forbids other users the POST form too', function () {
+    $this->actingAs(User::factory()->create())->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => 'all'])->assertForbidden();
+});
+
+it('puts the polled transfer routes on the transfers limiter, not the shared API one', function (string $name) {
+    // What actually runs: the group's middleware minus the route's exclusions.
+    $router = app('router');
+    $middleware = $router->gatherRouteMiddleware($router->getRoutes()->getByName($name));
+
+    expect($middleware)->toContain('throttle:dbzuper-transfers')
+        ->and($middleware)->not->toContain('throttle:dbzuper-api');
+})->with(['api.transfers.show', 'api.transfers.index', 'api.transfers.capabilities', 'api.transfers.capabilities.post', 'api.transfers.upload']);

@@ -61,6 +61,8 @@ async function readBody(response: Response): Promise<Body> {
     }
 }
 
+const GENERIC_SERVER_ERROR = 'Server Error';
+
 /** A failure the server explained (a 5xx with a message): not retried. */
 class ServerError extends Error {}
 
@@ -80,7 +82,9 @@ async function sendWithRetry(
             const response = await send(url, chunk, offset, signal);
             if (response.status < 500) return response;
             const { message } = await readBody(response);
-            if (message) throw new ServerError(message);
+            // Laravel's generic "Server Error" explains nothing: that one is retried like any other 5xx.
+            if (message && message !== GENERIC_SERVER_ERROR)
+                throw new ServerError(message);
             failure = new Error(
                 `The upload failed with status ${response.status}.`,
             );

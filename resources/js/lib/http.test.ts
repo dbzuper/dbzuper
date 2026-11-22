@@ -77,3 +77,30 @@ describe('apiFetch', () => {
         expect(fetchMock.mock.calls[0][1]?.keepalive).toBeUndefined();
     });
 });
+
+describe('ApiError Retry-After', () => {
+    it('carries Retry-After in seconds', async () => {
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            new Response(JSON.stringify({ message: 'Too Many Attempts.' }), {
+                status: 429,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Retry-After': '7',
+                },
+            }),
+        );
+        await expect(apiFetch('/api/x')).rejects.toMatchObject({
+            status: 429,
+            retryAfter: 7,
+        });
+    });
+
+    it('is null without the header', async () => {
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            new Response('nope', { status: 500 }),
+        );
+        const error = await apiFetch('/api/x').catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(ApiError);
+        expect((error as ApiError).retryAfter).toBeNull();
+    });
+});

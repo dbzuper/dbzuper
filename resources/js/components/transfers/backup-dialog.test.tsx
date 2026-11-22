@@ -318,3 +318,157 @@ describe('BackupDialog', () => {
         expect(link).toHaveAttribute('href', '/api/c/5/transfers/old/download');
     });
 });
+
+describe('BackupDialog choices and capabilities', () => {
+    it('sends drop: false without structure', async () => {
+        const start = vi
+            .spyOn(transfersApi, 'startExport')
+            .mockResolvedValue(started);
+        open();
+        await waitFor(() => expect(backUp()).toBeEnabled());
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Structure' }));
+        fireEvent.click(backUp());
+        await waitFor(() =>
+            expect(start).toHaveBeenCalledWith(
+                '5',
+                expect.objectContaining({
+                    structure: false,
+                    data: true,
+                    drop: false,
+                }),
+            ),
+        );
+    });
+
+    it('sends all when every object is chosen', async () => {
+        const start = vi
+            .spyOn(transfersApi, 'startExport')
+            .mockResolvedValue(started);
+        open();
+        fireEvent.click(await screen.findByLabelText('Choose…'));
+        fireEvent.click(screen.getByRole('checkbox', { name: /^orders/ }));
+        fireEvent.click(screen.getByRole('checkbox', { name: /^users/ }));
+        await waitFor(() => expect(backUp()).toBeEnabled());
+        fireEvent.click(backUp());
+        await waitFor(() =>
+            expect(start).toHaveBeenCalledWith(
+                '5',
+                expect.objectContaining({ tables: 'all' }),
+            ),
+        );
+        expect(capabilities).not.toHaveBeenCalledWith(
+            '5',
+            expect.arrayContaining(['orders']),
+        );
+    });
+
+    it('says Checking… and holds Back up while the chosen set is re-read', async () => {
+        open();
+        await waitFor(() => expect(backUp()).toBeEnabled());
+        let release: (c: TransferCapabilities) => void = () => {};
+        capabilities.mockImplementation(
+            () => new Promise<TransferCapabilities>((r) => (release = r)),
+        );
+        fireEvent.click(screen.getByLabelText('Choose…'));
+        fireEvent.click(screen.getByRole('checkbox', { name: /^users/ }));
+        expect(screen.getByText('Checking…')).toBeInTheDocument();
+        expect(backUp()).toBeDisabled();
+        await waitFor(() => expect(capabilities).toHaveBeenCalledTimes(2));
+        release(caps());
+        await waitFor(() => expect(backUp()).toBeEnabled());
+        expect(screen.getByText(/^Not included:/)).toBeInTheDocument();
+    });
+
+    it('ignores a capabilities answer that arrives after a newer one', async () => {
+        mockApi(caps(nativeUsable));
+        open();
+        await screen.findByText('Native — mysqldump 8.4.3');
+        let releaseOld: (c: TransferCapabilities) => void = () => {};
+        capabilities
+            .mockImplementationOnce(
+                () =>
+                    new Promise<TransferCapabilities>((r) => (releaseOld = r)),
+            )
+            .mockResolvedValueOnce(
+                caps({ ...nativeUsable, native_gaps: ['NEW gap'] }),
+            );
+        fireEvent.click(screen.getByLabelText('Choose…'));
+        fireEvent.click(screen.getByRole('checkbox', { name: /^users/ }));
+        await waitFor(() =>
+            expect(capabilities).toHaveBeenCalledWith('5', ['users']),
+        );
+        fireEvent.click(screen.getByRole('checkbox', { name: /^orders/ }));
+        // Both chosen = everything: read without a list.
+        await screen.findByText('Not included: NEW gap.');
+        releaseOld(caps({ ...nativeUsable, native_gaps: ['OLD gap'] }));
+        await new Promise((r) => setTimeout(r, 50));
+        expect(screen.getByText('Not included: NEW gap.')).toBeInTheDocument();
+        expect(screen.queryByText('Not included: OLD gap.')).toBeNull();
+    });
+
+    it('labels the clear button by what it clears', async () => {
+        open();
+        fireEvent.click(await screen.findByLabelText('Choose…'));
+        expect(
+            screen.getByRole('button', { name: 'Clear all' }),
+        ).toBeDisabled();
+        fireEvent.change(
+            screen.getByRole('searchbox', { name: 'Filter tables' }),
+            { target: { value: 'ord' } },
+        );
+        expect(
+            screen.getByRole('button', { name: 'Clear shown' }),
+        ).toBeInTheDocument();
+    });
+});
+
+describe('BackupDialog focus and recent list', () => {
+    it('moves focus to the progress after Back up and to the form after New backup', async () => {
+        vi.spyOn(transfersApi, 'startExport').mockResolvedValue(started);
+        vi.spyOn(transfersApi, 'show').mockResolvedValue({
+            ...started,
+            status: 'done',
+            downloadable: false,
+        } as Transfer);
+        open();
+        await waitFor(() => expect(backUp()).toBeEnabled());
+        fireEvent.click(backUp());
+        const region = await screen.findByRole('region', {
+            name: 'Backup progress',
+        });
+        await waitFor(() => expect(region).toHaveFocus());
+        fireEvent.click(
+            await screen.findByRole('button', { name: 'New backup' }),
+        );
+        await waitFor(() =>
+            expect(screen.getByLabelText('All 2')).toHaveFocus(),
+        );
+    });
+
+    it('lists only backups', async () => {
+        vi.spyOn(transfersApi, 'list').mockResolvedValue({
+            transfers: [
+                {
+                    ...started,
+                    id: 'b',
+                    status: 'done',
+                    downloadable: true,
+                    file_name: 'shop-backup.sql.gz',
+                    file_size: 10,
+                } as Transfer,
+                {
+                    ...started,
+                    id: 'r',
+                    direction: 'import',
+                    status: 'done',
+                    downloadable: false,
+                    file_name: 'restored-file.sql',
+                    file_size: 10,
+                } as Transfer,
+            ],
+        });
+        open();
+        await screen.findByText('shop-backup.sql.gz');
+        expect(screen.queryByText('restored-file.sql')).toBeNull();
+    });
+});

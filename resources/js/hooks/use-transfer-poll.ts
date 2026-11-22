@@ -8,6 +8,9 @@ export const POLL_INTERVAL_MS = 1000;
 /** Failed polls in a row before the error is shown; polling goes on meanwhile. */
 export const POLL_FAILURES_BEFORE_ERROR = 3;
 
+/** Statuses that mean "try again later", not "this transfer is gone". */
+const TRANSIENT_STATUSES = [408, 429];
+
 export const POLL_RETRY_MESSAGE =
     "Couldn't reach the server to check on this transfer. Retrying…";
 
@@ -47,6 +50,7 @@ export function useTransferPoll(
         const controller = new AbortController();
 
         const tick = async () => {
+            let delay = POLL_INTERVAL_MS;
             try {
                 const next = await transfersApi.show(
                     ref,
@@ -59,7 +63,14 @@ export function useTransferPoll(
                 if (!ACTIVE_STATUSES.includes(next.status)) return;
             } catch (e) {
                 if (stopped) return;
+                // Rate-limited (429) or timed out (408): transient, so keep polling, after Retry-After when given.
+                const transient =
+                    e instanceof ApiError &&
+                    TRANSIENT_STATUSES.includes(e.status);
+                if (e instanceof ApiError && transient && e.retryAfter !== null)
+                    delay = Math.max(POLL_INTERVAL_MS, e.retryAfter * 1000);
                 if (
+                    !transient &&
                     e instanceof ApiError &&
                     e.status >= 400 &&
                     e.status < 500
@@ -76,7 +87,7 @@ export function useTransferPoll(
                 if (failures >= POLL_FAILURES_BEFORE_ERROR)
                     setState((s) => ({ ...s, error: POLL_RETRY_MESSAGE }));
             }
-            timer = setTimeout(tick, POLL_INTERVAL_MS);
+            timer = setTimeout(tick, delay);
         };
         void tick();
 

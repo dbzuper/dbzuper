@@ -54,15 +54,23 @@ Route::middleware('auth')->group(function () {
         Route::post('tables/{table}/rows', TableRowsController::class)->where('table', '.+')->name('tables.rows');
         Route::post('tables/{table}/count', TableCountController::class)->where('table', '.+')->name('tables.count');
         Route::post('tables/{table}/changes', TableChangesController::class)->where('table', '.+')->name('tables.changes');
-        Route::get('transfers/capabilities', [TransferController::class, 'capabilities'])->name('transfers.capabilities');
+        // The backup and restore dialogs poll these (progress every second, the list and capabilities while waiting):
+        // the transfers limit, so a busy workspace can't freeze the progress display.
+        Route::get('transfers/capabilities', [TransferController::class, 'capabilities'])
+            ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.capabilities');
+        // POST takes the chosen tables as JSON: a long list doesn't fit a query string (414, max_input_vars).
+        Route::post('transfers/capabilities', [TransferController::class, 'capabilities'])
+            ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.capabilities.post');
         Route::get('transfers/objects', [TransferController::class, 'objects'])->name('transfers.objects');
-        Route::get('transfers', [TransferController::class, 'index'])->name('transfers.index');
+        Route::get('transfers', [TransferController::class, 'index'])
+            ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.index');
         Route::post('transfers/export', [TransferController::class, 'export'])->name('transfers.export');
         Route::post('transfers/import', [TransferController::class, 'import'])->name('transfers.import');
         // A restore upload sends one request per 8 MB chunk: its own, higher limit.
         Route::put('transfers/{transfer}/upload', [TransferController::class, 'upload'])->whereUuid('transfer')
             ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.upload');
-        Route::get('transfers/{transfer}', [TransferController::class, 'show'])->whereUuid('transfer')->name('transfers.show');
+        Route::get('transfers/{transfer}', [TransferController::class, 'show'])->whereUuid('transfer')
+            ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.show');
         Route::post('transfers/{transfer}/cancel', [TransferController::class, 'cancel'])->whereUuid('transfer')->name('transfers.cancel');
         // Downloads are few and long; a resumed one must not trip the API limit.
         Route::get('transfers/{transfer}/download', [TransferController::class, 'download'])->whereUuid('transfer')

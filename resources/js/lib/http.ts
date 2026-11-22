@@ -12,9 +12,21 @@ export class ApiError extends Error {
     constructor(
         public readonly status: number,
         public readonly body: unknown,
+        /** The Retry-After header in seconds (429, 503), when the server sent one. */
+        public readonly retryAfter: number | null = null,
     ) {
         super(`Request failed with status ${status}`);
     }
+}
+
+/** Retry-After as whole seconds; an HTTP date counts from now. Null when absent or unreadable. */
+export function retryAfterSeconds(value: string | null): number | null {
+    if (value === null || value.trim() === '') return null;
+    if (/^\d+$/.test(value.trim())) return Number(value.trim());
+    const at = Date.parse(value);
+    return Number.isNaN(at)
+        ? null
+        : Math.max(0, Math.ceil((at - Date.now()) / 1000));
 }
 
 export function xsrfToken(): string | null {
@@ -64,6 +76,11 @@ export async function apiFetch<T = unknown>(
         .get('Content-Type')
         ?.includes('application/json');
     const payload = isJson ? await response.json() : await response.text();
-    if (!response.ok) throw new ApiError(response.status, payload);
+    if (!response.ok)
+        throw new ApiError(
+            response.status,
+            payload,
+            retryAfterSeconds(response.headers.get('Retry-After')),
+        );
     return payload as T;
 }

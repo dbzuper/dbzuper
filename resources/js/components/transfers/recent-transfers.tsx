@@ -38,6 +38,7 @@ export function RecentTransfers({
     workspace,
     refreshKey = 0,
     exclude,
+    direction,
     onShow,
 }: {
     workspace: WorkspaceRef;
@@ -45,6 +46,8 @@ export function RecentTransfers({
     refreshKey?: number;
     /** A transfer already shown elsewhere in the dialog. */
     exclude?: string | null;
+    /** Only backups ('export') or only restores ('import'); both when left out. */
+    direction?: Transfer['direction'];
     /** Shows a still-running transfer's progress. */
     onShow?: (t: Transfer) => void;
 }) {
@@ -72,7 +75,11 @@ export function RecentTransfers({
         };
     }, [workspace, refreshKey]);
 
-    const shown = (transfers ?? []).filter((t) => t.id !== exclude);
+    const shown = (transfers ?? []).filter(
+        (t) =>
+            t.id !== exclude &&
+            (direction === undefined || t.direction === direction),
+    );
     if (shown.length === 0) return null;
 
     return (

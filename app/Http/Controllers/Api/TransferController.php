@@ -52,8 +52,19 @@ class TransferController extends Controller
     public function capabilities(Request $request, SavedConnection $connection, TransferPlanner $planner): JsonResponse
     {
         Gate::authorize('view', $connection);
-        $tables = $request->query('tables');
-        $keys = is_array($tables) ? array_values(array_filter($tables, 'is_string')) : null;
+        if ($request->isMethod('post')) {
+            // JSON body: {tables: 'all' | list<string>}.
+            $tables = $request->json('tables', 'all');
+            $valid = $tables === 'all' || (is_array($tables) && array_is_list($tables) && count($tables) <= 100_000
+                && array_filter($tables, fn ($t) => ! is_string($t) || $t === '' || strlen($t) > 1000) === []);
+            if (! $valid) {
+                throw ValidationException::withMessages(['tables' => "Choose 'all' or a list of tables."]);
+            }
+            $keys = $tables === 'all' ? null : array_values($tables);
+        } else {
+            $tables = $request->query('tables');
+            $keys = is_array($tables) ? array_values(array_filter($tables, 'is_string')) : null;
+        }
 
         return response()->json($planner->capabilities($connection, $keys));
     }

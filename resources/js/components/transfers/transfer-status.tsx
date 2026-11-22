@@ -14,8 +14,7 @@ export const WAITING_MESSAGE = 'Waiting for a free worker…';
 export const NO_WORKER_MESSAGE =
     'No background worker is running. Start one with php artisan queue:work transfers --queue=transfers';
 
-/** How often the worker heartbeat is re-read while a job waits, and how long it waits before the no-worker hint. */
-export const WORKER_CHECK_MS = 5000;
+/** How long a job waits (from its creation) before a missing worker is reported. */
 export const NO_WORKER_AFTER_MS = 10_000;
 
 const count = (n: number) => n.toLocaleString('en');
@@ -30,33 +29,25 @@ export function apiMessage(e: unknown, fallback: string): string {
     return fallback;
 }
 
-/** Whether no worker has been seen for as long as the job has waited (≥ 10 s). Re-checked every 5 s. */
-function useNoWorker(workspace: WorkspaceRef, pending: boolean): boolean {
-    const [alive, setAlive] = useState<boolean | null>(null);
-    const [waitedLong, setWaitedLong] = useState(false);
+/**
+ * Whether the job has waited at least 10 s, counted from its creation, while the poll reports no worker heartbeat.
+ * The heartbeat comes with each poll (worker_alive), so nothing else is fetched.
+ */
+function useNoWorker(t: Transfer): boolean {
+    const pending = t.status === 'pending';
+    const [mountedAt] = useState(() => Date.now());
+    const [now, setNow] = useState(() => Date.now());
+    const created = t.created_at ? Date.parse(t.created_at) : Number.NaN;
+    const since = Number.isNaN(created) ? mountedAt : created;
+    const remaining = since + NO_WORKER_AFTER_MS - now;
 
     useEffect(() => {
-        setWaitedLong(false);
-        if (!pending) return;
-        let stopped = false;
-        const check = () =>
-            transfersApi
-                .capabilities(workspace)
-                .then((c) => {
-                    if (!stopped) setAlive(c.worker_alive);
-                })
-                .catch(() => {});
-        void check();
-        const interval = setInterval(check, WORKER_CHECK_MS);
-        const timer = setTimeout(() => setWaitedLong(true), NO_WORKER_AFTER_MS);
-        return () => {
-            stopped = true;
-            clearInterval(interval);
-            clearTimeout(timer);
-        };
-    }, [workspace, pending]);
+        if (!pending || remaining <= 0) return;
+        const timer = setTimeout(() => setNow(Date.now()), remaining);
+        return () => clearTimeout(timer);
+    }, [pending, remaining]);
 
-    return pending && waitedLong && alive === false;
+    return pending && remaining <= 0 && t.worker_alive === false;
 }
 
 function progressOf(t: Transfer): { text: string; percent: number | null } {
@@ -115,7 +106,7 @@ export function TransferStatus({
     const t = poll.transfer ?? initial;
     const noun = t.direction === 'export' ? 'backup' : 'restore';
     const active = ACTIVE_STATUSES.includes(t.status);
-    const noWorker = useNoWorker(workspace, t.status === 'pending');
+    const noWorker = useNoWorker(t);
     const [cancelError, setCancelError] = useState<string | null>(null);
     const [cancelling, setCancelling] = useState(false);
 
@@ -139,8 +130,24 @@ export function TransferStatus({
     const cancelRequested = cancelling || t.cancel_requested_at != null;
     const progress = progressOf(t);
 
+    // Announced when the state changes, not with every progress tick.
+    const announcement = {
+        uploading: 'Uploading the file.',
+        pending: noWorker
+            ? 'No background worker is running.'
+            : `The ${noun} is waiting for a free worker.`,
+        running: `The ${noun} is running.`,
+        done: `The ${noun} finished.`,
+        // The failure is a role=alert of its own.
+        failed: '',
+        cancelled: `The ${noun} was cancelled.`,
+    }[t.status];
+
     return (
-        <div className="grid gap-3 text-sm" aria-live="polite">
+        <div className="grid gap-3 text-sm">
+            <p role="status" className="sr-only">
+                {announcement}
+            </p>
             {t.status === 'uploading' && (
                 <p className="text-muted-foreground">Uploading the file…</p>
             )}

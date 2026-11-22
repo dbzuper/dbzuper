@@ -40,6 +40,8 @@ export type Transfer = {
     expires_at: string | null;
     created_at: string | null;
     updated_at: string | null;
+    /** Whether a transfers worker has beaten recently (read with each poll). */
+    worker_alive: boolean;
 };
 
 export type ToolCheck = {
@@ -92,14 +94,12 @@ export type StartImportBody = {
 };
 
 export const transfersApi = {
-    capabilities: (ref: WorkspaceRef, tables?: string[]) => {
-        const search = new URLSearchParams();
-        tables?.forEach((t) => search.append('tables[]', t));
-        const q = search.toString();
-        return apiFetch<TransferCapabilities>(
-            `${apiBase(ref)}/transfers/capabilities${q ? `?${q}` : ''}`,
-        );
-    },
+    /** Without tables, a GET; with them, a POST: a long list doesn't fit a query string (414, max_input_vars). */
+    capabilities: (ref: WorkspaceRef, tables?: 'all' | string[]) =>
+        apiFetch<TransferCapabilities>(
+            `${apiBase(ref)}/transfers/capabilities`,
+            tables === undefined ? {} : { method: 'POST', body: { tables } },
+        ),
     objects: (ref: WorkspaceRef) =>
         apiFetch<{ objects: DumpObject[] }>(
             `${apiBase(ref)}/transfers/objects`,

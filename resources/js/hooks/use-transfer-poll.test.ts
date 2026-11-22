@@ -111,3 +111,35 @@ describe('useTransferPoll failures', () => {
         expect(result.current.transfer?.status).toBe('running');
     });
 });
+
+describe('useTransferPoll transient statuses', () => {
+    it('keeps polling through a 429, after its Retry-After', async () => {
+        const show = vi
+            .spyOn(transfersApi, 'show')
+            .mockRejectedValueOnce(
+                new ApiError(429, { message: 'Too Many Attempts.' }, 5),
+            )
+            .mockResolvedValue(make('running'));
+        const { result } = renderHook(() => useTransferPoll('5', 't1'));
+        await act(() => vi.advanceTimersByTimeAsync(0));
+        expect(result.current.error).toBeNull();
+        await act(() => vi.advanceTimersByTimeAsync(4000));
+        expect(show).toHaveBeenCalledTimes(1);
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(show).toHaveBeenCalledTimes(2);
+        expect(result.current.transfer?.status).toBe('running');
+    });
+
+    it('keeps polling through a 408 at the normal pace', async () => {
+        const show = vi
+            .spyOn(transfersApi, 'show')
+            .mockRejectedValueOnce(new ApiError(408, ''))
+            .mockResolvedValue(make('running'));
+        const { result } = renderHook(() => useTransferPoll('5', 't1'));
+        await act(() => vi.advanceTimersByTimeAsync(0));
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(show).toHaveBeenCalledTimes(2);
+        expect(result.current.error).toBeNull();
+        expect(result.current.transfer?.status).toBe('running');
+    });
+});
