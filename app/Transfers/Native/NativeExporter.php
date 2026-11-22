@@ -29,6 +29,11 @@ final class NativeExporter
     /** Left out by --no-owner --no-privileges on purpose; a restore elsewhere must not need the same roles. */
     public const PG_GAP = 'ownership and privileges';
 
+    public const ENDED_EARLY = "The backup tool's output ended early; nothing was saved.";
+
+    /** The end of the dump kept to look for the tool's closing comment. */
+    private const TAIL_BYTES = 8_192;
+
     /** mysqldump / mariadb-dump print single-precision FLOAT values with 6 significant digits (Ruling 22). */
     public const FLOAT_GAP = 'FLOAT columns rounded to 6 significant digits (mysqldump limit; use built-in for exact values)';
 
@@ -50,7 +55,12 @@ final class NativeExporter
 
         try {
             [$serverVersion, $objects, $routines, $events, $found] = $this->inspect($c, $t, $o, $objects);
-            $command = NativeCommandBuilder::dump($c, $t, $o, $objects, $routines, $events);
+            // Windows: the tool writes its own file next to the output (the transfer's storage directory), tailed
+            // from there; see NativeProcess. Elsewhere stdout is a pipe.
+            $outputFile = PHP_OS_FAMILY === 'Windows'
+                ? dirname($w->path()).DIRECTORY_SEPARATOR.'.dbz-native-'.bin2hex(random_bytes(8)).'.sql'
+                : null;
+            $command = NativeCommandBuilder::dump($c, $t, $o, $objects, $routines, $events, $outputFile);
 
             $w->write(DumpHeader::render([
                 'app_version' => (string) (config('dbzuper.version') ?? 'dev'),
@@ -65,16 +75,23 @@ final class NativeExporter
             $w->write("\n");
 
             $process = new NativeProcess($command, $c->password !== null ? (string) $c->password : null);
+            $tail = '';
             $exit = $process->run(
-                function (string $chunk) use ($w, $p): void {
+                function (string $chunk) use ($w, $p, &$tail): void {
                     $w->write($chunk);
                     $p->advance(bytes: strlen($chunk));
+                    $tail = substr($tail.$chunk, -self::TAIL_BYTES);
                 },
                 fn () => $p->checkCancelled(),
+                outputFile: $outputFile,
             );
 
             if ($exit !== 0) {
                 throw new NativeToolFailed($process->stderr() ?: "{$t->tool} exited with code {$exit}.", $exit);
+            }
+            // A dump cut short on the way still exits 0; only the tool's closing comment proves it all arrived.
+            if (! self::hasTrailer((string) $t->tool, $tail)) {
+                throw new NativeToolFailed(self::ENDED_EARLY, $exit);
             }
         } catch (Throwable $e) {
             $w->abort();
@@ -83,6 +100,16 @@ final class NativeExporter
         } finally {
             $command?->cleanup();
         }
+    }
+
+    /**
+     * Does the end of the dump hold the tool's closing comment? pg_dump writes "-- PostgreSQL database dump
+     * complete" (pg_dump 18 adds an \unrestrict line after it); mysqldump and mariadb-dump write "-- Dump completed"
+     * (with " on <date>" unless --skip-dump-date). The builder never turns comments off.
+     */
+    public static function hasTrailer(string $tool, string $tail): bool
+    {
+        return str_contains($tail, $tool === 'pg_dump' ? '-- PostgreSQL database dump complete' : '-- Dump completed');
     }
 
     /**

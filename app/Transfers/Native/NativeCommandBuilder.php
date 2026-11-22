@@ -16,13 +16,17 @@ use RuntimeException;
  */
 final class NativeCommandBuilder
 {
-    /** @param list<DumpObject> $objects the chosen objects, used when $o->tables is not null */
-    public static function dump(SavedConnection $c, ToolCheck $t, ExportOptions $o, array $objects, bool $routines, bool $events): NativeCommand
+    /**
+     * @param  list<DumpObject>  $objects  the chosen objects, used when $o->tables is not null
+     * @param  string|null  $outputFile  the tool writes the dump there instead of stdout (pg_dump --file,
+     *                                   mysqldump --result-file); it is deleted with the command's temp files
+     */
+    public static function dump(SavedConnection $c, ToolCheck $t, ExportOptions $o, array $objects, bool $routines, bool $events, ?string $outputFile = null): NativeCommand
     {
         $path = self::toolPath($t);
 
         if ($c->driver === DriverName::Postgres) {
-            return self::pgDump($c, $path, $t, $o, $objects);
+            return self::pgDump($c, $path, $t, $o, $objects, $outputFile);
         }
 
         [$file, $temp] = self::defaultsFile($c);
@@ -46,6 +50,9 @@ final class NativeCommandBuilder
         if ($c->driver === DriverName::MySql) {
             $argv[] = '--set-gtid-purged=OFF';
         }
+        if ($outputFile !== null) {
+            $argv[] = '--result-file='.$outputFile;
+        }
         array_push($argv, '--', (string) $c->database);
         if ($o->tables !== null) {
             foreach ($objects as $object) {
@@ -53,7 +60,7 @@ final class NativeCommandBuilder
             }
         }
 
-        return new NativeCommand($argv, [], $temp);
+        return new NativeCommand($argv, [], $outputFile !== null ? [$outputFile, ...$temp] : $temp);
     }
 
     public static function restore(SavedConnection $c, ToolCheck $t): NativeCommand
@@ -103,7 +110,7 @@ final class NativeCommandBuilder
     }
 
     /** @param list<DumpObject> $objects */
-    private static function pgDump(SavedConnection $c, string $path, ToolCheck $t, ExportOptions $o, array $objects): NativeCommand
+    private static function pgDump(SavedConnection $c, string $path, ToolCheck $t, ExportOptions $o, array $objects, ?string $outputFile): NativeCommand
     {
         $argv = [$path, '--format=plain', '--no-owner', '--no-privileges', '--no-password', ...self::pgConnectionArgs($c)];
         if (! $o->data) {
@@ -127,7 +134,11 @@ final class NativeCommandBuilder
             }
         }
 
-        return new NativeCommand($argv, self::pgEnv($c));
+        if ($outputFile !== null) {
+            $argv[] = '--file='.$outputFile;
+        }
+
+        return new NativeCommand($argv, self::pgEnv($c), $outputFile !== null ? [$outputFile] : []);
     }
 
     /** Inside double quotes pg_dump patterns take `*`, `?` and `.` literally; only `"` needs doubling. */

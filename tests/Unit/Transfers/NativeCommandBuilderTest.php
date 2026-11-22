@@ -224,3 +224,30 @@ it('passes a database named like a conninfo string via PGDATABASE only', functio
         }
     }
 });
+
+it('lets the dump tool write its own output file, deleted with the command', function () {
+    $out = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbz-out-'.bin2hex(random_bytes(4)).'.sql';
+
+    $pg = ncbDump(ncbConnection(DriverName::Postgres), ncbTool('pg_dump', '18.0'), ncbOptions(), [], false, false, $out);
+    expect($pg->argv)->toContain('--file='.$out)->and($pg->tempFiles)->toBe([$out]);
+
+    $my = ncbDump(ncbConnection(DriverName::MySql), ncbTool('mysqldump', '8.4.2'), ncbOptions(), [], false, false, $out);
+    $dashes = array_search('--', $my->argv, true);
+    expect(array_search('--result-file='.$out, $my->argv, true))->toBeLessThan($dashes)
+        ->and($my->tempFiles[0])->toBe($out)
+        ->and(count($my->tempFiles))->toBe(3);
+
+    file_put_contents($out, 'x');
+    $my->cleanup();
+    expect(file_exists($out))->toBeFalse();
+});
+
+it('keeps the dump comments the trailer check relies on', function (DriverName $driver, string $tool) {
+    $argv = ncbDump(ncbConnection($driver), ncbTool($tool, $driver === DriverName::MariaDb ? '11.4.2' : '18.0'), ncbOptions(), [], true, true)->argv;
+
+    expect(array_filter($argv, fn (string $a) => in_array($a, ['--skip-comments', '--compact', '--skip-dump-date', '--comments=0', '--comments=false'], true)))->toBe([]);
+})->with([
+    'mysql' => [DriverName::MySql, 'mysqldump'],
+    'mariadb' => [DriverName::MariaDb, 'mariadb-dump'],
+    'pgsql' => [DriverName::Postgres, 'pg_dump'],
+]);

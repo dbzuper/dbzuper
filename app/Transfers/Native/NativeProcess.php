@@ -2,6 +2,7 @@
 
 namespace App\Transfers\Native;
 
+use LogicException;
 use RuntimeException;
 use Throwable;
 
@@ -9,8 +10,11 @@ use Throwable;
  * Runs a native dump or restore tool with proc_open and streams its stdout (and, for restores, its stdin) in small
  * chunks, so memory stays flat for any dump size and nothing of the dump is copied to disk on the way.
  *
- * - stdout/stdin are pipes on Linux and sockets on Windows (Windows pipes can't be polled, and a blocking read of a
- *   quiet tool would delay a cancel indefinitely). Both are non-blocking and polled with stream_select.
+ * - stdout/stdin are pipes on Linux, polled with stream_select. On Windows, pipes can't be polled (a blocking read
+ *   of a quiet tool would delay a cancel indefinitely) and socket stdout loses its tail when the tool exits right
+ *   after writing (abortive close). So on Windows a dump tool writes its own output file, which is tailed in
+ *   bounded reads while the process is polled and drained to the end after it exits; stdin (restores) is a socket,
+ *   which delivers intact in that direction. Capturing stdout over a socket on Windows is refused.
  * - stderr goes to a temporary file (tools write little there); its last 64 KB are kept for the error message.
  * - The child gets an allow-listed environment only (PATH, temp dirs, locale…) plus the command's own variables:
  *   nothing like APP_KEY, DB_PASSWORD, PGSERVICE or MYSQL_PWD leaks in from the worker.
@@ -62,18 +66,27 @@ final class NativeProcess
      * then commits) and the exit code tells the outcome. When a callback throws, the tool is killed first (stdin
      * still open, so psql can't take it as the end of input) and the exception rethrown.
      *
-     * @param  callable(string): void  $onStdout
+     * @param  (callable(string): void)|null  $onStdout  null: the output is discarded
      * @param  callable(): void  $tick
      * @param  (callable(): ?string)|null  $input  the next chunk for stdin, null at the end; null: no stdin
+     * @param  string|null  $outputFile  the tool writes its output there (it was told so in argv); the file is
+     *                                   tailed into $onStdout instead of reading stdout
      */
-    public function run(callable $onStdout, callable $tick, ?callable $input = null): int
+    public function run(?callable $onStdout, callable $tick, ?callable $input = null, ?string $outputFile = null): int
     {
         $windows = PHP_OS_FAMILY === 'Windows';
+        $null = $windows ? 'NUL' : '/dev/null';
+        if ($windows && $onStdout !== null && $outputFile === null) {
+            throw new LogicException('On Windows a tool\'s output is read from the file it writes, never from a socket.');
+        }
+        if ($outputFile !== null && $input !== null) {
+            throw new LogicException('A tool writing an output file takes no input.');
+        }
         $errorPath = (string) tempnam(sys_get_temp_dir(), 'dbz-stderr-');
 
         $spec = [
-            0 => $input !== null ? ($windows ? ['socket'] : ['pipe', 'r']) : ['file', $windows ? 'NUL' : '/dev/null', 'r'],
-            1 => $windows ? ['socket'] : ['pipe', 'w'],
+            0 => $input !== null ? ($windows ? ['socket'] : ['pipe', 'r']) : ['file', $null, 'r'],
+            1 => $onStdout === null || $outputFile !== null ? ['file', $null, 'w'] : ['pipe', 'w'],
             2 => ['file', $errorPath, 'w'],
         ];
         $process = null;
@@ -85,7 +98,9 @@ final class NativeProcess
                 throw new RuntimeException('Could not start '.basename($this->command->argv[0]).'.');
             }
 
-            $exit = $this->loop($process, $pipes, $onStdout, $tick, $input);
+            $exit = $outputFile !== null && $onStdout !== null
+                ? $this->tail($process, $outputFile, $onStdout, $tick)
+                : $this->loop($process, $pipes, $onStdout, $tick, $input);
         } catch (Throwable $e) {
             if (is_resource($process)) {
                 @proc_terminate($process, 9);
@@ -131,14 +146,16 @@ final class NativeProcess
     /**
      * @param  resource  $process
      * @param  array<int, resource>  $pipes
-     * @param  callable(string): void  $onStdout
+     * @param  (callable(string): void)|null  $onStdout
      * @param  callable(): void  $tick
      * @param  (callable(): ?string)|null  $input
      */
-    private function loop($process, array &$pipes, callable $onStdout, callable $tick, ?callable $input): int
+    private function loop($process, array &$pipes, ?callable $onStdout, callable $tick, ?callable $input): int
     {
-        $out = $pipes[1];
-        stream_set_blocking($out, false);
+        $out = $pipes[1] ?? null;
+        if ($out !== null) {
+            stream_set_blocking($out, false);
+        }
         $in = $pipes[0] ?? null;
         if ($in !== null) {
             stream_set_blocking($in, false);
@@ -164,13 +181,7 @@ final class NativeProcess
             if ($read === [] && $write === []) {
                 $status = proc_get_status($process);
                 if (! $status['running']) {
-                    if ($status['signaled']) {
-                        $this->stderr .= "\nterminated by signal ".$status['termsig'];
-
-                        return 128 + (int) $status['termsig'];
-                    }
-
-                    return (int) $status['exitcode'];
+                    return $this->exitCode($status);
                 }
                 usleep(10_000);
             } else {
@@ -197,7 +208,9 @@ final class NativeProcess
                             break;
                         }
                         $taken += strlen($data);
-                        $onStdout($data);
+                        if ($onStdout !== null) {
+                            $onStdout($data);
+                        }
                     }
                 }
 
@@ -220,6 +233,85 @@ final class NativeProcess
                 $tick();
             }
         }
+    }
+
+    /**
+     * Follows the file the tool writes: bounded reads while it runs, the tick in between, and once it has exited (so
+     * every write is on disk) a final drain to the end of the file.
+     *
+     * @param  resource  $process
+     * @param  callable(string): void  $onStdout
+     * @param  callable(): void  $tick
+     */
+    private function tail($process, string $file, callable $onStdout, callable $tick): int
+    {
+        $handle = null;
+        $offset = 0;
+
+        try {
+            while (true) {
+                // The status first: when it says "exited", everything the tool wrote is in the file already.
+                $status = proc_get_status($process);
+                $running = $status['running'];
+                $got = $this->drain($file, $handle, $offset, $onStdout, $running ? self::READ_PER_LOOP : PHP_INT_MAX);
+
+                $tick(); // also after the final drain: a cancel asked for before the dump is accepted still counts
+                if (! $running) {
+                    return $this->exitCode($status);
+                }
+                if ($got === 0) {
+                    usleep(20_000);
+                }
+            }
+        } finally {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
+        }
+    }
+
+    /**
+     * Reads what has been appended to the file since $offset, up to $limit bytes, in chunks of READ_BYTES.
+     *
+     * @param  resource|null  $handle
+     * @param  callable(string): void  $onStdout
+     */
+    private function drain(string $file, &$handle, int &$offset, callable $onStdout, int $limit): int
+    {
+        if ($handle === null) {
+            $opened = is_file($file) ? @fopen($file, 'rb') : false;
+            if ($opened === false) {
+                return 0; // not created yet
+            }
+            $handle = $opened;
+        }
+
+        $got = 0;
+        while ($got < $limit) {
+            $data = fread($handle, self::READ_BYTES);
+            if ($data === false || $data === '') {
+                fseek($handle, $offset); // clears end-of-file, so bytes appended later are read next time
+
+                break;
+            }
+            $offset += strlen($data);
+            $got += strlen($data);
+            $onStdout($data);
+        }
+
+        return $got;
+    }
+
+    /** @param array{signaled: bool, termsig: int, exitcode: int} $status */
+    private function exitCode(array $status): int
+    {
+        if ($status['signaled']) {
+            $this->stderr .= "\nterminated by signal ".$status['termsig'];
+
+            return 128 + $status['termsig'];
+        }
+
+        return $status['exitcode'];
     }
 
     /** @param array<int, resource> $pipes */

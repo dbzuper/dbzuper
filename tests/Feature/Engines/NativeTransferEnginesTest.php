@@ -14,7 +14,9 @@ use App\Transfers\Import\RestoreRefused;
 use App\Transfers\Io\DumpReader;
 use App\Transfers\Io\DumpWriter;
 use App\Transfers\Native\MySqlPrivilegeProbe;
+use App\Transfers\Native\NativeCommandBuilder;
 use App\Transfers\Native\NativeExporter;
+use App\Transfers\Native\NativeProcess;
 use App\Transfers\Native\NativeRestorer;
 use App\Transfers\Native\NativeToolFailed;
 use App\Transfers\Native\ToolCheck;
@@ -304,9 +306,10 @@ it('kills the process on cancel and leaves no file', function (string $engine) {
         try {
             expect(fn () => nativeExport($engine, $source, $path, nativeOptions(gzip: true), $progress))
                 ->toThrow(TransferCancelled::class);
+            // How much went through first depends on the transport and the tool's speed (on Windows pg_dump may finish
+            // this small fixture within one poll); a quiet tool being killed in time is pinned in NativeProcessTest.
             expect(file_exists($path))->toBeFalse()
-                // Stopped at the first chunk: far less than the 2 MB row went through.
-                ->and($progress->bytes)->toBeLessThan(TransferFixture::BIG_TEXT_BYTES);
+                ->and(glob(dirname($path).DIRECTORY_SEPARATOR.'.dbz-native-*'))->toBe([]);
         } finally {
             @unlink($path);
         }
@@ -434,5 +437,72 @@ it('fails with the tool message and leaves no file when the dump tool fails', fu
         expect(file_exists($path))->toBeFalse();
     } finally {
         @unlink($path);
+    }
+});
+
+it('exports a large table completely, byte for byte what the tool writes on its own', function () {
+    Engines::skipUnlessAvailable('pgsql');
+    $root = Engines::pdo('pgsql');
+    $tool = Engines::nativeTool('pgsql', TransferDirection::Export);
+    $dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbz-native-big-'.bin2hex(random_bytes(4));
+    mkdir($dir);
+    $path = $dir.DIRECTORY_SEPARATOR.'export.sql';
+    $direct = $dir.DIRECTORY_SEPARATOR.'direct.sql';
+    $table = new DumpObject('dbz_native_big', 'rows', 'table');
+    $options = nativeOptions(tables: [$table->key()]);
+    try {
+        $root->exec('DROP SCHEMA IF EXISTS dbz_native_big CASCADE');
+        $root->exec('CREATE SCHEMA dbz_native_big');
+        $root->exec('CREATE TABLE dbz_native_big.rows AS SELECT g AS id, md5(g::text) AS a, repeat(md5((g * 7)::text), 3) AS b FROM generate_series(1, 300000) g');
+
+        $source = Engines::savedConnection('pgsql');
+        $writer = new DumpWriter($path, false);
+        app(NativeExporter::class)->run($source, $tool, $options, [$table], $writer, nativeProgress(), []);
+        $writer->close();
+
+        // The same dump straight from pg_dump into a file, for comparison.
+        $command = NativeCommandBuilder::dump($source, $tool, $options, [$table], false, false, $direct);
+        $exit = (new NativeProcess($command, (string) $source->password))->run(null, fn () => null);
+
+        $exported = (string) file_get_contents($path);
+        $start = strpos($exported, "--\n-- PostgreSQL database dump\n");
+        $body = substr($exported, (int) $start);
+        expect($exit)->toBe(0)
+            ->and($start)->toBeInt()
+            ->and(strlen($body))->toBeGreaterThan(30_000_000)
+            ->and(strlen($body))->toBe(filesize($direct))
+            ->and(NativeExporter::hasTrailer('pg_dump', substr($body, -8192)))->toBeTrue()
+            // The Windows transport's temporary output file is gone.
+            ->and(glob($dir.DIRECTORY_SEPARATOR.'.dbz-native-*'))->toBe([]);
+        fwrite(STDERR, sprintf("[native-big] %d bytes exported, %d bytes from pg_dump --file\n", strlen($body), filesize($direct)));
+    } finally {
+        $root->exec('DROP SCHEMA IF EXISTS dbz_native_big CASCADE');
+        foreach (glob($dir.DIRECTORY_SEPARATOR.'{,.}*', GLOB_BRACE) ?: [] as $f) {
+            if (is_file($f)) {
+                @unlink($f);
+            }
+        }
+        @rmdir($dir);
+    }
+});
+
+it('leaves no temporary output file behind when the dump fails or is cancelled', function () {
+    Engines::skipUnlessAvailable('pgsql');
+    $dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbz-native-tmp-'.bin2hex(random_bytes(4));
+    mkdir($dir);
+    $missing = new DumpObject('public', 'rt_native_missing', 'table');
+    try {
+        expect(fn () => nativeExport('pgsql', Engines::savedConnection('pgsql'), $dir.DIRECTORY_SEPARATOR.'a.sql', nativeOptions(tables: [$missing->key()]), objects: [$missing]))
+            ->toThrow(NativeToolFailed::class);
+        expect(fn () => nativeExport('pgsql', Engines::savedConnection('pgsql'), $dir.DIRECTORY_SEPARATOR.'b.sql', nativeOptions(), nativeProgress(cancelAfterBytes: 1)))
+            ->toThrow(TransferCancelled::class);
+        expect(glob($dir.DIRECTORY_SEPARATOR.'{,.}*.sql', GLOB_BRACE))->toBe([]);
+    } finally {
+        foreach (glob($dir.DIRECTORY_SEPARATOR.'{,.}*', GLOB_BRACE) ?: [] as $f) {
+            if (is_file($f)) {
+                @unlink($f);
+            }
+        }
+        @rmdir($dir);
     }
 });

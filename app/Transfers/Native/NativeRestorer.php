@@ -67,8 +67,8 @@ final class NativeRestorer
             };
 
             $process = new NativeProcess($command, $c->password !== null ? (string) $c->password : null);
-            // stdout (results of SELECTs in the file) is read and dropped.
-            $exit = $process->run(fn (string $chunk) => null, fn () => $p->checkCancelled(), $input);
+            // stdout (results of SELECTs in the file) is discarded.
+            $exit = $process->run(null, fn () => $p->checkCancelled(), $input);
 
             if ($exit !== 0) {
                 throw new RestoreFailed(0, '', $process->stderr() ?: "{$t->tool} exited with code {$exit}.");

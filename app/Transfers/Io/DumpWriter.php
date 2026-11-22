@@ -51,6 +51,12 @@ class DumpWriter
         }
     }
 
+    /** The file being written (its directory is the transfer's storage directory). */
+    public function path(): string
+    {
+        return $this->path;
+    }
+
     /** Uncompressed bytes written so far. */
     public function bytesWritten(): int
     {
