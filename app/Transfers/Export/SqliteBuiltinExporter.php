@@ -96,6 +96,7 @@ final class SqliteBuiltinExporter implements BuiltinExporter
         $kinds = $this->tableKinds($pdo, $master);
 
         // A chosen virtual table brings its shadow tables along.
+        $owners = array_flip(array_filter(array_column($kinds, 'shadow_of')));
         foreach ($kinds as $name => $kind) {
             if ($kind['shadow_of'] !== null && isset($chosen[$kind['shadow_of']])) {
                 $chosen[$name] = true;
@@ -114,7 +115,11 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             }
             $sql = (string) $sql;
             if ($type === 'table') {
-                $kind = $kinds[$name] ?? ['virtual' => false, 'shadow_of' => null, 'without_rowid' => false];
+                $kind = $kinds[$name] ?? ['virtual' => false, 'module' => true, 'shadow_of' => null, 'without_rowid' => false];
+                // Its rows live only in its shadow tables: never write one without them.
+                if ($kind['virtual'] && ! $kind['module'] && $o->data && ! isset($owners[$name])) {
+                    throw new RuntimeException("Cannot back up virtual table {$name}: its module isn't available and its storage tables couldn't be identified");
+                }
                 $tables[$name] = [
                     'sql' => $sql,
                     'virtual' => $kind['virtual'],
@@ -206,7 +211,7 @@ final class SqliteBuiltinExporter implements BuiltinExporter
      * pragma_table_list (3.37+), otherwise from the CREATE statements and the built-in modules' suffixes.
      *
      * @param  array<int, array<int, mixed>>  $master
-     * @return array<string, array{virtual: bool, shadow_of: ?string, without_rowid: bool}>
+     * @return array<string, array{virtual: bool, module: bool, shadow_of: ?string, without_rowid: bool}>
      */
     private function tableKinds(PDO $pdo, array $master): array
     {
@@ -219,10 +224,12 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             $listed = null;
         }
 
+        // Virtual tables, and whether this PHP's SQLite has their module. Without it pragma_table_list reports their
+        // shadow tables as plain tables, so they are recognised by name instead.
         $virtual = [];
         foreach ($master as [$type, $name, , $sql]) {
             if ($type === 'table' && preg_match('/^\s*CREATE\s+VIRTUAL\s+TABLE\b/i', (string) $sql) === 1) {
-                $virtual[(string) $name] = true;
+                $virtual[(string) $name] = self::moduleAvailable($pdo, (string) $name);
             }
         }
 
@@ -233,20 +240,27 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             }
             $name = (string) $name;
             $shadowOf = null;
-            if (! isset($virtual[$name]) && ($listed === null || ($listed[$name]['type'] ?? '') === 'shadow')) {
+            if (! isset($virtual[$name]) && preg_match('/^\s*CREATE\s+TABLE\b/i', (string) $sql) === 1) {
                 // The owner is the longest virtual table name that prefixes "<owner>_<suffix>".
-                foreach (array_keys($virtual) as $owner) {
+                foreach ($virtual as $owner => $available) {
                     $owner = (string) $owner;
                     if (! str_starts_with($name, $owner.'_') || strlen($owner) <= strlen($shadowOf ?? '')) {
                         continue;
                     }
-                    if ($listed !== null || in_array(strtolower(substr($name, strlen($owner) + 1)), self::SHADOW_SUFFIXES, true)) {
+                    // The module is loaded: SQLite names its shadow tables (if the module declares them), and the
+                    // built-in modules' suffixes cover the rest and SQLite before pragma_table_list. An unknown
+                    // module (rtree missing here, sqlite-vec, spellfix ...): every "<owner>_*" table.
+                    $shadow = ! $available
+                        || ($listed[$name]['type'] ?? '') === 'shadow'
+                        || in_array(strtolower(substr($name, strlen($owner) + 1)), self::SHADOW_SUFFIXES, true);
+                    if ($shadow) {
                         $shadowOf = $owner;
                     }
                 }
             }
             $kinds[$name] = [
                 'virtual' => isset($virtual[$name]),
+                'module' => $virtual[$name] ?? true,
                 'shadow_of' => $shadowOf,
                 'without_rowid' => $listed !== null && isset($listed[$name])
                     ? $listed[$name]['wr']
@@ -255,6 +269,18 @@ final class SqliteBuiltinExporter implements BuiltinExporter
         }
 
         return $kinds;
+    }
+
+    /** Whether the virtual table can be opened here, i.e. this SQLite has its module. */
+    private static function moduleAvailable(PDO $pdo, string $table): bool
+    {
+        try {
+            self::query($pdo, 'SELECT 1 FROM '.self::quote($table).' LIMIT 0')->closeCursor();
+
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     private function data(PDO $pdo, string $table, bool $withoutRowid, DumpWriter $w, TransferProgress $p): void

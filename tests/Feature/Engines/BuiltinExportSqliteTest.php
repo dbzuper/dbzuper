@@ -525,3 +525,98 @@ it('writes virtual tables as CREATE VIRTUAL TABLE when exporting structure only'
         }
     }, fixture: false);
 });
+
+/** Writes a virtual table straight into the schema, as a database made by an SQLite with that module would hold. */
+function sqliteFakeVirtual(Connection $db, string $name, string $create): void
+{
+    $db->unprepared('PRAGMA writable_schema=ON');
+    $db->insert("INSERT INTO sqlite_master (type, name, tbl_name, rootpage, sql) VALUES ('table', ?, ?, 0, ?)", [$name, $name, $create]);
+    $db->unprepared('PRAGMA writable_schema=RESET');
+}
+
+/** Removes it again without its module (DROP TABLE would need the module), then its storage tables. */
+function sqliteDropFakeVirtual(Connection $db, string $name, array $shadows): void
+{
+    $db->unprepared('PRAGMA writable_schema=ON');
+    $db->delete("DELETE FROM sqlite_master WHERE type = 'table' AND name = ?", [$name]);
+    $db->unprepared('PRAGMA writable_schema=RESET');
+    foreach ($shadows as $shadow) {
+        $db->unprepared("DROP TABLE IF EXISTS \"{$shadow}\"");
+    }
+}
+
+it('brings an rtree\'s shadow tables along even where this PHP lacks the module', function () {
+    sqliteBuiltinRoundTrip(function (Connection $source, Connection $target) {
+        $shadows = ['rt_node', 'rt_rowid', 'rt_parent'];
+        try {
+            // rtree's own storage layout, as SQLite with rtree leaves it.
+            $source->unprepared('CREATE TABLE "rt_node"(nodeno INTEGER PRIMARY KEY,data)');
+            $source->unprepared('CREATE TABLE "rt_rowid"(rowid INTEGER PRIMARY KEY,nodeno)');
+            $source->unprepared('CREATE TABLE "rt_parent"(nodeno INTEGER PRIMARY KEY,parentnode)');
+            $source->unprepared("INSERT INTO rt_node VALUES (1, X'000000010000000900000000000000003FC000004020000000000000')");
+            $source->unprepared('INSERT INTO rt_rowid VALUES (9, 1)');
+            sqliteFakeVirtual($source, 'rt', 'CREATE VIRTUAL TABLE rt USING rtree(id, x0, x1)');
+
+            $path = sqliteBuiltinExport($source, sqliteBuiltinOptions(['rt']));
+            try {
+                $sql = (string) file_get_contents($path);
+            } finally {
+                @unlink($path);
+            }
+
+            expect($sql)->toContain("INSERT INTO sqlite_master (type, name, tbl_name, rootpage, sql) VALUES ('table', 'rt', 'rt', 0, 'CREATE VIRTUAL TABLE rt USING rtree(id, x0, x1)');")
+                ->and($sql)->toContain('CREATE TABLE "rt_node"(nodeno INTEGER PRIMARY KEY,data);')
+                ->and($sql)->toContain('CREATE TABLE "rt_rowid"(rowid INTEGER PRIMARY KEY,nodeno);')
+                ->and($sql)->toContain('CREATE TABLE "rt_parent"(nodeno INTEGER PRIMARY KEY,parentnode);')
+                ->and($sql)->toContain("INSERT INTO \"rt_node\" (\"nodeno\", \"data\") VALUES\n(1,X'000000010000000900000000000000003fc000004020000000000000');")
+                ->and($sql)->toContain("INSERT INTO \"rt_rowid\" (\"rowid\", \"nodeno\") VALUES\n(9,1);");
+        } finally {
+            sqliteDropFakeVirtual($source, 'rt', $shadows);
+        }
+    }, fixture: false);
+});
+
+it('restores a virtual table of an unknown module through all of its storage tables', function () {
+    sqliteBuiltinRoundTrip(function (Connection $source, Connection $target) {
+        $shadows = ['vx_chunks', 'vx_info'];
+        try {
+            $source->unprepared('CREATE TABLE "vx_chunks"(id INTEGER PRIMARY KEY, v BLOB)');
+            $source->unprepared('CREATE TABLE "vx_info"(k TEXT PRIMARY KEY, v) WITHOUT ROWID');
+            $source->unprepared("INSERT INTO vx_chunks VALUES (4, X'0102'), (11, X'ff')");
+            $source->unprepared("INSERT INTO vx_info VALUES ('dims', 2)");
+            sqliteFakeVirtual($source, 'vx', 'CREATE VIRTUAL TABLE vx USING nosuchmod(dims=2)');
+
+            $path = sqliteBuiltinExport($source, sqliteBuiltinOptions(['vx']));
+            try {
+                sqliteBuiltinRestore($target, $path);
+            } finally {
+                @unlink($path);
+            }
+
+            $schema = "SELECT type, name, sql FROM sqlite_master WHERE name LIKE 'vx%' ORDER BY name";
+            expect(sqliteBuiltinRows($target, $schema))->toBe(sqliteBuiltinRows($source, $schema))
+                ->and(sqliteBuiltinRows($target, 'SELECT * FROM vx_chunks ORDER BY id'))->toBe(sqliteBuiltinRows($source, 'SELECT * FROM vx_chunks ORDER BY id'))
+                ->and(sqliteBuiltinRows($target, 'SELECT * FROM vx_info'))->toBe(sqliteBuiltinRows($source, 'SELECT * FROM vx_info'));
+        } finally {
+            sqliteDropFakeVirtual($source, 'vx', $shadows);
+            sqliteDropFakeVirtual($target, 'vx', $shadows);
+        }
+    }, fixture: false);
+});
+
+it('refuses to back up a virtual table whose module and storage are both unknown', function () {
+    sqliteBuiltinRoundTrip(function (Connection $source) {
+        try {
+            sqliteFakeVirtual($source, 'lonely', 'CREATE VIRTUAL TABLE lonely USING nosuchmod()');
+
+            expect(fn () => sqliteBuiltinExport($source, sqliteBuiltinOptions(['lonely'])))
+                ->toThrow(RuntimeException::class, "Cannot back up virtual table lonely: its module isn't available and its storage tables couldn't be identified");
+            // Structure only needs no storage: the CREATE VIRTUAL TABLE is the whole of it.
+            $path = sqliteBuiltinExport($source, sqliteBuiltinOptions(['lonely'], data: false));
+            expect((string) file_get_contents($path))->toContain("CREATE VIRTUAL TABLE lonely USING nosuchmod();\n");
+            @unlink($path);
+        } finally {
+            sqliteDropFakeVirtual($source, 'lonely', []);
+        }
+    }, fixture: false);
+});
