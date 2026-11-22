@@ -172,6 +172,13 @@ it('registers for pgsql and lists what it leaves out', function () {
             'extensions',
             'domains and composite types',
             'materialized views',
+            'row-level security policies',
+            'rules',
+            'extended statistics',
+            'foreign tables',
+            'ownership and privileges',
+            'other table settings (replica identity, CLUSTER ON, column storage and statistics targets)',
+            'typed tables (restored as plain tables)',
         ]);
 });
 
@@ -216,15 +223,40 @@ it('does not depend on the settings of either session', function () {
         $hostile = [
             "SET TimeZone = 'America/Sao_Paulo'", "SET DateStyle = 'SQL, DMY'", "SET IntervalStyle = 'sql_standard'",
             'SET extra_float_digits = -3', 'SET search_path = "Sales"', "SET bytea_output = 'escape'",
+            // Server-default style timeouts a big table would run into, and row security that would filter rows.
+            "SET statement_timeout = '5s'", "SET lock_timeout = '5s'", "SET idle_in_transaction_session_timeout = '5s'", 'SET row_security = on',
         ];
         foreach ($hostile as $set) {
             $source->statement($set);
         }
-        $path = pgBuiltinExport($source, pgBuiltinOptions());
+
+        // Looks at the export's own session between two batches of rows.
+        $settings = "SELECT current_setting('statement_timeout') AS st, current_setting('lock_timeout') AS lt,
+            current_setting('idle_in_transaction_session_timeout') AS it, current_setting('row_security') AS rs";
+        $probe = new class(new Transfer, $source, $settings) extends TransferProgress
+        {
+            public ?object $seen = null;
+
+            public function __construct(Transfer $t, private readonly Connection $db, private readonly string $sql)
+            {
+                parent::__construct($t);
+            }
+
+            public function advance(int $bytes = 0, int $rows = 0, int $statements = 0, ?string $table = null): void
+            {
+                $this->seen ??= $this->db->selectOne($this->sql);
+            }
+
+            public function flush(): void {}
+
+            public function checkCancelled(): void {}
+        };
+        $path = pgBuiltinExport($source, pgBuiltinOptions(), $probe);
+        expect($probe->seen)->toEqual((object) ['st' => '0', 'lt' => '0', 'it' => '0', 'rs' => 'off']);
 
         // The reading session is left as it was found.
-        expect($source->selectOne("SELECT current_setting('TimeZone') AS tz, current_setting('DateStyle') AS ds, current_setting('search_path') AS sp"))
-            ->toEqual((object) ['tz' => 'America/Sao_Paulo', 'ds' => 'SQL, DMY', 'sp' => '"Sales"']);
+        expect($source->selectOne("SELECT current_setting('TimeZone') AS tz, current_setting('DateStyle') AS ds, current_setting('search_path') AS sp, current_setting('statement_timeout') AS st, current_setting('row_security') AS rs"))
+            ->toEqual((object) ['tz' => 'America/Sao_Paulo', 'ds' => 'SQL, DMY', 'sp' => '"Sales"', 'st' => '5s', 'rs' => 'on']);
 
         foreach (["SET TimeZone = 'Asia/Tokyo'", "SET DateStyle = 'German, DMY'", "SET IntervalStyle = 'iso_8601'",
             'SET standard_conforming_strings = off', 'SET search_path = "Sales"'] as $set) {
@@ -380,6 +412,10 @@ it('keeps awkward types, partitions, inheritance and constraints exact', functio
         $source->statement('CREATE TABLE rt_pg_events_other PARTITION OF rt_pg_events DEFAULT');
         $source->statement('CREATE INDEX rt_pg_events_at ON rt_pg_events (at DESC NULLS LAST) WHERE at IS NOT NULL');
         $source->statement("COMMENT ON INDEX rt_pg_events_at IS 'by date'");
+        // Partition defaults that differ from the parent's: one set, one dropped, one left as inherited.
+        $source->statement('ALTER TABLE rt_pg_events ALTER COLUMN at SET DEFAULT CURRENT_DATE');
+        $source->statement("ALTER TABLE rt_pg_events_other ALTER COLUMN at SET DEFAULT '2000-01-01'");
+        $source->statement('ALTER TABLE "Sales".rt_pg_events_sale_low ALTER COLUMN at DROP DEFAULT');
         $source->statement("COMMENT ON CONSTRAINT rt_cycle_a_pkey ON rt_cycle_a IS 'key'");
         $source->statement("INSERT INTO rt_pg_events VALUES ('sale', 1, '2024-01-01'), ('sale', 50, NULL), ('refund', 1, '2024-02-02')");
 
@@ -408,6 +444,18 @@ it('keeps awkward types, partitions, inheritance and constraints exact', functio
             (SELECT obj_description(oid, 'pg_constraint') FROM pg_constraint WHERE conname = 'rt_cycle_a_pkey') AS c,
             col_description('rt_pg_types'::regclass, 2) AS col, obj_description('\"Sales\".rt_pg_cheap'::regclass, 'pg_class') AS v";
         expect($target->selectOne($comments))->toEqual((object) ['i' => 'by date', 'c' => 'key', 'col' => "what's owed", 'v' => 'cheap']);
+        $defaults = "SELECT n.nspname || '.' || c.relname || '.' || a.attname AS col, pg_get_expr(d.adbin, d.adrelid) AS def
+            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0
+            LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+            WHERE c.relname LIKE 'rt\\_pg\\_events%' AND c.relkind IN ('r', 'p') ORDER BY (n.nspname || '.' || c.relname || '.' || a.attname) COLLATE \"C\"";
+        $sourceDefaults = $source->select($defaults);
+        expect($target->select($defaults))->toEqual($sourceDefaults)
+            ->and(array_column($sourceDefaults, 'def', 'col'))->toMatchArray([
+                'public.rt_pg_events.at' => 'CURRENT_DATE',
+                'public.rt_pg_events_other.at' => "'2000-01-01'::date",
+                'Sales.rt_pg_events_sale_low.at' => null,
+                'Sales.rt_pg_events_sale_rest.at' => 'CURRENT_DATE',
+            ]);
         $sortedRows = 'SELECT tableoid::regclass::text AS t, * FROM rt_pg_parent ORDER BY id';
         expect($target->select($sortedRows))->toEqual($source->select($sortedRows))
             ->and($target->select('SELECT tableoid::regclass::text AS t, * FROM rt_pg_events ORDER BY kind, id'))
@@ -482,5 +530,50 @@ it('keeps memory flat on a big table and cancels cleanly', function () {
         }
         $db->statement('DROP TABLE IF EXISTS rt_mem_big');
         $factory->release($db);
+    }
+});
+
+it('fails instead of backing up a table that row-level security filters', function () {
+    Engines::skipUnlessAvailable('pgsql');
+    $factory = app(ConnectionFactory::class);
+    $admin = $factory->make(Engines::savedConnection('pgsql'));
+    $role = 'dbzuper_test_rls';
+    $password = bin2hex(random_bytes(12));
+    $cleanup = function () use ($admin, $role) {
+        $admin->statement('DROP TABLE IF EXISTS rt_pg_secret');
+        if ($admin->selectOne('SELECT 1 AS x FROM pg_roles WHERE rolname = ?', [$role]) !== null) {
+            $admin->statement("DROP OWNED BY {$role}");
+            $admin->statement("DROP ROLE {$role}");
+        }
+    };
+
+    try {
+        $cleanup();
+        try {
+            $admin->statement("CREATE ROLE {$role} LOGIN PASSWORD '{$password}'");
+        } catch (Throwable $e) {
+            test()->markTestSkipped('Cannot create a throwaway role on the test server: '.$e->getMessage());
+        }
+        $admin->statement('CREATE TABLE rt_pg_secret (id INTEGER PRIMARY KEY, owner TEXT)');
+        $admin->insert("INSERT INTO rt_pg_secret VALUES (1, 'someone'), (2, '{$role}')");
+        $admin->statement('ALTER TABLE rt_pg_secret ENABLE ROW LEVEL SECURITY');
+        $admin->statement('CREATE POLICY rt_pg_secret_own ON rt_pg_secret USING (owner = current_user)');
+        $admin->statement("GRANT SELECT ON rt_pg_secret TO {$role}");
+
+        $limited = $factory->make(Engines::savedConnection('pgsql', ['username' => $role, 'password' => $password]));
+        try {
+            // The role sees one row of two: a backup of that would be silently partial.
+            expect((int) $limited->selectOne('SELECT count(*) AS n FROM rt_pg_secret')->n)->toBe(1);
+            expect(fn () => pgBuiltinExport($limited, pgBuiltinOptions([pgKey('public', 'rt_pg_secret')])))
+                ->toThrow(PDOException::class, 'row-level security');
+            // ... and the role's session is usable afterwards, row security back on.
+            expect($limited->selectOne("SELECT current_setting('row_security') AS rs, count(*) AS n FROM rt_pg_secret"))
+                ->toEqual((object) ['rs' => 'on', 'n' => 1]);
+        } finally {
+            $factory->release($limited);
+        }
+    } finally {
+        $cleanup();
+        $factory->release($admin);
     }
 });

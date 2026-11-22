@@ -351,6 +351,36 @@ final class PostgresDdl
     }
 
     /**
+     * A partition starts with its parent's column defaults (PARTITION OF copies them); where the source partition's
+     * own default differs, set or drop it.
+     *
+     * @param  Relation  $rel
+     * @return list<string>
+     */
+    public static function partitionDefaults(Connection $db, array $rel): array
+    {
+        if ($rel['partitionOf'] === null) {
+            return [];
+        }
+
+        $table = self::qualified($rel['schema'], $rel['name']);
+
+        return array_map(
+            fn (array $r) => 'ALTER TABLE '.$table.' ALTER COLUMN '.self::quote((string) $r['name'])
+                .($r['own'] === null ? ' DROP DEFAULT' : ' SET DEFAULT '.$r['own']),
+            self::rows($db, "SELECT a.attname AS name, pg_get_expr(cd.adbin, cd.adrelid) AS own
+                FROM pg_attribute a
+                JOIN pg_attribute pa ON pa.attrelid = ? AND pa.attname = a.attname AND pa.attnum > 0 AND NOT pa.attisdropped
+                LEFT JOIN pg_attrdef cd ON cd.adrelid = a.attrelid AND cd.adnum = a.attnum
+                LEFT JOIN pg_attrdef pd ON pd.adrelid = pa.attrelid AND pd.adnum = pa.attnum
+                WHERE a.attrelid = ? AND a.attnum > 0 AND NOT a.attisdropped
+                  AND a.attgenerated = '' AND a.attidentity = '' AND pa.attgenerated = '' AND pa.attidentity = ''
+                  AND pg_get_expr(cd.adbin, cd.adrelid) IS DISTINCT FROM pg_get_expr(pd.adbin, pd.adrelid)
+                ORDER BY a.attnum", [$rel['partitionOf'], $rel['oid']]),
+        );
+    }
+
+    /**
      * Constraints that must wait for the rows: NOT VALID checks / NOT NULLs (rows may break them) and foreign keys
      * (the referenced rows may come later).
      *

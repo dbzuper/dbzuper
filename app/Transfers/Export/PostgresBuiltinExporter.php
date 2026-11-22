@@ -49,6 +49,10 @@ final class PostgresBuiltinExporter implements BuiltinExporter
 
     /** Set (transaction-locally) while reading: the text form of every value, and qualified names in the DDL. */
     private const READ_SETTINGS = [
+        // First, so no later statement runs into a server or role default: a big table takes as long as it takes.
+        'statement_timeout' => '0',
+        'lock_timeout' => '0',
+        'idle_in_transaction_session_timeout' => '0',
         'client_encoding' => 'UTF8',
         'standard_conforming_strings' => 'on',
         'DateStyle' => 'ISO, YMD',
@@ -58,6 +62,8 @@ final class PostgresBuiltinExporter implements BuiltinExporter
         'bytea_output' => 'hex',
         'xmloption' => 'content',
         'search_path' => '',
+        // A role under row-level security gets an error rather than a silently partial backup (as pg_dump).
+        'row_security' => 'off',
     ];
 
     public function gaps(): array
@@ -68,6 +74,13 @@ final class PostgresBuiltinExporter implements BuiltinExporter
             'extensions',
             'domains and composite types',
             'materialized views',
+            'row-level security policies',
+            'rules',
+            'extended statistics',
+            'foreign tables',
+            'ownership and privileges',
+            'other table settings (replica identity, CLUSTER ON, column storage and statistics targets)',
+            'typed tables (restored as plain tables)',
         ];
     }
 
@@ -161,6 +174,7 @@ final class PostgresBuiltinExporter implements BuiltinExporter
             foreach ($relations as $rel) {
                 $p->checkCancelled();
                 $w->write(PostgresDdl::createTable($db, $rel, $byOid, $version).";\n");
+                self::statements($w, PostgresDdl::partitionDefaults($db, $rel), blank: false);
                 self::statements($w, PostgresDdl::comments($db, $rel));
             }
             self::statements($w, PostgresDdl::ownedBy($sequences, $relations));
