@@ -23,6 +23,7 @@ it('evaluates tools against servers', function (DriverName $driver, string $serv
     'mariadb suffix' => [DriverName::MariaDb, '11.4.2-MariaDB-ubu2404', TransferDirection::Export, 'mysqldump', $mariaOnMysqlName, true, 'mysqldump 11.4.2'],
     'mysql tool on mariadb' => [DriverName::MariaDb, '11.4.2-MariaDB', TransferDirection::Export, 'mysqldump', $mysqlTool, false, "mysqldump from MySQL can't dump MariaDB reliably — using built-in"],
     'mariadb windows' => [DriverName::MariaDb, '12.3.3-MariaDB', TransferDirection::Export, 'mariadb-dump', 'C:/Users/x/.laman/bin/mariadb/12.3.3/bin/mariadb-dump.exe from 12.3.3-MariaDB, client 10.20 for Win64 (AMD64)', true, 'mariadb-dump 12.3.3'],
+    'unparseable server' => [DriverName::Postgres, 'unknown', TransferDirection::Export, 'pg_dump', 'pg_dump (PostgreSQL) 18.1', false, "Couldn't read the server version — using built-in"],
     'missing' => [DriverName::Postgres, '18.0', TransferDirection::Export, 'pg_dump', null, false, 'pg_dump not found — using built-in'],
     'no version' => [DriverName::Postgres, '18.0', TransferDirection::Export, 'pg_dump', '', false, 'pg_dump found but did not report a version — using built-in'],
     'garbage version' => [DriverName::Postgres, '18.0', TransferDirection::Export, 'pg_dump', 'hello', false, 'pg_dump found but did not report a version — using built-in'],

@@ -10,17 +10,34 @@ final class ToolLocator
 {
     public static function find(string $tool, ?string $lamanRoot = null): ?string
     {
+        return self::candidates($tool, $lamanRoot)[0] ?? null;
+    }
+
+    /**
+     * Every path worth trying for a tool: the configured override alone when set,
+     * else the PATH hit followed by laman version directories, newest first.
+     *
+     * @return list<string>
+     */
+    public static function candidates(string $tool, ?string $lamanRoot = null): array
+    {
         $override = config('dbzuper.transfer_tools.'.$tool);
 
         if (is_string($override) && $override !== '') {
-            return is_file($override) ? $override : null;
+            return is_file($override) ? [$override] : [];
         }
 
-        return (new ExecutableFinder)->find($tool) ?? self::findInLaman($tool, $lamanRoot);
+        $paths = [];
+        $onPath = (new ExecutableFinder)->find($tool);
+        if ($onPath !== null) {
+            $paths[] = $onPath;
+        }
+
+        return array_values(array_unique([...$paths, ...self::lamanPaths($tool, $lamanRoot)]));
     }
 
-    /** Newest version directory under `<root>/bin/<service>/<version>/bin` that holds the tool. */
-    private static function findInLaman(string $tool, ?string $root): ?string
+    /** @return list<string> */
+    private static function lamanPaths(string $tool, ?string $root): array
     {
         $service = match ($tool) {
             'mariadb', 'mariadb-dump' => 'mariadb',
@@ -29,13 +46,13 @@ final class ToolLocator
             default => null,
         };
         if ($service === null) {
-            return null;
+            return [];
         }
 
         if ($root === null) {
             $home = getenv('HOME') ?: getenv('USERPROFILE');
             if (! is_string($home) || $home === '') {
-                return null;
+                return [];
             }
             $root = $home.'/.laman';
         }
@@ -46,16 +63,18 @@ final class ToolLocator
         }
         uksort($versions, fn (string $a, string $b): int => version_compare($b, $a));
 
+        $found = [];
         foreach ($versions as $dir) {
-            foreach ([$tool, $tool.'.exe'] as $name) {
+            foreach ([$tool, $tool.'.exe', $tool.'.bat', $tool.'.cmd'] as $name) {
                 $candidate = $dir.'/bin/'.$name;
                 if (is_file($candidate)) {
-                    return $candidate;
+                    $found[] = $candidate;
+                    break;
                 }
             }
         }
 
-        return null;
+        return $found;
     }
 
     public static function versionOutput(string $path): ?string
@@ -65,19 +84,23 @@ final class ToolLocator
 
         $cached = Cache::get($key);
         if (is_string($cached)) {
-            return $cached;
+            return $cached === '' ? null : $cached;
         }
 
         try {
             $process = new Process([$path, '--version']);
             $process->setTimeout(5);
             $process->run();
+            $output = trim($process->getOutput());
+            $ok = $process->isSuccessful() && $output !== '';
         } catch (\Throwable) {
-            return null;
+            $ok = false;
+            $output = '';
         }
 
-        $output = trim($process->getOutput());
-        if (! $process->isSuccessful() || $output === '') {
+        if (! $ok) {
+            Cache::put($key, '', now()->addSeconds(60));
+
             return null;
         }
 

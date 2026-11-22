@@ -7,7 +7,7 @@ use App\Enums\TransferDirection;
 
 final class Compatibility
 {
-    public static function check(DriverName $driver, string $serverVersion, TransferDirection $dir): ToolCheck
+    public static function check(DriverName $driver, string $serverVersion, TransferDirection $dir, ?string $lamanRoot = null): ToolCheck
     {
         $candidates = self::candidates($driver, $dir);
 
@@ -15,19 +15,37 @@ final class Compatibility
             return ToolCheck::unusable('SQLite always uses the built-in method');
         }
 
-        $first = null;
+        $best = null;
+        $bestRank = -1;
         foreach ($candidates as $tool) {
-            $path = ToolLocator::find($tool);
-            $output = $path === null ? null : ToolLocator::versionOutput($path);
-            $check = self::evaluate($driver, $serverVersion, $dir, $tool, $path, $output);
+            $paths = ToolLocator::candidates($tool, $lamanRoot);
+            $checks = $paths === []
+                ? [self::evaluate($driver, $serverVersion, $dir, $tool, null, null)]
+                : array_map(fn (string $path): ToolCheck => self::evaluate($driver, $serverVersion, $dir, $tool, $path, ToolLocator::versionOutput($path)), $paths);
 
-            if ($check->usable) {
-                return $check;
+            foreach ($checks as $check) {
+                if ($check->usable) {
+                    return $check;
+                }
+                $rank = self::rank($check);
+                if ($rank > $bestRank) {
+                    $best = $check;
+                    $bestRank = $rank;
+                }
             }
-            $first ??= $check;
         }
 
-        return $first;
+        return $best;
+    }
+
+    /** Found-but-incompatible beats no version beats not found. */
+    private static function rank(ToolCheck $check): int
+    {
+        if ($check->path === null) {
+            return 0;
+        }
+
+        return str_contains($check->reason, 'did not report a version') ? 1 : 2;
     }
 
     public static function evaluate(DriverName $driver, string $serverVersion, TransferDirection $dir, string $tool, ?string $path, ?string $versionOutput): ToolCheck
@@ -46,8 +64,11 @@ final class Compatibility
         }
 
         $serverParsed = self::serverVersion($serverVersion);
+        if ($serverParsed === null) {
+            return ToolCheck::unusable("Couldn't read the server version — using built-in", $tool, $path);
+        }
         $toolMajor = (int) explode('.', $toolVersion)[0];
-        $serverMajor = $serverParsed === null ? 0 : (int) explode('.', $serverParsed)[0];
+        $serverMajor = (int) explode('.', $serverParsed)[0];
         $isMaria = stripos((string) $versionOutput, 'MariaDB') !== false;
 
         $reason = null;
