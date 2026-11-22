@@ -5,7 +5,7 @@ DBZuper ships as a single Docker image (FrankenPHP 1.13 on PHP 8.4, running as a
 ## Requirements
 
 - Docker. The Compose plugin (v2.24 or newer, for the optional `env_file`) is only needed to build from source or to use Compose.
-- About 750 MB of disk for the image, plus space for your SQLite files and the app database.
+- About 950 MB of disk for the image, plus space for your SQLite files and the app database.
 - Network access from the container to the databases you want to explore.
 
 ## Quick start
@@ -294,6 +294,91 @@ nginx:
         }
     }
 
+## Backup and restore
+
+The database backup and restore feature (see the [user guide](user-guide.md#backup--restore)) runs in background
+workers and uses the engines' own tools when it can. This section is about setting that up; backing up DBZuper's own
+data is [below](#backups-and-the-app_key).
+
+### Workers
+
+Backups and restores run on the `transfers` queue, other background work on the `default` queue. The image starts the
+workers next to the web server: `DBZUPER_TRANSFER_WORKERS` (default 2) transfer workers and one default worker. A
+worker that exits is restarted a second later (logged as `entrypoint: … worker exited`), and all of them stop with the
+container. Set `DBZUPER_TRANSFER_WORKERS=0` in `.env.docker` to run no transfer workers (backups then wait with "No
+background worker is running"). One-off commands (`docker compose run --rm app php artisan …`) start no workers.
+
+- Each transfer worker runs one backup or restore at a time, so the worker count is how many run side by side. Only one
+  runs per database at a time.
+- `docker compose stop` gives the container 10 seconds. A backup or restore still running then is killed, and is
+  marked failed once DBZuper notices its worker is gone (at the latest after 6 hours without progress); until then that
+  database can't start another one. Let it finish first, or raise `stop_grace_period` in `docker-compose.yml`.
+- Outside Docker, run a worker yourself (under systemd, Supervisor or similar):
+
+      php artisan queue:work transfers --queue=transfers --sleep=1 --tries=1 --timeout=0
+      php artisan queue:work database --queue=default --sleep=3 --tries=3
+
+  `composer dev` already runs one transfer worker and the default queue for local development. Without a transfer
+  worker, the dialog says "No background worker is running" and shows the command.
+- Outside Docker, restart the workers after changing configuration or upgrading (`php artisan queue:restart` makes
+  them exit once idle, for the process manager to start again). In the image they start fresh with the container.
+
+### Native tools
+
+When a compatible native tool is found, backups and restores use it; otherwise they use DBZuper's built-in method,
+which needs no tools (the user guide lists what it leaves out). The image includes:
+
+- `pg_dump` and `psql` 18 (PostgreSQL's apt repository): every PostgreSQL server up to 18.
+- `mariadb-dump` and `mariadb` (Debian's `mariadb-client`): MariaDB servers.
+- `mysqldump` and `mysql` 8.4 LTS (Oracle's binaries, only the two clients and their libraries): MySQL 5.7 to 8.4.
+  **linux/amd64 only:** Oracle publishes no small ARM build, so on linux/arm64 (for example a Raspberry Pi or Apple
+  silicon) MySQL servers use built-in. MySQL 9 servers also use built-in.
+
+No `sqlite3`: SQLite always uses built-in. Check what the image finds with
+`docker compose exec app sh -c 'pg_dump --version; mariadb-dump --version; mysqldump --version'`.
+
+Outside Docker, tools are found on `PATH`, then in a local laman install (`~/.laman/bin/{mysql,mariadb,postgres}/<version>/bin`,
+newest version first). To use a particular binary, set its path; when set, only that path is tried:
+
+| Variable                    | Tool           |
+| --------------------------- | -------------- |
+| `DBZUPER_MYSQLDUMP_PATH`    | `mysqldump`    |
+| `DBZUPER_MYSQL_PATH`        | `mysql`        |
+| `DBZUPER_MARIADB_DUMP_PATH` | `mariadb-dump` |
+| `DBZUPER_MARIADB_PATH`      | `mariadb`      |
+| `DBZUPER_PG_DUMP_PATH`      | `pg_dump`      |
+| `DBZUPER_PSQL_PATH`         | `psql`         |
+
+The tool must be at least the server's major version (`pg_dump` 16 can't dump a PostgreSQL 18 server) and from the
+same engine (MySQL's `mysqldump` for MySQL, MariaDB's for MariaDB). Versions are read with `--version` and cached for
+10 minutes. Passwords reach the tools through a temporary option file or the environment, never the command line.
+
+### Uploads and the reverse proxy
+
+Restores upload the file in 4 MB pieces (the server accepts up to 8 MB). The image sets PHP's `post_max_size` and
+`upload_max_filesize` to 16M. Outside the image, PHP's default `post_max_size` of 8M is enough; a reverse proxy must
+allow request bodies of at least 16 MB, for example `client_max_body_size 16m;` in nginx (the example above allows
+25m). Caddy has no limit by default.
+
+### Disk space
+
+- A backup is written under `storage/app/transfers` (the storage volume) and kept for `DBZUPER_TRANSFER_TTL` hours
+  (default 24) so it can be downloaded again. Leave room for the largest backups you take in a day.
+- An uploaded restore file stays there until its restore ends; uploads are refused when the disk can't hold them.
+- On Windows (outside Docker), a native backup first writes an uncompressed copy next to the result, so it needs room
+  for the uncompressed dump as well.
+
+### Settings
+
+| Variable                               | Default       | Meaning                                                                                            |
+| -------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------- |
+| `DBZUPER_TRANSFER_WORKERS`             | `2`           | Transfer workers the image starts (Docker only).                                                   |
+| `DBZUPER_TRANSFER_TTL`                 | `24`          | Hours a backup stays downloadable.                                                                 |
+| `DBZUPER_TRANSFER_MAX_BYTES`           | `20000000000` | Largest restore file accepted (bytes; 20 GB).                                                      |
+| `DBZUPER_TRANSFER_UPLOAD_IDLE_MINUTES` | `10`          | Minutes an upload may go without a new piece before it is abandoned.                               |
+| `DBZUPER_TRANSFER_RETRY_AFTER`         | `604800`      | Seconds before the queue hands a running transfer to another worker; keep it longer than any job.  |
+| `DBZUPER_VERSION`                      | detected      | Version written in backup file headers (read from `composer.json` or `CHANGELOG.md` when unset).   |
+
 ## Backups and the APP_KEY
 
 The `dbzuper-storage` volume (`/app/storage`) holds the application database (users, saved connections, history, layouts), sessions, logs and, unless you pass `APP_KEY` yourself, the generated key in `storage/app.key`. Back the whole volume up; for a consistent copy stop the container first:
@@ -366,11 +451,19 @@ The volumes survive, the entrypoint runs `php artisan migrate --force` on start,
 | `DB_TRANSACTION_MODE`           | `IMMEDIATE` in the image    | How SQLite transactions on the application database start (`DEFERRED` outside the image).                                          |
 | `DB_BUSY_TIMEOUT`               | `5000`                      | Milliseconds a request waits for the SQLite lock before failing with "database is locked".                                         |
 
+Backup and restore settings (`DBZUPER_TRANSFER_*`, `DBZUPER_*_PATH`, `DBZUPER_VERSION`) are listed under
+[Backup and restore](#settings).
+
 ## Troubleshooting
 
 - **Connection refused to `localhost` or `127.0.0.1`**: that is the container itself. Use `host.docker.internal`; see [Connecting to a database on the same computer](#connecting-to-a-database-on-the-same-computer). If Docker runs inside WSL and the database on Windows, see [Docker inside WSL, database on Windows](#docker-inside-wsl-database-on-windows).
 - **Connection refused or timed out to `host.docker.internal`**: the database server is listening on `127.0.0.1` only, a firewall is blocking the port, or Docker runs inside WSL while the database runs on Windows. See [Connecting to a database on the same computer](#connecting-to-a-database-on-the-same-computer).
 - **`Host '172.x.x.x' is not allowed to connect to this MySQL server`**: the account exists only for `localhost` (often `root@localhost`). Create an account for `'%'` or the Docker subnet; see [Connecting to a database on the same computer](#connecting-to-a-database-on-the-same-computer).
+- **"No background worker is running"** in the backup or restore dialog: no transfer worker is alive. In Docker, check
+  `docker compose logs app` for `entrypoint: transfers worker exited` and that `DBZUPER_TRANSFER_WORKERS` is not `0`;
+  outside Docker, start one (see [Workers](#workers)).
+- **A restore upload fails with 413 Request Entity Too Large**: the reverse proxy's body limit is below 16 MB; see
+  [Uploads and the reverse proxy](#uploads-and-the-reverse-proxy).
 - **`SQLSTATE[HY000]: General error: 5 database is locked`** in `docker compose logs app`: the application database is SQLite and the server handles requests in parallel. Check that `DB_JOURNAL_MODE`, `DB_TRANSACTION_MODE` and `DB_BUSY_TIMEOUT` are not overridden in `.env.docker` (`docker compose exec app env | grep ^DB_`) and that the storage volume is on a local disk (SQLite locking is unreliable over network file systems). To check a deployment, sign in, copy the session cookie (`dbzuper-session`) from the browser and fire parallel requests, for example 64 schema reads, 16 at a time:
 
       seq 64 | xargs -P16 -I{} curl -s -o /dev/null -w '%{http_code}\n' -b 'dbzuper-session=<value>' http://localhost:8080/api/c/1/schema | sort | uniq -c

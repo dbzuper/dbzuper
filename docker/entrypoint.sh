@@ -1,6 +1,7 @@
 #!/bin/sh
 # DBZuper container entrypoint: prepare storage, persist APP_KEY, then either run the given command
-# (one-off artisan use: `docker compose run --rm app php artisan ...`) or migrate, cache and serve.
+# (one-off artisan use: `docker compose run --rm app php artisan ...`, no workers) or migrate, cache, start the queue
+# workers and serve.
 set -eu
 
 cd /app
@@ -61,4 +62,63 @@ php artisan view:cache
 # Until the first administrator exists, the setup screen asks for a one-time code: show it in the log.
 php artisan dbzuper:setup-code
 
-exec frankenphp run --config /etc/caddy/Caddyfile
+# Background workers next to the server: DBZUPER_TRANSFER_WORKERS (default 2) for backups and restores, and one for
+# the default queue. Each runs in a loop that restarts it a second after it exits. This shell stays as PID 1 (the
+# server runs in the background instead of being exec'd) so that a stop signal reaches the workers too: it stops
+# them and the server, and waits for them.
+transfer_workers="${DBZUPER_TRANSFER_WORKERS:-2}"
+case "$transfer_workers" in
+    '' | *[!0-9]*)
+        echo "entrypoint: DBZUPER_TRANSFER_WORKERS must be a whole number, got '$transfer_workers'" >&2
+        exit 1
+        ;;
+esac
+
+children=""
+server_pid=""
+
+# Stop the workers and the server, wait for all of them, then exit with the given status.
+shutdown() {
+    trap - TERM INT
+    # shellcheck disable=SC2086 # the pid lists are meant to split
+    kill -TERM $children $server_pid 2>/dev/null || true
+    wait
+    exit "$1"
+}
+trap 'shutdown 0' TERM INT
+
+# start_worker NAME ARGS...: keep `php artisan ARGS` running until this subshell gets SIGTERM.
+start_worker() {
+    name="$1"
+    shift
+    (
+        child=""
+        trap 'if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null || true; wait "$child" || true; fi; exit 0' TERM
+        while :; do
+            php artisan "$@" &
+            child=$!
+            status=0
+            wait "$child" || status=$?
+            echo "entrypoint: $name worker exited with status $status; restarting it" >&2
+            sleep 1
+        done
+    ) &
+    children="$children $!"
+}
+
+i=0
+while [ "$i" -lt "$transfer_workers" ]; do
+    start_worker transfers queue:work transfers --queue=transfers --sleep=1 --tries=1 --timeout=0
+    i=$((i + 1))
+done
+start_worker default queue:work database --queue=default --sleep=3 --tries=3
+
+frankenphp run --config /etc/caddy/Caddyfile &
+server_pid=$!
+
+# A stop signal interrupts this wait and runs shutdown. Otherwise the server stopped on its own: stop the workers and
+# exit with its status, so the restart policy takes over.
+status=0
+wait "$server_pid" || status=$?
+server_pid=""
+shutdown "$status"
