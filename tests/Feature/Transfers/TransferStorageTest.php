@@ -5,8 +5,10 @@ use App\Enums\TransferMethod;
 use App\Enums\TransferStatus;
 use App\Models\SavedConnection;
 use App\Models\Transfer;
+use App\Models\User;
 use App\Transfers\TransferStorage;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 
 afterEach(fn () => File::deleteDirectory(storage_path('app/private/transfers')));
 
@@ -159,7 +161,7 @@ it('removes the transfer files of a deleted user', function () {
     $mine = storedTransfer(['status' => TransferStatus::Uploading, 'direction' => TransferDirection::Import]);
     $theirs = storedTransfer(['status' => TransferStatus::Done, 'finished_at' => now()]);
 
-    App\Models\User::query()->findOrFail($mine->user_id)->delete();
+    User::query()->findOrFail($mine->user_id)->delete();
 
     expect(Transfer::find($mine->id))->toBeNull()
         ->and(is_dir(storage_path('app/private/transfers/'.$mine->id)))->toBeFalse()
@@ -169,8 +171,8 @@ it('removes the transfer files of a deleted user', function () {
 it('prunes directories no transfer owns once they are older than the file TTL', function () {
     config(['dbzuper.transfer_ttl_hours' => 24]);
     $root = storage_path('app/private/transfers');
-    $old = $root.'/'.Illuminate\Support\Str::uuid();
-    $recent = $root.'/'.Illuminate\Support\Str::uuid();
+    $old = $root.'/'.Str::uuid();
+    $recent = $root.'/'.Str::uuid();
     File::ensureDirectoryExists($old);
     File::ensureDirectoryExists($recent);
     file_put_contents($old.'/export.sql', 'x');

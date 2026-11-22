@@ -9,8 +9,10 @@ use App\Support\Demo\CommerceSchema;
 use App\Transfers\Native\ToolCheck;
 use App\Transfers\TransferPlanner;
 use App\Transfers\WorkerHeartbeat;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\Engines;
 
@@ -168,10 +170,10 @@ it('puts upload chunks on their own limiter, apart from the polling and the shar
 
 it('allows 3000 upload chunks a minute per user', function () {
     $user = User::factory()->create();
-    $request = Illuminate\Http\Request::create('/');
+    $request = Request::create('/');
     $request->setUserResolver(fn () => $user);
 
-    $limit = Illuminate\Support\Facades\RateLimiter::limiter('dbzuper-uploads')($request);
+    $limit = RateLimiter::limiter('dbzuper-uploads')($request);
 
     expect($limit->maxAttempts)->toBe(3000)
         ->and($limit->decaySeconds)->toBe(60)
