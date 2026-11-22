@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Database\SqlitePathPolicy;
+use App\Transfers\Export\BuiltinExporters;
 use App\Transfers\WorkerHeartbeat;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -23,6 +24,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Tasks 7-9 add the per-engine entries (driver value => exporter class).
+        $this->app->singleton(BuiltinExporters::class, fn () => new BuiltinExporters([]));
         $this->app->bind(SqlitePathPolicy::class, fn () => new SqlitePathPolicy(config('dbzuper.sqlite_paths')));
     }
 
