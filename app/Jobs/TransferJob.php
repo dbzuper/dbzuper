@@ -56,6 +56,12 @@ abstract class TransferJob implements ShouldQueue
             $this->perform($transfer, $progress);
             $progress->flush();
             $transfer->forceFill(['status' => TransferStatus::Done, 'finished_at' => now()])->save();
+            try {
+                $this->onDone($transfer);
+            } catch (Throwable $e) {
+                // The work is done and saved; a failing follow-up (history) must not turn it into a failure.
+                report($e);
+            }
         } catch (TransferCancelled) {
             $progress->flush();
             $transfer->forceFill(['status' => TransferStatus::Cancelled, 'finished_at' => now()])->save();
@@ -79,6 +85,9 @@ abstract class TransferJob implements ShouldQueue
             $this->markFailed($transfer, $e);
         }
     }
+
+    /** Called after the transfer is marked Done. */
+    protected function onDone(Transfer $transfer): void {}
 
     /** Called after the transfer is marked Cancelled: subclasses remove partial files. */
     protected function onCancelled(Transfer $transfer): void {}

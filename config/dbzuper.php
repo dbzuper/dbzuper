@@ -1,6 +1,11 @@
 <?php
 
+use App\Support\AppVersion;
+
 return [
+    // Shown in dump headers. Read once from composer.json or CHANGELOG.md unless set (and kept by config:cache).
+    'version' => env('DBZUPER_VERSION') ?: AppVersion::detect(base_path()),
+
     // Comma-separated directories that SQLite connection files must live in. Relative ones are relative to the
     // app directory (not the working directory, which differs between `artisan serve`, a web server and the CLI).
     'sqlite_paths' => array_values(array_map(

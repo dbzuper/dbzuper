@@ -56,6 +56,13 @@ Route::middleware('auth')->group(function () {
         Route::post('tables/{table}/changes', TableChangesController::class)->where('table', '.+')->name('tables.changes');
         Route::get('transfers/capabilities', [TransferController::class, 'capabilities'])->name('transfers.capabilities');
         Route::get('transfers/objects', [TransferController::class, 'objects'])->name('transfers.objects');
+        Route::get('transfers', [TransferController::class, 'index'])->name('transfers.index');
+        Route::post('transfers/export', [TransferController::class, 'export'])->name('transfers.export');
+        Route::get('transfers/{transfer}', [TransferController::class, 'show'])->whereUuid('transfer')->name('transfers.show');
+        Route::post('transfers/{transfer}/cancel', [TransferController::class, 'cancel'])->whereUuid('transfer')->name('transfers.cancel');
+        // Downloads are few and long; a resumed one must not trip the API limit.
+        Route::get('transfers/{transfer}/download', [TransferController::class, 'download'])->whereUuid('transfer')
+            ->withoutMiddleware('throttle:dbzuper-api')->name('transfers.download');
         Route::post('query', [QueryController::class, 'run'])->name('query.run');
         Route::post('query/explain', [QueryController::class, 'explain'])->name('query.explain');
         Route::get('history', [HistoryController::class, 'index'])->name('history.index');
