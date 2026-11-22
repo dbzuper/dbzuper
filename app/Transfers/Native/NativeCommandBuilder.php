@@ -62,24 +62,50 @@ final class NativeCommandBuilder
 
         if ($c->driver === DriverName::Postgres) {
             return new NativeCommand(
-                [$path, '-X', '-q', '--single-transaction', '-v', 'ON_ERROR_STOP=1', ...self::pgConnectionArgs($c)],
+                [$path, '-X', '-q', '--no-password', '--single-transaction', '-v', 'ON_ERROR_STOP=1', ...self::pgConnectionArgs($c)],
                 self::pgEnv($c),
             );
         }
 
         [$file, $temp] = self::defaultsFile($c);
 
-        return new NativeCommand(
-            [$path, '--defaults-extra-file='.$file, '--database='.$c->database, '--default-character-set=utf8mb4', '--binary-mode'],
-            [],
-            $temp,
-        );
+        $argv = [$path, '--defaults-extra-file='.$file, '--database='.$c->database, '--default-character-set=utf8mb4', '--binary-mode'];
+        // A dump is untrusted input: no `\!` / `system` shell commands, on clients that can switch them off.
+        if ($c->driver === DriverName::MariaDb) {
+            if (self::atLeast((string) $t->version, ['10.5.25', '10.6.18', '10.11.8', '11.0.6', '11.1.5', '11.2.4', '11.4.2'], '11.5.0')) {
+                $argv[] = '--sandbox';
+            }
+        } elseif (self::atLeast((string) $t->version, ['8.0.40', '8.4.3'], '9.1.0')) {
+            $argv[] = '--system-command=OFF';
+        }
+
+        return new NativeCommand($argv, [], $temp);
+    }
+
+    /**
+     * Is $version at least the fixed release of its own branch (major.minor), or at least $from?
+     *
+     * @param  list<string>  $fixedIn  first fixed release per branch
+     */
+    private static function atLeast(string $version, array $fixedIn, string $from): bool
+    {
+        if (version_compare($version, $from, '>=')) {
+            return true;
+        }
+        foreach ($fixedIn as $fixed) {
+            [$major, $minor] = explode('.', $fixed);
+            if (preg_match('/^'.$major.'\.'.$minor.'(?:\.|$)/', $version) === 1) {
+                return version_compare($version, $fixed, '>=');
+            }
+        }
+
+        return false;
     }
 
     /** @param list<DumpObject> $objects */
     private static function pgDump(SavedConnection $c, string $path, ToolCheck $t, ExportOptions $o, array $objects): NativeCommand
     {
-        $argv = [$path, '--format=plain', '--no-owner', '--no-privileges', ...self::pgConnectionArgs($c)];
+        $argv = [$path, '--format=plain', '--no-owner', '--no-privileges', '--no-password', ...self::pgConnectionArgs($c)];
         if (! $o->data) {
             $argv[] = '--schema-only';
         } elseif (! $o->structure) {

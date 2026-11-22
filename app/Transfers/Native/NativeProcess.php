@@ -2,47 +2,54 @@
 
 namespace App\Transfers\Native;
 
-use Symfony\Component\Process\Exception\ProcessSignaledException;
-use Symfony\Component\Process\InputStream;
-use Symfony\Component\Process\Process;
+use RuntimeException;
 use Throwable;
 
 /**
- * Runs a native dump or restore tool and streams its stdout to a callback, chunk by chunk, so no output is ever held
- * whole in memory. stderr is kept as a bounded tail for the error message. The child starts from the parent's
- * environment without its PG* / MYSQL_* / MARIADB_* variables (a stray PGSERVICE, PGHOST or MYSQL_PWD must not
- * redirect the tool or change its login); the command's own variables are added after that.
+ * Runs a native dump or restore tool with proc_open and streams its stdout (and, for restores, its stdin) in small
+ * chunks, so memory stays flat for any dump size and nothing of the dump is copied to disk on the way.
+ *
+ * - stdout/stdin are pipes on Linux and sockets on Windows (Windows pipes can't be polled, and a blocking read of a
+ *   quiet tool would delay a cancel indefinitely). Both are non-blocking and polled with stream_select.
+ * - stderr goes to a temporary file (tools write little there); its last 64 KB are kept for the error message.
+ * - The child gets an allow-listed environment only (PATH, temp dirs, locale…) plus the command's own variables:
+ *   nothing like APP_KEY, DB_PASSWORD, PGSERVICE or MYSQL_PWD leaks in from the worker.
+ * - argv goes to the tool directly, never through a shell.
  */
 final class NativeProcess
 {
     /** stderr bytes kept for the error message (the end, where the tools put the error). */
     public const STDERR_BYTES = 65_536;
 
-    /** Inherited variables matching this are removed from the child's environment. */
-    private const CONNECTION_VARIABLES = '/^(?:PG|MYSQL_|MARIADB_)/i';
+    /** Most stdout handed to the callback at once. */
+    private const READ_BYTES = 65_536;
 
-    private readonly Process $process;
+    /** Most stdout read per loop before stdin, the tick and the process status get a turn. */
+    private const READ_PER_LOOP = 1_048_576;
+
+    /** Inherited variables the child may see, compared case-insensitively (Windows spells them Path, SystemRoot…). */
+    private const ALLOWED_ENV = [
+        'PATH', 'SYSTEMROOT', 'SYSTEMDRIVE', 'WINDIR', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP', 'TMPDIR', 'HOME',
+        'USERPROFILE', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ',
+    ];
 
     private string $stderr = '';
 
-    public function __construct(NativeCommand $command, private readonly ?string $secret = null, ?InputStream $input = null)
-    {
-        $this->process = new Process($command->argv, null, self::environment($command->env), $input, null);
-    }
+    public function __construct(private readonly NativeCommand $command, private readonly ?string $secret = null) {}
 
     /**
-     * The child's environment as Symfony Process takes it: false removes an inherited variable.
+     * The child's whole environment: the allow-listed parent variables, then $extra.
      *
      * @param  array<string, string>  $extra
-     * @param  list<string>|null  $inherited  names of the parent's variables (default: the real ones)
-     * @return array<string, string|false>
+     * @param  array<string, string>|null  $parent  the parent's variables (default: the real ones)
+     * @return array<string, string>
      */
-    public static function environment(array $extra, ?array $inherited = null): array
+    public static function environment(array $extra, ?array $parent = null): array
     {
         $env = [];
-        foreach ($inherited ?? self::inheritedNames() as $name) {
-            if (preg_match(self::CONNECTION_VARIABLES, $name)) {
-                $env[$name] = false;
+        foreach ($parent ?? getenv() as $name => $value) {
+            if (in_array(strtoupper((string) $name), self::ALLOWED_ENV, true)) {
+                $env[(string) $name] = (string) $value;
             }
         }
 
@@ -50,39 +57,53 @@ final class NativeProcess
     }
 
     /**
-     * Starts the process and runs it to the end. $tick runs at least every few milliseconds (also while the tool is
-     * quiet); when it or $onStdout throws, the process is killed and the exception rethrown.
+     * Runs the tool to the end and returns its exit code. $tick runs every loop (at least every ~0.2 s, also while
+     * the tool is quiet) until stdin has been closed: after the end of input, the client finishes on its own (psql
+     * then commits) and the exit code tells the outcome. When a callback throws, the tool is killed first (stdin
+     * still open, so psql can't take it as the end of input) and the exception rethrown.
      *
      * @param  callable(string): void  $onStdout
      * @param  callable(): void  $tick
-     * @return int the exit code
+     * @param  (callable(): ?string)|null  $input  the next chunk for stdin, null at the end; null: no stdin
      */
-    public function run(callable $onStdout, callable $tick): int
+    public function run(callable $onStdout, callable $tick, ?callable $input = null): int
     {
-        try {
-            $this->process->start();
+        $windows = PHP_OS_FAMILY === 'Windows';
+        $errorPath = (string) tempnam(sys_get_temp_dir(), 'dbz-stderr-');
 
-            foreach ($this->process->getIterator(Process::ITER_NON_BLOCKING) as $type => $data) {
-                if ($type === Process::ERR) {
-                    $this->stderr = substr($this->stderr.$data, -self::STDERR_BYTES);
-                } elseif ($data !== '') {
-                    $onStdout($data);
-                } else {
-                    usleep(1_000); // nothing to read: don't spin
-                }
-                $tick();
+        $spec = [
+            0 => $input !== null ? ($windows ? ['socket'] : ['pipe', 'r']) : ['file', $windows ? 'NUL' : '/dev/null', 'r'],
+            1 => $windows ? ['socket'] : ['pipe', 'w'],
+            2 => ['file', $errorPath, 'w'],
+        ];
+        $process = null;
+        $pipes = [];
+
+        try {
+            $process = @proc_open($this->command->argv, $spec, $pipes, null, self::environment($this->command->env), ['bypass_shell' => true]);
+            if (! is_resource($process)) {
+                throw new RuntimeException('Could not start '.basename($this->command->argv[0]).'.');
             }
 
-            return $this->process->wait();
-        } catch (ProcessSignaledException $e) {
-            $this->stderr .= "\nterminated by signal ".$e->getSignal();
-
-            return 128 + $e->getSignal();
+            $exit = $this->loop($process, $pipes, $onStdout, $tick, $input);
         } catch (Throwable $e) {
-            $this->kill();
+            if (is_resource($process)) {
+                @proc_terminate($process, 9);
+            }
+            $this->close($pipes);
+            if (is_resource($process)) {
+                @proc_close($process);
+            }
+            $this->readStderr($errorPath);
 
             throw $e;
         }
+
+        $this->close($pipes);
+        @proc_close($process);
+        $this->readStderr($errorPath);
+
+        return $exit;
     }
 
     /** The end of the tool's stderr, without credentials. */
@@ -107,27 +128,121 @@ final class NativeProcess
         return trim(mb_scrub($text, 'UTF-8'));
     }
 
-    private function kill(): void
+    /**
+     * @param  resource  $process
+     * @param  array<int, resource>  $pipes
+     * @param  callable(string): void  $onStdout
+     * @param  callable(): void  $tick
+     * @param  (callable(): ?string)|null  $input
+     */
+    private function loop($process, array &$pipes, callable $onStdout, callable $tick, ?callable $input): int
     {
-        try {
-            $this->process->stop(0);
-        } catch (Throwable) {
-            // Already gone; the original exception matters more.
+        $out = $pipes[1];
+        stream_set_blocking($out, false);
+        $in = $pipes[0] ?? null;
+        if ($in !== null) {
+            stream_set_blocking($in, false);
+        }
+        $pending = '';
+        $inputDone = $input === null;
+
+        while (true) {
+            if ($in !== null && $pending === '' && $input !== null) {
+                $next = $input();
+                if ($next === null) {
+                    fclose($in); // end of input: from here the client finishes on its own
+                    unset($pipes[0]);
+                    $in = null;
+                    $inputDone = true;
+                } else {
+                    $pending = $next;
+                }
+            }
+
+            $read = $out !== null ? [$out] : [];
+            $write = $in !== null && $pending !== '' ? [$in] : [];
+            if ($read === [] && $write === []) {
+                $status = proc_get_status($process);
+                if (! $status['running']) {
+                    if ($status['signaled']) {
+                        $this->stderr .= "\nterminated by signal ".$status['termsig'];
+
+                        return 128 + (int) $status['termsig'];
+                    }
+
+                    return (int) $status['exitcode'];
+                }
+                usleep(10_000);
+            } else {
+                $except = null;
+                if (@stream_select($read, $write, $except, 0, 200_000) === false) {
+                    throw new RuntimeException('Lost the connection to the native tool.');
+                }
+
+                if ($read !== []) {
+                    $taken = 0;
+                    while ($taken < self::READ_PER_LOOP) {
+                        $data = @fread($out, self::READ_BYTES);
+                        if ($data === false && ! feof($out)) {
+                            // A broken stream (not a clean end of output) must never pass for a complete dump.
+                            // (Windows sockets report the normal end as false + EOF.)
+                            throw new RuntimeException('Lost the output of '.basename($this->command->argv[0]).' before it finished.');
+                        }
+                        if ($data === false || $data === '') {
+                            if (feof($out)) {
+                                fclose($out);
+                                unset($pipes[1]);
+                                $out = null;
+                            }
+                            break;
+                        }
+                        $taken += strlen($data);
+                        $onStdout($data);
+                    }
+                }
+
+                if ($write !== []) {
+                    $written = @fwrite($in, $pending);
+                    if ($written === false) {
+                        // The client stopped reading (it failed); its exit code tells why.
+                        fclose($in);
+                        unset($pipes[0]);
+                        $in = null;
+                        $pending = '';
+                        $inputDone = true;
+                    } else {
+                        $pending = (string) substr($pending, $written);
+                    }
+                }
+            }
+
+            if (! $inputDone || $input === null) {
+                $tick();
+            }
         }
     }
 
-    /** @return list<string> */
-    private static function inheritedNames(): array
+    /** @param array<int, resource> $pipes */
+    private function close(array &$pipes): void
     {
-        $names = array_keys(getenv());
-        foreach ([$_ENV, $_SERVER] as $source) {
-            foreach ($source as $name => $value) {
-                if (is_string($value)) {
-                    $names[] = (string) $name;
-                }
+        foreach ($pipes as $key => $pipe) {
+            if (is_resource($pipe)) {
+                @fclose($pipe);
             }
+            unset($pipes[$key]);
         }
+    }
 
-        return array_values(array_unique(array_map('strval', $names)));
+    private function readStderr(string $path): void
+    {
+        $size = (int) @filesize($path);
+        $handle = @fopen($path, 'rb');
+        if ($handle !== false) {
+            fseek($handle, max(0, $size - self::STDERR_BYTES));
+            // A note added while running (a signal) goes after what the tool wrote.
+            $this->stderr = substr(stream_get_contents($handle).$this->stderr, -self::STDERR_BYTES);
+            fclose($handle);
+        }
+        @unlink($path);
     }
 }

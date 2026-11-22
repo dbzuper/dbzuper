@@ -158,7 +158,11 @@ it('round-trips natively', function (string $engine) {
                 if ($engine === 'pgsql') {
                     expect($text)->toContain("-- Not included: ownership and privileges\n");
                 } else {
-                    expect($text)->not->toContain('-- Not included');
+                    // rt_floats.f is a FLOAT: the header says the tool rounds it (Ruling 22), and so does gapsFor().
+                    expect($text)->toContain('-- Not included: '.NativeExporter::FLOAT_GAP."\n")
+                        ->and(app(NativeExporter::class)->gapsFor($source, null))->toBe([NativeExporter::FLOAT_GAP])
+                        ->and(app(NativeExporter::class)->gapsFor($source, ['rt_floats']))->toBe([NativeExporter::FLOAT_GAP])
+                        ->and(app(NativeExporter::class)->gapsFor($source, ['rt_big', 'order']))->toBe([]);
                 }
 
                 $progress = nativeProgress();
@@ -280,7 +284,7 @@ it('drops routines when the login cannot read them', function () {
         nativeExport('mysql', $limited, $path);
 
         $text = nativeFileText($path);
-        expect($text)->toContain("-- Not included: stored procedures and functions (no permission), events (no permission)\n")
+        expect($text)->toContain('-- Not included: stored procedures and functions (no permission), events (no permission)')
             ->and($text)->toContain('CREATE TABLE `rt_native_limited`')
             ->and($text)->not->toContain('rt_native_limited_proc')
             ->and($text)->not->toContain($password);
@@ -360,6 +364,46 @@ it('restores a dump with USE other_db into the open database', function () {
 
         expect(nativeTables($target, 'mysql'))->toBe(['a'])
             ->and(Engines::serverPdo('mysql')->query("SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = 'dbzuper_test_other'")->fetchColumn())->toBe(0);
+    });
+});
+
+it('refuses a dump with a psql shell command and never runs it', function (int $padding) {
+    nativeInto('pgsql', function (SavedConnection $target) use ($padding) {
+        $marker = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbz-pwned-'.bin2hex(random_bytes(4));
+        $path = nativeTempPath();
+        // With padding the command comes after the first chunk: psql is already running when it is refused.
+        $rows = str_repeat("INSERT INTO a VALUES ('".str_repeat('p', 990)."');\n", $padding);
+        file_put_contents($path, "CREATE TABLE a (x text);\n{$rows}\\! echo pwned-%PGPASSWORD%-\$PGPASSWORD > \"{$marker}\"\nINSERT INTO a VALUES ('after');\n");
+        try {
+            expect(fn () => nativeRestore('pgsql', $target, $path))->toThrow(
+                RestoreRefused::class,
+                "This file contains psql commands DBZuper won't run (\\!). Remove them or restore with the built-in method.",
+            );
+            usleep(300_000);
+            expect(file_exists($marker))->toBeFalse()
+                ->and(nativeTables($target, 'pgsql'))->toBe([]);
+        } finally {
+            @unlink($path);
+            @unlink($marker);
+        }
+    });
+})->with(['at the start' => 0, 'after the first chunk' => 600]);
+
+it('refuses a dump with a mysql system command and never runs it', function () {
+    nativeInto('mysql', function (SavedConnection $target) {
+        $marker = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbz-pwned-'.bin2hex(random_bytes(4));
+        $path = nativeTempPath();
+        file_put_contents($path, "CREATE TABLE a (x int);\nsystem echo pwned > \"{$marker}\"\nINSERT INTO a VALUES (1);\n");
+        try {
+            expect(fn () => nativeRestore('mysql', $target, $path))
+                ->toThrow(RestoreRefused::class, "This file contains mysql client commands DBZuper won't run (system).");
+            usleep(300_000);
+            expect(file_exists($marker))->toBeFalse()
+                ->and(nativeTables($target, 'mysql'))->toBe([]);
+        } finally {
+            @unlink($path);
+            @unlink($marker);
+        }
     });
 });
 

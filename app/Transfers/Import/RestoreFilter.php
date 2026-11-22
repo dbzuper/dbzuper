@@ -30,12 +30,17 @@ final class RestoreFilter
 {
     private const NAME = '(?:`((?:[^`]|``)+)`|"((?:[^"]|"")+)"|([^\s;`"\/*]+))';
 
+    /** mysql / mariadb client commands (long forms) that a native restore refuses to pass to the client. */
+    private const MYSQL_CLIENT_COMMANDS = 'system|source|tee|notee|pager|nopager|edit|prompt|connect|charset|warnings|nowarnings|rehash|resetconnection|query_attributes|ssl_session_data_print|exit|quit|go|ego|print|status|help';
+
     private ?string $firstTarget = null;
 
     public function __construct(
         public readonly DriverName $driver,
         public readonly string $targetDatabase,
         public readonly TransferMethod $method,
+        /** Native PostgreSQL: pass \restrict / \unrestrict to a psql that knows them (else they are removed). */
+        public readonly bool $keepRestrict = false,
     ) {}
 
     /**
@@ -67,6 +72,10 @@ final class RestoreFilter
     {
         $sql = $this->stripComments($text);
 
+        if ($this->method === TransferMethod::Native) {
+            $this->refuseClientCommands($text, $sql);
+        }
+
         // Executable comments (/*!NNNNN ...*/, /*M!NNNNNN ...*/) in front: a whole-statement one is classified by
         // its inner text; one followed by more text (MariaDB's sandbox marker line) is dropped for classification.
         while ($this->isMySql() && preg_match('~^/\*M?!\d*\s*((?:(?!\*/).)*)\*/(.*)$~s', $sql, $m) === 1) {
@@ -79,7 +88,9 @@ final class RestoreFilter
         }
 
         // Its rows follow as copy_data, which only psql can feed; refuse before the statement runs and fails.
-        if ($this->method === TransferMethod::Builtin && preg_match('/^COPY\b.*\bFROM\s+stdin\b/is', $sql) === 1) {
+        // COPY (query) TO … is not a COPY FROM stdin, whatever its query's strings say.
+        if ($this->method === TransferMethod::Builtin
+            && preg_match('/^COPY\s+(?!\()(?:[^\'"]|"(?:[^"]|"")*")*?\bFROM\s+stdin\b/is', $sql) === 1) {
             throw new RestoreRefused($this->psqlOnly());
         }
 
@@ -138,7 +149,7 @@ final class RestoreFilter
         $line = trim($text);
 
         if (preg_match('/^\\\\(?:unrestrict|restrict)(?:\s|$)/', $line) === 1) {
-            return false;
+            return $this->method === TransferMethod::Native && $this->keepRestrict;
         }
 
         if (preg_match('/^\\\\c(?:onnect)?(?:\s+(.*))?$/s', $line, $m) === 1) {
@@ -158,7 +169,102 @@ final class RestoreFilter
             throw new RestoreRefused($this->psqlOnly());
         }
 
-        return true;
+        // Native: psql would run it. \! runs a shell, \o / \w write files, \i reads them, \setenv… none belong in a
+        // dump (pg_dump writes only \connect and \restrict), so every other meta command refuses the file.
+        throw new RestoreRefused($this->psqlCommands(self::metaName($line)));
+    }
+
+    /**
+     * A statement must not smuggle client commands to the native client: on PostgreSQL a backslash outside
+     * literals, quoted names, dollar quotes and comments (psql runs the \! of `SELECT 1 \! cmd`); on MySQL/MariaDB
+     * a statement that is a client command (`system …`, `source …`, `\! …`). The clients' --binary-mode already
+     * ignores client commands inside statements there.
+     */
+    private function refuseClientCommands(string $text, string $stripped): void
+    {
+        if ($this->driver === DriverName::Postgres) {
+            $command = self::psqlCommandIn($text);
+            if ($command !== null) {
+                throw new RestoreRefused($this->psqlCommands($command));
+            }
+
+            return;
+        }
+
+        if ($this->isMySql() && preg_match('/^(?:\\\\(\S?)|('.self::MYSQL_CLIENT_COMMANDS.')(?=\s|;|$))/i', $stripped, $m) === 1) {
+            $name = ($m[2] ?? '') !== '' ? strtolower($m[2]) : '\\'.$m[1];
+
+            throw new RestoreRefused("This file contains mysql client commands DBZuper won't run ({$name}). Remove them or restore with the built-in method.");
+        }
+    }
+
+    /** The psql command a backslash outside quotes and comments starts, or null when there is none. */
+    private static function psqlCommandIn(string $sql): ?string
+    {
+        $n = strlen($sql);
+        for ($i = 0; $i < $n; $i++) {
+            $c = $sql[$i];
+            $next = $sql[$i + 1] ?? '';
+
+            if ($c === '\\') {
+                return self::metaName(substr($sql, $i));
+            }
+            if ($c === '-' && $next === '-') {
+                $end = strpos($sql, "\n", $i);
+                $i = $end === false ? $n : $end;
+            } elseif ($c === '/' && $next === '*') {
+                // Nested, as in PostgreSQL and psql.
+                $depth = 1;
+                $i += 2;
+                while ($i < $n && $depth > 0) {
+                    $pair = substr($sql, $i, 2);
+                    if ($pair === '/*') {
+                        $depth++;
+                        $i += 2;
+                    } elseif ($pair === '*/') {
+                        $depth--;
+                        $i += 2;
+                    } else {
+                        $i++;
+                    }
+                }
+                $i--;
+            } elseif ($c === "'") {
+                // E'…' takes backslash escapes, a standard string only ''. Where psql would read a string as longer
+                // (standard_conforming_strings off) this one ends earlier, which can only over-refuse.
+                $escapes = $i > 0 && ($sql[$i - 1] === 'E' || $sql[$i - 1] === 'e') && ($i < 2 || preg_match('/\w/', $sql[$i - 2]) !== 1);
+                for ($i++; $i < $n; $i++) {
+                    if ($escapes && $sql[$i] === '\\') {
+                        $i++;
+                    } elseif ($sql[$i] === "'") {
+                        if (($sql[$i + 1] ?? '') !== "'") {
+                            break;
+                        }
+                        $i++;
+                    }
+                }
+            } elseif ($c === '"') {
+                $end = strpos($sql, '"', $i + 1);
+                $i = $end === false ? $n : $end;
+            } elseif ($c === '$' && ($i === 0 || preg_match('/[\w$]/', $sql[$i - 1]) !== 1)
+                && preg_match('/\G\$(?:[A-Za-z_\x80-\xff][\w\x80-\xff]*)?\$/', $sql, $m, 0, $i) === 1) {
+                $end = strpos($sql, $m[0], $i + strlen($m[0]));
+                $i = $end === false ? $n : $end + strlen($m[0]) - 1;
+            }
+        }
+
+        return null;
+    }
+
+    /** `\!echo x` → `\!`, `\lo_import f` → `\lo_import`. */
+    private static function metaName(string $line): string
+    {
+        return preg_match('/^\\\\([A-Za-z_]+|.)/s', ltrim($line), $m) === 1 ? '\\'.$m[1] : '\\';
+    }
+
+    private function psqlCommands(string $name): string
+    {
+        return "This file contains psql commands DBZuper won't run ({$name}). Remove them or restore with the built-in method.";
     }
 
     private function keepCopyData(): bool

@@ -13,14 +13,13 @@ use App\Transfers\Io\DumpReader;
 use App\Transfers\TransferCancelled;
 use App\Transfers\TransferProgress;
 use Generator;
-use Symfony\Component\Process\InputStream;
-use Throwable;
 
 /**
  * Restores with mysql / mariadb / psql (spec §3 "Native restore"). The client never reads the file itself: it gets
  * the dump through RestoreFilter (so USE / \connect / CREATE DATABASE can't leave the open database), re-serialised
- * piece by piece into its stdin. Input is produced only when the client has taken the previous chunk, so at most
- * about two chunks are in memory whatever the file size.
+ * piece by piece into its stdin. Input is produced only when the client has taken the previous chunk, so about one
+ * chunk is in memory whatever the file size. Client commands (psql meta commands other than \connect / \restrict,
+ * mysql `system` / `source` / `\!`…) refuse the file: a dump must not run shell commands or touch files.
  *
  * psql runs with --single-transaction and ON_ERROR_STOP: a failure or a cancel (the process is killed) rolls the
  * whole restore back. The mysql client stops at the first error; what ran before it stays.
@@ -48,43 +47,28 @@ final class NativeRestorer
         }
 
         $count = 0;
-        $chunks = $this->chunks($c, $r, $p, $count);
+        $chunks = $this->chunks($c, $t, $r, $p, $count);
         $command = NativeCommandBuilder::restore($c, $t);
 
         try {
-            $input = new InputStream;
-            $failure = null;
-            // Called each time the client has taken the previous chunk off the stream. An error here (a cancel, a
-            // refused statement, an unreadable file) must not end the input: closed stdin is end of file, on which
-            // psql COMMITs. It is kept for the next tick instead, which kills the client with its stdin still open.
-            $input->onEmpty(function (InputStream $stream) use ($chunks, &$failure): ?string {
-                try {
+            // The first chunk is read before the client starts, so a file refused at its start never reaches it.
+            $chunks->valid();
+            $started = false;
+            // Called each time the client has taken the previous chunk. An exception thrown here (a cancel, a refused
+            // statement, an unreadable file) kills the client before its stdin closes, so psql never sees the end of
+            // input it would COMMIT on.
+            $input = function () use ($chunks, &$started): ?string {
+                if ($started) {
                     $chunks->next();
-                    if (! $chunks->valid()) {
-                        $stream->close();
-
-                        return null;
-                    }
-
-                    return $chunks->current();
-                } catch (Throwable $e) {
-                    $failure = $e;
-
-                    return null;
                 }
-            });
-            // The first chunk is read before the client starts, so a file refused at its start never reaches it. An
-            // empty file still writes '' (the stream reopens itself when iterated, so it can't be closed up front).
-            $input->write($chunks->valid() ? $chunks->current() : '');
+                $started = true;
 
-            $process = new NativeProcess($command, $c->password !== null ? (string) $c->password : null, $input);
+                return $chunks->valid() ? $chunks->current() : null;
+            };
+
+            $process = new NativeProcess($command, $c->password !== null ? (string) $c->password : null);
             // stdout (results of SELECTs in the file) is read and dropped.
-            $exit = $process->run(fn (string $chunk) => null, function () use (&$failure, $p): void {
-                if ($failure !== null) {
-                    throw $failure;
-                }
-                $p->checkCancelled();
-            });
+            $exit = $process->run(fn (string $chunk) => null, fn () => $p->checkCancelled(), $input);
 
             if ($exit !== 0) {
                 throw new RestoreFailed(0, '', $process->stderr() ?: "{$t->tool} exited with code {$exit}.");
@@ -94,6 +78,22 @@ final class NativeRestorer
         } finally {
             $command->cleanup();
         }
+    }
+
+    /**
+     * Does this psql know \restrict / \unrestrict (added in 18.0, 17.6, 16.10, 15.14, 14.19 and 13.22)? Then the
+     * dump's own lines pass through and psql refuses any meta command between them; older ones would fail on them.
+     */
+    public static function knowsRestrict(ToolCheck $t): bool
+    {
+        if ($t->tool !== 'psql') {
+            return false;
+        }
+        $version = (string) $t->version;
+        $major = (int) $version;
+        $fixed = [17 => '17.6', 16 => '16.10', 15 => '15.14', 14 => '14.19', 13 => '13.22'];
+
+        return $major >= 18 || (isset($fixed[$major]) && version_compare($version, $fixed[$major], '>='));
     }
 
     /** One piece as the native client reads it. */
@@ -112,9 +112,9 @@ final class NativeRestorer
      *
      * @return Generator<int, string>
      */
-    private function chunks(SavedConnection $c, DumpReader $r, TransferProgress $p, int &$count): Generator
+    private function chunks(SavedConnection $c, ToolCheck $t, DumpReader $r, TransferProgress $p, int &$count): Generator
     {
-        $filter = new RestoreFilter($c->driver, (string) $c->database, TransferMethod::Native);
+        $filter = new RestoreFilter($c->driver, (string) $c->database, TransferMethod::Native, self::knowsRestrict($t));
         $position = $r->position();
         $buffer = '';
 

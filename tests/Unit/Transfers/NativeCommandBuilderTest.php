@@ -173,12 +173,39 @@ it('maps schema/data/drop options to flags', function () {
 
 it('builds restore commands', function () {
     $psql = ncbRestore(ncbConnection(DriverName::Postgres), ncbTool('psql', '17.0'));
-    expect($psql->argv)->toBe(['/usr/bin/psql', '-X', '-q', '--single-transaction', '-v', 'ON_ERROR_STOP=1', '--host=db.example.test', '--port=3307', '--username=app_user']);
+    expect($psql->argv)->toBe(['/usr/bin/psql', '-X', '-q', '--no-password', '--single-transaction', '-v', 'ON_ERROR_STOP=1', '--host=db.example.test', '--port=3307', '--username=app_user']);
 
     $my = ncbRestore(ncbConnection(DriverName::MariaDb), ncbTool('mariadb', '11.4.2'));
-    expect(array_slice($my->argv, 2))->toBe(['--database=shop', '--default-character-set=utf8mb4', '--binary-mode']);
+    expect(array_slice($my->argv, 2))->toBe(['--database=shop', '--default-character-set=utf8mb4', '--binary-mode', '--sandbox']);
     $my->cleanup();
 });
+
+it('never prompts for a password in pg_dump', function () {
+    expect(ncbDump(ncbConnection(DriverName::Postgres), ncbTool('pg_dump', '18.0'), ncbOptions(), [], false, false)->argv)->toContain('--no-password');
+});
+
+it('turns off client shell commands where the client supports it', function (DriverName $driver, string $tool, string $version, ?string $flag) {
+    $argv = ncbRestore(ncbConnection($driver), ncbTool($tool, $version))->argv;
+    $flags = array_values(array_intersect($argv, ['--sandbox', '--system-command=OFF']));
+
+    expect($flags)->toBe($flag === null ? [] : [$flag]);
+})->with([
+    'mysql 8.4.0' => [DriverName::MySql, 'mysql', '8.4.0', null],
+    'mysql 8.4.3' => [DriverName::MySql, 'mysql', '8.4.3', '--system-command=OFF'],
+    'mysql 8.0.39' => [DriverName::MySql, 'mysql', '8.0.39', null],
+    'mysql 8.0.40' => [DriverName::MySql, 'mysql', '8.0.40', '--system-command=OFF'],
+    'mysql 9.0.1' => [DriverName::MySql, 'mysql', '9.0.1', null],
+    'mysql 9.1.0' => [DriverName::MySql, 'mysql', '9.1.0', '--system-command=OFF'],
+    'mariadb 10.5.24' => [DriverName::MariaDb, 'mariadb', '10.5.24', null],
+    'mariadb 10.5.25' => [DriverName::MariaDb, 'mariadb', '10.5.25', '--sandbox'],
+    'mariadb 10.6.18' => [DriverName::MariaDb, 'mariadb', '10.6.18', '--sandbox'],
+    'mariadb 10.11.7' => [DriverName::MariaDb, 'mariadb', '10.11.7', null],
+    'mariadb 10.11.8' => [DriverName::MariaDb, 'mariadb', '10.11.8', '--sandbox'],
+    'mariadb 11.3.2' => [DriverName::MariaDb, 'mariadb', '11.3.2', null],
+    'mariadb 11.4.1' => [DriverName::MariaDb, 'mariadb', '11.4.1', null],
+    'mariadb 11.4.2' => [DriverName::MariaDb, 'mariadb', '11.4.2', '--sandbox'],
+    'mariadb 12.3.3' => [DriverName::MariaDb, 'mariadb', '12.3.3', '--sandbox'],
+]);
 
 it('keeps awkward database and table names out of option position', function () {
     $c = ncbConnection(DriverName::MySql);

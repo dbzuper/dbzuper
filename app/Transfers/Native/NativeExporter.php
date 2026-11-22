@@ -29,6 +29,9 @@ final class NativeExporter
     /** Left out by --no-owner --no-privileges on purpose; a restore elsewhere must not need the same roles. */
     public const PG_GAP = 'ownership and privileges';
 
+    /** mysqldump / mariadb-dump print single-precision FLOAT values with 6 significant digits (Ruling 22). */
+    public const FLOAT_GAP = 'FLOAT columns rounded to 6 significant digits (mysqldump limit; use built-in for exact values)';
+
     public function __construct(
         private readonly ConnectionFactory $connections,
         private readonly DriverRegistry $drivers,
@@ -129,15 +132,64 @@ final class NativeExporter
                 if ($o->tables !== null && (int) explode('.', (string) $t->version)[0] < 16) {
                     $objects = self::withPartitions($objects, $this->partitions($db));
                 }
-            } elseif ($o->tables === null && $o->structure) {
-                // Routines and events come with "All" and structure only (spec §2).
-                $access = MySqlPrivilegeProbe::check($db, (string) $c->database);
-                ['routines' => $routines, 'events' => $events] = $access;
-                $gaps = MySqlPrivilegeProbe::gaps($access);
+            } else {
+                if ($o->tables === null && $o->structure) {
+                    // Routines and events come with "All" and structure only (spec §2).
+                    $access = MySqlPrivilegeProbe::check($db, (string) $c->database);
+                    ['routines' => $routines, 'events' => $events] = $access;
+                    $gaps = MySqlPrivilegeProbe::gaps($access);
+                }
+                if ($o->data && $this->hasFloatColumns($db, (string) $c->database, $o->tables)) {
+                    $gaps[] = self::FLOAT_GAP;
+                }
             }
 
             return [$version, $objects, $routines, $events, $gaps];
         });
+    }
+
+    /**
+     * What a native export of these tables (null: all, with structure and data) would leave out, for the dialog
+     * before the user starts. The same entries the dump header lists.
+     *
+     * @param  list<string>|null  $chosenKeys  DumpObject::key() values; null = every table and view
+     * @return list<string>
+     */
+    public function gapsFor(SavedConnection $c, ?array $chosenKeys): array
+    {
+        if ($c->driver === DriverName::Postgres) {
+            return [self::PG_GAP];
+        }
+        if ($c->driver === DriverName::Sqlite) {
+            return [];
+        }
+
+        return $this->connections->using($c, function (Connection $db) use ($c, $chosenKeys): array {
+            $gaps = $chosenKeys === null ? MySqlPrivilegeProbe::gaps(MySqlPrivilegeProbe::check($db, (string) $c->database)) : [];
+            if ($this->hasFloatColumns($db, (string) $c->database, $chosenKeys)) {
+                $gaps[] = self::FLOAT_GAP;
+            }
+
+            return $gaps;
+        });
+    }
+
+    /** @param list<string>|null $tables MySQL keys are the bare table names; null = all */
+    private function hasFloatColumns(Connection $db, string $database, ?array $tables): bool
+    {
+        if ($tables === []) {
+            return false;
+        }
+        $sql = "SELECT COUNT(*) AS n FROM information_schema.COLUMNS c
+                JOIN information_schema.TABLES t ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME
+                WHERE c.TABLE_SCHEMA = ? AND c.DATA_TYPE = 'float' AND t.TABLE_TYPE <> 'VIEW'";
+        $bindings = [$database];
+        if ($tables !== null) {
+            $sql .= ' AND c.TABLE_NAME IN ('.implode(', ', array_fill(0, count($tables), '?')).')';
+            array_push($bindings, ...$tables);
+        }
+
+        return (int) $db->selectOne($sql, $bindings)->n > 0;
     }
 
     /** @return array<string, list<DumpObject>> every partition in the database, by its parent's key */

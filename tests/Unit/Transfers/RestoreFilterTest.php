@@ -102,7 +102,7 @@ it('removes psql connect forms and refuses a different target', function () {
 });
 
 it('does not mistake \copy for \c', function () {
-    expect(rfPg([rfMeta('\copy t from x')], TransferMethod::Native))->toBe(['\copy t from x']);
+    expect(fn () => rfPg([rfMeta('\copy t from x')], TransferMethod::Native))->toThrow(RestoreRefused::class, '(\copy)');
 });
 
 it('ignores connect without a database and refuses an unparseable one only after a target was seen', function () {
@@ -149,12 +149,74 @@ it('refuses the COPY … FROM stdin statement itself on the built-in method, bef
     })->toThrow(RestoreRefused::class, $msg);
     expect($seen)->toBe(['CREATE TABLE t (x int)'])
         // COPY from a file or to stdout is plain SQL and passes.
-        ->and(rfPg([rfSql("COPY t FROM '/tmp/x.csv'"), rfSql('COPY t TO STDOUT')]))->toBe(["COPY t FROM '/tmp/x.csv'", 'COPY t TO STDOUT']);
+        ->and(rfPg([rfSql("COPY t FROM '/tmp/x.csv'"), rfSql('COPY t TO STDOUT'), rfSql("COPY (SELECT 'x FROM stdin') TO STDOUT")]))
+        ->toBe(["COPY t FROM '/tmp/x.csv'", 'COPY t TO STDOUT', "COPY (SELECT 'x FROM stdin') TO STDOUT"]);
 });
 
-it('passes other meta lines and every COPY data piece through on the native method', function () {
-    $pieces = [rfMeta('\set x 1'), rfSql('COPY t FROM stdin'), new SqlPiece('copy_data', "1\n"), new SqlPiece('copy_data', "\\.\n")];
-    expect(rfPg($pieces, TransferMethod::Native))->toBe(['\set x 1', 'COPY t FROM stdin', "1\n", "\\.\n"]);
+it('passes every COPY data piece through on the native method', function () {
+    $pieces = [rfSql('COPY t FROM stdin'), new SqlPiece('copy_data', "1\n"), new SqlPiece('copy_data', "\\.\n")];
+    expect(rfPg($pieces, TransferMethod::Native))->toBe(['COPY t FROM stdin', "1\n", "\\.\n"]);
+});
+
+it('refuses every psql meta command but restrict and connect on the native method', function (string $line, string $name) {
+    $msg = "This file contains psql commands DBZuper won't run ({$name}). Remove them or restore with the built-in method.";
+    expect(fn () => rfPg([rfSql('SELECT 1'), rfMeta($line)], TransferMethod::Native))->toThrow(RestoreRefused::class, $msg);
+})->with([
+    ['\! echo pwned', '\!'],
+    ['\!echo pwned', '\!'],
+    ['\o /tmp/x', '\o'],
+    ['\w /tmp/x', '\w'],
+    ['\g /tmp/x', '\g'],
+    ['\copy t from x', '\copy'],
+    ['\i /etc/passwd', '\i'],
+    ['\ir x.sql', '\ir'],
+    ['\setenv PGHOST x', '\setenv'],
+    ['\gexec', '\gexec'],
+    ['\lo_import /etc/passwd', '\lo_import'],
+    ['\set x 1', '\set'],
+]);
+
+it('refuses psql backslash commands hidden inside a statement on the native method', function () {
+    $msg = "This file contains psql commands DBZuper won't run (\\!). Remove them or restore with the built-in method.";
+    expect(fn () => rfPg([rfSql('SELECT 1 \! echo pwned')], TransferMethod::Native))->toThrow(RestoreRefused::class, $msg);
+    expect(fn () => rfPg([rfSql("INSERT INTO t VALUES ('a')\n\\! echo pwned")], TransferMethod::Native))->toThrow(RestoreRefused::class, $msg);
+
+    // Backslashes inside literals, quoted names, dollar quotes and comments are data, not commands.
+    $fine = [
+        "INSERT INTO t VALUES ('a\\b', E'c\\'d\\\\', \"we\\ird\")",
+        'CREATE FUNCTION f() RETURNS text AS $body$ SELECT \'\! no\' $body$ LANGUAGE sql',
+        "SELECT 1 -- a \\! comment\n",
+        'SELECT /* \! /* nested */ \o */ 1',
+    ];
+    expect(rfPg(array_map('rfSql', $fine), TransferMethod::Native))->toBe($fine);
+});
+
+it('keeps restrict lines for a psql that knows them and strips them otherwise', function () {
+    $pieces = [rfMeta('\restrict abc'), rfSql('SELECT 1'), rfMeta('\unrestrict abc')];
+    $out = fn (bool $keep) => array_map(
+        fn (SqlPiece $p) => $p->text,
+        iterator_to_array((new RestoreFilter(DriverName::Postgres, 'open_db', TransferMethod::Native, $keep))->apply($pieces), false),
+    );
+
+    expect($out(true))->toBe(['\restrict abc', 'SELECT 1', '\unrestrict abc'])
+        ->and($out(false))->toBe(['SELECT 1']);
+});
+
+it('refuses mysql client commands on the native method', function (string $sql) {
+    expect(fn () => rfMy(['CREATE TABLE t (x int)', $sql], TransferMethod::Native))
+        ->toThrow(RestoreRefused::class, "This file contains mysql client commands DBZuper won't run");
+})->with([
+    'system echo x', 'SYSTEM echo x', '\! echo x', '\. /etc/passwd', '\T /tmp/x', '\P less', '\u other', '\r',
+    'source /etc/passwd', 'tee /tmp/x', 'notee', 'pager less', 'nopager', 'edit', 'prompt x', 'connect other', 'charset latin1',
+    'warnings', 'nowarnings', 'rehash', 'resetconnection', 'query_attributes a b', 'ssl_session_data_print', 'exit', 'quit',
+    'go', 'ego', 'print', 'status', 'help', '/* x */ system echo x',
+]);
+
+it('keeps ordinary MySQL statements that only start like client commands', function () {
+    $keep = ['SELECT 1', 'systematic_view', 'INSERT INTO system_log VALUES (1)', "SET @x = 'system echo'", 'CREATE TABLE `go` (x int)'];
+    expect(rfMy($keep, TransferMethod::Native))->toBe($keep)
+        // The built-in method sends it to the server, which rejects it.
+        ->and(rfMy(['system echo x']))->toBe(['system echo x']);
 });
 
 it('passes delimiter pieces through', function () {
