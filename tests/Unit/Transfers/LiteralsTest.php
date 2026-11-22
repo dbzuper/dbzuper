@@ -35,6 +35,8 @@ it('writes PostgreSQL literals', function (mixed $value, bool $bytea, string $ex
     'quote' => ["it's", false, "'it''s'"],
     'backslash' => ['back\\slash', false, "'back\\slash'"],
     'newline' => ["line\nbreak", false, "'line\nbreak'"],
+    // psql on Windows reads stdin in text mode and turns a raw CRLF into LF, so CR is written as an escape.
+    'carriage return' => ["a\r\nb\\c'd", false, "E'a\\r\nb\\\\c''d'"],
     'unicode' => ['zoë 😀', false, "'zoë 😀'"],
     'numeric string stays quoted' => ['12', false, "'12'"],
     'nan' => [NAN, false, "'NaN'"],

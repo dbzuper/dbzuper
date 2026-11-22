@@ -23,8 +23,8 @@ use Generator;
  * ALTER DATABASE (and MySQL ALTER SCHEMA) and PostgreSQL COMMENT ON DATABASE are removed and count as targets;
  * a nameless MySQL ALTER DATABASE (CHARACTER SET ..., acts on the open database) passes.
  *
- * Built-in method: any psql meta line other than the ones above and any COPY data refuses the file (a run of
- * copy_data pieces refuses at its first piece). Native method: they pass through. Delimiter pieces always pass.
+ * Built-in method: any psql meta line other than the ones above, a COPY … FROM stdin statement and any COPY data
+ * refuse the file (the statement refuses before it can run; a run of copy_data pieces refuses at its first piece). Native method: they pass through. Delimiter pieces always pass.
  */
 final class RestoreFilter
 {
@@ -76,6 +76,11 @@ final class RestoreFilter
             if ($rest === '') {
                 break;
             }
+        }
+
+        // Its rows follow as copy_data, which only psql can feed; refuse before the statement runs and fails.
+        if ($this->method === TransferMethod::Builtin && preg_match('/^COPY\b.*\bFROM\s+stdin\b/is', $sql) === 1) {
+            throw new RestoreRefused($this->psqlOnly());
         }
 
         return ! $this->removable($sql);

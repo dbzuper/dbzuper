@@ -56,6 +56,11 @@ final class Literals
         if ($bytea) {
             return "'\\x".bin2hex($v)."'::bytea";
         }
+        if (str_contains($v, "\r")) {
+            // A raw CR doesn't survive psql on Windows (stdin in text mode turns CRLF into LF) or editors that
+            // normalise line endings; an escape string keeps it. Quotes are still doubled, never backslashed.
+            return "E'".strtr($v, ['\\' => '\\\\', "'" => "''", "\r" => '\\r'])."'";
+        }
 
         return "'".str_replace("'", "''", $v)."'";
     }

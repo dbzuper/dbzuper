@@ -136,6 +136,22 @@ it('refuses other meta lines and COPY data on the built-in method', function () 
     expect(fn () => rfPg([new SqlPiece('copy_data', "1\t2\n\\.\n")]))->toThrow(RestoreRefused::class, $msg);
 });
 
+it('refuses the COPY … FROM stdin statement itself on the built-in method, before it can run', function () {
+    $msg = 'This file uses psql-only commands (COPY … FROM stdin); restore it with the native method (needs psql)';
+    $seen = [];
+    $filter = new RestoreFilter(DriverName::Postgres, 'open_db', TransferMethod::Builtin);
+    $pieces = [rfSql('CREATE TABLE t (x int)'), rfSql("-- data\nCOPY \"Sales\".\"order\" (id, \"we\"\"ird\") FROM stdin"), new SqlPiece('copy_data', "1\n\\.\n")];
+
+    expect(function () use ($filter, $pieces, &$seen) {
+        foreach ($filter->apply($pieces) as $piece) {
+            $seen[] = $piece->text;
+        }
+    })->toThrow(RestoreRefused::class, $msg);
+    expect($seen)->toBe(['CREATE TABLE t (x int)'])
+        // COPY from a file or to stdout is plain SQL and passes.
+        ->and(rfPg([rfSql("COPY t FROM '/tmp/x.csv'"), rfSql('COPY t TO STDOUT')]))->toBe(["COPY t FROM '/tmp/x.csv'", 'COPY t TO STDOUT']);
+});
+
 it('passes other meta lines and every COPY data piece through on the native method', function () {
     $pieces = [rfMeta('\set x 1'), rfSql('COPY t FROM stdin'), new SqlPiece('copy_data', "1\n"), new SqlPiece('copy_data', "\\.\n")];
     expect(rfPg($pieces, TransferMethod::Native))->toBe(['\set x 1', 'COPY t FROM stdin', "1\n", "\\.\n"]);
