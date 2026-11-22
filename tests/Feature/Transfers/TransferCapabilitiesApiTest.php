@@ -152,7 +152,28 @@ it('puts the polled transfer routes on the transfers limiter, not the shared API
 
     expect($middleware)->toContain('throttle:dbzuper-transfers')
         ->and($middleware)->not->toContain('throttle:dbzuper-api');
-})->with(['api.transfers.show', 'api.transfers.index', 'api.transfers.upload']);
+})->with(['api.transfers.show', 'api.transfers.index']);
+
+it('puts upload chunks on their own limiter, apart from the polling and the shared API one', function () {
+    $router = app('router');
+    $middleware = $router->gatherRouteMiddleware($router->getRoutes()->getByName('api.transfers.upload'));
+
+    expect($middleware)->toContain('throttle:dbzuper-uploads')
+        ->and($middleware)->not->toContain('throttle:dbzuper-transfers')
+        ->and($middleware)->not->toContain('throttle:dbzuper-api');
+});
+
+it('allows 3000 upload chunks a minute per user', function () {
+    $user = User::factory()->create();
+    $request = Illuminate\Http\Request::create('/');
+    $request->setUserResolver(fn () => $user);
+
+    $limit = Illuminate\Support\Facades\RateLimiter::limiter('dbzuper-uploads')($request);
+
+    expect($limit->maxAttempts)->toBe(3000)
+        ->and($limit->decaySeconds)->toBe(60)
+        ->and($limit->key)->toBe($user->id);
+});
 
 it('keeps capabilities on the shared API limiter: they are read on demand, not polled', function (string $name) {
     $router = app('router');

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UploadError, uploadInChunks } from './chunked-upload';
+import { retryAfterMs, UploadError, uploadInChunks } from './chunked-upload';
 
 const json = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), {
@@ -195,5 +195,82 @@ describe('uploadInChunks generic server errors', () => {
         await vi.advanceTimersByTimeAsync(1000);
         await done;
         expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('uploadInChunks throttling', () => {
+    const throttled = (retryAfter?: string) =>
+        new Response(JSON.stringify({ message: 'Too Many Attempts.' }), {
+            status: 429,
+            headers: retryAfter ? { 'Retry-After': retryAfter } : {},
+        });
+
+    it('waits out a 429 as Retry-After asks and sends the same chunk again', async () => {
+        const fetchMock = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValueOnce(throttled('3'))
+            .mockResolvedValueOnce(json(200, { offset: 10 }));
+
+        const done = uploadInChunks(file(10), '/up', {
+            chunkBytes: 10,
+            onProgress: () => {},
+        });
+        await vi.advanceTimersByTimeAsync(2999);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1);
+        await done;
+
+        expect(fetchMock.mock.calls.map(offsetOf)).toEqual(['0', '0']);
+    });
+
+    it('does not count 429s against the retries', async () => {
+        const fetchMock = vi.spyOn(globalThis, 'fetch');
+        for (let i = 0; i < 6; i++)
+            fetchMock.mockResolvedValueOnce(throttled('1'));
+        fetchMock
+            .mockRejectedValueOnce(new TypeError('network'))
+            .mockRejectedValueOnce(new TypeError('network'))
+            .mockRejectedValueOnce(new TypeError('network'))
+            .mockResolvedValueOnce(json(200, { offset: 10 }));
+
+        const done = uploadInChunks(file(10), '/up', {
+            chunkBytes: 10,
+            onProgress: () => {},
+        });
+        await vi.advanceTimersByTimeAsync(6000 + 1000 + 2000 + 4000);
+        await done;
+
+        expect(fetchMock).toHaveBeenCalledTimes(10);
+    });
+
+    it('stops waiting when aborted during a 429 wait', async () => {
+        const controller = new AbortController();
+        const fetchMock = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(throttled('30'));
+
+        const done = uploadInChunks(file(10), '/up', {
+            chunkBytes: 10,
+            onProgress: () => {},
+            signal: controller.signal,
+        });
+        const assertion = expect(done).rejects.toMatchObject({
+            name: 'AbortError',
+        });
+        await vi.advanceTimersByTimeAsync(100);
+        controller.abort();
+        await assertion;
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads Retry-After as seconds or an HTTP date, at least 1 s', () => {
+        const now = Date.parse('2026-11-23T10:00:00Z');
+        expect(retryAfterMs('5', now)).toBe(5000);
+        expect(retryAfterMs('0', now)).toBe(1000);
+        expect(retryAfterMs(null, now)).toBe(1000);
+        expect(retryAfterMs('soon', now)).toBe(1000);
+        expect(retryAfterMs('Mon, 23 Nov 2026 10:00:07 GMT', now)).toBe(7000);
+        expect(retryAfterMs('Mon, 23 Nov 2026 09:59:00 GMT', now)).toBe(1000);
+        expect(retryAfterMs('3600', now)).toBe(60_000);
     });
 });
