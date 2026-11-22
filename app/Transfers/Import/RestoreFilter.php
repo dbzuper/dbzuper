@@ -17,8 +17,11 @@ use Generator;
  * Two different targets refuse the file. Names compare exactly, except on MySQL/MariaDB (case-insensitive). A
  * \connect that names no database (`\connect`, `\connect -`, options only) is ignored. A \connect whose database
  * can't be parsed is ignored too, unless a target was already seen: then it counts as a different, unnamed
- * database. Leading comments and whitespace are skipped when classifying a statement; a statement wrapped whole
- * in an executable comment (slash-star-bang) is not recognised.
+ * database. Leading and trailing plain comments and whitespace are skipped when classifying a statement. On
+ * MySQL/MariaDB a statement that is entirely one executable comment (slash-star-bang NNNNN or M!NNNNNN, as in
+ * mysqldump --add-drop-database) is classified by its inner text; if that is not removable the piece passes.
+ * ALTER DATABASE (and MySQL ALTER SCHEMA) and PostgreSQL COMMENT ON DATABASE are removed and count as targets;
+ * a nameless MySQL ALTER DATABASE (CHARACTER SET ..., acts on the open database) passes.
  *
  * Built-in method: any psql meta line other than the ones above and any COPY data refuses the file (a run of
  * copy_data pieces refuses at its first piece). Native method: they pass through. Delimiter pieces always pass.
@@ -62,13 +65,24 @@ final class RestoreFilter
 
     private function keepSql(string $text): bool
     {
-        $sql = $this->stripLeadingComments($text);
+        $sql = $this->stripComments($text);
+
+        if ($this->isMySql() && preg_match('~^/\*(?:M?!)\d*\s((?:(?!\*/).)*)\*/$~s', $sql, $m) === 1) {
+            $sql = $this->stripComments($m[1]);
+        }
+
+        return ! $this->removable($sql);
+    }
+
+    /** True (after recording any database it names) when the statement must not reach the restorer. */
+    private function removable(string $sql): bool
+    {
         $name = self::NAME;
 
         if (preg_match("/^USE\\s+{$name}\\s*\$/i", $sql, $m) === 1) {
             $this->target($this->nameFrom($m));
 
-            return false;
+            return true;
         }
 
         if ($this->driver !== DriverName::Sqlite) {
@@ -76,11 +90,20 @@ final class RestoreFilter
             $create = "/^CREATE\\s+(?:OR\\s+REPLACE\\s+)?{$kind}\\s+(?:\\/\\*!\\d+\\s*IF\\s+NOT\\s+EXISTS\\s*\\*\\/\\s*|IF\\s+NOT\\s+EXISTS\\s+)?{$name}/i";
             $drop = "/^DROP\\s+{$kind}\\s+(?:IF\\s+EXISTS\\s+)?{$name}/i";
 
-            foreach ([$create, $drop] as $pattern) {
+            $alter = "/^ALTER\s+{$kind}\s+{$name}/i";
+            $comment = "/^COMMENT\s+ON\s+DATABASE\s+{$name}/i";
+
+            foreach ([$create, $drop, $alter, $comment] as $pattern) {
                 if (preg_match($pattern, $sql, $m) === 1) {
+                    // A nameless MySQL ALTER DATABASE CHARACTER SET ... acts on the open database.
+                    if ($pattern === $alter && $this->isMySql() && ($m[3] ?? '') !== ''
+                        && preg_match('/^(?:CHARACTER|CHARSET|DEFAULT|COLLATE|UPGRADE|COMMENT)$/i', $m[3]) === 1) {
+                        continue;
+                    }
+
                     $this->target($this->nameFrom($m));
 
-                    return false;
+                    return true;
                 }
             }
         }
@@ -88,14 +111,14 @@ final class RestoreFilter
         if ($this->driver === DriverName::Postgres || $this->driver === DriverName::Sqlite) {
             $options = '(?:\s+(?:ISOLATION|READ|NOT|DEFERRABLE)\b.*)?';
             $begin = '/^(?:BEGIN(?:\s+(?:DEFERRED|IMMEDIATE|EXCLUSIVE))?(?:\s+(?:WORK|TRANSACTION))?|START\s+TRANSACTION)'.$options.'$/is';
-            $end = '/^(?:COMMIT|END|ROLLBACK)(?:\s+(?:WORK|TRANSACTION))?(?:\s+AND\s+(?:NO\s+)?CHAIN)?$/i';
+            $end = '/^(?:COMMIT|END|ROLLBACK|ABORT)(?:\s+(?:WORK|TRANSACTION))?(?:\s+AND\s+(?:NO\s+)?CHAIN)?$/i';
 
             if (preg_match($begin, $sql) === 1 || preg_match($end, $sql) === 1) {
-                return false;
+                return true;
             }
         }
 
-        return true;
+        return false;
     }
 
     private function keepMeta(string $text): bool
@@ -161,8 +184,11 @@ final class RestoreFilter
         return $this->isMySql() ? mb_strtolower($a) === mb_strtolower($b) : $a === $b;
     }
 
-    /** The unquoted name out of the three NAME capture groups (backtick, double quote, bare) at 1..3. */
-    /** @param array<int|string, string> $m */
+    /**
+     * The unquoted name out of the three NAME capture groups (backtick, double quote, bare) at 1..3.
+     *
+     * @param  array<int|string, string>  $m
+     */
     private function nameFrom(array $m): string
     {
         if (($m[1] ?? '') !== '') {
@@ -231,13 +257,20 @@ final class RestoreFilter
         return $out;
     }
 
-    private function stripLeadingComments(string $sql): string
+    private function stripComments(string $sql): string
     {
-        $line = $this->isMySql() ? '(?:--(?=\s)|#)' : '--';
+        $line = $this->isMySql() ? '(?:--(?=\s|$)|#)' : '--';
+        $plain = '/\*(?!M?!)(?:(?!\*/).)*\*/';
 
-        // Plain comments only: an executable comment (/*!...) is a statement of its own and stays.
-        $sql = preg_replace('~^(?:\s+|/\*(?!!).*?\*/|'.$line.'[^\n]*(?:\n|$))+~s', '', $sql) ?? $sql;
+        // Plain comments only: an executable comment (slash-star-bang) is a statement of its own and stays.
+        $sql = preg_replace('~^(?:\s+|'.$plain.'|'.$line.'[^\n]*(?:\n|$))+~s', '', $sql) ?? $sql;
 
-        return rtrim($sql, " \t\r\n;");
+        do {
+            $before = $sql;
+            $sql = preg_replace('~(?:\s+|'.$plain.'|'.$line.'[^\n]*)$~s', '', $sql) ?? $sql;
+            $sql = rtrim($sql, " \t\r\n;");
+        } while ($sql !== $before);
+
+        return $sql;
     }
 }

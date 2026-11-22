@@ -146,3 +146,36 @@ it('passes delimiter pieces through', function () {
     $out = iterator_to_array((new RestoreFilter(DriverName::MySql, 'x', TransferMethod::Builtin))->apply([$d]), false);
     expect($out)->toEqual([$d]);
 });
+
+it('removes the executable-comment DROP DATABASE that mysqldump --add-drop-database writes', function () {
+    expect(rfMy(['/*!40000 DROP DATABASE IF EXISTS `shop`*/', 'SELECT 1']))->toBe(['SELECT 1']);
+    expect(rfMy(['/*M!100000 DROP DATABASE IF EXISTS `shop`*/'], driver: DriverName::MariaDb))->toBe([]);
+    expect(rfMy(['/*!40000 DROP DATABASE IF EXISTS `shop`*/', 'CREATE DATABASE /*!32312 IF NOT EXISTS*/ `shop`', 'USE `shop`']))->toBe([]);
+    expect(fn () => rfMy(['/*!40000 DROP DATABASE IF EXISTS `shop`*/', 'USE `other`']))->toThrow(RestoreRefused::class, '(shop and other)');
+});
+
+it('keeps executable comments that are not removable', function () {
+    $keep = ['/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */', '/*!40000 ALTER TABLE `t` DISABLE KEYS */'];
+    expect(rfMy($keep))->toBe($keep);
+});
+
+it('removes ALTER DATABASE and counts it as a target', function () {
+    expect(rfMy(['ALTER DATABASE `shop` CHARACTER SET latin1 COLLATE latin1_swedish_ci', 'ALTER SCHEMA `shop` DEFAULT CHARACTER SET utf8mb4', '/*!50003 ALTER DATABASE `shop` CHARACTER SET utf8 */']))->toBe([]);
+    expect(rfPg([rfSql('ALTER DATABASE shop OWNER TO app'), rfSql('ALTER DATABASE shop SET search_path TO a'), rfSql("COMMENT ON DATABASE shop IS 'x'")]))->toBe([]);
+    expect(fn () => rfPg([rfSql('ALTER DATABASE shop OWNER TO app'), rfSql('ALTER DATABASE "Other" SET x = 1')]))->toThrow(RestoreRefused::class, '(shop and Other)');
+    expect(fn () => rfMy(['ALTER DATABASE `a` CHARACTER SET x', 'USE `b`']))->toThrow(RestoreRefused::class);
+});
+
+it('keeps a nameless MySQL ALTER DATABASE and PostgreSQL ALTER SCHEMA', function () {
+    expect(rfMy(['ALTER DATABASE CHARACTER SET utf8mb4', 'ALTER DATABASE DEFAULT COLLATE x']))->toBe(['ALTER DATABASE CHARACTER SET utf8mb4', 'ALTER DATABASE DEFAULT COLLATE x']);
+    expect(rfPg([rfSql('ALTER SCHEMA s OWNER TO app')]))->toBe(['ALTER SCHEMA s OWNER TO app']);
+});
+
+it('ignores trailing comments when classifying', function () {
+    expect(rfMy(['USE `a` /* c */', 'CREATE DATABASE `a` -- x', 'SELECT 1 /* keep */']))->toBe(['SELECT 1 /* keep */']);
+    expect(rfRun(DriverName::Postgres, TransferMethod::Builtin, array_map('rfSql', ['BEGIN /* c */', 'COMMIT -- trailing', 'COMMIT /* a */ -- b'])))->toBe([]);
+});
+
+it('removes PostgreSQL ABORT', function () {
+    expect(rfRun(DriverName::Postgres, TransferMethod::Builtin, array_map('rfSql', ['ABORT', 'ABORT WORK', 'abort transaction'])))->toBe([]);
+});
