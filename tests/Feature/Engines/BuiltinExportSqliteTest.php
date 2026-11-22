@@ -238,7 +238,7 @@ it('keeps every value with its storage class, and rowids', function () {
                 ->and($target->selectOne("SELECT sql FROM sqlite_master WHERE name = 'rt_norowid'")->sql)
                 ->toBe($source->selectOne("SELECT sql FROM sqlite_master WHERE name = 'rt_norowid'")->sql);
             // Short decimals stay readable; a value SQLite's parser could misread is written as its exact binary value.
-            expect($sql)->toContain("(1,-0.0,'text','not a number',(CAST(3602879701896397 AS REAL)/36028797018963968)),")
+            expect($sql)->toContain("(1,-0.0,'text','not a number',0.1),")
                 ->and($sql)->toMatch('~\(9,\(CAST\(\d+ AS REAL\)/\d+\),~');
             // Spot checks on what the comparison relies on.
             expect(var_export($target->getPdo()->query('SELECT anyv FROM rt_dyn WHERE id = 1')->fetchColumn(), true))->toBe('-0.0')
@@ -427,13 +427,13 @@ it('takes the exact path for decimals a double-rounding parser misreads', functi
         })->call($exporter);
     };
 
-    // Within a quarter ulp of their double, so written as decimals.
-    foreach ([0.25, 0.3, 3.5, 4.25, 0.01, 1.0, 1e20, 1e22, -2.5e-7] as $v) {
+    // Clear of the halfway point by more than 1/64 ulp, so written as decimals.
+    foreach ([0.1, 0.2, 0.7, 19.99, 12345678.1234, 0.25, 0.3, 3.5, 4.25, 0.01, 1.0, 1e20, 1e22, -2.5e-7] as $v) {
         expect($real($v))->toBe(var_export($v, true));
     }
-    // Near the halfway point between two doubles (x87 double rounding reads the first three one ulp off), or
-    // merely further than a quarter ulp from it (0.1, 19.99).
-    foreach ([491e-8, 982e-8, 88607e-7, 1e23, 0.1, 19.99] as $v) {
+    // Within 1/64 ulp of the halfway point between two doubles: x87 double rounding reads the first three one
+    // ulp off.
+    foreach ([491e-8, 982e-8, 88607e-7, 1e23] as $v) {
         expect($real($v))->toStartWith('(CAST(');
     }
 });

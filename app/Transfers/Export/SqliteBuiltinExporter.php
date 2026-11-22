@@ -162,8 +162,9 @@ final class SqliteBuiltinExporter implements BuiltinExporter
                 }
             }
             if ($writable) {
-                // RESET (3.35+) is OFF plus a schema reload, so the restoring connection sees the virtual tables
-                // (and a second restore's DROP finds them); older SQLite reads it as OFF.
+                // Not .dump's OFF: RESET (3.35+) is OFF plus a schema reload. After OFF the restoring connection
+                // doesn't see the virtual tables ("no such table"), so a second restore's DROP would miss them and
+                // insert duplicate sqlite_master rows. Older SQLite reads RESET as false, i.e. OFF.
                 $w->write("PRAGMA writable_schema=RESET;\n\n");
             }
         }
@@ -366,10 +367,11 @@ final class SqliteBuiltinExporter implements BuiltinExporter
      * one bit off, and x86-64 long-double builds round twice, misreading decimals that lie near the halfway point
      * between two doubles (491e-8, 982e-8, 88607e-7). A decimal is therefore written only when all of these hold:
      * it is the shortest decimal of the value, with a significand of at most 2^53 and a scale within 10^±22; its
-     * exact value lies within a quarter ulp of the double (bcmath, exact), so an intermediate rounding of 64 bits
-     * or a few ulps of the extended format can't carry it past the halfway point; and this build reads it back
-     * exactly. Any other value is written as its exact binary value, an integer mantissa times or divided by
-     * powers of two.
+     * exact value is at least 1/64 ulp clear of the halfway point (bcmath, exact) — a 64-bit intermediate rounding
+     * adds at most 2^-12 ulp and SQLite 3.43+'s up to 22 long-double ×1e-1 steps about 1/90 ulp, so none can
+     * carry it across (checked against both methods in a simulation of ~600k decimals: no misreads); and this
+     * build reads it back exactly. Any other value is written as its exact binary value, an integer mantissa
+     * times or divided by powers of two.
      */
     private function real(float $v): string
     {
@@ -388,7 +390,7 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             $scale += strlen($digits) - strlen($significand);
             $safe = $significand === ''
                 || (strlen($significand) <= 16 && (int) $significand <= 2 ** 53 && abs($scale) <= 22
-                    && self::withinQuarterUlp($significand, $scale, $v));
+                    && self::clearOfHalfway($significand, $scale, $v));
 
             if ($safe) {
                 $this->parse->execute([$text]);
@@ -404,23 +406,30 @@ final class SqliteBuiltinExporter implements BuiltinExporter
     }
 
     /**
-     * |s·10^k − |v|| ≤ ulp(v)/4, in exact integer arithmetic. With |v| = M·2^u (u the exponent of v's last bit)
-     * everything is scaled by 10^max(0,−k) · 2^max(0,2−u) so all three terms are integers.
+     * |s·10^k − |v|| ≤ ulp/2 − ulp/64, in exact integer arithmetic, where ulp is the spacing on the side the
+     * decimal lies (below a power of two it is half as wide). With |v| = M·2^u (u the exponent of v's last bit)
+     * everything is scaled by 10^max(0,−k) · 2^max(0,7−u) so all terms are integers.
      */
-    private static function withinQuarterUlp(string $significand, int $k, float $v): bool
+    private static function clearOfHalfway(string $significand, int $k, float $v): bool
     {
         if (! ctype_digit($significand)) {
             return false;
         }
         [$mantissa, $u] = self::binary(abs($v));
         $p10 = max(0, -$k);
-        $p2 = max(0, 2 - $u);
+        $p2 = max(0, 7 - $u);
 
         $decimal = bcmul(bcmul($significand, bcpow('10', (string) ($k + $p10))), bcpow('2', (string) $p2));
         $double = bcmul(bcmul((string) $mantissa, bcpow('2', (string) ($u + $p2))), bcpow('10', (string) $p10));
-        $quarter = bcmul(bcpow('2', (string) ($u - 2 + $p2)), bcpow('10', (string) $p10));
+        $diff = bcsub($decimal, $double);
+        // Below a power of two (not the smallest normal, whose neighbour below has the same spacing).
+        $side = $u;
+        if (str_starts_with($diff, '-') && $mantissa === 1 << 52 && $u > -1074) {
+            $side--;
+        }
+        $limit = bcmul(bcmul('31', bcpow('2', (string) ($side - 6 + $p2))), bcpow('10', (string) $p10));
 
-        return bccomp(ltrim(bcsub($decimal, $double), '-'), $quarter) <= 0;
+        return bccomp(ltrim($diff, '-'), $limit) <= 0;
     }
 
     /**
