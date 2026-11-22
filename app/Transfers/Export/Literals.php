@@ -17,9 +17,13 @@ final class Literals
             return (string) $v;
         }
         if (is_float($v)) {
-            return is_finite($v) ? self::float($v) : 'NULL';
+            if (! is_finite($v)) {
+                throw new \InvalidArgumentException('MySQL cannot store NaN or Infinity');
+            }
+
+            return self::float($v);
         }
-        $v = (string) $v;
+        $v = self::string($v);
         if ($binary) {
             return $v === '' ? "''" : '0x'.bin2hex($v);
         }
@@ -48,7 +52,7 @@ final class Literals
                 default => self::float($v),
             };
         }
-        $v = (string) $v;
+        $v = self::string($v);
         if ($bytea) {
             return "'\\x".bin2hex($v)."'::bytea";
         }
@@ -69,17 +73,34 @@ final class Literals
         }
         if (is_float($v)) {
             return match (true) {
-                is_nan($v) => 'NULL',
+                is_nan($v) => 'NULL', // SQLite stores NaN as NULL itself; Inf has no literal, 9e999 overflows to it
                 is_infinite($v) => $v > 0 ? '9e999' : '-9e999',
                 default => self::float($v),
             };
         }
-        $v = (string) $v;
+        $v = self::string($v);
         if ($blob) {
             return "X'".bin2hex($v)."'";
         }
+        if (str_contains($v, "\0")) {
+            // A raw NUL truncates the statement on restore; build the text from hex instead.
+            return "CAST(X'".bin2hex($v)."' AS TEXT)";
+        }
 
         return "'".str_replace("'", "''", $v)."'";
+    }
+
+    /** PDO pgsql returns bytea as a stream resource. */
+    private static function string(mixed $v): string
+    {
+        if (is_resource($v)) {
+            return (string) stream_get_contents($v);
+        }
+        if (! is_scalar($v) && ! $v instanceof \Stringable) {
+            throw new \InvalidArgumentException('Cannot write a '.get_debug_type($v).' as a SQL literal');
+        }
+
+        return (string) $v;
     }
 
     /** Round-trippable and locale independent (var_export uses serialize_precision -1). */

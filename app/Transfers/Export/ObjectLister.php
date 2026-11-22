@@ -40,6 +40,7 @@ final class ObjectLister
              WHERE c.relkind IN ('r', 'p', 'v')
                AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                AND n.nspname NOT LIKE 'pg\\_toast%' AND n.nspname NOT LIKE 'pg\\_temp%'
+               AND NOT c.relispartition
              ORDER BY n.nspname, c.relname",
         );
 

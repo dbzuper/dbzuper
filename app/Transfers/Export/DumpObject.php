@@ -4,12 +4,16 @@ namespace App\Transfers\Export;
 
 final readonly class DumpObject
 {
-    /** @param 'table'|'view' $kind */
+    /** @param string $kind 'table' or 'view' (validated) */
     public function __construct(
         public ?string $schema,
         public string $name,
         public string $kind,
-    ) {}
+    ) {
+        if (! in_array($kind, ['table', 'view'], true)) {
+            throw new \InvalidArgumentException("Unknown dump object kind: {$kind}");
+        }
+    }
 
     /** Stable identifier: the bare name without a schema, otherwise a JSON `[schema, name]` pair. */
     public function key(): string
