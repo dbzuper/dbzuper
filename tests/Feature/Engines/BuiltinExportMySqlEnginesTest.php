@@ -2,13 +2,11 @@
 
 use App\Database\ConnectionFactory;
 use App\Enums\DriverName;
-use App\Enums\TransferMethod;
 use App\Models\Transfer;
 use App\Transfers\Export\BuiltinExporters;
 use App\Transfers\Export\ExportOptions;
 use App\Transfers\Export\MySqlBuiltinExporter;
-use App\Transfers\Import\RestoreFilter;
-use App\Transfers\Import\SqlStream;
+use App\Transfers\Import\BuiltinRestorer;
 use App\Transfers\Io\DumpReader;
 use App\Transfers\Io\DumpWriter;
 use App\Transfers\TransferCancelled;
@@ -70,15 +68,10 @@ function mysqlBuiltinExport(Connection $db, string $engine, ExportOptions $o, ?T
     return $path;
 }
 
-/** Stand-in for Task 12's BuiltinRestorer: the restore pipeline's stream and filter, each statement run as is. */
+/** Restores the file with BuiltinRestorer into the database $db is open on (on a connection of its own). */
 function mysqlBuiltinRestore(Connection $db, string $engine, string $path): void
 {
-    $filter = new RestoreFilter(DriverName::from($engine), Engines::RESTORE_DATABASE, TransferMethod::Builtin);
-    foreach ($filter->apply(SqlStream::pieces(new DumpReader($path), $engine)) as $piece) {
-        if ($piece->kind === 'sql') {
-            $db->unprepared($piece->text);
-        }
-    }
+    app(BuiltinRestorer::class)->run(Engines::savedConnection($engine, ['database' => $db->getDatabaseName()]), new DumpReader($path), mysqlBuiltinProgress());
 }
 
 /** @return array{tables: list<string>, views: list<string>, triggers: list<string>} */

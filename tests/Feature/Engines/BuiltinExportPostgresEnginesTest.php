@@ -2,13 +2,11 @@
 
 use App\Database\ConnectionFactory;
 use App\Enums\DriverName;
-use App\Enums\TransferMethod;
 use App\Models\Transfer;
 use App\Transfers\Export\BuiltinExporters;
 use App\Transfers\Export\ExportOptions;
 use App\Transfers\Export\PostgresBuiltinExporter;
-use App\Transfers\Import\RestoreFilter;
-use App\Transfers\Import\SqlStream;
+use App\Transfers\Import\BuiltinRestorer;
 use App\Transfers\Io\DumpReader;
 use App\Transfers\Io\DumpWriter;
 use App\Transfers\TransferCancelled;
@@ -75,15 +73,10 @@ function pgBuiltinExport(Connection $db, ExportOptions $o, ?TransferProgress $p 
     return $path;
 }
 
-/** Stand-in for Task 12's BuiltinRestorer: the restore pipeline's stream and filter, each statement run as is. */
+/** Restores the file with BuiltinRestorer into the database $db is open on (on a connection of its own). */
 function pgBuiltinRestore(Connection $db, string $path): void
 {
-    $filter = new RestoreFilter(DriverName::Postgres, Engines::RESTORE_DATABASE, TransferMethod::Builtin);
-    foreach ($filter->apply(SqlStream::pieces(new DumpReader($path), 'pgsql')) as $piece) {
-        if ($piece->kind === 'sql') {
-            $db->unprepared($piece->text);
-        }
-    }
+    app(BuiltinRestorer::class)->run(Engines::savedConnection('pgsql', ['database' => $db->getDatabaseName()]), new DumpReader($path), pgBuiltinProgress());
 }
 
 /** Export into a temp file, restore it into the target, and return the file's text. */
@@ -258,14 +251,17 @@ it('does not depend on the settings of either session', function () {
         expect($source->selectOne("SELECT current_setting('TimeZone') AS tz, current_setting('DateStyle') AS ds, current_setting('search_path') AS sp, current_setting('statement_timeout') AS st, current_setting('row_security') AS rs"))
             ->toEqual((object) ['tz' => 'America/Sao_Paulo', 'ds' => 'SQL, DMY', 'sp' => '"Sales"', 'st' => '5s', 'rs' => 'on']);
 
-        foreach (["SET TimeZone = 'Asia/Tokyo'", "SET DateStyle = 'German, DMY'", "SET IntervalStyle = 'iso_8601'",
-            'SET standard_conforming_strings = off', 'SET search_path = "Sales"'] as $set) {
-            $target->statement($set);
+        // The restorer opens a session of its own, so hostile settings go on the restore database as its defaults.
+        $database = Engines::RESTORE_DATABASE;
+        foreach (["TimeZone = 'Asia/Tokyo'", "DateStyle = 'German, DMY'", "IntervalStyle = 'iso_8601'",
+            'standard_conforming_strings = off', 'search_path = "Sales"'] as $set) {
+            $target->statement("ALTER DATABASE {$database} SET {$set}");
         }
         try {
             pgBuiltinRestore($target, $path);
         } finally {
             @unlink($path);
+            $target->statement("ALTER DATABASE {$database} RESET ALL");
         }
 
         expect(pgBuiltinFingerprint(true))->toBe(pgBuiltinFingerprint(false));

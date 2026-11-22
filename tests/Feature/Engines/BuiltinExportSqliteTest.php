@@ -2,13 +2,11 @@
 
 use App\Database\ConnectionFactory;
 use App\Enums\DriverName;
-use App\Enums\TransferMethod;
 use App\Models\Transfer;
 use App\Transfers\Export\BuiltinExporters;
 use App\Transfers\Export\ExportOptions;
 use App\Transfers\Export\SqliteBuiltinExporter;
-use App\Transfers\Import\RestoreFilter;
-use App\Transfers\Import\SqlStream;
+use App\Transfers\Import\BuiltinRestorer;
 use App\Transfers\Io\DumpReader;
 use App\Transfers\Io\DumpWriter;
 use App\Transfers\TransferCancelled;
@@ -72,19 +70,10 @@ function sqliteBuiltinExport(Connection $db, ExportOptions $o, ?TransferProgress
     return $path;
 }
 
-/**
- * Stand-in for Task 12's BuiltinRestorer: foreign keys off first (a no-op inside a transaction, and Laravel turns
- * them on), then the restore pipeline's stream and filter, each statement run as is.
- */
+/** Restores the file with BuiltinRestorer into the file $db is open on (on a connection of its own). */
 function sqliteBuiltinRestore(Connection $db, string $path): void
 {
-    $db->statement('PRAGMA foreign_keys = OFF');
-    $filter = new RestoreFilter(DriverName::Sqlite, Engines::RESTORE_DATABASE, TransferMethod::Builtin);
-    foreach ($filter->apply(SqlStream::pieces(new DumpReader($path), 'sqlite')) as $piece) {
-        if ($piece->kind === 'sql') {
-            $db->unprepared($piece->text);
-        }
-    }
+    app(BuiltinRestorer::class)->run(Engines::savedConnection('sqlite', ['database' => $db->getDatabaseName()]), new DumpReader($path), sqliteBuiltinProgress());
 }
 
 /** @return array<string, list<string>> object names per type, from sqlite_master */
