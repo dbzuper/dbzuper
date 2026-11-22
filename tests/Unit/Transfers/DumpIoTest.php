@@ -100,3 +100,22 @@ it('throws on a missing file and on a corrupt gzip stream', function () {
     expect(fn () => $reader->read())->toThrow(RuntimeException::class);
     unlink($path);
 });
+
+it('reads every member of a multi-member gzip file', function () {
+    $path = dumpIoPath('multi.sql.gz');
+    $big = dumpIoText(300_000);
+    file_put_contents($path, gzencode("AAA\n").gzencode($big).gzencode("BBB\n"));
+
+    $reader = new DumpReader($path);
+    expect(dumpIoReadAll($reader))->toBe("AAA\n".$big."BBB\n");
+    expect($reader->position())->toBe(filesize($path));
+    unlink($path);
+});
+
+it('ignores trailing NUL padding after a gzip member', function () {
+    $path = dumpIoPath('pad.sql.gz');
+    file_put_contents($path, gzencode("AAA\n").gzencode("BBB\n").str_repeat("\0", 20_000));
+
+    expect(dumpIoReadAll(new DumpReader($path)))->toBe("AAA\nBBB\n");
+    unlink($path);
+});
