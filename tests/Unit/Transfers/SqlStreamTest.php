@@ -207,6 +207,31 @@ it('takes only the first word after DELIMITER', function () {
     ]);
 });
 
+it('keeps a SQLite trigger body whole like sqlite3_complete', function (int $chunk) {
+    $trigger = 'CREATE TRIGGER t AFTER INSERT ON a BEGIN UPDATE a SET x=1 WHERE id=NEW.id; INSERT INTO log VALUES (1); END';
+    $tricky = "create temp trigger \"t2\" before update on a begin\n"
+        ."  update a set x = case when new.y > 0 then 'a; END;' else [end;] end where id = new.id; -- end;\n"
+        ."  insert into log values ('END'); /* END; */\n"
+        .'end';
+    $temporary = "CREATE TEMPORARY TRIGGER t3 AFTER DELETE ON a BEGIN DELETE FROM b; END\r\n";
+    $sql = "{$trigger};\nINSERT INTO a VALUES (1);\n{$tricky};\n{$temporary};SELECT 2;\nSELECT 3;";
+
+    expect(sqlStreamShape(sqlStreamPieces($sql, 'sqlite', $chunk)))->toBe([
+        ['sql', $trigger],
+        ['sql', 'INSERT INTO a VALUES (1)'],
+        ['sql', $tricky],
+        ['sql', rtrim($temporary)],
+        ['sql', 'SELECT 2'],
+        ['sql', 'SELECT 3'],
+    ]);
+})->with([1, 7, 4096]);
+
+it('splits triggers at every semicolon outside SQLite', function () {
+    // MySQL uses DELIMITER for trigger bodies and PostgreSQL uses dollar-quoted functions.
+    expect(sqlStreamShape(sqlStreamPieces('CREATE TRIGGER t BEGIN SELECT 1; END;', 'mysql')))
+        ->toBe([['sql', 'CREATE TRIGGER t BEGIN SELECT 1'], ['sql', 'END']]);
+});
+
 it('handles DELIMITER blocks', function () {
     $sql = "DELIMITER ;;\nCREATE TRIGGER t BEFORE INSERT ON a FOR EACH ROW BEGIN SET NEW.x=1; END;;\nDELIMITER ;\nSELECT 1;";
 

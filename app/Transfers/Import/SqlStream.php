@@ -58,6 +58,8 @@ final class SqlStream
 
     private readonly bool $pg;
 
+    private readonly bool $sqlite;
+
     /**
      * Skips ordinary tokens plus complete strings, quoted identifiers and simple comments; stops at ';' and at
      * anything left to PHP (unterminated or E'' strings, PostgreSQL block comments, dollar quotes).
@@ -72,6 +74,7 @@ final class SqlStream
         $this->mariadb = $dialect === 'mariadb';
         $this->mysql = $dialect === 'mysql' || $this->mariadb;
         $this->pg = $dialect === 'pgsql';
+        $this->sqlite = $dialect === 'sqlite';
 
         // Bytes that may start a non-ordinary token. Only '$' (PostgreSQL) can also sit inside a word, so there
         // words are matched whole, mirroring SqlLexer's word rule.
@@ -351,6 +354,9 @@ final class SqlStream
         $i = $start;
         $gap = $start;   // start of the current run of ordinary tokens
         $next = -1;      // first delimiter occurrence at or after $gap (custom delimiter only)
+        // SQLite has no DELIMITER: like sqlite3_complete(), a CREATE TRIGGER statement ends only at "END ;".
+        $trigger = $this->sqlite
+            && preg_match('/\GCREATE\s+(?:TEMP(?:ORARY)?\s+)?TRIGGER\b/i', $b, $m, 0, $start) === 1;
 
         while (true) {
             $i = $this->skipPlain($regex, $b, $i);
@@ -369,7 +375,12 @@ final class SqlStream
                 return null;
             }
             if (! $custom && $b[$i] === ';') {
-                return $i;
+                if (! $trigger || $this->afterEnd($b, $start, $i)) {
+                    return $i;
+                }
+                $i++; // a ';' inside a SQLite trigger body
+
+                continue;
             }
             $i = $this->tokenEnd($b, $i, $start);
             if ($i >= $len) {
@@ -377,6 +388,21 @@ final class SqlStream
             }
             $gap = $i;
         }
+    }
+
+    /**
+     * Whether the last token before the ';' at $semicolon is the keyword END (whitespace between them allowed). The
+     * ';' is outside strings and comments, so trailing END word characters can only be an END word token.
+     */
+    private function afterEnd(string $b, int $start, int $semicolon): bool
+    {
+        $j = $semicolon;
+        while ($j > $start && str_contains(self::WHITESPACE, $b[$j - 1])) {
+            $j--;
+        }
+
+        return $j - 3 >= $start && strcasecmp(substr($b, $j - 3, 3), 'END') === 0
+            && ($j - 4 < $start || preg_match('/[A-Za-z0-9_$\x80-\xff]/', $b[$j - 4]) !== 1);
     }
 
     private function skipPlain(string $regex, string $b, int $i): int
