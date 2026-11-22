@@ -15,7 +15,7 @@ ARG FRANKENPHP_TAG=1.13-php8.4
 
 # ---------------------------------------------------------------- php-base
 FROM dunglas/frankenphp:${FRANKENPHP_TAG} AS php-base
-RUN install-php-extensions pdo_mysql pdo_pgsql pdo_sqlite intl zip opcache pcntl
+RUN install-php-extensions pdo_mysql pdo_pgsql pdo_sqlite intl zip opcache pcntl bcmath
 
 # ---------------------------------------------------------------- vendor
 FROM php-base AS vendor

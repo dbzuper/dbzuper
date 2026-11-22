@@ -23,6 +23,12 @@ use UnexpectedValueException;
  * SQLite is dynamically typed, so each value is written by its own typeof(), not by the column's declared type:
  * an integer in a TEXT column stays an integer, a blob in an INTEGER column stays a blob. A rowid that no INTEGER
  * PRIMARY KEY aliases is written too, so rowids survive. Generated columns are left to SQLite.
+ *
+ * Virtual tables are written the way `sqlite3 .dump` writes them, never INSERTed into (that renumbers FTS rowids,
+ * breaks external-content and empties contentless tables): with data, the virtual table goes straight into the
+ * schema (PRAGMA writable_schema) and its shadow tables are created and filled like any table, so the module's
+ * own storage comes back byte for byte. Structure only, it is a plain CREATE VIRTUAL TABLE (the module creates
+ * empty shadow tables itself) and the shadow tables are left out.
  */
 final class SqliteBuiltinExporter implements BuiltinExporter
 {
@@ -35,6 +41,9 @@ final class SqliteBuiltinExporter implements BuiltinExporter
     /** 2^62: exact as an integer literal and as a double, so multiplying or dividing by it never rounds. */
     private const POW2_62 = 4611686018427387904;
 
+    /** Shadow table suffixes of the built-in modules (fts3/4, fts5, rtree), for SQLite before pragma_table_list. */
+    private const SHADOW_SUFFIXES = ['content', 'segments', 'segdir', 'docsize', 'stat', 'data', 'idx', 'config', 'node', 'rowid', 'parent'];
+
     /** Parses text the way SQLite parses a REAL literal (both go through sqlite3AtoF). */
     private ?PDOStatement $parse = null;
 
@@ -45,13 +54,6 @@ final class SqliteBuiltinExporter implements BuiltinExporter
 
     public function export(Connection $db, ExportOptions $o, DumpWriter $w, TransferProgress $p): void
     {
-        $chosen = [];
-        foreach (ObjectLister::list($db, DriverName::Sqlite) as $obj) {
-            if ($o->tables === null || in_array($obj->key(), $o->tables, true)) {
-                $chosen[$obj->name] = true;
-            }
-        }
-
         // Raw PDO from here on, with values fetched as their own PHP types (int, float, string) whatever the
         // connection was configured with: a stringified REAL would lose digits.
         $pdo = $db->getPdo();
@@ -64,6 +66,14 @@ final class SqliteBuiltinExporter implements BuiltinExporter
         }
 
         try {
+            // Inside the snapshot, so the chosen set is the one whose rows are read.
+            $chosen = [];
+            foreach (ObjectLister::list($db, DriverName::Sqlite) as $obj) {
+                if ($o->tables === null || in_array($obj->key(), $o->tables, true)) {
+                    $chosen[$obj->name] = true;
+                }
+            }
+
             $this->parse = $pdo->prepare('SELECT CAST(? AS REAL)');
             $this->dump($pdo, $o, $chosen, $w, $p);
         } finally {
@@ -82,24 +92,35 @@ final class SqliteBuiltinExporter implements BuiltinExporter
     /** @param array<string, true> $chosen */
     private function dump(PDO $pdo, ExportOptions $o, array $chosen, DumpWriter $w, TransferProgress $p): void
     {
-        $kinds = [];
-        foreach (self::query($pdo, "SELECT name, type, wr FROM pragma_table_list WHERE schema = 'main'")->fetchAll(PDO::FETCH_NUM) as [$name, $type, $wr]) {
-            $kinds[(string) $name] = ['type' => (string) $type, 'without_rowid' => (int) $wr === 1];
+        $master = self::query($pdo, 'SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY rowid')->fetchAll(PDO::FETCH_NUM);
+        $kinds = $this->tableKinds($pdo, $master);
+
+        // A chosen virtual table brings its shadow tables along.
+        foreach ($kinds as $name => $kind) {
+            if ($kind['shadow_of'] !== null && isset($chosen[$kind['shadow_of']])) {
+                $chosen[$name] = true;
+            }
         }
 
+        /** @var array<string, array{sql: string, virtual: bool, shadow: bool, without_rowid: bool}> $tables */
         $tables = [];
         $views = [];
         $indexes = [];
         $triggers = [];
-        $master = self::query($pdo, 'SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY rowid')->fetchAll(PDO::FETCH_NUM);
         foreach ($master as [$type, $name, $table, $sql]) {
             [$name, $table] = [(string) $name, (string) $table];
             if ($sql === null || ! isset($chosen[$table])) {
                 continue; // automatic indexes have no SQL; sqlite_* internals are never chosen
             }
             $sql = (string) $sql;
-            if ($type === 'table' && ($kinds[$name]['type'] ?? 'table') !== 'shadow') {
-                $tables[$name] = $sql; // a shadow table belongs to a virtual table, which creates it itself
+            if ($type === 'table') {
+                $kind = $kinds[$name] ?? ['virtual' => false, 'shadow_of' => null, 'without_rowid' => false];
+                $tables[$name] = [
+                    'sql' => $sql,
+                    'virtual' => $kind['virtual'],
+                    'shadow' => $kind['shadow_of'] !== null && isset($chosen[$kind['shadow_of']]),
+                    'without_rowid' => $kind['without_rowid'],
+                ];
             } elseif ($type === 'view') {
                 $views[$name] = $sql;
             } elseif ($type === 'index') {
@@ -116,22 +137,48 @@ final class SqliteBuiltinExporter implements BuiltinExporter
                 foreach (array_keys($views) as $view) {
                     $w->write('DROP VIEW IF EXISTS '.self::quote($view).";\n");
                 }
+                // Creation order puts a virtual table before its shadow tables: dropping it drops them too.
                 foreach (array_keys($tables) as $table) {
                     $w->write('DROP TABLE IF EXISTS '.self::quote($table).";\n");
                 }
                 $w->write("\n");
             }
 
-            foreach ($tables as $create) {
+            $writable = false;
+            foreach ($tables as $name => $table) {
                 $p->checkCancelled();
-                $w->write($create.";\n\n");
+                if ($table['virtual'] && $o->data) {
+                    // As sqlite3 .dump does: into the schema without running the module, which would create
+                    // shadow tables of its own (they follow, with their rows).
+                    if (! $writable) {
+                        $w->write("PRAGMA writable_schema=ON;\n");
+                        $writable = true;
+                    }
+                    $quoted = Literals::sqlite($name, false);
+                    $w->write("INSERT INTO sqlite_master (type, name, tbl_name, rootpage, sql) VALUES ('table', {$quoted}, {$quoted}, 0, "
+                        .Literals::sqlite($table['sql'], false).");\n\n");
+                } elseif (! $table['shadow'] || $o->data) {
+                    $w->write($table['sql'].";\n\n");
+                }
+            }
+            if ($writable) {
+                // RESET (3.35+) is OFF plus a schema reload, so the restoring connection sees the virtual tables
+                // (and a second restore's DROP finds them); older SQLite reads it as OFF.
+                $w->write("PRAGMA writable_schema=RESET;\n\n");
             }
         }
 
         if ($o->data) {
-            foreach (array_keys($tables) as $table) {
+            foreach ($tables as $name => $table) {
                 $p->checkCancelled();
-                $this->data($pdo, $table, $kinds[$table] ?? ['type' => 'table', 'without_rowid' => false], $w, $p);
+                if ($table['virtual']) {
+                    continue; // its shadow tables hold the data
+                }
+                if ($table['shadow'] && ! $o->structure) {
+                    // Data only: the target's virtual table already has shadow rows of its own.
+                    $w->write('DELETE FROM '.self::quote($name).";\n");
+                }
+                $this->data($pdo, $name, $table['without_rowid'], $w, $p);
             }
             $this->sequences($pdo, $tables, $w);
             $w->write("\n");
@@ -153,8 +200,63 @@ final class SqliteBuiltinExporter implements BuiltinExporter
         $w->write("COMMIT;\n");
     }
 
-    /** @param array{type: string, without_rowid: bool} $kind */
-    private function data(PDO $pdo, string $table, array $kind, DumpWriter $w, TransferProgress $p): void
+    /**
+     * Per table: virtual or not, the virtual table it is a shadow table of, and WITHOUT ROWID. From
+     * pragma_table_list (3.37+), otherwise from the CREATE statements and the built-in modules' suffixes.
+     *
+     * @param  array<int, array<int, mixed>>  $master
+     * @return array<string, array{virtual: bool, shadow_of: ?string, without_rowid: bool}>
+     */
+    private function tableKinds(PDO $pdo, array $master): array
+    {
+        try {
+            $listed = [];
+            foreach (self::query($pdo, "SELECT name, type, wr FROM pragma_table_list WHERE schema = 'main'")->fetchAll(PDO::FETCH_NUM) as [$name, $type, $wr]) {
+                $listed[(string) $name] = ['type' => (string) $type, 'wr' => (int) $wr === 1];
+            }
+        } catch (Throwable) {
+            $listed = null;
+        }
+
+        $virtual = [];
+        foreach ($master as [$type, $name, , $sql]) {
+            if ($type === 'table' && preg_match('/^\s*CREATE\s+VIRTUAL\s+TABLE\b/i', (string) $sql) === 1) {
+                $virtual[(string) $name] = true;
+            }
+        }
+
+        $kinds = [];
+        foreach ($master as [$type, $name, , $sql]) {
+            if ($type !== 'table') {
+                continue;
+            }
+            $name = (string) $name;
+            $shadowOf = null;
+            if (! isset($virtual[$name]) && ($listed === null || ($listed[$name]['type'] ?? '') === 'shadow')) {
+                // The owner is the longest virtual table name that prefixes "<owner>_<suffix>".
+                foreach (array_keys($virtual) as $owner) {
+                    $owner = (string) $owner;
+                    if (! str_starts_with($name, $owner.'_') || strlen($owner) <= strlen($shadowOf ?? '')) {
+                        continue;
+                    }
+                    if ($listed !== null || in_array(strtolower(substr($name, strlen($owner) + 1)), self::SHADOW_SUFFIXES, true)) {
+                        $shadowOf = $owner;
+                    }
+                }
+            }
+            $kinds[$name] = [
+                'virtual' => isset($virtual[$name]),
+                'shadow_of' => $shadowOf,
+                'without_rowid' => $listed !== null && isset($listed[$name])
+                    ? $listed[$name]['wr']
+                    : preg_match('/\)\s*(?:strict\s*,\s*)?without\s+rowid(?:\s*,\s*strict)?\s*;?\s*$/i', (string) $sql) === 1,
+            ];
+        }
+
+        return $kinds;
+    }
+
+    private function data(PDO $pdo, string $table, bool $withoutRowid, DumpWriter $w, TransferProgress $p): void
     {
         $columns = [];
         $taken = [];
@@ -166,7 +268,7 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             if ((int) $pk > 0) {
                 $primary[] = strtoupper((string) $type);
             }
-            // 1: a virtual table's hidden column, 2/3: VIRTUAL/STORED generated columns, which SQLite fills.
+            // 2/3: VIRTUAL/STORED generated columns, which SQLite fills.
             if ((int) $hidden === 0) {
                 $columns[] = self::quote((string) $name);
             }
@@ -176,7 +278,7 @@ final class SqliteBuiltinExporter implements BuiltinExporter
         }
 
         // A rowid table keeps its rowids unless an INTEGER PRIMARY KEY already is the rowid.
-        if ($kind['type'] === 'table' && ! $kind['without_rowid'] && $primary !== ['INTEGER']) {
+        if (! $withoutRowid && $primary !== ['INTEGER']) {
             foreach (self::ROWID_NAMES as $rowid) {
                 if (! isset($taken[$rowid])) {
                     array_unshift($columns, $rowid);
@@ -218,8 +320,9 @@ final class SqliteBuiltinExporter implements BuiltinExporter
 
     /**
      * AUTOINCREMENT positions, after the rows (whose inserts move them to max(rowid)): the source may be past that.
+     * Known limit: a data-only file fails here when the target has no sqlite_sequence (no AUTOINCREMENT tables).
      *
-     * @param  array<string, string>  $tables
+     * @param  array<string, mixed>  $tables
      */
     private function sequences(PDO $pdo, array $tables, DumpWriter $w): void
     {
@@ -259,11 +362,14 @@ final class SqliteBuiltinExporter implements BuiltinExporter
 
     /**
      * A REAL that any SQLite reads back bit for bit. SQLite's text-to-double conversion is not correctly rounded:
-     * on this Windows build 1e-300 and 9.999999999999999e-301 swap places, and SQLite 3.37 reads
-     * 123456789.12345679 one bit off. A decimal is therefore written only when it takes the exact path every such
-     * parser has (Clinger's fast path: a significand below 2^53 scaled by 10^-22 .. 10^22, one rounding) and this
-     * build reads it back exactly; any other value is written as its exact binary value, an integer mantissa
-     * times or divided by powers of two.
+     * on this Windows build 1e-300 and 9.999999999999999e-301 swap places, SQLite 3.37 reads 123456789.12345679
+     * one bit off, and x86-64 long-double builds round twice, misreading decimals that lie near the halfway point
+     * between two doubles (491e-8, 982e-8, 88607e-7). A decimal is therefore written only when all of these hold:
+     * it is the shortest decimal of the value, with a significand of at most 2^53 and a scale within 10^±22; its
+     * exact value lies within a quarter ulp of the double (bcmath, exact), so an intermediate rounding of 64 bits
+     * or a few ulps of the extended format can't carry it past the halfway point; and this build reads it back
+     * exactly. Any other value is written as its exact binary value, an integer mantissa times or divided by
+     * powers of two.
      */
     private function real(float $v): string
     {
@@ -280,10 +386,11 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             $scale = (int) ($m[3] ?? 0) - strlen($m[2]);
             $significand = rtrim($digits, '0');
             $scale += strlen($digits) - strlen($significand);
-            $fast = $significand === ''
-                || (strlen($significand) <= 16 && (int) $significand <= 2 ** 53 && abs($scale) <= 22);
+            $safe = $significand === ''
+                || (strlen($significand) <= 16 && (int) $significand <= 2 ** 53 && abs($scale) <= 22
+                    && self::withinQuarterUlp($significand, $scale, $v));
 
-            if ($fast) {
+            if ($safe) {
                 $this->parse->execute([$text]);
                 $back = $this->parse->fetch(PDO::FETCH_NUM);
                 $this->parse->closeCursor();
@@ -296,22 +403,50 @@ final class SqliteBuiltinExporter implements BuiltinExporter
         return self::exactReal($v);
     }
 
-    /** m * 2^e with an integer m below 2^53: every step of the expression is exact in IEEE doubles. */
-    private static function exactReal(float $v): string
+    /**
+     * |s·10^k − |v|| ≤ ulp(v)/4, in exact integer arithmetic. With |v| = M·2^u (u the exponent of v's last bit)
+     * everything is scaled by 10^max(0,−k) · 2^max(0,2−u) so all three terms are integers.
+     */
+    private static function withinQuarterUlp(string $significand, int $k, float $v): bool
+    {
+        if (! ctype_digit($significand)) {
+            return false;
+        }
+        [$mantissa, $u] = self::binary(abs($v));
+        $p10 = max(0, -$k);
+        $p2 = max(0, 2 - $u);
+
+        $decimal = bcmul(bcmul($significand, bcpow('10', (string) ($k + $p10))), bcpow('2', (string) $p2));
+        $double = bcmul(bcmul((string) $mantissa, bcpow('2', (string) ($u + $p2))), bcpow('10', (string) $p10));
+        $quarter = bcmul(bcpow('2', (string) ($u - 2 + $p2)), bcpow('10', (string) $p10));
+
+        return bccomp(ltrim(bcsub($decimal, $double), '-'), $quarter) <= 0;
+    }
+
+    /**
+     * A finite non-negative double as M·2^u with the full mantissa M (no normalising), u the exponent of its last
+     * bit.
+     *
+     * @return array{int, int}
+     */
+    private static function binary(float $v): array
     {
         $raw = unpack('J', pack('E', $v));
         $raw = is_array($raw) ? (int) $raw[1] : 0;
         $exponent = ($raw >> 52) & 0x7FF;
         $mantissa = $raw & 0xFFFFFFFFFFFFF;
-        if ($exponent === 0) {
-            $e = -1074; // subnormal
-        } else {
-            $mantissa |= 1 << 52;
-            $e = $exponent - 1075;
-        }
+
+        return $exponent === 0 ? [$mantissa, -1074] : [$mantissa | (1 << 52), $exponent - 1075];
+    }
+
+    /** m * 2^e with an integer m below 2^53: every step of the expression is exact in IEEE doubles. */
+    private static function exactReal(float $v): string
+    {
+        $negative = (ord(pack('E', $v)[0]) & 0x80) !== 0; // the sign bit, -0.0 included
+        [$mantissa, $e] = self::binary(abs($v));
         if ($mantissa === 0) {
             // A literal: SQLite negates at run time as 0 - x, which turns -0.0 into 0.0.
-            return $raw < 0 ? '-0.0' : '0.0';
+            return $negative ? '-0.0' : '0.0';
         }
         while (($mantissa & 1) === 0) {
             $mantissa >>= 1;
@@ -324,7 +459,7 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             $sql .= $op.($left >= 62 ? self::POW2_62 : 1 << $left);
         }
 
-        return ($raw < 0 ? '-' : '').'('.$sql.')';
+        return ($negative ? '-' : '').'('.$sql.')';
     }
 
     /**

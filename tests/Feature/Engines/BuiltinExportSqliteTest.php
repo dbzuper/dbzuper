@@ -238,7 +238,7 @@ it('keeps every value with its storage class, and rowids', function () {
                 ->and($target->selectOne("SELECT sql FROM sqlite_master WHERE name = 'rt_norowid'")->sql)
                 ->toBe($source->selectOne("SELECT sql FROM sqlite_master WHERE name = 'rt_norowid'")->sql);
             // Short decimals stay readable; a value SQLite's parser could misread is written as its exact binary value.
-            expect($sql)->toContain("(1,-0.0,'text','not a number',0.1),")
+            expect($sql)->toContain("(1,-0.0,'text','not a number',(CAST(3602879701896397 AS REAL)/36028797018963968)),")
                 ->and($sql)->toMatch('~\(9,\(CAST\(\d+ AS REAL\)/\d+\),~');
             // Spot checks on what the comparison relies on.
             expect(var_export($target->getPdo()->query('SELECT anyv FROM rt_dyn WHERE id = 1')->fetchColumn(), true))->toBe('-0.0')
@@ -414,4 +414,114 @@ it('writes any double as an expression SQLite evaluates to the very same bits', 
         $back = $pdo->query('SELECT '.$exact($v))->fetchColumn();
         expect(is_float($back) && pack('E', $back) === pack('E', $v))->toBeTrue('not exact: '.var_export($v, true).' => '.$exact($v));
     }
+});
+
+it('takes the exact path for decimals a double-rounding parser misreads', function () {
+    $real = function (float $v): string {
+        $exporter = new SqliteBuiltinExporter;
+
+        return (function () use ($v) {
+            $this->parse = (new PDO('sqlite::memory:'))->prepare('SELECT CAST(? AS REAL)');
+
+            return $this->real($v);
+        })->call($exporter);
+    };
+
+    // Within a quarter ulp of their double, so written as decimals.
+    foreach ([0.25, 0.3, 3.5, 4.25, 0.01, 1.0, 1e20, 1e22, -2.5e-7] as $v) {
+        expect($real($v))->toBe(var_export($v, true));
+    }
+    // Near the halfway point between two doubles (x87 double rounding reads the first three one ulp off), or
+    // merely further than a quarter ulp from it (0.1, 19.99).
+    foreach ([491e-8, 982e-8, 88607e-7, 1e23, 0.1, 19.99] as $v) {
+        expect($real($v))->toStartWith('(CAST(');
+    }
+});
+
+/** @param list<string> $sql */
+function sqliteBuiltinSource(Connection $db, array $sql): void
+{
+    foreach ($sql as $statement) {
+        $db->unprepared($statement);
+    }
+}
+
+const SQLITE_VTAB_SETUP = [
+    'CREATE TABLE docs (id INTEGER PRIMARY KEY, body TEXT)',
+    "INSERT INTO docs VALUES (3, 'hello world'), (10, 'foo bar')",
+    "CREATE VIRTUAL TABLE ext USING fts5(body, content='docs', content_rowid='id')",
+    "INSERT INTO ext(ext) VALUES ('rebuild')",
+    'CREATE VIRTUAL TABLE plain USING fts5(a)',
+    "INSERT INTO plain (rowid, a) VALUES (7, 'seven'), (42, 'forty two')",
+    "CREATE VIRTUAL TABLE cl USING fts5(a, content='')",
+    "INSERT INTO cl (rowid, a) VALUES (5, 'contentless text')",
+];
+
+const SQLITE_VTAB_DROP = ['DROP TABLE IF EXISTS ext', 'DROP TABLE IF EXISTS plain', 'DROP TABLE IF EXISTS cl', 'DROP TABLE IF EXISTS docs'];
+
+it('restores virtual tables through their shadow tables, rowids and indexes intact', function () {
+    sqliteBuiltinRoundTrip(function (Connection $source, Connection $target) {
+        try {
+            sqliteBuiltinSource($source, SQLITE_VTAB_SETUP);
+            // Shadow tables aren't named: choosing a virtual table brings them along.
+            $path = sqliteBuiltinExport($source, sqliteBuiltinOptions(['docs', 'ext', 'plain', 'cl'], drop: true));
+            try {
+                $sql = (string) file_get_contents($path);
+                // Twice: the second run's DROP finds the virtual tables the first one wrote into the schema.
+                sqliteBuiltinRestore($target, $path);
+                sqliteBuiltinRestore($target, $path);
+            } finally {
+                @unlink($path);
+            }
+
+            expect($sql)->toContain("PRAGMA writable_schema=ON;\nINSERT INTO sqlite_master (type, name, tbl_name, rootpage, sql) VALUES ('table', 'ext', 'ext', 0, 'CREATE VIRTUAL TABLE ext USING fts5(body, content=''docs'', content_rowid=''id'')');")
+                ->and($sql)->toContain("PRAGMA writable_schema=RESET;\n")
+                ->and($sql)->toContain('INSERT INTO "plain_data"')
+                ->and($sql)->not->toContain('INSERT INTO "plain" (')
+                ->and($sql)->not->toContain('INSERT INTO "cl" (');
+
+            $same = fn (string $q) => expect(sqliteBuiltinRows($target, $q))->toBe(sqliteBuiltinRows($source, $q));
+            $same('SELECT rowid, a FROM plain ORDER BY rowid');
+            $same("SELECT rowid, a FROM plain WHERE plain MATCH 'forty'");
+            $same("SELECT rowid, body FROM ext WHERE ext MATCH 'foo'");
+            $same("SELECT rowid FROM cl WHERE cl MATCH 'contentless'");
+            foreach (['plain_data', 'plain_idx', 'plain_content', 'plain_docsize', 'plain_config', 'cl_data', 'cl_idx', 'cl_config'] as $shadow) {
+                $same("SELECT * FROM \"{$shadow}\" ORDER BY 1, 2");
+            }
+            expect(sqliteBuiltinRows($target, "SELECT rowid, a FROM plain WHERE plain MATCH 'forty'"))->toBe([['rowid' => '42', 'a' => "'forty two'"]])
+                ->and(sqliteBuiltinRows($target, "SELECT rowid FROM cl WHERE cl MATCH 'contentless'"))->toBe([['rowid' => '5']])
+                ->and($target->selectOne('PRAGMA integrity_check')->integrity_check)->toBe('ok')
+                ->and(sqliteBuiltinObjects($target))->toBe(sqliteBuiltinObjects($source));
+            // The modules accept the restored storage as their own.
+            $target->unprepared("INSERT INTO plain (plain) VALUES ('integrity-check')");
+            $target->unprepared("INSERT INTO ext (ext) VALUES ('integrity-check')");
+            $target->unprepared("INSERT INTO cl (cl) VALUES ('integrity-check')");
+        } finally {
+            sqliteBuiltinSource($source, SQLITE_VTAB_DROP);
+        }
+    }, fixture: false);
+});
+
+it('writes virtual tables as CREATE VIRTUAL TABLE when exporting structure only', function () {
+    sqliteBuiltinRoundTrip(function (Connection $source, Connection $target) {
+        try {
+            sqliteBuiltinSource($source, SQLITE_VTAB_SETUP);
+            $path = sqliteBuiltinExport($source, sqliteBuiltinOptions(['plain'], data: false));
+            try {
+                $sql = (string) file_get_contents($path);
+                sqliteBuiltinRestore($target, $path);
+            } finally {
+                @unlink($path);
+            }
+
+            expect($sql)->toContain("CREATE VIRTUAL TABLE plain USING fts5(a);\n")
+                ->and($sql)->not->toContain('writable_schema')
+                ->and($sql)->not->toContain('plain_data')
+                ->and(sqliteBuiltinObjects($target)['table'])->toContain('plain', 'plain_data');
+            $target->unprepared("INSERT INTO plain (rowid, a) VALUES (1, 'works')");
+            expect($target->selectOne("SELECT rowid AS r FROM plain WHERE plain MATCH 'works'")->r)->toBe(1);
+        } finally {
+            sqliteBuiltinSource($source, SQLITE_VTAB_DROP);
+        }
+    }, fixture: false);
 });
