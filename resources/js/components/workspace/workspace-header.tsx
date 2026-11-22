@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Keyboard, RefreshCw, Search } from 'lucide-react';
 import { SHORTCUTS } from '@/browse/shortcuts';
 import { AppearanceMenu } from '@/components/appearance-menu';
+import { TransfersMenu } from '@/components/transfers/transfers-menu';
 import { Button } from '@/components/ui/button';
 import { DatabaseSwitcher } from '@/components/workspace/database-switcher';
 import { paletteShortcutHint } from '@/lib/platform';
@@ -57,6 +58,7 @@ export function WorkspaceHeader({ connection, loading, onRefresh }: Props) {
                 </span>
             )}
             <div className="ml-auto flex items-center gap-1.5">
+                <TransfersMenu connection={connection} />
                 <Button
                     variant="outline"
                     size="sm"

@@ -27,10 +27,44 @@ jobs:
     env:
       TEST_PGSQL_PASSWORD: secret
       DBZUPER_REQUIRE_ENGINES: 1
+      # The native backup/restore tests fail instead of skipping when a dump or restore tool is missing.
+      DBZUPER_REQUIRE_NATIVE_TOOLS: 1
+      CI_MYSQL_CLIENT_VERSION: 8.4.9
     steps:
       - uses: actions/checkout@v7
+      # Native backup/restore tools. pg_dump/psql 18 come from the PGDG repository (Ubuntu's are older than
+      # the server). mariadb-dump/mariadb come from Ubuntu. MySQL's mysql-client package conflicts with
+      # mariadb-client, so the MySQL 8.4 mysqldump/mysql come from Oracle's minimal tarball (an archived,
+      # permanent URL) and are pointed at with DBZUPER_MYSQLDUMP_PATH / DBZUPER_MYSQL_PATH.
+      - name: Install native database tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends postgresql-client-18 mariadb-client
+          curl -fsSL -o /tmp/mysql.tar.xz "https://cdn.mysql.com/archives/mysql-8.4/mysql-${CI_MYSQL_CLIENT_VERSION}-linux-glibc2.17-x86_64-minimal.tar.xz"
+          sudo mkdir -p /opt/mysql
+          sudo tar -xJf /tmp/mysql.tar.xz -C /opt/mysql --strip-components=1
+          # The tarball's mysql links libncurses.so.5/libtinfo.so.5, which Ubuntu 24.04 no longer ships (and the
+          # .so.6 builds can't stand in: their symbol versions differ). Same fix as the Dockerfile: Debian bookworm's
+          # copies, taken from its image by apt (whatever the current point release is, no pinned .deb URL), go next
+          # to the binaries in lib/private, where their RPATH finds them.
+          docker run --rm -v /opt/mysql/lib/private:/out debian:bookworm-slim sh -c             'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libncurses5 libtinfo5 >/dev/null && cp -a /lib/x86_64-linux-gnu/libncurses.so.5* /lib/x86_64-linux-gnu/libtinfo.so.5* /out/'
+          {
+            echo "DBZUPER_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump"
+            echo "DBZUPER_PSQL_PATH=/usr/lib/postgresql/18/bin/psql"
+            echo "DBZUPER_MARIADB_DUMP_PATH=$(command -v mariadb-dump)"
+            echo "DBZUPER_MARIADB_PATH=$(command -v mariadb)"
+            echo "DBZUPER_MYSQLDUMP_PATH=/opt/mysql/bin/mysqldump"
+            echo "DBZUPER_MYSQL_PATH=/opt/mysql/bin/mysql"
+          } >> "$GITHUB_ENV"
+          /usr/lib/postgresql/18/bin/pg_dump --version
+          mariadb-dump --version
+          /opt/mysql/bin/mysqldump --version
+          /opt/mysql/bin/mysql --version
       - uses: shivammathur/setup-php@v2
-        with: { php-version: '8.4', extensions: 'pdo_mysql, pdo_pgsql, pdo_sqlite', coverage: none }
+        with: { php-version: '8.4', extensions: 'pdo_mysql, pdo_pgsql, pdo_sqlite, bcmath', coverage: none }
       - uses: actions/setup-node@v7
         with: { node-version: '24', cache: npm }
       - run: composer install --no-interaction --prefer-dist
@@ -45,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
-        with: { php-version: '8.4', extensions: 'pdo_sqlite', coverage: none }
+        with: { php-version: '8.4', extensions: 'pdo_sqlite, bcmath', coverage: none }
       - uses: actions/setup-node@v7
         with: { node-version: '24', cache: npm }
       - run: composer install --no-interaction --prefer-dist
@@ -68,7 +102,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
-        with: { php-version: '8.4', extensions: 'pdo_mysql, pdo_pgsql, pdo_sqlite', coverage: none }
+        with: { php-version: '8.4', extensions: 'pdo_mysql, pdo_pgsql, pdo_sqlite, bcmath', coverage: none }
       - uses: actions/setup-node@v7
         with: { node-version: '24', cache: npm }
       - run: composer install --no-interaction --prefer-dist

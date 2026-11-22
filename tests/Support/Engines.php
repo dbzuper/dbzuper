@@ -3,7 +3,11 @@
 namespace Tests\Support;
 
 use App\Enums\DriverName;
+use App\Enums\TransferDirection;
 use App\Models\SavedConnection;
+use App\Transfers\Native\Compatibility;
+use App\Transfers\Native\ToolCheck;
+use App\Transfers\Native\ToolLocator;
 use PDO;
 use Throwable;
 
@@ -13,7 +17,11 @@ final class Engines
 
     public const DATABASE = 'dbzuper_test';
 
+    public const RESTORE_DATABASE = 'dbzuper_test_restore';
+
     private static ?string $sqlitePath = null;
+
+    private static ?string $restoreSqlitePath = null;
 
     /** @return array{host: ?string, port: ?int, database: string, username: ?string, password: ?string} */
     public static function params(string $engine): array
@@ -76,11 +84,42 @@ final class Engines
         }
     }
 
-    /** Skips locally; fails when DBZUPER_REQUIRE_ENGINES=1 (CI) so a missing engine cannot pass silently. */
-    private static function unavailable(string $reason): never
+    /** Skips when the native tool isn't installed (DBZUPER_*_PATH, PATH or laman); fails when DBZUPER_REQUIRE_NATIVE_TOOLS=1. */
+    public static function skipUnlessTool(string $tool): void
     {
-        if (filter_var(env('DBZUPER_REQUIRE_ENGINES', false), FILTER_VALIDATE_BOOLEAN)) {
-            test()->fail($reason.' (DBZUPER_REQUIRE_ENGINES=1)');
+        if (ToolLocator::find($tool) === null) {
+            self::unavailable("{$tool} not found", 'DBZUPER_REQUIRE_NATIVE_TOOLS');
+        }
+    }
+
+    /**
+     * The compatible native tool for an engine and direction (the one the app would pick). Skips, or fails when
+     * DBZUPER_REQUIRE_NATIVE_TOOLS=1, when it is missing or doesn't suit the test server. Call skipUnlessAvailable()
+     * first.
+     */
+    public static function nativeTool(string $engine, TransferDirection $direction): ToolCheck
+    {
+        $export = $direction === TransferDirection::Export;
+        self::skipUnlessTool(match ($engine) {
+            'pgsql' => $export ? 'pg_dump' : 'psql',
+            'mariadb' => $export ? 'mariadb-dump' : 'mariadb',
+            default => $export ? 'mysqldump' : 'mysql',
+        });
+
+        $version = (string) self::pdo($engine)->getAttribute(PDO::ATTR_SERVER_VERSION);
+        $check = Compatibility::check(DriverName::from($engine), $version, $direction);
+        if (! $check->usable) {
+            self::unavailable($check->reason, 'DBZUPER_REQUIRE_NATIVE_TOOLS');
+        }
+
+        return $check;
+    }
+
+    /** Skips locally; fails when the requirement variable is 1 (CI) so a missing engine or tool cannot pass silently. */
+    private static function unavailable(string $reason, string $requirement = 'DBZUPER_REQUIRE_ENGINES'): never
+    {
+        if (filter_var(env($requirement, false), FILTER_VALIDATE_BOOLEAN)) {
+            test()->fail("{$reason} ({$requirement}=1)");
         }
 
         test()->markTestSkipped($reason);
@@ -100,6 +139,51 @@ final class Engines
         if (! $exists) {
             $pdo->exec('create database '.self::DATABASE);
         }
+    }
+
+    /**
+     * Drops and recreates dbzuper_test_restore (SQLite: a fresh file) and returns a saved connection to it, so a
+     * restore never lands in dbzuper_test while that is the export source. Call skipUnlessAvailable() first.
+     */
+    public static function prepareRestoreTarget(string $engine): SavedConnection
+    {
+        self::dropRestoreTarget($engine);
+
+        if ($engine === 'sqlite') {
+            $dir = self::sqliteDirectory();
+            @mkdir($dir, 0777, true);
+            self::$restoreSqlitePath = $dir.DIRECTORY_SEPARATOR.'restore-'.bin2hex(random_bytes(4)).'.sqlite';
+            touch(self::$restoreSqlitePath);
+
+            return self::savedConnection('sqlite', ['name' => 'sqlite restore target', 'database' => self::$restoreSqlitePath]);
+        }
+
+        $server = self::serverPdo($engine);
+        if ($engine === 'pgsql') {
+            $server->exec('create database '.self::RESTORE_DATABASE);
+        } else {
+            // Same defaults as the source database, so tables created without an explicit charset match.
+            $defaults = $server->query("select default_character_set_name, default_collation_name from information_schema.schemata where schema_name = '".self::DATABASE."'")->fetch(PDO::FETCH_NUM);
+            $server->exec('create database '.self::RESTORE_DATABASE.($defaults ? " character set {$defaults[0]} collate {$defaults[1]}" : ''));
+        }
+
+        return self::savedConnection($engine, ['name' => "{$engine} restore target", 'database' => self::RESTORE_DATABASE]);
+    }
+
+    public static function dropRestoreTarget(string $engine): void
+    {
+        if ($engine === 'sqlite') {
+            // Also files left by earlier runs that died before cleaning up.
+            foreach (glob(self::sqliteDirectory().DIRECTORY_SEPARATOR.'restore-*.sqlite') ?: [] as $stale) {
+                @unlink($stale);
+            }
+            self::$restoreSqlitePath = null;
+
+            return;
+        }
+
+        // PostgreSQL: WITH (FORCE) ends sessions still open on the database (a connection a failed test left).
+        self::serverPdo($engine)->exec('drop database if exists '.self::RESTORE_DATABASE.($engine === 'pgsql' ? ' with (force)' : ''));
     }
 
     public static function savedConnection(string $engine, array $overrides = []): SavedConnection

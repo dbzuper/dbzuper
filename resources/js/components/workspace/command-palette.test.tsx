@@ -431,3 +431,43 @@ describe('CommandPalette theme action', () => {
         expect(localStorage.getItem('appearance')).toBe('light');
     });
 });
+
+describe('CommandPalette backup and restore actions', () => {
+    it('opens the backup and restore dialogs', () => {
+        render(
+            <CommandPalette
+                connectionId="1"
+                snapshot={snap}
+                onRefresh={() => {}}
+            />,
+        );
+        fireEvent.click(
+            screen.getByRole('option', { name: 'Back up database…' }),
+        );
+        expect(useWorkspace.getState().transferDialog).toBe('backup');
+        expect(useWorkspace.getState().paletteOpen).toBe(false);
+
+        act(() => useWorkspace.getState().setPaletteOpen(true));
+        fireEvent.click(
+            screen.getByRole('option', { name: 'Restore from file…' }),
+        );
+        expect(useWorkspace.getState().transferDialog).toBe('restore');
+    });
+
+    it('leaves out restore on a read-only connection', () => {
+        render(
+            <CommandPalette
+                connectionId="1"
+                snapshot={snap}
+                onRefresh={() => {}}
+                readOnly
+            />,
+        );
+        expect(
+            screen.getByRole('option', { name: 'Back up database…' }),
+        ).toBeInTheDocument();
+        expect(
+            screen.queryByRole('option', { name: 'Restore from file…' }),
+        ).toBeNull();
+    });
+});

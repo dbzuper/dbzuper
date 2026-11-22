@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Database\Drivers\DsnValue;
 use App\Enums\DriverName;
+use App\Transfers\TransferStorage;
 use Database\Factories\SavedConnectionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +32,17 @@ class SavedConnection extends Model
 
     /** Set on copies that reach the server through a maintenance database; they can't be saved either. */
     private bool $maintenance = false;
+
+    protected static function booted(): void
+    {
+        // The database cascade removes the transfer rows without model events: their files go here.
+        static::deleting(function (SavedConnection $connection) {
+            TransferStorage::discard(
+                Transfer::query()->where('saved_connection_id', $connection->getKey()),
+                'The connection was deleted.',
+            );
+        });
+    }
 
     protected function casts(): array
     {
@@ -186,6 +198,12 @@ class SavedConnection extends Model
     public function history(): HasMany
     {
         return $this->hasMany(QueryHistoryEntry::class, 'connection_id')->withAttributes(['database' => $this->storageDatabase()]);
+    }
+
+    /** @return HasMany<Transfer, $this> */
+    public function transfers(): HasMany
+    {
+        return $this->hasMany(Transfer::class, 'saved_connection_id')->withAttributes(['database' => $this->storageDatabase()]);
     }
 
     /** Records a visit to the workspace; skipped within a minute of the last one, and never touches updated_at. */

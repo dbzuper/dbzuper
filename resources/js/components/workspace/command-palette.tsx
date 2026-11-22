@@ -28,10 +28,13 @@ export function CommandPalette({
     connectionId,
     snapshot,
     onRefresh,
+    readOnly = false,
 }: {
     connectionId: WorkspaceRef;
     snapshot: SchemaSnapshot;
     onRefresh: () => void;
+    /** A read-only connection can be backed up but not restored into. */
+    readOnly?: boolean;
 }) {
     const open = useWorkspace((s) => s.paletteOpen);
     const setOpen = useWorkspace((s) => s.setPaletteOpen);
@@ -121,6 +124,18 @@ export function CommandPalette({
             run: () => useSidebarPrefs.getState().toggle(),
         },
         { label: 'Refresh schema', run: onRefresh },
+        {
+            label: 'Back up database…',
+            run: () => st.setTransferDialog('backup'),
+        },
+        ...(readOnly
+            ? []
+            : [
+                  {
+                      label: 'Restore from file…',
+                      run: () => st.setTransferDialog('restore'),
+                  },
+              ]),
         {
             label: st.showInferred
                 ? 'Hide inferred relationships'

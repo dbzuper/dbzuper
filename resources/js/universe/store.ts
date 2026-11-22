@@ -6,6 +6,7 @@ export const DOCK_MAX_HEIGHT = 900;
 
 export type ZoomLevel = 'galaxy' | 'system' | 'closeup';
 export type InspectorTab = 'columns' | 'relationships' | 'indexes' | 'ddl';
+export type TransferDialog = 'backup' | 'restore' | null;
 
 type State = {
     selected: string | null;
@@ -22,6 +23,8 @@ type State = {
     dockOpen: boolean;
     historyOpen: boolean;
     dockHeight: number;
+    /** The backup or restore dialog that is open, if any. */
+    transferDialog: TransferDialog;
     /** Bumped after every SQL run, so views of the history can reload. */
     runCount: number;
 };
@@ -40,6 +43,7 @@ type Actions = {
     setDockOpen: (open: boolean) => void;
     setHistoryOpen: (open: boolean) => void;
     setDockHeight: (px: number) => void;
+    setTransferDialog: (dialog: TransferDialog) => void;
     bumpRuns: () => void;
     reset: () => void;
 };
@@ -62,6 +66,7 @@ const initial: State = {
     historyOpen: false,
     dockHeight: 320,
     runCount: 0,
+    transferDialog: null,
 };
 
 export const useWorkspace = create<WorkspaceState>()((set, get) => ({
@@ -92,6 +97,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => ({
                 Math.min(px, DOCK_MAX_HEIGHT),
             ),
         }),
+    setTransferDialog: (transferDialog) => set({ transferDialog }),
     bumpRuns: () => set({ runCount: get().runCount + 1 }),
     reset: () => set({ ...initial }),
 }));

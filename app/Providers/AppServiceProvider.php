@@ -3,11 +3,19 @@
 namespace App\Providers;
 
 use App\Database\SqlitePathPolicy;
+use App\Transfers\Export\BuiltinExporters;
+use App\Transfers\Export\MySqlBuiltinExporter;
+use App\Transfers\Export\PostgresBuiltinExporter;
+use App\Transfers\Export\SqliteBuiltinExporter;
+use App\Transfers\WorkerHeartbeat;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Foundation\DevCommands;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\Looping;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -19,6 +27,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Task 9 adds PostgreSQL (driver value => exporter class).
+        $this->app->singleton(BuiltinExporters::class, fn () => new BuiltinExporters([
+            'mysql' => MySqlBuiltinExporter::class,
+            'mariadb' => MySqlBuiltinExporter::class,
+            'pgsql' => PostgresBuiltinExporter::class,
+            'sqlite' => SqliteBuiltinExporter::class,
+        ]));
         $this->app->bind(SqlitePathPolicy::class, fn () => new SqlitePathPolicy(config('dbzuper.sqlite_paths')));
     }
 
@@ -29,9 +44,21 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
+        // A transfers worker proves it is alive while idle; TransferProgress beats while a job runs.
+        Event::listen(Looping::class, function (Looping $event) {
+            if ($event->connectionName === 'transfers') {
+                WorkerHeartbeat::beat();
+            }
+        });
+        DevCommands::artisan('queue:work transfers --queue=transfers --tries=1 --timeout=0', 'transfers');
+
         RateLimiter::for('dbzuper-api', fn (Request $request) => Limit::perMinute((int) config('dbzuper.api_per_minute'))->by($request->user()?->id ?: $request->ip()));
         // Exploring records fires a request per card and per port, far more often than the rest of the API.
         RateLimiter::for('dbzuper-records', fn (Request $request) => Limit::perMinute(1000)->by($request->user()?->id ?: $request->ip()));
+        // The backup dialog polls progress every second and the list while a transfer runs.
+        RateLimiter::for('dbzuper-transfers', fn (Request $request) => Limit::perMinute(600)->by($request->user()?->id ?: $request->ip()));
+        // Restore chunks (4 MiB each): 3000 a minute is about 200 MiB/s, more than any link the app is used over.
+        RateLimiter::for('dbzuper-uploads', fn (Request $request) => Limit::perMinute(3000)->by($request->user()?->id ?: $request->ip()));
     }
 
     /**

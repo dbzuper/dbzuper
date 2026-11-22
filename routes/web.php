@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\TableChangesController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\TableCountController;
 use App\Http\Controllers\Api\TableRowsController;
+use App\Http\Controllers\Api\TransferController;
 use App\Http\Controllers\ConnectionController;
 use App\Http\Controllers\ConnectionTestController;
 use App\Http\Controllers\DemoConnectionController;
@@ -53,6 +54,26 @@ Route::middleware('auth')->group(function () {
         Route::post('tables/{table}/rows', TableRowsController::class)->where('table', '.+')->name('tables.rows');
         Route::post('tables/{table}/count', TableCountController::class)->where('table', '.+')->name('tables.count');
         Route::post('tables/{table}/changes', TableChangesController::class)->where('table', '.+')->name('tables.changes');
+        Route::get('transfers/capabilities', [TransferController::class, 'capabilities'])->name('transfers.capabilities');
+        // POST takes the chosen tables as JSON: a long list doesn't fit a query string (414, max_input_vars).
+        Route::post('transfers/capabilities', [TransferController::class, 'capabilities'])->name('transfers.capabilities.post');
+        Route::get('transfers/objects', [TransferController::class, 'objects'])->name('transfers.objects');
+        // The backup dialog polls the progress every second and the list while a transfer runs: the transfers
+        // limit, so a busy workspace can't freeze the progress display.
+        Route::get('transfers', [TransferController::class, 'index'])
+            ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.index');
+        Route::post('transfers/export', [TransferController::class, 'export'])->name('transfers.export');
+        Route::post('transfers/import', [TransferController::class, 'import'])->name('transfers.import');
+        // A restore upload sends one request per 4 MiB chunk (up to 8 MiB accepted): its own, higher limit.
+        // Its own limiter too: the progress polling (dbzuper-transfers) and the chunks don't compete for one budget.
+        Route::put('transfers/{transfer}/upload', [TransferController::class, 'upload'])->whereUuid('transfer')
+            ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-uploads')->name('transfers.upload');
+        Route::get('transfers/{transfer}', [TransferController::class, 'show'])->whereUuid('transfer')
+            ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.show');
+        Route::post('transfers/{transfer}/cancel', [TransferController::class, 'cancel'])->whereUuid('transfer')->name('transfers.cancel');
+        // Downloads are few and long; a resumed one must not trip the API limit.
+        Route::get('transfers/{transfer}/download', [TransferController::class, 'download'])->whereUuid('transfer')
+            ->withoutMiddleware('throttle:dbzuper-api')->name('transfers.download');
         Route::post('query', [QueryController::class, 'run'])->name('query.run');
         Route::post('query/explain', [QueryController::class, 'explain'])->name('query.explain');
         Route::get('history', [HistoryController::class, 'index'])->name('history.index');
