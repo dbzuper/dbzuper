@@ -46,7 +46,7 @@ final class NativeCommandBuilder
         if ($c->driver === DriverName::MySql) {
             $argv[] = '--set-gtid-purged=OFF';
         }
-        $argv[] = (string) $c->database;
+        array_push($argv, '--', (string) $c->database);
         if ($o->tables !== null) {
             foreach ($objects as $object) {
                 $argv[] = $object->name;
@@ -113,7 +113,7 @@ final class NativeCommandBuilder
     /** @return list<string> */
     private static function pgConnectionArgs(SavedConnection $c): array
     {
-        $args = ['--dbname='.$c->database, '--host='.$c->host, '--port='.($c->port ?? 5432)];
+        $args = ['--host='.$c->host, '--port='.($c->port ?? 5432)];
         if (filled($c->username)) {
             $args[] = '--username='.$c->username;
         }
@@ -126,6 +126,8 @@ final class NativeCommandBuilder
     {
         $options = $c->options ?? [];
         $env = [
+            // Via the environment: `--dbname=host=x` would be parsed as a conninfo string and override --host.
+            'PGDATABASE' => (string) $c->database,
             'PGSSLMODE' => (string) ($options['sslmode'] ?? 'prefer'),
             'PGCONNECT_TIMEOUT' => (string) (int) config('dbzuper.connect_timeout'),
         ];
@@ -154,7 +156,12 @@ final class NativeCommandBuilder
 
         switch (MySqlSslMode::fromOptions($options)) {
             case MySqlSslMode::Disabled:
-                $lines[] = $maria ? 'ssl=0' : 'ssl-mode=DISABLED';
+                if ($maria) {
+                    $lines[] = 'ssl=0';
+                } else {
+                    // Without TLS, caching_sha2_password on a cold server cache needs the RSA key (error 2061 otherwise).
+                    array_push($lines, 'ssl-mode=DISABLED', 'get-server-public-key=1');
+                }
                 break;
             case MySqlSslMode::Required:
                 if ($maria) {
@@ -184,8 +191,13 @@ final class NativeCommandBuilder
             throw new RuntimeException('Could not create the temporary options file.');
         }
         @chmod($file, 0600);
-        fwrite($handle, implode("\n", $lines)."\n");
-        fclose($handle);
+        $written = fwrite($handle, implode("\n", $lines)."\n");
+        $closed = fclose($handle);
+        if ($written === false || ! $closed) {
+            @unlink($file);
+            @rmdir($dir);
+            throw new RuntimeException('Could not write the temporary options file.');
+        }
 
         return [$file, [$file, $dir]];
     }
