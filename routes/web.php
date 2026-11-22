@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\TableChangesController;
 use App\Http\Controllers\Api\TableController;
 use App\Http\Controllers\Api\TableCountController;
 use App\Http\Controllers\Api\TableRowsController;
+use App\Http\Controllers\Api\TransferController;
 use App\Http\Controllers\ConnectionController;
 use App\Http\Controllers\ConnectionTestController;
 use App\Http\Controllers\DemoConnectionController;
@@ -53,6 +54,8 @@ Route::middleware('auth')->group(function () {
         Route::post('tables/{table}/rows', TableRowsController::class)->where('table', '.+')->name('tables.rows');
         Route::post('tables/{table}/count', TableCountController::class)->where('table', '.+')->name('tables.count');
         Route::post('tables/{table}/changes', TableChangesController::class)->where('table', '.+')->name('tables.changes');
+        Route::get('transfers/capabilities', [TransferController::class, 'capabilities'])->name('transfers.capabilities');
+        Route::get('transfers/objects', [TransferController::class, 'objects'])->name('transfers.objects');
         Route::post('query', [QueryController::class, 'run'])->name('query.run');
         Route::post('query/explain', [QueryController::class, 'explain'])->name('query.explain');
         Route::get('history', [HistoryController::class, 'index'])->name('history.index');
