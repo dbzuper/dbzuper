@@ -22,7 +22,7 @@ final class ObjectLister
     {
         $rows = $db->select(
             'SELECT TABLE_NAME AS name, TABLE_TYPE AS type FROM information_schema.TABLES
-             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN (\'BASE TABLE\', \'VIEW\') ORDER BY TABLE_NAME',
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN (\'BASE TABLE\', \'SYSTEM VERSIONED\', \'VIEW\') ORDER BY TABLE_NAME',
         );
 
         return array_values(array_map(
