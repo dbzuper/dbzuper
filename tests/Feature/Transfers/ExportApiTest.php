@@ -352,3 +352,10 @@ it('says on each transfer whether a worker is alive', function () {
     WorkerHeartbeat::beat();
     $this->actingAs($this->user)->getJson("{$this->base}/{$id}")->assertOk()->assertJsonPath('worker_alive', true);
 });
+
+it('caps a backup at 10,000 named tables', function () {
+    $keys = array_map(fn (int $i) => "t{$i}", range(1, 10_001));
+
+    startExport(['tables' => $keys])->assertUnprocessable()
+        ->assertJsonPath('errors.tables.0', 'Choose at most 10,000 tables, or back up all of them');
+});

@@ -143,3 +143,21 @@ describe('useTransferPoll transient statuses', () => {
         expect(result.current.transfer?.status).toBe('running');
     });
 });
+
+describe('useTransferPoll transient statuses and the failure count', () => {
+    it('does not count 429s toward the error', async () => {
+        vi.spyOn(transfersApi, 'show')
+            .mockRejectedValueOnce(new ApiError(429, ''))
+            .mockRejectedValueOnce(new ApiError(429, ''))
+            .mockRejectedValueOnce(new ApiError(408, ''))
+            .mockRejectedValueOnce(new ApiError(429, ''))
+            .mockResolvedValue(make('running'));
+        const { result } = renderHook(() => useTransferPoll('5', 't1'));
+        for (let i = 0; i < 4; i++) {
+            await act(() => vi.advanceTimersByTimeAsync(i === 0 ? 0 : 1000));
+            expect(result.current.error).toBeNull();
+        }
+        await act(() => vi.advanceTimersByTimeAsync(1000));
+        expect(result.current.transfer?.status).toBe('running');
+    });
+});

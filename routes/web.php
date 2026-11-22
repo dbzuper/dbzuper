@@ -54,14 +54,12 @@ Route::middleware('auth')->group(function () {
         Route::post('tables/{table}/rows', TableRowsController::class)->where('table', '.+')->name('tables.rows');
         Route::post('tables/{table}/count', TableCountController::class)->where('table', '.+')->name('tables.count');
         Route::post('tables/{table}/changes', TableChangesController::class)->where('table', '.+')->name('tables.changes');
-        // The backup and restore dialogs poll these (progress every second, the list and capabilities while waiting):
-        // the transfers limit, so a busy workspace can't freeze the progress display.
-        Route::get('transfers/capabilities', [TransferController::class, 'capabilities'])
-            ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.capabilities');
+        Route::get('transfers/capabilities', [TransferController::class, 'capabilities'])->name('transfers.capabilities');
         // POST takes the chosen tables as JSON: a long list doesn't fit a query string (414, max_input_vars).
-        Route::post('transfers/capabilities', [TransferController::class, 'capabilities'])
-            ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.capabilities.post');
+        Route::post('transfers/capabilities', [TransferController::class, 'capabilities'])->name('transfers.capabilities.post');
         Route::get('transfers/objects', [TransferController::class, 'objects'])->name('transfers.objects');
+        // The backup dialog polls the progress every second and the list while a transfer runs: the transfers
+        // limit, so a busy workspace can't freeze the progress display.
         Route::get('transfers', [TransferController::class, 'index'])
             ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.index');
         Route::post('transfers/export', [TransferController::class, 'export'])->name('transfers.export');

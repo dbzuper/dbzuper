@@ -17,6 +17,14 @@ class StartExportRequest extends FormRequest
         return $this->user() !== null;
     }
 
+    /**
+     * The most tables one backup (or capabilities read) may name. More would hit MySQL's 65,535 placeholders per
+     * statement in the native FLOAT check; past this, backing up everything is the sensible choice anyway.
+     */
+    public const MAX_TABLES = 10_000;
+
+    public const TOO_MANY_TABLES = 'Choose at most 10,000 tables, or back up all of them';
+
     /** @return array<string, mixed> */
     public function rules(): array
     {
@@ -30,7 +38,7 @@ class StartExportRequest extends FormRequest
         ];
 
         if (is_array($this->input('tables'))) {
-            $rules['tables'] = ['required', 'array', 'list', 'max:100000'];
+            $rules['tables'] = ['required', 'array', 'list', 'max:'.self::MAX_TABLES];
             $rules['tables.*'] = ['required', 'string', 'distinct', 'max:1000'];
         } else {
             $rules['tables'][] = Rule::in(['all']);
@@ -55,6 +63,6 @@ class StartExportRequest extends FormRequest
     /** @return array<string, string> */
     public function messages(): array
     {
-        return ['tables.in' => "Choose 'all' or a list of tables."];
+        return ['tables.in' => "Choose 'all' or a list of tables.", 'tables.max' => self::TOO_MANY_TABLES];
     }
 }

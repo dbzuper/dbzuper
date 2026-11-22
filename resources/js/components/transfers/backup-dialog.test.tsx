@@ -340,7 +340,7 @@ describe('BackupDialog choices and capabilities', () => {
         );
     });
 
-    it('sends all when every object is chosen', async () => {
+    it('sends the explicit list even with every box ticked', async () => {
         const start = vi
             .spyOn(transfersApi, 'startExport')
             .mockResolvedValue(started);
@@ -353,13 +353,10 @@ describe('BackupDialog choices and capabilities', () => {
         await waitFor(() =>
             expect(start).toHaveBeenCalledWith(
                 '5',
-                expect.objectContaining({ tables: 'all' }),
+                expect.objectContaining({ tables: ['orders', 'users'] }),
             ),
         );
-        expect(capabilities).not.toHaveBeenCalledWith(
-            '5',
-            expect.arrayContaining(['orders']),
-        );
+        expect(capabilities).toHaveBeenCalledWith('5', ['orders', 'users']);
     });
 
     it('says Checking… and holds Back up while the chosen set is re-read', async () => {
@@ -398,7 +395,6 @@ describe('BackupDialog choices and capabilities', () => {
             expect(capabilities).toHaveBeenCalledWith('5', ['users']),
         );
         fireEvent.click(screen.getByRole('checkbox', { name: /^orders/ }));
-        // Both chosen = everything: read without a list.
         await screen.findByText('Not included: NEW gap.');
         releaseOld(caps({ ...nativeUsable, native_gaps: ['OLD gap'] }));
         await new Promise((r) => setTimeout(r, 50));
@@ -470,5 +466,39 @@ describe('BackupDialog focus and recent list', () => {
         open();
         await screen.findByText('shop-backup.sql.gz');
         expect(screen.queryByText('restored-file.sql')).toBeNull();
+    });
+});
+
+describe('BackupDialog object list reloads', () => {
+    it('drops a chosen table that is gone when the list is read again', async () => {
+        const start = vi
+            .spyOn(transfersApi, 'startExport')
+            .mockResolvedValue(started);
+        const props = {
+            connection: mysql,
+            onOpenChange: () => {},
+            serverVersion: '8.4.3',
+        };
+        const { rerender } = render(<BackupDialog {...props} open />);
+        fireEvent.click(await screen.findByLabelText('Choose…'));
+        fireEvent.click(screen.getByRole('checkbox', { name: /^orders/ }));
+        fireEvent.click(screen.getByRole('checkbox', { name: /^users/ }));
+
+        rerender(<BackupDialog {...props} open={false} />);
+        vi.spyOn(transfersApi, 'objects').mockResolvedValue({
+            objects: [obj('users')],
+        });
+        rerender(<BackupDialog {...props} open />);
+        await screen.findByLabelText('All 1');
+        expect(screen.getByText('1 of 1 chosen')).toBeInTheDocument();
+
+        await waitFor(() => expect(backUp()).toBeEnabled());
+        fireEvent.click(backUp());
+        await waitFor(() =>
+            expect(start).toHaveBeenCalledWith(
+                '5',
+                expect.objectContaining({ tables: ['users'] }),
+            ),
+        );
     });
 });

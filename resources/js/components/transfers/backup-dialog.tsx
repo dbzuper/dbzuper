@@ -295,7 +295,17 @@ export function BackupDialog({
         setObjectsError(null);
         transfersApi
             .objects(workspace)
-            .then((r) => !stopped && setObjects(r.objects))
+            .then((r) => {
+                if (stopped) return;
+                setObjects(r.objects);
+                // A table dropped since the list was last read must not stay chosen.
+                const known = new Set(r.objects.map((o) => o.key));
+                setChosen((prev) =>
+                    [...prev].every((k) => known.has(k))
+                        ? prev
+                        : new Set([...prev].filter((k) => known.has(k))),
+                );
+            })
             .catch(
                 (e: unknown) =>
                     !stopped &&
@@ -328,12 +338,11 @@ export function BackupDialog({
         [],
     );
 
-    /** Every object chosen counts as "all" (which also takes routines and events where the engine has them). */
-    const everything =
-        mode === 'all' ||
-        (objects !== null &&
-            objects.length > 0 &&
-            chosen.size === objects.length);
+    /**
+     * Only the All radio means "all" (which also takes routines and events where the engine has them). Choose…
+     * always sends its explicit list, even with every box ticked.
+     */
+    const everything = mode === 'all';
     // Capabilities for the chosen set: at once on open, then debounced while the choice changes.
     const keysId = useMemo(
         () => (everything ? '*' : JSON.stringify([...chosen].sort())),

@@ -55,15 +55,18 @@ class TransferController extends Controller
         if ($request->isMethod('post')) {
             // JSON body: {tables: 'all' | list<string>}.
             $tables = $request->json('tables', 'all');
-            $valid = $tables === 'all' || (is_array($tables) && array_is_list($tables) && count($tables) <= 100_000
+            $valid = $tables === 'all' || (is_array($tables) && array_is_list($tables)
                 && array_filter($tables, fn ($t) => ! is_string($t) || $t === '' || strlen($t) > 1000) === []);
             if (! $valid) {
                 throw ValidationException::withMessages(['tables' => "Choose 'all' or a list of tables."]);
             }
-            $keys = $tables === 'all' ? null : array_values($tables);
+            $keys = $tables === 'all' ? null : $tables;
         } else {
             $tables = $request->query('tables');
             $keys = is_array($tables) ? array_values(array_filter($tables, 'is_string')) : null;
+        }
+        if ($keys !== null && count($keys) > StartExportRequest::MAX_TABLES) {
+            throw ValidationException::withMessages(['tables' => StartExportRequest::TOO_MANY_TABLES]);
         }
 
         return response()->json($planner->capabilities($connection, $keys));

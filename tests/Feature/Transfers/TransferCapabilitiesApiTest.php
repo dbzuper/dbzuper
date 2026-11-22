@@ -152,4 +152,23 @@ it('puts the polled transfer routes on the transfers limiter, not the shared API
 
     expect($middleware)->toContain('throttle:dbzuper-transfers')
         ->and($middleware)->not->toContain('throttle:dbzuper-api');
-})->with(['api.transfers.show', 'api.transfers.index', 'api.transfers.capabilities', 'api.transfers.capabilities.post', 'api.transfers.upload']);
+})->with(['api.transfers.show', 'api.transfers.index', 'api.transfers.upload']);
+
+it('keeps capabilities on the shared API limiter: they are read on demand, not polled', function (string $name) {
+    $router = app('router');
+    $middleware = $router->gatherRouteMiddleware($router->getRoutes()->getByName($name));
+
+    expect($middleware)->toContain('throttle:dbzuper-api')
+        ->and($middleware)->not->toContain('throttle:dbzuper-transfers');
+})->with(['api.transfers.capabilities', 'api.transfers.capabilities.post']);
+
+it('caps the chosen tables at 10,000', function () {
+    $this->mock(TransferPlanner::class, function ($mock) {
+        $mock->shouldReceive('capabilities')->andReturn(['read_only' => false, 'database_name' => 'x', 'worker_alive' => false, 'export' => [], 'import' => []]);
+    });
+    $keys = fn (int $n) => array_map(fn (int $i) => "t{$i}", range(1, $n));
+
+    $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => $keys(10_000)])->assertOk();
+    $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => $keys(10_001)])
+        ->assertUnprocessable()->assertJsonPath('errors.tables.0', 'Choose at most 10,000 tables, or back up all of them');
+});

@@ -83,7 +83,8 @@ export function useTransferPoll(
                     setState((s) => ({ ...s, error }));
                     return;
                 }
-                failures++;
+                // A rate limit or timeout is the server answering: not a failure to reach it.
+                if (!transient) failures++;
                 if (failures >= POLL_FAILURES_BEFORE_ERROR)
                     setState((s) => ({ ...s, error: POLL_RETRY_MESSAGE }));
             }
