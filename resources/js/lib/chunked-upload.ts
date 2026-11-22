@@ -61,6 +61,21 @@ async function readBody(response: Response): Promise<Body> {
     }
 }
 
+/**
+ * An upload the server refused. `transferStatus` is the transfer's status when the server sent it (a 409), e.g.
+ * `cancelled` or `failed` when the transfer ended while the file was still being sent.
+ */
+export class UploadError extends Error {
+    constructor(
+        message: string,
+        readonly status: number,
+        readonly transferStatus: string | null = null,
+    ) {
+        super(message);
+        this.name = 'UploadError';
+    }
+}
+
 const GENERIC_SERVER_ERROR = 'Server Error';
 
 /** A failure the server explained (a 5xx with a message): not retried. */
@@ -136,8 +151,10 @@ export async function uploadInChunks(
                 return;
             }
         }
-        throw new Error(
+        throw new UploadError(
             body.message ?? `The upload failed with status ${response.status}.`,
+            response.status,
+            typeof body.status === 'string' ? body.status : null,
         );
     }
 }

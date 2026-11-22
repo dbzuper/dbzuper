@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { uploadInChunks } from './chunked-upload';
+import { UploadError, uploadInChunks } from './chunked-upload';
 
 const json = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), {
@@ -91,6 +91,28 @@ describe('uploadInChunks', () => {
             });
         await expect(run()).rejects.toThrow('It was cancelled');
         await expect(run()).rejects.toThrow('Bad offset');
+    });
+
+    it("carries the transfer's status from a 409", async () => {
+        vi.spyOn(globalThis, 'fetch')
+            .mockResolvedValueOnce(
+                json(409, { message: 'It was cancelled', status: 'cancelled' }),
+            )
+            .mockResolvedValueOnce(json(422, { message: 'Bad offset' }));
+        const run = () =>
+            uploadInChunks(file(25), '/up', {
+                chunkBytes: 10,
+                onProgress: () => {},
+            });
+        await expect(run()).rejects.toMatchObject({
+            constructor: UploadError,
+            status: 409,
+            transferStatus: 'cancelled',
+        });
+        await expect(run()).rejects.toMatchObject({
+            status: 422,
+            transferStatus: null,
+        });
     });
 
     it('retries a network error on the same chunk with backoff', async () => {

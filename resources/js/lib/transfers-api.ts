@@ -1,5 +1,5 @@
 import type { WorkspaceRef } from '@/types/connection';
-import { apiBase, apiFetch } from '@/lib/http';
+import { apiBase, apiFetch, xsrfToken } from '@/lib/http';
 
 export type TransferStatus =
     | 'uploading'
@@ -119,9 +119,29 @@ export const transfersApi = {
     show: (ref: WorkspaceRef, id: string, signal?: AbortSignal) =>
         apiFetch<Transfer>(`${apiBase(ref)}/transfers/${id}`, { signal }),
     cancel: (ref: WorkspaceRef, id: string) =>
-        apiFetch<Transfer>(`${apiBase(ref)}/transfers/${id}/cancel`, {
+        apiFetch<Transfer>(transfersApi.cancelUrl(ref, id), {
             method: 'POST',
         }),
+    cancelUrl: (ref: WorkspaceRef, id: string) =>
+        `${apiBase(ref)}/transfers/${id}/cancel`,
+    /**
+     * Cancels from a page that is going away (pagehide): a keepalive request outlives the page, where a normal fetch
+     * would be dropped.
+     */
+    cancelOnLeave: (ref: WorkspaceRef, id: string) => {
+        const headers: Record<string, string> = {
+            Accept: 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+        };
+        const token = xsrfToken();
+        if (token) headers['X-XSRF-TOKEN'] = token;
+        return fetch(transfersApi.cancelUrl(ref, id), {
+            method: 'POST',
+            keepalive: true,
+            credentials: 'same-origin',
+            headers,
+        }).catch(() => undefined);
+    },
     downloadUrl: (ref: WorkspaceRef, id: string) =>
         `${apiBase(ref)}/transfers/${id}/download`,
     uploadUrl: (ref: WorkspaceRef, id: string) =>

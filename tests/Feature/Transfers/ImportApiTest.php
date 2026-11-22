@@ -228,7 +228,7 @@ it('rejects bytes past the size given at the start', function () {
 it('rejects a chunk after the upload was abandoned', function () {
     $id = importStart(['size' => 30])->json('id');
     importChunk($id, 0, str_repeat('a', 10))->assertOk();
-    Transfer::query()->whereKey($id)->update(['updated_at' => now()->subHours((int) config('dbzuper.transfer_ttl_hours') + 1)]);
+    Transfer::query()->whereKey($id)->update(['updated_at' => now()->subMinutes((int) config('dbzuper.transfer_upload_idle_minutes') + 1)]);
     TransferStorage::prune();
 
     importChunk($id, 10, str_repeat('b', 10))->assertStatus(409)
@@ -239,10 +239,12 @@ it('rejects a chunk after the upload was abandoned', function () {
 });
 
 it('keeps an active upload from looking abandoned', function () {
+    $idle = (int) config('dbzuper.transfer_upload_idle_minutes');
     $id = importStart(['size' => 30])->json('id');
-    $this->travel((int) config('dbzuper.transfer_ttl_hours') - 1)->hours();
+    $this->travel($idle - 1)->minutes();
     importChunk($id, 0, str_repeat('a', 10))->assertOk();
-    $this->travel(2)->hours();
+    // Longer than the idle time since the upload started, but not since its last chunk.
+    $this->travel($idle - 1)->minutes();
 
     TransferStorage::prune();
 
@@ -404,14 +406,14 @@ it('does not fail the restore when the snapshot refresh fails', function () {
 });
 
 it('prunes from the list at most once a minute', function () {
-    $ttl = (int) config('dbzuper.transfer_ttl_hours');
-    $abandon = function () use ($ttl): string {
+    $idle = (int) config('dbzuper.transfer_upload_idle_minutes');
+    $abandon = function () use ($idle): string {
         $t = Transfer::create([
             'user_id' => $this->user->id, 'saved_connection_id' => $this->source->id, 'database' => '',
             'direction' => TransferDirection::Import, 'method' => TransferMethod::Builtin, 'options' => [],
             'status' => TransferStatus::Uploading, 'file_name' => 'x.sql', 'bytes_total' => 10,
         ]);
-        Transfer::query()->whereKey($t->id)->update(['updated_at' => now()->subHours($ttl + 1)]);
+        Transfer::query()->whereKey($t->id)->update(['updated_at' => now()->subMinutes($idle + 1)]);
 
         return $t->id;
     };

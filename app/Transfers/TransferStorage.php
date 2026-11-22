@@ -80,11 +80,13 @@ class TransferStorage
                 }
             });
 
-        // Uploads nobody finished.
+        // Uploads nobody finished: every chunk refreshes updated_at, so a page that went away (reload, closed tab,
+        // dropped network) stops doing so. Left alone, such an upload would hold the database's one active transfer.
+        $idle = (int) config('dbzuper.transfer_upload_idle_minutes');
         Transfer::query()
             ->where('status', TransferStatus::Uploading)
             ->where('direction', TransferDirection::Import)
-            ->where('updated_at', '<=', now()->subHours($ttl))
+            ->where('updated_at', '<=', now()->subMinutes($idle))
             ->chunkById(100, function ($transfers) {
                 foreach ($transfers as $transfer) {
                     self::deleteFiles($transfer);

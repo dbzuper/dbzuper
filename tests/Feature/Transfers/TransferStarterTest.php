@@ -54,3 +54,24 @@ it('records the initial status and sizes', function () {
         ->and($t->options)->toBe(['gzip' => true])
         ->and($t->file_name)->toBe('a.sql');
 });
+
+it('no longer lets an abandoned upload block a new transfer', function () {
+    config(['dbzuper.transfer_upload_idle_minutes' => 10]);
+    $c = SavedConnection::factory()->create();
+    $stale = TransferStarter::start($c, $c->user, TransferDirection::Import, TransferMethod::Builtin, [], 'a.sql', 42, TransferStatus::Uploading);
+    $stale->forceFill(['updated_at' => now()->subMinutes(11)])->saveQuietly();
+
+    expect(startTestTransfer($c)->status)->toBe(TransferStatus::Pending)
+        ->and($stale->fresh()->status)->toBe(TransferStatus::Failed)
+        ->and($stale->fresh()->error)->toBe('Upload abandoned');
+});
+
+it('still refuses a new transfer while an upload is receiving chunks', function () {
+    config(['dbzuper.transfer_upload_idle_minutes' => 10]);
+    $c = SavedConnection::factory()->create();
+    $recent = TransferStarter::start($c, $c->user, TransferDirection::Import, TransferMethod::Builtin, [], 'a.sql', 42, TransferStatus::Uploading);
+    $recent->forceFill(['updated_at' => now()->subMinutes(9)])->saveQuietly();
+
+    expect(fn () => startTestTransfer($c))->toThrow(TransferConflict::class, 'A restore of this database is already running');
+    expect($recent->fresh()->status)->toBe(TransferStatus::Uploading);
+});

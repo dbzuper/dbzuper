@@ -29,3 +29,33 @@ describe('transfersApi.capabilities', () => {
         expect(JSON.parse(init?.body as string)).toEqual({ tables: keys });
     });
 });
+
+describe('transfersApi.cancelOnLeave', () => {
+    afterEach(() => {
+        document.cookie = 'XSRF-TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    });
+
+    it('POSTs the cancel with keepalive and the XSRF token', async () => {
+        document.cookie = 'XSRF-TOKEN=tok%3D';
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok());
+        await transfersApi.cancelOnLeave('5', 't1');
+        const [url, init] = fetchMock.mock.calls[0];
+        expect(url).toBe('/api/c/5/transfers/t1/cancel');
+        expect(init).toMatchObject({
+            method: 'POST',
+            keepalive: true,
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'X-XSRF-TOKEN': 'tok=',
+            },
+        });
+    });
+
+    it('swallows a failure: the page is going away', async () => {
+        vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('gone'));
+        await expect(
+            transfersApi.cancelOnLeave('5', 't1'),
+        ).resolves.toBeUndefined();
+    });
+});

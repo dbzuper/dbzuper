@@ -58,9 +58,11 @@ return [
     // Query history entries kept per connection.
     'history_keep' => (int) env('DBZUPER_HISTORY_KEEP') ?: 5000,
 
-    // Backups and restores: hours an exported file is kept for download (and an unfinished upload is kept before it
-    // is abandoned), and the largest file that may be uploaded for a restore.
+    // Backups and restores: hours an exported file is kept for download, and the largest file that may be uploaded
+    // for a restore.
     'transfer_ttl_hours' => max(1, (int) env('DBZUPER_TRANSFER_TTL') ?: 24),
+    // Minutes an upload may go without a chunk before it is abandoned (it holds the database's one active transfer).
+    'transfer_upload_idle_minutes' => max(1, (int) env('DBZUPER_TRANSFER_UPLOAD_IDLE_MINUTES') ?: 10),
     'transfer_max_bytes' => max(1, (int) env('DBZUPER_TRANSFER_MAX_BYTES') ?: 20_000_000_000),
 
     // Native dump and restore tools: an explicit path per tool, or null to find it on PATH.

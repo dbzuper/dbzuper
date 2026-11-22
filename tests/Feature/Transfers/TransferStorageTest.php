@@ -41,7 +41,7 @@ it('prunes finished exports past expiry and stale uploads', function () {
     $expired = storedTransfer(['status' => TransferStatus::Done, 'finished_at' => now()->subDay(), 'expires_at' => now()->subHour()]);
     $fresh = storedTransfer(['status' => TransferStatus::Done, 'finished_at' => now(), 'expires_at' => now()->addHours(5)]);
     $stale = storedTransfer(['status' => TransferStatus::Uploading, 'direction' => TransferDirection::Import]);
-    $stale->forceFill(['updated_at' => now()->subHours(config('dbzuper.transfer_ttl_hours') + 1)])->saveQuietly();
+    $stale->forceFill(['updated_at' => now()->subMinutes(config('dbzuper.transfer_upload_idle_minutes') + 1)])->saveQuietly();
     $running = storedTransfer(['status' => TransferStatus::Running, 'started_at' => now()->subDays(3)]);
     $running->forceFill(['updated_at' => now()->subHour()])->saveQuietly();
     $old = storedTransfer(['status' => TransferStatus::Failed, 'finished_at' => now()->subDays(8)]);
@@ -87,4 +87,22 @@ it('fails a running transfer whose worker process is gone from this host', funct
     expect($dead->fresh()->status)->toBe(TransferStatus::Failed)
         ->and($alive->fresh()->status)->toBe(TransferStatus::Running)
         ->and($elsewhere->fresh()->status)->toBe(TransferStatus::Running);
+});
+
+it('abandons an upload once no chunk has arrived for the idle time', function () {
+    config(['dbzuper.transfer_upload_idle_minutes' => 10]);
+    $idle = storedTransfer(['status' => TransferStatus::Uploading, 'direction' => TransferDirection::Import]);
+    $idle->forceFill(['updated_at' => now()->subMinutes(11)])->saveQuietly();
+    $active = storedTransfer(['status' => TransferStatus::Uploading, 'direction' => TransferDirection::Import]);
+    $active->forceFill(['updated_at' => now()->subMinutes(9)])->saveQuietly();
+
+    TransferStorage::prune();
+
+    expect($idle->fresh()->status)->toBe(TransferStatus::Failed)
+        ->and($idle->fresh()->error)->toBe('Upload abandoned')
+        ->and($idle->fresh()->file_path)->toBeNull()
+        ->and($idle->fresh()->finished_at)->not->toBeNull()
+        ->and(is_dir(storage_path('app/private/transfers/'.$idle->id)))->toBeFalse()
+        ->and($active->fresh()->status)->toBe(TransferStatus::Uploading)
+        ->and(is_file($active->file_path))->toBeTrue();
 });

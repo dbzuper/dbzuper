@@ -1,6 +1,12 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+    cleanup,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { uploadInChunks } from '@/lib/chunked-upload';
+import { UploadError, uploadInChunks } from '@/lib/chunked-upload';
 import { readHead } from '@/lib/dump-sniff';
 import { ApiError } from '@/lib/http';
 import { transfersApi } from '@/lib/transfers-api';
@@ -8,7 +14,10 @@ import type { Transfer, TransferCapabilities } from '@/lib/transfers-api';
 import type { ConnectionSummary } from '@/types/connection';
 import { RestoreDialog } from './restore-dialog';
 
-vi.mock('@/lib/chunked-upload', () => ({ uploadInChunks: vi.fn() }));
+vi.mock('@/lib/chunked-upload', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@/lib/chunked-upload')>()),
+    uploadInChunks: vi.fn(),
+}));
 vi.mock('@/lib/dump-sniff', async (importOriginal) => ({
     ...(await importOriginal<typeof import('@/lib/dump-sniff')>()),
     readHead: vi.fn(),
@@ -360,6 +369,9 @@ describe('RestoreDialog restore flow', () => {
             expect(screen.queryByText('Closing stops the upload.')).toBeNull(),
         );
         // The footer's Close (the corner X closes the same way).
+        expect(
+            screen.getByText('The file is uploaded; the restore starts next.'),
+        ).toBeInTheDocument();
         fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
         expect(transfersApi.cancel).not.toHaveBeenCalled();
     });
@@ -453,5 +465,113 @@ describe('RestoreDialog restore flow', () => {
         open();
         await screen.findByText('restored-file.sql');
         expect(screen.queryByText('shop-backup.sql.gz')).toBeNull();
+    });
+
+    it('keeps the closing note after Cancel until the poll shows the end', async () => {
+        vi.spyOn(transfersApi, 'startImport').mockResolvedValue(started);
+        vi.spyOn(transfersApi, 'cancel').mockReturnValue(new Promise(() => {}));
+        open();
+        await startRestore();
+        fireEvent.click(
+            await screen.findByRole('button', { name: 'Cancel restore' }),
+        );
+        expect(
+            screen.getByText('Closing stops the upload.'),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: 'Cancel restore' }),
+        ).toHaveTextContent('Cancelling…');
+    });
+
+    it('leaves a transfer that ended on the server to the status', async () => {
+        vi.spyOn(transfersApi, 'startImport').mockResolvedValue(started);
+        let reject: (e: unknown) => void = () => {};
+        upload.mockReturnValue(new Promise((_r, j) => (reject = j)));
+        open();
+        await startRestore();
+        await waitFor(() => expect(upload).toHaveBeenCalled());
+        reject(
+            new UploadError(
+                'This upload is no longer accepting data.',
+                409,
+                'cancelled',
+            ),
+        );
+        await waitFor(() =>
+            expect(screen.queryByText('Closing stops the upload.')).toBeNull(),
+        );
+        expect(screen.queryByText('The upload failed.')).toBeNull();
+        expect(transfersApi.cancel).not.toHaveBeenCalled();
+    });
+
+    it('clears the upload failure when another restore is shown', async () => {
+        vi.spyOn(transfersApi, 'startImport').mockResolvedValue(started);
+        upload.mockRejectedValue(new Error('Disk full.'));
+        vi.spyOn(transfersApi, 'list').mockResolvedValue({
+            transfers: [
+                {
+                    ...started,
+                    id: 'r2',
+                    status: 'running',
+                    file_name: 'other.sql',
+                    file_size: 10,
+                } as Transfer,
+            ],
+        });
+        open();
+        await startRestore();
+        await screen.findByText('The upload failed.');
+        fireEvent.click(
+            await screen.findByRole('button', {
+                name: 'Show the progress of other.sql',
+            }),
+        );
+        expect(screen.queryByText('The upload failed.')).toBeNull();
+    });
+});
+
+describe('RestoreDialog leaving and reopening', () => {
+    it('cancels the upload with a keepalive request when the page goes away', async () => {
+        vi.spyOn(transfersApi, 'startImport').mockResolvedValue(started);
+        const leave = vi
+            .spyOn(transfersApi, 'cancelOnLeave')
+            .mockResolvedValue(undefined);
+        open();
+        await startRestore();
+        await waitFor(() => expect(upload).toHaveBeenCalled());
+        const signal = upload.mock.calls[0][2].signal!;
+
+        window.dispatchEvent(new Event('pagehide'));
+
+        expect(leave).toHaveBeenCalledWith('5', 't1');
+        expect(signal.aborted).toBe(true);
+        // Already cancelled: unmounting doesn't send a second one.
+        cleanup();
+        expect(transfersApi.cancel).not.toHaveBeenCalled();
+        expect(leave).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends nothing on pagehide without an upload in progress', async () => {
+        const leave = vi
+            .spyOn(transfersApi, 'cancelOnLeave')
+            .mockResolvedValue(undefined);
+        open();
+        await screen.findByLabelText('File');
+        window.dispatchEvent(new Event('pagehide'));
+        expect(leave).not.toHaveBeenCalled();
+    });
+
+    it('clears the typed name and the file when closed with nothing started', async () => {
+        const props = { connection: mysql, onOpenChange: () => {} };
+        const { rerender } = render(<RestoreDialog {...props} open />);
+        await chooseFile();
+        await confirmWith('shop');
+        rerender(<RestoreDialog {...props} open={false} />);
+        rerender(<RestoreDialog {...props} open />);
+        expect(
+            await screen.findByLabelText('Type shop to confirm'),
+        ).toHaveValue('');
+        expect(screen.queryByText('shop-20261122.sql')).toBeNull();
+        expect(restoreButton()).toBeDisabled();
     });
 });

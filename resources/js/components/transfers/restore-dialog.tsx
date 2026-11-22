@@ -11,7 +11,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { uploadInChunks } from '@/lib/chunked-upload';
+import { UploadError, uploadInChunks } from '@/lib/chunked-upload';
 import { readHead, sniffDumpEngine } from '@/lib/dump-sniff';
 import type { DumpEngine } from '@/lib/dump-sniff';
 import { formatBytes, shortVersion } from '@/lib/format';
@@ -24,6 +24,8 @@ import { TransferStatus, apiMessage } from './transfer-status';
 
 export const ACCEPTED_FILES = '.sql,.gz,.sql.gz';
 export const UPLOAD_NOTE = 'Closing stops the upload.';
+export const UPLOAD_SENT_NOTE =
+    'The file is uploaded; the restore starts next.';
 
 const ENGINE_LABEL: Record<DumpEngine, string> = {
     mysql: 'MySQL',
@@ -87,7 +89,10 @@ function RestoreForm({
     const [finished, setFinished] = useState(false);
     const [recentKey, setRecentKey] = useState(0);
 
-    const [uploading, setUploading] = useState(false);
+    /** This page's upload: sending, stopped by Cancel or closing (until the poll shows the end), or sent. */
+    const [uploadPhase, setUploadPhase] = useState<
+        'sending' | 'stopping' | 'sent' | null
+    >(null);
     /** Bytes sent of this page's upload, and which transfer they belong to. */
     const [uploaded, setUploaded] = useState<{ id: string; bytes: number }>({
         id: '',
@@ -145,7 +150,7 @@ function RestoreForm({
         if (upload === null) return;
         uploadRef.current = null;
         upload.controller.abort();
-        setUploading(false);
+        setUploadPhase('stopping');
         if (cancel)
             transfersApi.cancel(upload.workspace, upload.id).catch(() => {
                 // The page is going away or the transfer already ended: nothing to show.
@@ -166,6 +171,19 @@ function RestoreForm({
         },
         [stopUpload],
     );
+    // A reload, a closed tab or navigating away: a normal request would be dropped with the page, so the cancel goes
+    // out as a keepalive request. (The server also abandons an upload that stops receiving chunks.)
+    useEffect(() => {
+        const onPageHide = () => {
+            const upload = uploadRef.current;
+            if (upload === null) return;
+            uploadRef.current = null;
+            upload.controller.abort();
+            void transfersApi.cancelOnLeave(upload.workspace, upload.id);
+        };
+        window.addEventListener('pagehide', onPageHide);
+        return () => window.removeEventListener('pagehide', onPageHide);
+    }, []);
 
     // Focus follows the step: the status after Restore (or Show), the file picker after New restore.
     const statusRef = useRef<HTMLDivElement>(null);
@@ -205,6 +223,7 @@ function RestoreForm({
     // Stable: TransferStatus reports through an effect that depends on it.
     const onDone = useCallback(() => {
         stopUpload(false);
+        setUploadPhase(null);
         setFinished(true);
         setRecentKey((k) => k + 1);
     }, [stopUpload]);
@@ -213,7 +232,7 @@ function RestoreForm({
         const controller = new AbortController();
         uploadRef.current = { controller, workspace, id: t.id };
         setUploaded({ id: t.id, bytes: 0 });
-        setUploading(true);
+        setUploadPhase('sending');
         uploadInChunks(chosen, transfersApi.uploadUrl(workspace, t.id), {
             onProgress: (bytes) =>
                 !controller.signal.aborted && setUploaded({ id: t.id, bytes }),
@@ -222,13 +241,22 @@ function RestoreForm({
             .then(() => {
                 if (uploadRef.current?.controller !== controller) return;
                 uploadRef.current = null;
-                setUploading(false);
+                setUploadPhase('sent');
             })
             .catch((e: unknown) => {
                 if (controller.signal.aborted) return;
                 if (uploadRef.current?.controller === controller)
                     uploadRef.current = null;
-                setUploading(false);
+                setUploadPhase(null);
+                // The transfer ended on the server (cancelled elsewhere, abandoned, failed to queue): the status
+                // shows that outcome, and there is nothing left to cancel.
+                if (
+                    e instanceof UploadError &&
+                    e.status === 409 &&
+                    (e.transferStatus === 'cancelled' ||
+                        e.transferStatus === 'failed')
+                )
+                    return;
                 setUploadError(
                     e instanceof Error && e.message
                         ? e.message
@@ -270,13 +298,24 @@ function RestoreForm({
             .finally(() => setStarting(false));
     };
 
+    /** Empties the form: the file and the typed name never carry over to another restore. */
+    const clearForm = useCallback(() => {
+        setFile(null);
+        setConfirm('');
+        setStartError(null);
+        if (fileRef.current) fileRef.current.value = '';
+    }, []);
+
+    // Closed with nothing started: the next open starts from an empty form.
+    useEffect(() => {
+        if (!open && active === null) clearForm();
+    }, [open, active, clearForm]);
+
     const newRestore = () => {
         setActive(null);
         setFinished(false);
-        setFile(null);
-        setConfirm('');
+        clearForm();
         setUploadError(null);
-        if (fileRef.current) fileRef.current.value = '';
         setFocusTo('form');
     };
 
@@ -329,9 +368,12 @@ function RestoreForm({
                                         : undefined
                                 }
                                 uploadNote={
-                                    uploading && active.id === uploaded.id
-                                        ? UPLOAD_NOTE
-                                        : undefined
+                                    active.id !== uploaded.id ||
+                                    uploadPhase === null
+                                        ? undefined
+                                        : uploadPhase === 'sent'
+                                          ? UPLOAD_SENT_NOTE
+                                          : UPLOAD_NOTE
                                 }
                             />
                         </div>
@@ -464,6 +506,7 @@ function RestoreForm({
                         direction="import"
                         exclude={active?.id ?? null}
                         onShow={(t) => {
+                            setUploadError(null);
                             setFinished(false);
                             setActive(t);
                             setFocusTo('status');
