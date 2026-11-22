@@ -362,6 +362,10 @@ function RestoreForm({
                                 transfer={active}
                                 onDone={onDone}
                                 onCancel={() => stopUpload(false)}
+                                keepsApplied={
+                                    connection.driver === 'mysql' ||
+                                    connection.driver === 'mariadb'
+                                }
                                 uploaded={
                                     active.id === uploaded.id
                                         ? uploaded.bytes

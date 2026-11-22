@@ -164,6 +164,7 @@ export function TransferStatus({
     onCancel,
     uploaded,
     uploadNote = 'Keep this dialog open until the upload finishes.',
+    keepsApplied = false,
 }: {
     workspace: WorkspaceRef;
     transfer: Transfer;
@@ -175,6 +176,11 @@ export function TransferStatus({
     uploaded?: number;
     /** Shown under the upload's progress. */
     uploadNote?: string;
+    /**
+     * A restore into MySQL/MariaDB: statements are not rolled back (DDL commits), so a cancelled restore that had
+     * started keeps what already ran. PostgreSQL and SQLite roll the whole restore back.
+     */
+    keepsApplied?: boolean;
 }) {
     const poll = useTransferPoll(workspace, initial.id);
     const t = poll.transfer ?? initial;
@@ -205,6 +211,13 @@ export function TransferStatus({
     const cancelRequested = cancelling || t.cancel_requested_at != null;
     const progress = progressOf(t);
     const upload = uploadProgressOf(t, uploaded);
+    // What a cancelled restore left behind, like the outcome line of a failed one.
+    const cancelledOutcome =
+        t.direction === 'export'
+            ? ''
+            : keepsApplied && t.started_at != null
+              ? ' Statements that already ran stay applied.'
+              : ' Nothing was changed.';
 
     // Announced when the state changes, not with every progress tick.
     const announcement = {
@@ -216,7 +229,7 @@ export function TransferStatus({
         done: `The ${noun} finished.`,
         // The failure is a role=alert of its own.
         failed: '',
-        cancelled: `The ${noun} was cancelled.`,
+        cancelled: `The ${noun} was cancelled.${cancelledOutcome}`,
     }[t.status];
 
     return (
@@ -342,7 +355,7 @@ export function TransferStatus({
             )}
             {t.status === 'cancelled' && (
                 <p className="text-muted-foreground">
-                    The {noun} was cancelled.
+                    The {noun} was cancelled.{cancelledOutcome}
                 </p>
             )}
             {(poll.error ?? cancelError) && (
