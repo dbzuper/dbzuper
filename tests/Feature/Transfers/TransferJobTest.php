@@ -247,3 +247,13 @@ it('leaves a swept transfer failed when the cancel lands too', function () {
         ->and($t->fresh()->error)->toBe('swept')
         ->and($job->cancelled)->toBeTrue();
 });
+
+it('keeps the message readable when the password is short', function () {
+    $c = SavedConnection::factory()->create(['password' => 'ab']);
+    $t = fakeJobTransfer($c);
+    FakeTransferJob::$perform = fn () => throw new RuntimeException('Table about_tabs failed: ab rejected, password=ab');
+
+    (new FakeTransferJob($t->id))->handle();
+
+    expect($t->fresh()->error)->toBe('Table about_tabs failed: *** rejected, password=***');
+});

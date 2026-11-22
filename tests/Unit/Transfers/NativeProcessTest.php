@@ -334,3 +334,14 @@ it('names the gaps of a login without routine or event access', function () {
         ->toBe(['stored procedures and functions (no permission)', 'events (no permission)'])
         ->and(MySqlPrivilegeProbe::gaps(['routines' => true, 'events' => true]))->toBe([]);
 });
+
+it('removes a short password only where it stands as a token of its own', function () {
+    $text = "table abc failed for ab: password=ab user 'ab' MYSQL_PWD=ab cab-ab";
+
+    expect(NativeProcess::sanitize($text, 'ab'))
+        ->toBe("table abc failed for ***: password=*** user '***' MYSQL_PWD=*** cab-***");
+});
+
+it('still removes a long password wherever it appears', function () {
+    expect(NativeProcess::sanitize('xhunter2y and hunter2', 'hunter2'))->toBe('x***y and ***');
+});

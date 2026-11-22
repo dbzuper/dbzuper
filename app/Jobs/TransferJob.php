@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\TransferStatus;
 use App\Models\SavedConnection;
 use App\Models\Transfer;
+use App\Transfers\Native\NativeProcess;
 use App\Transfers\TransferCancelled;
 use App\Transfers\TransferProgress;
 use App\Transfers\TransferTarget;
@@ -150,11 +151,7 @@ abstract class TransferJob implements ShouldQueue
             // An undecryptable password has nothing to leak.
         }
 
-        if (is_string($password) && $password !== '') {
-            $message = str_replace($password, '***', $message);
-        }
-
-        return preg_replace('/(PGPASSWORD|password)=\S+/i', '$1=***', $message) ?? '';
+        return NativeProcess::sanitize($message, is_string($password) ? $password : null);
     }
 
     /**

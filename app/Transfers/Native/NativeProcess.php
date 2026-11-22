@@ -127,11 +127,20 @@ final class NativeProcess
         return self::sanitize($this->stderr, $this->secret);
     }
 
-    /** Removes the password itself and anything shaped like `password=…` / `PGPASSWORD=…` / `MYSQL_PWD=…`. */
+    /** Below this length a password is only removed where it stands as a token of its own. */
+    private const SHORT_SECRET = 4;
+
+    /**
+     * Removes the password itself and anything shaped like `password=…` / `PGPASSWORD=…` / `MYSQL_PWD=…`. A short
+     * password ("ab") is removed only where it stands alone (not inside "table abc"): replacing every occurrence
+     * would mangle the message and point at the password.
+     */
     public static function sanitize(string $text, ?string $secret = null): string
     {
         if ($secret !== null && $secret !== '') {
-            $text = str_replace($secret, '***', $text);
+            $text = mb_strlen($secret) >= self::SHORT_SECRET
+                ? str_replace($secret, '***', $text)
+                : (string) preg_replace('/(?<!\w)'.preg_quote($secret, '/').'(?!\w)/u', '***', $text);
         }
         // "(using password: YES)" in MySQL's access-denied message says nothing secret and stays readable.
         $text = (string) preg_replace(
