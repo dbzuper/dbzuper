@@ -64,7 +64,7 @@ Route::middleware('auth')->group(function () {
             ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.index');
         Route::post('transfers/export', [TransferController::class, 'export'])->name('transfers.export');
         Route::post('transfers/import', [TransferController::class, 'import'])->name('transfers.import');
-        // A restore upload sends one request per 8 MB chunk: its own, higher limit.
+        // A restore upload sends one request per 4 MiB chunk (up to 8 MiB accepted): its own, higher limit.
         Route::put('transfers/{transfer}/upload', [TransferController::class, 'upload'])->whereUuid('transfer')
             ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.upload');
         Route::get('transfers/{transfer}', [TransferController::class, 'show'])->whereUuid('transfer')

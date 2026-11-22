@@ -87,8 +87,9 @@ Each backup and restore uses one of two methods, shown under **Method**:
 - **Built-in** is DBZuper's own exporter and importer, written in PHP. It always works and needs no tools.
 - A tool is compatible when it comes from the same engine (MySQL's tools don't count for MariaDB, nor MariaDB's for
   MySQL) and, for PostgreSQL and MySQL, its version is at least the server's (`pg_dump` 18 dumps any server up to 18;
-  `mysqldump` 8.4 dumps MySQL 5.7 to 8.4). For MariaDB any MariaDB tool from 10 on works. Otherwise the dialog says why ("pg_dump 16 found, server is 18 — using
-  built-in") and uses built-in. You can always switch to built-in; native can't be forced.
+  `mysqldump` 8.4 dumps MySQL 5.7 to 8.4). For MariaDB any MariaDB tool from 10 on works. Otherwise the dialog says why
+  ("pg_dump 16 found, server is 18 — using built-in") and uses built-in. You can always switch to built-in; native can't
+  be forced.
 - SQLite always uses built-in, in both directions (it runs in-process, so a tool gains nothing).
 - Native MySQL/MariaDB backups round `FLOAT` (single-precision) columns to 6 significant digits, a `mysqldump` limit.
   When the chosen tables have `FLOAT` columns the dialog warns; use built-in for exact values.

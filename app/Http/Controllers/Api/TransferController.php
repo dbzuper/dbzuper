@@ -43,7 +43,7 @@ use Throwable;
 
 class TransferController extends Controller
 {
-    /** The largest upload chunk taken in one request; the browser sends 8 MiB. */
+    /** The largest upload chunk taken in one request (8 MiB); the browser sends 4 MiB. */
     public const CHUNK_MAX_BYTES = 8 * 1024 * 1024;
 
     /** The upload's file inside the transfer's directory. */

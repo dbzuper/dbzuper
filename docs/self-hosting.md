@@ -26,6 +26,8 @@ Then open <http://localhost:8080> and create the administrator with the setup co
        services:
            app:
                image: ghcr.io/dbzuper/dbzuper:latest
+               # Keep the host name fixed: on start, backups/restores this host left running are failed (see Workers).
+               hostname: dbzuper
                ports: ['8080:8080']
                extra_hosts: ['host.docker.internal:host-gateway']
                env_file: [{ path: .env.docker, required: false }]
@@ -241,7 +243,11 @@ If Docker Engine runs inside a WSL distribution (not Docker Desktop) and the dat
       [wsl2]
       networkingMode=mirrored
 
-    Then run the container with host networking (`network_mode: host` in Compose, `--network host` with `docker run`) and connect to `127.0.0.1`. With host networking the container uses the WSL network directly, so `ports` is ignored and DBZuper listens on port 8080 of WSL, which mirrored mode shares with Windows. Docker refuses a host name together with host networking, so also remove `hostname: dbzuper` from `docker-compose.yml` (or `--hostname` from `docker run`); the container then has the WSL host name, which stays the same across restarts anyway.
+    Then run the container with host networking (`network_mode: host` in Compose, `--network host` with `docker run`)
+    and connect to `127.0.0.1`. With host networking the container uses the WSL network directly, so `ports` is ignored
+    and DBZuper listens on port 8080 of WSL, which mirrored mode shares with Windows. Docker refuses a host name
+    together with host networking, so also remove `hostname: dbzuper` from `docker-compose.yml` (or `--hostname` from
+    `docker run`); the container then has the WSL host name, which stays the same across restarts anyway.
 
 ## Adding SQLite files
 
@@ -313,12 +319,14 @@ background worker is running"). One-off commands (`docker compose run --rm app p
   runs per database at a time.
 - `docker compose stop` gives the container 10 seconds. A backup or restore still running then is killed. When the
   container starts again, the entrypoint marks it failed ("The server restarted while this was running.") and removes
-  its partial file before any worker starts, so the database is free at once. This matches by host name:
-  `docker-compose.yml` sets `hostname: dbzuper` so a recreated container (an upgrade, a changed `.env.docker`) counts
-  as the same host; with `docker run`, pass `--hostname dbzuper`. Otherwise, and outside Docker, an interrupted
-  transfer is marked failed once DBZuper notices its worker process is gone, at the latest after 6 hours without
-  progress; until then that database can't start another one. To avoid all this, let transfers finish before stopping,
-  or raise `stop_grace_period` in `docker-compose.yml`.
+  its partial or uploaded file before any worker starts, so the database is free at once (a restore must be uploaded
+  again). This matches by host name: `docker-compose.yml` sets `hostname: dbzuper` so a recreated container (an upgrade,
+  a changed `.env.docker`) counts as the same host; with `docker run`, pass `--hostname dbzuper`. Run one container per
+  storage volume: the host name identifies it, and two containers sharing a volume or application database would fail
+  each other's running transfers. Otherwise, and outside Docker, an interrupted transfer is marked failed once DBZuper
+  notices its worker process is gone, at the latest after 6 hours without progress; until then that database can't start
+  another one. To avoid all this, let transfers finish before stopping, or raise `stop_grace_period` in
+  `docker-compose.yml`.
 - Outside Docker, run a worker yourself (under systemd, Supervisor or similar), and run
   `php artisan dbzuper:transfers:recover` before starting the workers after a reboot:
 
@@ -344,8 +352,9 @@ which needs no tools (the user guide lists what it leaves out). The image includ
 No `sqlite3`: SQLite always uses built-in. Check what the image finds with
 `docker compose exec app sh -c 'pg_dump --version; mariadb-dump --version; mysqldump --version'`.
 
-Outside Docker, tools are found on `PATH`, then in a local laman install (`~/.laman/bin/{mysql,mariadb,postgres}/<version>/bin`,
-newest version first). To use a particular binary, set its path; when set, only that path is tried:
+Outside Docker, tools are found on `PATH`, then in a local laman install
+(`~/.laman/bin/{mysql,mariadb,postgres}/<version>/bin`, newest version first). To use a particular binary, set its path;
+when set, only that path is tried:
 
 | Variable                    | Tool           |
 | --------------------------- | -------------- |
