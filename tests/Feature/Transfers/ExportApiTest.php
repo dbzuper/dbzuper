@@ -17,6 +17,7 @@ use App\Transfers\TransferProgress;
 use App\Transfers\TransferStorage;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Connection;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
@@ -316,4 +317,15 @@ it('fails a native backup whose tool is no longer usable instead of switching me
         ->and($done->error)->toBe('The native backup tool can no longer be used: SQLite always uses the built-in method')
         ->and($done->file_path)->toBeNull()
         ->and(is_dir(storage_path('app/private/transfers/'.$transfer->id)))->toBeFalse();
+});
+
+it('fails the backup when the job cannot be queued', function () {
+    Bus::shouldReceive('dispatch')->once()->andThrow(new RuntimeException('queue down'));
+
+    startExport()->assertStatus(503)->assertJson(['message' => "Couldn't queue the job: queue down"]);
+
+    $transfer = Transfer::query()->sole();
+    expect($transfer->status)->toBe(TransferStatus::Failed)
+        ->and($transfer->error)->toBe("Couldn't queue the job: queue down")
+        ->and($transfer->finished_at)->not->toBeNull();
 });

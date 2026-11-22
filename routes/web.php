@@ -58,6 +58,10 @@ Route::middleware('auth')->group(function () {
         Route::get('transfers/objects', [TransferController::class, 'objects'])->name('transfers.objects');
         Route::get('transfers', [TransferController::class, 'index'])->name('transfers.index');
         Route::post('transfers/export', [TransferController::class, 'export'])->name('transfers.export');
+        Route::post('transfers/import', [TransferController::class, 'import'])->name('transfers.import');
+        // A restore upload sends one request per 8 MB chunk: its own, higher limit.
+        Route::put('transfers/{transfer}/upload', [TransferController::class, 'upload'])->whereUuid('transfer')
+            ->withoutMiddleware('throttle:dbzuper-api')->middleware('throttle:dbzuper-transfers')->name('transfers.upload');
         Route::get('transfers/{transfer}', [TransferController::class, 'show'])->whereUuid('transfer')->name('transfers.show');
         Route::post('transfers/{transfer}/cancel', [TransferController::class, 'cancel'])->whereUuid('transfer')->name('transfers.cancel');
         // Downloads are few and long; a resumed one must not trip the API limit.

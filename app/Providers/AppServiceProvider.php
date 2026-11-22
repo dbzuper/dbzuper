@@ -55,6 +55,8 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('dbzuper-api', fn (Request $request) => Limit::perMinute((int) config('dbzuper.api_per_minute'))->by($request->user()?->id ?: $request->ip()));
         // Exploring records fires a request per card and per port, far more often than the rest of the API.
         RateLimiter::for('dbzuper-records', fn (Request $request) => Limit::perMinute(1000)->by($request->user()?->id ?: $request->ip()));
+        // Restore uploads arrive in 8 MB chunks: 600 a minute leaves room for a fast link and retries.
+        RateLimiter::for('dbzuper-transfers', fn (Request $request) => Limit::perMinute(600)->by($request->user()?->id ?: $request->ip()));
     }
 
     /**

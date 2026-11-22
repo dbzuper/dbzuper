@@ -51,6 +51,14 @@ class DumpReader
         }
     }
 
+    /** Releases the file now rather than when the reader is collected (a file still open can't be deleted on Windows). */
+    public function close(): void
+    {
+        if (is_resource($this->handle)) {
+            fclose($this->handle);
+        }
+    }
+
     public function isGzip(): bool
     {
         return $this->gzip;

@@ -12,7 +12,10 @@ use App\Enums\TransferMethod;
 use App\Enums\TransferStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StartExportRequest;
+use App\Http\Requests\StartImportRequest;
 use App\Jobs\RunExport;
+use App\Jobs\RunImport;
+use App\Jobs\TransferJob;
 use App\Models\SavedConnection;
 use App\Models\Transfer;
 use App\Models\User;
@@ -29,13 +32,22 @@ use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Throwable;
 
 class TransferController extends Controller
 {
+    /** The largest upload chunk taken in one request; the browser sends 8 MiB. */
+    public const CHUNK_MAX_BYTES = 8 * 1024 * 1024;
+
+    /** The upload's file inside the transfer's directory. */
+    private const UPLOAD_FILE = 'upload';
+
     public function capabilities(Request $request, SavedConnection $connection, TransferPlanner $planner): JsonResponse
     {
         Gate::authorize('view', $connection);
@@ -70,7 +82,10 @@ class TransferController extends Controller
     public function index(Request $request, SavedConnection $connection): JsonResponse
     {
         Gate::authorize('view', $connection);
-        TransferStorage::prune();
+        // The dialog polls this list: the cleanup runs at most once a minute (starting a transfer always runs it).
+        if (Cache::add('dbzuper.transfers.pruned', true, 60)) {
+            TransferStorage::prune();
+        }
 
         $transfers = $this->scope($request, $connection)->orderByDesc('created_at')->orderByDesc('id')->limit(10)->get();
 
@@ -123,9 +138,135 @@ class TransferController extends Controller
         }
 
         $transfer->forceFill(['warnings' => $warnings])->save();
-        RunExport::dispatch($transfer->id);
+        if (($failed = $this->queue($transfer, new RunExport($transfer->id))) !== null) {
+            return $failed;
+        }
 
         return response()->json($transfer->toApiArray(), 202);
+    }
+
+    /**
+     * Starts a restore into the open database. The transfer waits in Uploading until upload() has every byte; the
+     * method is decided now, and the job fails rather than switch if it can no longer be used by then.
+     */
+    public function import(StartImportRequest $request, SavedConnection $connection, TransferPlanner $planner): JsonResponse
+    {
+        $requested = $request->validated('method');
+        [$method, $check] = $planner->resolve($connection, TransferDirection::Import, is_string($requested) ? TransferMethod::from($requested) : null);
+
+        /** @var User $user */
+        $user = $request->user();
+
+        try {
+            $transfer = TransferStarter::start(
+                $connection,
+                $user,
+                TransferDirection::Import,
+                $method,
+                ['method_reason' => $check->reason],
+                $request->fileName(),
+                (int) $request->validated('size'),
+                TransferStatus::Uploading,
+            );
+        } catch (TransferConflict $e) {
+            return response()->json(['message' => $e->getMessage()], 409);
+        }
+
+        // Saved before the file exists, so every cleanup path knows about it.
+        $path = TransferStorage::directory($transfer).DIRECTORY_SEPARATOR.self::UPLOAD_FILE;
+        $transfer->forceFill(['file_path' => $path])->save();
+        touch($path);
+
+        return response()->json($transfer->toApiArray(), 201);
+    }
+
+    /**
+     * Appends one chunk of the restore file (the raw request body) at the offset in the Upload-Offset header. A chunk
+     * sent at any other offset than the file's current size (a retry after a dropped connection) gets 409 with that
+     * size, and the browser resumes from there. The last byte moves the transfer to Pending and queues the restore.
+     */
+    public function upload(Request $request, SavedConnection $connection, string $transfer): JsonResponse
+    {
+        $found = $this->find($request, $connection, $transfer);
+
+        $header = $request->header('Upload-Offset');
+        if (! is_string($header) || preg_match('/^\d{1,18}$/', $header) !== 1) {
+            return response()->json(['message' => 'The Upload-Offset header must be a byte offset.'], 422);
+        }
+        $offset = (int) $header;
+
+        $length = $request->header('Content-Length');
+        if (is_numeric($length) && (int) $length > self::CHUNK_MAX_BYTES) {
+            return $this->chunkTooLarge();
+        }
+
+        if ($found->status !== TransferStatus::Uploading || ! filled($found->file_path)) {
+            return $this->notUploading($found);
+        }
+
+        $file = @fopen((string) $found->file_path, 'c+b');
+        if ($file === false) {
+            return $this->notUploading($found->refresh());
+        }
+
+        $total = (int) $found->bytes_total;
+
+        try {
+            // One chunk at a time per upload: a retry racing the original request waits, then sees the new size.
+            flock($file, LOCK_EX);
+            if ($found->refresh()->status !== TransferStatus::Uploading) {
+                return $this->notUploading($found);
+            }
+
+            // The file's size, with the position left at its end for the append.
+            $current = fseek($file, 0, SEEK_END) === 0 ? ftell($file) : false;
+            if ($current === false) {
+                throw new RuntimeException("Couldn't read the upload's size.");
+            }
+            if ($offset !== $current) {
+                return response()->json(['offset' => $current], 409);
+            }
+
+            $allowed = min(self::CHUNK_MAX_BYTES, $total - $current);
+            // Streamed from the request into the file, never held in memory. Copying one byte more than allowed
+            // tells an oversized chunk, which is then cut off again.
+            $written = (int) stream_copy_to_stream($request->getContent(true), $file, $allowed + 1);
+            fflush($file);
+
+            if ($written > $allowed) {
+                ftruncate($file, max(0, $current)); // a file size, never negative
+
+                return $written > self::CHUNK_MAX_BYTES
+                    ? $this->chunkTooLarge()
+                    : response()->json(['message' => 'The file is larger than the size given when the upload started.', 'offset' => $current], 422);
+            }
+            $offset = $current + $written;
+        } finally {
+            flock($file, LOCK_UN);
+            fclose($file);
+        }
+
+        if ($offset < $total) {
+            // Also keeps updated_at fresh, so the cleanup doesn't take a slow upload for an abandoned one.
+            $saved = Transfer::query()->whereKey($found->id)->where('status', TransferStatus::Uploading)->update(['bytes_done' => $offset]);
+
+            return $saved === 1
+                ? response()->json(['offset' => $offset, 'status' => TransferStatus::Uploading->value])
+                : $this->notUploading($found->refresh());
+        }
+
+        // bytes_done counts again from 0 as the restore reads the file.
+        $queued = Transfer::query()->whereKey($found->id)->where('status', TransferStatus::Uploading)
+            ->update(['status' => TransferStatus::Pending, 'bytes_done' => 0]);
+        if ($queued !== 1) {
+            return $this->notUploading($found->refresh());
+        }
+
+        if (($failed = $this->queue($found->refresh(), new RunImport($found->id))) !== null) {
+            return $failed;
+        }
+
+        return response()->json(['offset' => $offset, 'status' => TransferStatus::Pending->value]);
     }
 
     public function show(Request $request, SavedConnection $connection, string $transfer): JsonResponse
@@ -140,9 +281,13 @@ class TransferController extends Controller
 
         if ($found->status->isActive()) {
             Transfer::query()->whereKey($found->id)->whereNull('cancel_requested_at')->update(['cancel_requested_at' => now()]);
-            // Only while still Pending: a worker that has just picked it up sees the flag instead.
-            Transfer::query()->whereKey($found->id)->where('status', TransferStatus::Pending)
+            // Only while still uploading or queued: a worker that has just picked it up sees the flag instead.
+            $stopped = Transfer::query()->whereKey($found->id)
+                ->whereIn('status', [TransferStatus::Uploading->value, TransferStatus::Pending->value])
                 ->update(['status' => TransferStatus::Cancelled, 'finished_at' => now()]);
+            if ($stopped === 1) {
+                $this->deleteUpload($found->refresh());
+            }
         }
 
         return response()->json($found->refresh()->toApiArray());
@@ -158,6 +303,57 @@ class TransferController extends Controller
         return response()->download($path, (string) $found->file_name, [
             'Content-Type' => str_ends_with((string) $found->file_name, '.gz') ? 'application/gzip' : 'application/sql',
         ]);
+    }
+
+    /**
+     * Queues the job. When that fails the transfer is failed with the reason, so it doesn't hold the database's one
+     * active transfer slot forever, and the response says why.
+     */
+    private function queue(Transfer $transfer, TransferJob $job): ?JsonResponse
+    {
+        try {
+            Bus::dispatch($job);
+
+            return null;
+        } catch (Throwable $e) {
+            report($e);
+            $message = "Couldn't queue the job: ".$e->getMessage();
+            $transfer->forceFill(['status' => TransferStatus::Failed, 'error' => $message, 'finished_at' => now()])->save();
+            $this->deleteUpload($transfer);
+
+            return response()->json(['message' => $message], 503);
+        }
+    }
+
+    /** Removes a restore's uploaded file. When it can't be removed yet, file_path stays so the cleanup retries later. */
+    private function deleteUpload(Transfer $transfer): void
+    {
+        if ($transfer->direction !== TransferDirection::Import || $transfer->file_path === null) {
+            return;
+        }
+
+        TransferStorage::deleteFiles($transfer);
+        if (! file_exists($transfer->file_path)) {
+            $transfer->forceFill(['file_path' => null])->save();
+        }
+    }
+
+    private function notUploading(Transfer $transfer): JsonResponse
+    {
+        // A chunk that raced a cancel or the abandoned-upload cleanup may have recreated the file.
+        if ($transfer->status->isFinished()) {
+            $this->deleteUpload($transfer);
+        }
+
+        return response()->json([
+            'message' => 'This upload is no longer accepting data.',
+            'status' => $transfer->status->value,
+        ], 409);
+    }
+
+    private function chunkTooLarge(): JsonResponse
+    {
+        return response()->json(['message' => 'An upload chunk can be at most 8 MB.'], 413);
     }
 
     /** @return list<DumpObject> */

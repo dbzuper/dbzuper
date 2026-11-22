@@ -169,3 +169,36 @@ it('records the worker and never overwrites a finished transfer on failed()', fu
 
     expect($t->fresh()->status)->toBe(TransferStatus::Done);
 });
+
+it('does not run a transfer another worker already started, or one still uploading', function (TransferStatus $status) {
+    $t = fakeJobTransfer();
+    $t->forceFill(['status' => $status, 'started_at' => null])->save();
+    $ran = false;
+    FakeTransferJob::$perform = function () use (&$ran) {
+        $ran = true;
+    };
+
+    (new FakeTransferJob($t->id))->handle();
+
+    expect($ran)->toBeFalse()
+        ->and($t->fresh()->status)->toBe($status)
+        ->and($t->fresh()->started_at)->toBeNull();
+})->with([TransferStatus::Running, TransferStatus::Uploading]);
+
+it('moves to running only while still pending', function () {
+    $t = fakeJobTransfer();
+    $ran = false;
+    FakeTransferJob::$perform = function () use (&$ran) {
+        $ran = true;
+    };
+    // Another worker picks the same transfer up between the read and the move to Running.
+    Transfer::retrieved(function (Transfer $model) use ($t) {
+        if ($model->id === $t->id) {
+            Transfer::query()->whereKey($t->id)->update(['status' => TransferStatus::Running]);
+        }
+    });
+
+    (new FakeTransferJob($t->id))->handle();
+
+    expect($ran)->toBeFalse()->and($t->fresh()->status)->toBe(TransferStatus::Running);
+});

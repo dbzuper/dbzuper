@@ -31,24 +31,31 @@ abstract class TransferJob implements ShouldQueue
     {
         $transfer = Transfer::query()->findOrFail($this->transferId);
 
-        // Failed by the dead-run sweep or cancelled while queued: nothing to run.
-        if (! $transfer->status->isActive()) {
+        // Failed by the dead-run sweep, cancelled while queued, still uploading or already picked up by another
+        // worker: nothing to run.
+        if ($transfer->status !== TransferStatus::Pending) {
             return;
         }
 
         if ($transfer->cancelRequested()) {
-            $transfer->forceFill(['status' => TransferStatus::Cancelled, 'finished_at' => now()])->save();
-            $this->onCancelled($transfer);
+            if ($this->claim($transfer, ['status' => TransferStatus::Cancelled, 'finished_at' => now()])) {
+                $this->onCancelled($transfer->refresh());
+            }
 
             return;
         }
 
-        $transfer->forceFill([
+        // Only one worker moves it out of Pending: a second delivery of the job, or a cancel that landed since the
+        // read above, changes nothing here and the job ends.
+        if (! $this->claim($transfer, [
             'status' => TransferStatus::Running,
             'started_at' => now(),
             'worker_host' => gethostname() ?: null,
             'worker_pid' => getmypid() ?: null,
-        ])->save();
+        ])) {
+            return;
+        }
+        $transfer->refresh();
 
         $progress = new TransferProgress($transfer);
 
@@ -113,6 +120,16 @@ abstract class TransferJob implements ShouldQueue
         }
 
         return preg_replace('/(PGPASSWORD|password)=\S+/i', '$1=***', $message) ?? '';
+    }
+
+    /**
+     * Applies the changes only while the transfer is still Pending.
+     *
+     * @param  array<string, mixed>  $changes
+     */
+    private function claim(Transfer $transfer, array $changes): bool
+    {
+        return Transfer::query()->whereKey($transfer->id)->where('status', TransferStatus::Pending)->update($changes) === 1;
     }
 
     private function markFailed(Transfer $transfer, Throwable $e): void
