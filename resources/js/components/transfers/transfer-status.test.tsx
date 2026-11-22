@@ -195,3 +195,70 @@ describe('TransferStatus progress and results', () => {
         );
     });
 });
+
+describe('TransferStatus while uploading', () => {
+    const uploading = (bytes_done: number) =>
+        transfer({
+            direction: 'import',
+            status: 'uploading',
+            bytes_done,
+            bytes_total: 4 * 1024 * 1024,
+        });
+
+    it('shows the upload percentage from the poll', async () => {
+        vi.spyOn(transfersApi, 'show').mockResolvedValue(
+            uploading(1024 * 1024),
+        );
+        render(<TransferStatus workspace="5" transfer={uploading(0)} />);
+        await flush();
+        expect(
+            screen.getByRole('progressbar', { name: 'Upload progress' }),
+        ).toHaveAttribute('aria-valuenow', '25');
+        expect(screen.getByText('25% · 1 MB of 4 MB')).toBeInTheDocument();
+        expect(
+            screen.getByText(
+                'Keep this dialog open until the upload finishes.',
+            ),
+        ).toBeInTheDocument();
+    });
+
+    it("uses the page's own count when it is ahead of the poll", async () => {
+        vi.spyOn(transfersApi, 'show').mockResolvedValue(uploading(0));
+        render(
+            <TransferStatus
+                workspace="5"
+                transfer={uploading(0)}
+                uploaded={2 * 1024 * 1024}
+                uploadNote="Closing stops the upload."
+            />,
+        );
+        await flush();
+        expect(
+            screen.getByRole('progressbar', { name: 'Upload progress' }),
+        ).toHaveAttribute('aria-valuenow', '50');
+        expect(
+            screen.getByText('Closing stops the upload.'),
+        ).toBeInTheDocument();
+    });
+
+    it('calls onCancel before cancelling on the server', async () => {
+        vi.spyOn(transfersApi, 'show').mockResolvedValue(uploading(0));
+        const calls: string[] = [];
+        vi.spyOn(transfersApi, 'cancel').mockImplementation(() => {
+            calls.push('server');
+            return new Promise(() => {});
+        });
+        render(
+            <TransferStatus
+                workspace="5"
+                transfer={uploading(0)}
+                onCancel={() => calls.push('page')}
+            />,
+        );
+        await flush();
+        act(() =>
+            screen.getByRole('button', { name: 'Cancel restore' }).click(),
+        );
+        expect(calls).toEqual(['page', 'server']);
+    });
+});

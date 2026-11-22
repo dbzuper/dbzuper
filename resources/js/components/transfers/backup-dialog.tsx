@@ -8,7 +8,6 @@ import {
     useRef,
     useState,
 } from 'react';
-import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -27,35 +26,14 @@ import type {
     DumpObject,
     Transfer,
     TransferCapabilities,
-    TransferMethod,
 } from '@/lib/transfers-api';
-import { cn } from '@/lib/utils';
 import type { ConnectionSummary } from '@/types/connection';
+import { MethodChoice, Row, radioClass, useMethod } from './form-parts';
 import { RecentTransfers } from './recent-transfers';
 import { TransferStatus, apiMessage } from './transfer-status';
 
 /** Capabilities are read again this long after the chosen tables last changed (the native gaps depend on them). */
 export const CAPABILITIES_DEBOUNCE_MS = 400;
-
-const radioClass =
-    'size-4 shrink-0 accent-primary disabled:cursor-not-allowed disabled:opacity-50';
-
-/** One labelled row of the form: the label column, then its controls. */
-function Row({ label, children }: { label: string; children: ReactNode }) {
-    const id = useId();
-    return (
-        <div
-            role="group"
-            aria-labelledby={id}
-            className="grid grid-cols-[5.5rem_1fr] items-start gap-x-3 gap-y-2"
-        >
-            <span id={id} className="pt-px text-sm text-muted-foreground">
-                {label}
-            </span>
-            <div className="grid min-w-0 gap-2">{children}</div>
-        </div>
-    );
-}
 
 function Check({
     label,
@@ -278,9 +256,6 @@ export function BackupDialog({
     const [data, setData] = useState(true);
     const [drop, setDrop] = useState(true);
     const [gzip, setGzip] = useState(true);
-    /** The user's choice; null keeps the server's default. */
-    const [method, setMethod] = useState<TransferMethod | null>(null);
-    const [methodOpen, setMethodOpen] = useState(false);
 
     const [active, setActive] = useState<Transfer | null>(null);
     const [starting, setStarting] = useState(false);
@@ -406,19 +381,12 @@ export function BackupDialog({
     }, [focusTo, active]);
 
     const native = caps?.export.native ?? null;
-    const effective: TransferMethod | null = caps
-        ? native?.usable
-            ? (method ?? caps.export.default_method)
-            : 'builtin'
-        : null;
-    const methodLine =
-        effective === null || native === null
-            ? 'Checking…'
-            : effective === 'native'
-              ? `Native — ${native.reason}`
-              : native.usable
-                ? 'Built-in'
-                : native.reason;
+    const {
+        setMethod,
+        effective,
+        line: methodLine,
+        requested: requestedMethod,
+    } = useMethod(native, caps?.export.default_method ?? null);
     const gaps =
         effective === 'native'
             ? (caps?.export.native_gaps ?? [])
@@ -463,8 +431,7 @@ export function BackupDialog({
                 drop: structure && drop,
                 gzip,
                 // A native choice made before native turned out unusable (for the chosen tables) falls back.
-                method:
-                    method === 'native' && !native?.usable ? 'builtin' : method,
+                method: requestedMethod,
             })
             .then((t) => {
                 setFinished(!ACTIVE_STATUSES.includes(t.status));
@@ -594,68 +561,12 @@ export function BackupDialog({
                             />
                         </Row>
                         <Row label="Method">
-                            <div className="flex min-w-0 items-start gap-2">
-                                <span className="min-w-0 flex-1 text-sm">
-                                    {methodLine}
-                                </span>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 shrink-0 px-2 text-xs"
-                                    aria-label="Change method"
-                                    aria-expanded={methodOpen}
-                                    disabled={caps === null}
-                                    onClick={() => setMethodOpen((o) => !o)}
-                                >
-                                    Change
-                                </Button>
-                            </div>
-                            {methodOpen && native && (
-                                <div
-                                    role="radiogroup"
-                                    aria-label="Method"
-                                    className="grid gap-1 rounded-md border p-2"
-                                >
-                                    <label
-                                        className={cn(
-                                            'inline-flex items-start gap-2 text-sm',
-                                            !native.usable &&
-                                                'text-muted-foreground',
-                                        )}
-                                    >
-                                        <input
-                                            type="radio"
-                                            name={`${methodName}-method`}
-                                            className={cn(radioClass, 'mt-0.5')}
-                                            checked={effective === 'native'}
-                                            disabled={!native.usable}
-                                            onChange={() => setMethod('native')}
-                                        />
-                                        <span>
-                                            Native
-                                            {native.reason && (
-                                                <span className="text-muted-foreground">
-                                                    {' '}
-                                                    — {native.reason}
-                                                </span>
-                                            )}
-                                        </span>
-                                    </label>
-                                    <label className="inline-flex items-center gap-2 text-sm">
-                                        <input
-                                            type="radio"
-                                            name={`${methodName}-method`}
-                                            className={radioClass}
-                                            checked={effective === 'builtin'}
-                                            onChange={() =>
-                                                setMethod('builtin')
-                                            }
-                                        />
-                                        Built-in
-                                    </label>
-                                </div>
-                            )}
+                            <MethodChoice
+                                native={native}
+                                effective={effective}
+                                line={methodLine}
+                                onChoose={setMethod}
+                            />
                             {caps && (
                                 <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                                     <Info

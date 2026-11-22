@@ -31,6 +31,7 @@ import { CommandPalette } from '@/components/workspace/command-palette';
 import { FocusChip } from '@/components/workspace/focus-chip';
 import { PathDialog } from '@/components/workspace/path-dialog';
 import { BackupDialog } from '@/components/transfers/backup-dialog';
+import { RestoreDialog } from '@/components/transfers/restore-dialog';
 import { PathPickChip } from '@/components/workspace/path-pick-chip';
 import { LeftRail } from '@/components/workspace/left-rail';
 import { StatusBar } from '@/components/workspace/status-bar';
@@ -335,6 +336,13 @@ export default function WorkspaceShow({
     const pathFrom = useWorkspace((s) => s.pathFrom);
     const transferDialog = useWorkspace((s) => s.transferDialog);
     const setTransferDialog = useWorkspace((s) => s.setTransferDialog);
+    // Stable: the restore dialog closes itself from an effect (read-only connections).
+    const onRestoreOpenChange = useCallback(
+        (o: boolean) => {
+            if (!o) setTransferDialog(null);
+        },
+        [setTransferDialog],
+    );
     const setPaletteOpen = useWorkspace((s) => s.setPaletteOpen);
     useEffect(() => {
         if (pathFrom) setPaletteOpen(true);
@@ -651,13 +659,18 @@ export default function WorkspaceShow({
                     </aside>
                 )}
             </div>
-            {/* The restore dialog (transferDialog === 'restore') is mounted by the restore task. */}
             <BackupDialog
                 connection={connection}
                 open={transferDialog === 'backup'}
                 onOpenChange={(o) => {
                     if (!o) setTransferDialog(null);
                 }}
+                serverVersion={data?.server?.version ?? null}
+            />
+            <RestoreDialog
+                connection={connection}
+                open={transferDialog === 'restore'}
+                onOpenChange={onRestoreOpenChange}
                 serverVersion={data?.server?.version ?? null}
             />
             <StatusBar

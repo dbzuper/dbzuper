@@ -88,6 +88,71 @@ function progressOf(t: Transfer): { text: string; percent: number | null } {
     return { text: `${formatBytes(t.bytes_done)} written`, percent: null };
 }
 
+/** The upload's share of the file, from this page's own count when it is ahead of the last poll. */
+function uploadProgressOf(
+    t: Transfer,
+    uploaded: number | undefined,
+): { text: string; percent: number | null } {
+    const done = Math.max(t.bytes_done, uploaded ?? 0);
+    if (t.bytes_total == null || t.bytes_total <= 0)
+        return { text: `${formatBytes(done)} sent`, percent: null };
+    const percent = Math.min(100, Math.floor((done / t.bytes_total) * 100));
+    return {
+        text: `${percent}% · ${formatBytes(Math.min(done, t.bytes_total))} of ${formatBytes(t.bytes_total)}`,
+        percent,
+    };
+}
+
+/** A labelled progress bar; without a percentage it pulses. */
+function Progress({
+    label,
+    current = null,
+    detail,
+    percent,
+    name,
+}: {
+    label: string;
+    current?: string | null;
+    detail: string;
+    percent: number | null;
+    name: string;
+}) {
+    return (
+        <div className="grid gap-1.5">
+            <div className="flex min-w-0 items-baseline gap-2">
+                <span className="text-muted-foreground">{label}</span>
+                {current && (
+                    <span className="truncate font-mono text-[12.5px]">
+                        {current}
+                    </span>
+                )}
+                <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {detail}
+                </span>
+            </div>
+            <div
+                role="progressbar"
+                aria-label={name}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percent ?? undefined}
+                className="h-1.5 overflow-hidden rounded-full bg-muted"
+            >
+                <div
+                    className={cn(
+                        'h-full rounded-full bg-primary transition-[width] motion-reduce:transition-none',
+                        percent === null &&
+                            'w-1/3 animate-pulse motion-reduce:animate-none',
+                    )}
+                    style={
+                        percent === null ? undefined : { width: `${percent}%` }
+                    }
+                />
+            </div>
+        </div>
+    );
+}
+
 /**
  * A started backup or restore: waiting, progress with Cancel, then Download (backups), the failure, or the
  * cancellation. Polls the transfer itself; `transfer` is the row as it was when started.
@@ -96,11 +161,20 @@ export function TransferStatus({
     workspace,
     transfer: initial,
     onDone,
+    onCancel,
+    uploaded,
+    uploadNote = 'Keep this dialog open until the upload finishes.',
 }: {
     workspace: WorkspaceRef;
     transfer: Transfer;
     /** Called once when the transfer ends (done, failed or cancelled). */
     onDone?: (t: Transfer) => void;
+    /** Called when Cancel is pressed, before the server is asked to cancel (e.g. to stop an upload). */
+    onCancel?: () => void;
+    /** Bytes this page has uploaded so far: newer than the last poll's bytes_done. */
+    uploaded?: number;
+    /** Shown under the upload's progress. */
+    uploadNote?: string;
 }) {
     const poll = useTransferPoll(workspace, initial.id);
     const t = poll.transfer ?? initial;
@@ -120,6 +194,7 @@ export function TransferStatus({
     }, [poll.transfer, onDone]);
 
     const cancel = () => {
+        onCancel?.();
         setCancelling(true);
         setCancelError(null);
         transfersApi.cancel(workspace, t.id).catch((e: unknown) => {
@@ -129,6 +204,7 @@ export function TransferStatus({
     };
     const cancelRequested = cancelling || t.cancel_requested_at != null;
     const progress = progressOf(t);
+    const upload = uploadProgressOf(t, uploaded);
 
     // Announced when the state changes, not with every progress tick.
     const announcement = {
@@ -149,7 +225,12 @@ export function TransferStatus({
                 {announcement}
             </p>
             {t.status === 'uploading' && (
-                <p className="text-muted-foreground">Uploading the file…</p>
+                <Progress
+                    label="Uploading the file…"
+                    detail={upload.text}
+                    percent={upload.percent}
+                    name="Upload progress"
+                />
             )}
             {t.status === 'pending' && (
                 <p className="flex items-start gap-2 text-muted-foreground">
@@ -170,50 +251,21 @@ export function TransferStatus({
                 </p>
             )}
             {t.status === 'running' && (
-                <div className="grid gap-1.5">
-                    <div className="flex min-w-0 items-baseline gap-2">
-                        <span className="text-muted-foreground">
-                            {t.direction === 'export'
-                                ? 'Backing up'
-                                : 'Restoring'}
-                        </span>
-                        {t.current_table && (
-                            <span className="truncate font-mono text-[12.5px]">
-                                {t.current_table}
-                            </span>
-                        )}
-                        <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-                            {progress.text}
-                        </span>
-                    </div>
-                    <div
-                        role="progressbar"
-                        aria-label={`${noun[0].toUpperCase()}${noun.slice(1)} progress`}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={progress.percent ?? undefined}
-                        className="h-1.5 overflow-hidden rounded-full bg-muted"
-                    >
-                        <div
-                            className={cn(
-                                'h-full rounded-full bg-primary transition-[width] motion-reduce:transition-none',
-                                progress.percent === null &&
-                                    'w-1/3 animate-pulse motion-reduce:animate-none',
-                            )}
-                            style={
-                                progress.percent === null
-                                    ? undefined
-                                    : { width: `${progress.percent}%` }
-                            }
-                        />
-                    </div>
-                </div>
+                <Progress
+                    label={
+                        t.direction === 'export' ? 'Backing up' : 'Restoring'
+                    }
+                    current={t.current_table}
+                    detail={progress.text}
+                    percent={progress.percent}
+                    name={`${noun[0].toUpperCase()}${noun.slice(1)} progress`}
+                />
             )}
             {active && (
                 <div className="flex items-center gap-2">
                     <p className="text-xs text-muted-foreground">
                         {t.status === 'uploading'
-                            ? 'Keep this dialog open until the upload finishes.'
+                            ? uploadNote
                             : `You can close this dialog; the ${noun} keeps running.`}
                     </p>
                     <Button
