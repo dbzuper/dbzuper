@@ -83,7 +83,7 @@ Each backup and restore uses one of two methods, shown under **Method**:
 
 - **Native** runs the engine's own tools: `mysqldump`/`mysql` for MySQL, `mariadb-dump`/`mariadb` for MariaDB,
   `pg_dump`/`psql` for PostgreSQL. It is the default whenever a compatible tool is found, because it is faster and
-  covers everything.
+  covers more than built-in (its own limits are below).
 - **Built-in** is DBZuper's own exporter and importer, written in PHP. It always works and needs no tools.
 - A tool is compatible when its version is at least the server's (PostgreSQL: `pg_dump` 18 dumps any server up to
   18; MySQL: `mysqldump` 8.4 dumps MySQL 5.7 to 8.4) and it comes from the same engine: MySQL's tools don't count for
