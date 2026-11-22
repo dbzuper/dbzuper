@@ -345,3 +345,7 @@ it('removes a short password only where it stands as a token of its own', functi
 it('still removes a long password wherever it appears', function () {
     expect(NativeProcess::sanitize('xhunter2y and hunter2', 'hunter2'))->toBe('x***y and ***');
 });
+
+it('keeps a message with invalid UTF-8 when the password is short', function () {
+    expect(NativeProcess::sanitize("caf\xE9 failed for ab", 'ab'))->toBe('caf? failed for ***');
+});

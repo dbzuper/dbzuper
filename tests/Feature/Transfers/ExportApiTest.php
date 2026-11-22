@@ -372,6 +372,18 @@ it("puts the browser's local time in the file name, and the app time without one
         ->and($app)->toBe("{$stem}-20261123-223005.sql.gz");
 });
 
-it('refuses a timezone that is not one', function () {
-    startExport(['timezone' => 'Mars/Olympus'])->assertUnprocessable()->assertJsonValidationErrors('timezone');
+it('uses a legacy zone name a browser may report', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-11-23 22:30:05', 'UTC'));
+    $stem = pathinfo($this->path, PATHINFO_FILENAME);
+
+    expect(startExport(['timezone' => 'Asia/Calcutta'])->assertAccepted()->json('file_name'))
+        ->toBe("{$stem}-20261124-040005.sql.gz");
 });
+
+it('never fails a backup over the timezone: anything unknown falls back to the app time', function (mixed $zone) {
+    $this->travelTo(CarbonImmutable::parse('2026-11-23 22:30:05', 'UTC'));
+    $stem = pathinfo($this->path, PATHINFO_FILENAME);
+
+    expect(startExport(['timezone' => $zone])->assertAccepted()->json('file_name'))
+        ->toBe("{$stem}-20261123-223005.sql.gz");
+})->with(['garbage' => 'Mars/Olympus', 'an array' => [['x']], 'a number' => 5, 'empty' => '']);

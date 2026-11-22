@@ -137,6 +137,8 @@ final class NativeProcess
      */
     public static function sanitize(string $text, ?string $secret = null): string
     {
+        // Valid UTF-8 first: the /u pattern below fails (null) on anything else.
+        $text = mb_scrub($text, 'UTF-8');
         if ($secret !== null && $secret !== '') {
             $text = mb_strlen($secret) >= self::SHORT_SECRET
                 ? str_replace($secret, '***', $text)
