@@ -163,6 +163,45 @@ describe('RestoreDialog', () => {
         expect(screen.getByText('12 B', { exact: false })).toBeInTheDocument();
     });
 
+    it("hides the native input's own text behind a button of ours, so the name shows once", async () => {
+        open();
+        const input = await screen.findByLabelText('File');
+        expect(input).toHaveClass('opacity-0');
+        expect(screen.getByText('Choose a file…')).toBeInTheDocument();
+        await chooseFile();
+        expect(screen.getAllByText('shop-20261122.sql')).toHaveLength(1);
+        expect(screen.getByText('Choose another file…')).toBeInTheDocument();
+        // Still the labelled, focusable control.
+        input.focus();
+        expect(input).toHaveFocus();
+    });
+
+    it('offers no method choice for SQLite, which only has built-in', async () => {
+        mockApi(
+            caps({
+                native: {
+                    usable: false,
+                    tool: null,
+                    version: null,
+                    reason: 'SQLite always uses the built-in method',
+                },
+                default_method: 'builtin',
+                all_or_nothing: true,
+            }),
+        );
+        open({
+            ...mysql,
+            driver: 'sqlite',
+            driver_label: 'SQLite',
+        } as ConnectionSummary);
+        expect(
+            await screen.findByText('SQLite always uses the built-in method'),
+        ).toBeInTheDocument();
+        expect(
+            screen.queryByRole('button', { name: 'Change method' }),
+        ).not.toBeInTheDocument();
+    });
+
     it('shows the method line', async () => {
         open();
         expect(

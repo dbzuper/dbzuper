@@ -145,7 +145,7 @@ class TransferController extends Controller
                 TransferDirection::Export,
                 $method,
                 [...$options->toArray(), 'method_reason' => $check->reason, 'target' => TransferTarget::fingerprint($connection)],
-                $this->fileName($connection, $planner, $options->gzip),
+                $this->fileName($connection, $planner, $options->gzip, $request->validated('timezone')),
                 null,
             );
         } catch (TransferConflict $e) {
@@ -413,8 +413,11 @@ class TransferController extends Controller
         return $this->scope($request, $connection)->whereKey($id)->firstOrFail();
     }
 
-    /** "{database}-{YYYYMMDD-HHmmss}.sql[.gz]" in the app timezone; SQLite uses the file name without its extension. */
-    private function fileName(SavedConnection $connection, TransferPlanner $planner, bool $gzip): string
+    /**
+     * "{database}-{YYYYMMDD-HHmmss}.sql[.gz]" in the browser's timezone (the time the user's own clock showed, as in
+     * the Recent list), else the app timezone; SQLite uses the file name without its extension.
+     */
+    private function fileName(SavedConnection $connection, TransferPlanner $planner, bool $gzip, mixed $timezone = null): string
     {
         $name = $planner->databaseName($connection);
         if ($connection->driver === DriverName::Sqlite) {
@@ -423,6 +426,8 @@ class TransferController extends Controller
         // Characters no file system or Content-Disposition header takes.
         $name = trim((string) preg_replace('~[\x00-\x1F\x7F/\\\\:*?"<>|]+~u', '_', $name));
 
-        return ($name === '' ? 'database' : $name).'-'.now()->timezone((string) config('app.timezone'))->format('Ymd-His').'.sql'.($gzip ? '.gz' : '');
+        $zone = is_string($timezone) && $timezone !== '' ? $timezone : (string) config('app.timezone');
+
+        return ($name === '' ? 'database' : $name).'-'.now()->timezone($zone)->format('Ymd-His').'.sql'.($gzip ? '.gz' : '');
     }
 }

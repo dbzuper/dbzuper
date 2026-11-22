@@ -83,7 +83,18 @@ export type StartExportBody = {
     drop?: boolean;
     gzip?: boolean;
     method?: TransferMethod | null;
+    /** The browser's IANA timezone: the time in the backup's file name is in it. Filled in by startExport. */
+    timezone?: string;
 };
+
+/** This browser's IANA timezone, or undefined when it can't tell. */
+export function browserTimeZone(): string | undefined {
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+    } catch {
+        return undefined;
+    }
+}
 
 export type StartImportBody = {
     file_name: string;
@@ -108,7 +119,7 @@ export const transfersApi = {
     startExport: (ref: WorkspaceRef, body: StartExportBody) =>
         apiFetch<Transfer>(`${apiBase(ref)}/transfers/export`, {
             method: 'POST',
-            body,
+            body: { timezone: browserTimeZone(), ...body },
         }),
     startImport: (ref: WorkspaceRef, body: StartImportBody) =>
         apiFetch<Transfer>(`${apiBase(ref)}/transfers/import`, {

@@ -30,6 +30,23 @@ describe('transfersApi.capabilities', () => {
     });
 });
 
+describe('transfersApi.startExport', () => {
+    it("sends the browser's timezone for the file name", async () => {
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok());
+        await transfersApi.startExport('5', {
+            tables: 'all',
+            structure: true,
+            data: true,
+        });
+        expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            tables: 'all',
+            structure: true,
+            data: true,
+        });
+    });
+});
+
 describe('transfersApi.cancelOnLeave', () => {
     afterEach(() => {
         document.cookie = 'XSRF-TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 GMT';

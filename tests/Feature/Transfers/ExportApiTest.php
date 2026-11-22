@@ -359,3 +359,19 @@ it('caps a backup at 10,000 named tables', function () {
     startExport(['tables' => $keys])->assertUnprocessable()
         ->assertJsonPath('errors.tables.0', 'Choose at most 10,000 tables, or back up all of them');
 });
+
+it("puts the browser's local time in the file name, and the app time without one", function () {
+    $this->travelTo(CarbonImmutable::parse('2026-11-23 22:30:05', 'UTC'));
+    $stem = pathinfo($this->path, PATHINFO_FILENAME);
+
+    $local = startExport(['timezone' => 'Asia/Kuala_Lumpur'])->assertAccepted()->json('file_name');
+    Transfer::query()->delete();
+    $app = startExport()->assertAccepted()->json('file_name');
+
+    expect($local)->toBe("{$stem}-20261124-063005.sql.gz")
+        ->and($app)->toBe("{$stem}-20261123-223005.sql.gz");
+});
+
+it('refuses a timezone that is not one', function () {
+    startExport(['timezone' => 'Mars/Olympus'])->assertUnprocessable()->assertJsonValidationErrors('timezone');
+});

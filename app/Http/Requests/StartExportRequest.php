@@ -35,6 +35,8 @@ class StartExportRequest extends FormRequest
             'drop' => ['sometimes', 'boolean'],
             'gzip' => ['sometimes', 'boolean'],
             'method' => ['nullable', Rule::enum(TransferMethod::class)],
+            // The browser's IANA zone, for the time in the file name.
+            'timezone' => ['sometimes', 'nullable', 'string', 'max:64', 'timezone:all'],
         ];
 
         if (is_array($this->input('tables'))) {

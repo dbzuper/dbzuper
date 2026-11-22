@@ -398,16 +398,29 @@ function RestoreForm({
                 ) : (
                     <div className="grid gap-4">
                         <Row label="File" htmlFor={fileId}>
-                            <input
-                                ref={fileRef}
-                                id={fileId}
-                                type="file"
-                                accept={ACCEPTED_FILES}
-                                onChange={(e) =>
-                                    setFile(e.target.files?.[0] ?? null)
-                                }
-                                className="w-full min-w-0 rounded-md text-sm text-muted-foreground outline-none file:mr-3 file:h-8 file:cursor-pointer file:rounded-md file:border file:border-input file:bg-background file:px-3 file:text-sm file:font-medium file:text-foreground hover:file:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                            />
+                            {/* The native input, transparent over a button of our own: its own "No file chosen" /
+                                file name text would repeat the line below. It keeps the focus, the label and the
+                                click that opens the file picker. */}
+                            <div className="relative w-fit">
+                                <input
+                                    ref={fileRef}
+                                    id={fileId}
+                                    type="file"
+                                    accept={ACCEPTED_FILES}
+                                    onChange={(e) =>
+                                        setFile(e.target.files?.[0] ?? null)
+                                    }
+                                    className="peer absolute inset-0 size-full cursor-pointer opacity-0"
+                                />
+                                <span
+                                    aria-hidden
+                                    className="pointer-events-none inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground peer-hover:bg-accent peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50"
+                                >
+                                    {file
+                                        ? 'Choose another file…'
+                                        : 'Choose a file…'}
+                                </span>
+                            </div>
                             {file && (
                                 <p className="flex min-w-0 items-baseline gap-1 text-sm">
                                     <span className="truncate font-mono text-[12.5px]">

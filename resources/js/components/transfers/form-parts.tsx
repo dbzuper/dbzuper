@@ -73,7 +73,10 @@ export function useMethod(
     return { method, setMethod, effective, line, requested };
 }
 
-/** The method line with its Change button and, when open, the native / built-in choice. */
+/**
+ * The method line with its Change button and, when open, the native / built-in choice. Just the line when the engine
+ * has no native tool.
+ */
 export function MethodChoice({
     native,
     effective,
@@ -87,6 +90,12 @@ export function MethodChoice({
 }) {
     const [open, setOpen] = useState(false);
     const name = useId();
+    // No native tool exists for this engine (SQLite): built-in is the only method, nothing to change.
+    const onlyBuiltin = native !== null && native.tool === null;
+
+    if (onlyBuiltin) {
+        return <span className="min-w-0 text-sm">{line}</span>;
+    }
 
     return (
         <>
