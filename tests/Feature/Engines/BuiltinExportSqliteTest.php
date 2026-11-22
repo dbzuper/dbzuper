@@ -547,7 +547,7 @@ function sqliteDropFakeVirtual(Connection $db, string $name, array $shadows): vo
 
 it('brings an rtree\'s shadow tables along even where this PHP lacks the module', function () {
     sqliteBuiltinRoundTrip(function (Connection $source, Connection $target) {
-        $shadows = ['rt_node', 'rt_rowid', 'rt_parent'];
+        $shadows = ['rt_node', 'rt_rowid', 'rt_parent', 'rt_notes'];
         try {
             // rtree's own storage layout, as SQLite with rtree leaves it.
             $source->unprepared('CREATE TABLE "rt_node"(nodeno INTEGER PRIMARY KEY,data)');
@@ -555,6 +555,9 @@ it('brings an rtree\'s shadow tables along even where this PHP lacks the module'
             $source->unprepared('CREATE TABLE "rt_parent"(nodeno INTEGER PRIMARY KEY,parentnode)');
             $source->unprepared("INSERT INTO rt_node VALUES (1, X'000000010000000900000000000000003FC000004020000000000000')");
             $source->unprepared('INSERT INTO rt_rowid VALUES (9, 1)');
+            // A user table that only looks like storage: not one of rtree's suffixes.
+            $source->unprepared('CREATE TABLE rt_notes (id INTEGER PRIMARY KEY, note TEXT)');
+            $source->unprepared("INSERT INTO rt_notes VALUES (1, 'mine')");
             sqliteFakeVirtual($source, 'rt', 'CREATE VIRTUAL TABLE rt USING rtree(id, x0, x1)');
 
             $path = sqliteBuiltinExport($source, sqliteBuiltinOptions(['rt']));
@@ -569,7 +572,14 @@ it('brings an rtree\'s shadow tables along even where this PHP lacks the module'
                 ->and($sql)->toContain('CREATE TABLE "rt_rowid"(rowid INTEGER PRIMARY KEY,nodeno);')
                 ->and($sql)->toContain('CREATE TABLE "rt_parent"(nodeno INTEGER PRIMARY KEY,parentnode);')
                 ->and($sql)->toContain("INSERT INTO \"rt_node\" (\"nodeno\", \"data\") VALUES\n(1,X'000000010000000900000000000000003fc000004020000000000000');")
-                ->and($sql)->toContain("INSERT INTO \"rt_rowid\" (\"rowid\", \"nodeno\") VALUES\n(9,1);");
+                ->and($sql)->toContain("INSERT INTO \"rt_rowid\" (\"rowid\", \"nodeno\") VALUES\n(9,1);")
+                ->and($sql)->not->toContain('rt_notes');
+
+            // Not swallowed either: a full backup writes it as the plain table it is, even structure only.
+            $path = sqliteBuiltinExport($source, sqliteBuiltinOptions(data: false));
+            $structure = (string) file_get_contents($path);
+            @unlink($path);
+            expect($structure)->toContain("CREATE TABLE rt_notes (id INTEGER PRIMARY KEY, note TEXT);\n");
         } finally {
             sqliteDropFakeVirtual($source, 'rt', $shadows);
         }
@@ -617,6 +627,49 @@ it('refuses to back up a virtual table whose module and storage are both unknown
             @unlink($path);
         } finally {
             sqliteDropFakeVirtual($source, 'lonely', []);
+        }
+    }, fixture: false);
+});
+
+it('keeps user tables named like shadow tables beside a loaded fts5 table', function () {
+    sqliteBuiltinRoundTrip(function (Connection $source, Connection $target) {
+        try {
+            $source->unprepared('CREATE VIRTUAL TABLE docs USING fts5(body)');
+            $source->unprepared("INSERT INTO docs (rowid, body) VALUES (3, 'hello')");
+            // rtree's suffixes, but tables of the user's own beside an fts5 table.
+            $source->unprepared('CREATE TABLE docs_node (id INTEGER PRIMARY KEY, label TEXT)');
+            $source->unprepared('CREATE TABLE docs_parent (id INTEGER PRIMARY KEY, node_id INTEGER)');
+            $source->unprepared("INSERT INTO docs_node VALUES (1, 'n1')");
+            $source->unprepared('INSERT INTO docs_parent VALUES (1, 1)');
+
+            // Structure only: the user tables are created; fts5's own storage is left to the module.
+            $path = sqliteBuiltinExport($source, sqliteBuiltinOptions(data: false));
+            try {
+                $structure = (string) file_get_contents($path);
+                sqliteBuiltinRestore($target, $path);
+            } finally {
+                @unlink($path);
+            }
+            expect($structure)->toContain("CREATE TABLE docs_node (id INTEGER PRIMARY KEY, label TEXT);\n")
+                ->and($structure)->toContain("CREATE TABLE docs_parent (id INTEGER PRIMARY KEY, node_id INTEGER);\n")
+                ->and($structure)->not->toContain('docs_data')
+                ->and(sqliteBuiltinObjects($target)['table'])->toContain('docs_node', 'docs_parent', 'docs_data');
+
+            // Choosing the fts5 table brings its storage, not the user tables; choosing a user table writes its rows.
+            $path = sqliteBuiltinExport($source, sqliteBuiltinOptions(['docs']));
+            $onlyDocs = (string) file_get_contents($path);
+            @unlink($path);
+            $path = sqliteBuiltinExport($source, sqliteBuiltinOptions(['docs', 'docs_node']));
+            $withNode = (string) file_get_contents($path);
+            @unlink($path);
+            expect($onlyDocs)->toContain('INSERT INTO "docs_data"')
+                ->and($onlyDocs)->not->toContain('docs_node')
+                ->and($onlyDocs)->not->toContain('docs_parent')
+                ->and($withNode)->toContain("CREATE TABLE docs_node (id INTEGER PRIMARY KEY, label TEXT);\n")
+                ->and($withNode)->toContain("INSERT INTO \"docs_node\" (\"id\", \"label\") VALUES\n(1,'n1');")
+                ->and($withNode)->not->toContain('docs_parent');
+        } finally {
+            sqliteBuiltinSource($source, ['DROP TABLE IF EXISTS docs', 'DROP TABLE IF EXISTS docs_node', 'DROP TABLE IF EXISTS docs_parent']);
         }
     }, fixture: false);
 });

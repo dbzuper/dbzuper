@@ -41,8 +41,15 @@ final class SqliteBuiltinExporter implements BuiltinExporter
     /** 2^62: exact as an integer literal and as a double, so multiplying or dividing by it never rounds. */
     private const POW2_62 = 4611686018427387904;
 
-    /** Shadow table suffixes of the built-in modules (fts3/4, fts5, rtree), for SQLite before pragma_table_list. */
-    private const SHADOW_SUFFIXES = ['content', 'segments', 'segdir', 'docsize', 'stat', 'data', 'idx', 'config', 'node', 'rowid', 'parent'];
+    /** Shadow table suffixes of the modules SQLite ships, for when SQLite can't say (before 3.37, module missing). */
+    private const MODULE_SHADOWS = [
+        'fts3' => ['content', 'segments', 'segdir', 'docsize', 'stat'],
+        'fts4' => ['content', 'segments', 'segdir', 'docsize', 'stat'],
+        'fts5' => ['data', 'idx', 'content', 'docsize', 'config'],
+        'rtree' => ['node', 'rowid', 'parent'],
+        'rtree_i32' => ['node', 'rowid', 'parent'],
+        'geopoly' => ['node', 'rowid', 'parent'],
+    ];
 
     /** Parses text the way SQLite parses a REAL literal (both go through sqlite3AtoF). */
     private ?PDOStatement $parse = null;
@@ -229,7 +236,11 @@ final class SqliteBuiltinExporter implements BuiltinExporter
         $virtual = [];
         foreach ($master as [$type, $name, , $sql]) {
             if ($type === 'table' && preg_match('/^\s*CREATE\s+VIRTUAL\s+TABLE\b/i', (string) $sql) === 1) {
-                $virtual[(string) $name] = self::moduleAvailable($pdo, (string) $name);
+                $module = preg_match('/\bUSING\s+["`\[]?(\w+)/i', (string) $sql, $m) === 1 ? strtolower($m[1]) : '';
+                $virtual[(string) $name] = [
+                    'available' => self::moduleAvailable($pdo, (string) $name),
+                    'suffixes' => self::MODULE_SHADOWS[$module] ?? null,
+                ];
             }
         }
 
@@ -242,17 +253,23 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             $shadowOf = null;
             if (! isset($virtual[$name]) && preg_match('/^\s*CREATE\s+TABLE\b/i', (string) $sql) === 1) {
                 // The owner is the longest virtual table name that prefixes "<owner>_<suffix>".
-                foreach ($virtual as $owner => $available) {
+                foreach ($virtual as $owner => $module) {
                     $owner = (string) $owner;
                     if (! str_starts_with($name, $owner.'_') || strlen($owner) <= strlen($shadowOf ?? '')) {
                         continue;
                     }
-                    // The module is loaded: SQLite names its shadow tables (if the module declares them), and the
-                    // built-in modules' suffixes cover the rest and SQLite before pragma_table_list. An unknown
-                    // module (rtree missing here, sqlite-vec, spellfix ...): every "<owner>_*" table.
-                    $shadow = ! $available
-                        || ($listed[$name]['type'] ?? '') === 'shadow'
-                        || in_array(strtolower(substr($name, strlen($owner) + 1)), self::SHADOW_SUFFIXES, true);
+                    $known = $module['suffixes'] !== null
+                        && in_array(strtolower(substr($name, strlen($owner) + 1)), $module['suffixes'], true);
+                    $shadow = match (true) {
+                        // The module is loaded: SQLite itself says which tables are its shadow tables.
+                        $module['available'] && $listed !== null => ($listed[$name]['type'] ?? '') === 'shadow',
+                        // Before pragma_table_list: a shipped module's suffixes; no guess for any other module.
+                        $module['available'] => $known,
+                        // Module missing here: a shipped module's suffixes; for an unknown one (sqlite-vec,
+                        // spellfix ...) every "<owner>_*" table, since its rows live nowhere else.
+                        $module['suffixes'] !== null => $known,
+                        default => true,
+                    };
                     if ($shadow) {
                         $shadowOf = $owner;
                     }
@@ -260,7 +277,7 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             }
             $kinds[$name] = [
                 'virtual' => isset($virtual[$name]),
-                'module' => $virtual[$name] ?? true,
+                'module' => $virtual[$name]['available'] ?? true,
                 'shadow_of' => $shadowOf,
                 'without_rowid' => $listed !== null && isset($listed[$name])
                     ? $listed[$name]['wr']
