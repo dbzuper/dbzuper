@@ -3,11 +3,15 @@
 namespace App\Providers;
 
 use App\Database\SqlitePathPolicy;
+use App\Transfers\WorkerHeartbeat;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Foundation\DevCommands;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\Looping;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -28,6 +32,14 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // A transfers worker proves it is alive while idle; TransferProgress beats while a job runs.
+        Event::listen(Looping::class, function (Looping $event) {
+            if ($event->connectionName === 'transfers') {
+                WorkerHeartbeat::beat();
+            }
+        });
+        DevCommands::artisan('queue:listen transfers --queue=transfers --tries=1 --timeout=0', 'transfers');
 
         RateLimiter::for('dbzuper-api', fn (Request $request) => Limit::perMinute((int) config('dbzuper.api_per_minute'))->by($request->user()?->id ?: $request->ip()));
         // Exploring records fires a request per card and per port, far more often than the rest of the API.

@@ -44,6 +44,17 @@ return [
             'after_commit' => false,
         ],
 
+        // Backups and restores: own queue and worker so a long transfer never blocks the default queue. A week of
+        // retry_after is longer than any job, so a running transfer is never handed to a second worker.
+        'transfers' => [
+            'driver' => 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            'queue' => 'transfers',
+            'retry_after' => (int) env('DBZUPER_TRANSFER_RETRY_AFTER', 604800),
+            'after_commit' => false,
+        ],
+
         'beanstalkd' => [
             'driver' => 'beanstalkd',
             'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),
