@@ -52,4 +52,19 @@ return [
 
     // Query history entries kept per connection.
     'history_keep' => (int) env('DBZUPER_HISTORY_KEEP') ?: 5000,
+
+    // Backups and restores: hours an exported file is kept for download (and an unfinished upload is kept before it
+    // is abandoned), and the largest file that may be uploaded for a restore.
+    'transfer_ttl_hours' => max(1, (int) env('DBZUPER_TRANSFER_TTL') ?: 24),
+    'transfer_max_bytes' => max(1, (int) env('DBZUPER_TRANSFER_MAX_BYTES') ?: 20_000_000_000),
+
+    // Native dump and restore tools: an explicit path per tool, or null to find it on PATH.
+    'transfer_tools' => [
+        'mysqldump' => env('DBZUPER_MYSQLDUMP_PATH') ?: null,
+        'mariadb-dump' => env('DBZUPER_MARIADB_DUMP_PATH') ?: null,
+        'pg_dump' => env('DBZUPER_PG_DUMP_PATH') ?: null,
+        'mysql' => env('DBZUPER_MYSQL_PATH') ?: null,
+        'mariadb' => env('DBZUPER_MARIADB_PATH') ?: null,
+        'psql' => env('DBZUPER_PSQL_PATH') ?: null,
+    ],
 ];

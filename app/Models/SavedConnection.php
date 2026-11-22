@@ -188,6 +188,12 @@ class SavedConnection extends Model
         return $this->hasMany(QueryHistoryEntry::class, 'connection_id')->withAttributes(['database' => $this->storageDatabase()]);
     }
 
+    /** @return HasMany<Transfer, $this> */
+    public function transfers(): HasMany
+    {
+        return $this->hasMany(Transfer::class, 'saved_connection_id')->withAttributes(['database' => $this->storageDatabase()]);
+    }
+
     /** Records a visit to the workspace; skipped within a minute of the last one, and never touches updated_at. */
     public function markOpened(): void
     {
