@@ -106,3 +106,26 @@ it('abandons an upload once no chunk has arrived for the idle time', function ()
         ->and($active->fresh()->status)->toBe(TransferStatus::Uploading)
         ->and(is_file($active->file_path))->toBeTrue();
 });
+
+it('leaves an upload alone when its last chunk lands between the sweep reading it and failing it', function () {
+    config(['dbzuper.transfer_upload_idle_minutes' => 10]);
+    $t = storedTransfer(['status' => TransferStatus::Uploading, 'direction' => TransferDirection::Import]);
+    $t->forceFill(['updated_at' => now()->subMinutes(11)])->saveQuietly();
+
+    // The sweep has read the row; before it updates it, the last chunk completes the upload (another request).
+    $raced = false;
+    Transfer::retrieved(function (Transfer $read) use ($t, &$raced) {
+        if (! $raced && $read->id === $t->id) {
+            $raced = true;
+            Transfer::query()->whereKey($t->id)->update(['status' => TransferStatus::Pending->value, 'updated_at' => now()]);
+        }
+    });
+
+    TransferStorage::prune();
+
+    expect($raced)->toBeTrue()
+        ->and($t->fresh()->status)->toBe(TransferStatus::Pending)
+        ->and($t->fresh()->error)->toBeNull()
+        ->and($t->fresh()->file_path)->toBe($t->file_path)
+        ->and(is_file($t->file_path))->toBeTrue();
+});

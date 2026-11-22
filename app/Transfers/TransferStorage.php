@@ -115,20 +115,28 @@ class TransferStorage
 
         // Uploads nobody finished: every chunk refreshes updated_at, so a page that went away (reload, closed tab,
         // dropped network) stops doing so. Left alone, such an upload would hold the database's one active transfer.
-        $idle = (int) config('dbzuper.transfer_upload_idle_minutes');
+        // The last chunk may land between the select and the update (moving the row to Pending, or refreshing it):
+        // the update is conditional, and the files go only when it changed the row.
+        $cutoff = now()->subMinutes((int) config('dbzuper.transfer_upload_idle_minutes'));
         Transfer::query()
             ->where('status', TransferStatus::Uploading)
             ->where('direction', TransferDirection::Import)
-            ->where('updated_at', '<=', now()->subMinutes($idle))
-            ->chunkById(100, function ($transfers) {
+            ->where('updated_at', '<=', $cutoff)
+            ->chunkById(100, function ($transfers) use ($cutoff) {
                 foreach ($transfers as $transfer) {
-                    self::deleteFiles($transfer);
-                    $transfer->forceFill([
-                        'status' => TransferStatus::Failed,
-                        'error' => 'Upload abandoned',
-                        'file_path' => null,
-                        'finished_at' => now(),
-                    ])->save();
+                    $abandoned = Transfer::query()
+                        ->whereKey($transfer->id)
+                        ->where('status', TransferStatus::Uploading)
+                        ->where('updated_at', '<=', $cutoff)
+                        ->update([
+                            'status' => TransferStatus::Failed,
+                            'error' => 'Upload abandoned',
+                            'file_path' => null,
+                            'finished_at' => now(),
+                        ]);
+                    if ($abandoned === 1) {
+                        self::deleteFiles($transfer);
+                    }
                 }
             });
 
