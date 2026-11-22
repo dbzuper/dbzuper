@@ -27,6 +27,9 @@ final class SqlStream
 {
     private const WHITESPACE = " \t\n\r\f\x0B";
 
+    /** `CREATE [TEMP|TEMPORARY] TRIGGER`, comments allowed between the words (as sqlite3_complete treats them). */
+    private const CREATE_TRIGGER = '/\GCREATE(?:\s++|\/\*.*?\*\/|--[^\n]*+\n)++(?:TEMP(?:ORARY)?(?:\s++|\/\*.*?\*\/|--[^\n]*+\n)++)?TRIGGER\b/is';
+
     private const COPY_FROM_STDIN = '/^\s*COPY\b.*\bFROM\s+stdin\b(.*)$/is';
 
     /** Bytes that must follow a custom delimiter before it is trusted (the lexer never looks further ahead). */
@@ -354,9 +357,10 @@ final class SqlStream
         $i = $start;
         $gap = $start;   // start of the current run of ordinary tokens
         $next = -1;      // first delimiter occurrence at or after $gap (custom delimiter only)
-        // SQLite has no DELIMITER: like sqlite3_complete(), a CREATE TRIGGER statement ends only at "END ;".
-        $trigger = $this->sqlite
-            && preg_match('/\GCREATE\s+(?:TEMP(?:ORARY)?\s+)?TRIGGER\b/i', $b, $m, 0, $start) === 1;
+        // SQLite has no DELIMITER: a CREATE TRIGGER statement ends where sqlite3_complete() says it does.
+        if ($this->sqlite && preg_match(self::CREATE_TRIGGER, $b, $m, 0, $start) === 1) {
+            return $this->triggerTerminator($b, $start);
+        }
 
         while (true) {
             $i = $this->skipPlain($regex, $b, $i);
@@ -375,12 +379,7 @@ final class SqlStream
                 return null;
             }
             if (! $custom && $b[$i] === ';') {
-                if (! $trigger || $this->afterEnd($b, $start, $i)) {
-                    return $i;
-                }
-                $i++; // a ';' inside a SQLite trigger body
-
-                continue;
+                return $i;
             }
             $i = $this->tokenEnd($b, $i, $start);
             if ($i >= $len) {
@@ -391,18 +390,62 @@ final class SqlStream
     }
 
     /**
-     * Whether the last token before the ';' at $semicolon is the keyword END (whitespace between them allowed). The
-     * ';' is outside strings and comments, so trailing END word characters can only be an END word token.
+     * Terminator of a SQLite CREATE TRIGGER statement, following sqlite3_complete(): comments count as whitespace,
+     * and a ';' ends the statement only in the token sequence `; END ;`. So `CASE … END;`, `AS end;` or `c=end;`
+     * inside the body do not end it, while `; END /* c *\/ ;` does. Null when the buffer holds no terminator yet.
+     * Trigger bodies are small, so this walks token by token; it is still linear and chunk-safe (any token that
+     * reaches the buffer's end waits for more input).
      */
-    private function afterEnd(string $b, int $start, int $semicolon): bool
+    private function triggerTerminator(string $b, int $start): ?int
     {
-        $j = $semicolon;
-        while ($j > $start && str_contains(self::WHITESPACE, $b[$j - 1])) {
-            $j--;
-        }
+        $len = strlen($b);
+        $state = 0; // 0: in the body, 1: just after ';', 2: after '; END'
+        $i = $start;
 
-        return $j - 3 >= $start && strcasecmp(substr($b, $j - 3, 3), 'END') === 0
-            && ($j - 4 < $start || preg_match('/[A-Za-z0-9_$\x80-\xff]/', $b[$j - 4]) !== 1);
+        while (true) {
+            $i += strspn($b, self::WHITESPACE, $i);
+            if ($i >= $len) {
+                return null;
+            }
+            $c = $b[$i];
+            $next = $b[$i + 1] ?? '';
+
+            if (($c === '-' && $next === '-') || ($c === '/' && $next === '*')) {
+                $i = $c === '-' ? $this->lineCommentEnd($b, $i) : $this->blockCommentEnd($b, $i);
+                if ($i >= $len) {
+                    return null;
+                }
+
+                continue; // a comment is whitespace: the state stays
+            }
+            if ($c === ';') {
+                if ($state === 2) {
+                    return $i;
+                }
+                $state = 1;
+                $i++;
+
+                continue;
+            }
+            if (preg_match('/\G[A-Za-z_\x80-\xff][A-Za-z0-9_$\x80-\xff]*+/', $b, $m, 0, $i) === 1) {
+                $i += strlen($m[0]);
+                if ($i >= $len) {
+                    return null; // the word might continue in the next chunk
+                }
+                $state = $state === 1 && strcasecmp($m[0], 'END') === 0 ? 2 : 0;
+
+                continue;
+            }
+            if ($c === "'" || $c === '"' || $c === '`' || $c === '[') {
+                $i = $this->quoteEnd($b, $i, $c, $start);
+                if ($i >= $len) {
+                    return null;
+                }
+            } else {
+                $i++; // a digit or punctuation
+            }
+            $state = 0;
+        }
     }
 
     private function skipPlain(string $regex, string $b, int $i): int

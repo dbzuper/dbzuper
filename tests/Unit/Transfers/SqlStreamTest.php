@@ -226,6 +226,34 @@ it('keeps a SQLite trigger body whole like sqlite3_complete', function (int $chu
     ]);
 })->with([1, 7, 4096]);
 
+it('ends a SQLite trigger only at "; END ;" with comments as whitespace', function (int $chunk) {
+    // Each trigger checked with Python's sqlite3.complete_statement(): no earlier ';' completes it.
+    $triggers = [
+        'CREATE TRIGGER t1 AFTER INSERT ON a BEGIN UPDATE a SET x = CASE WHEN 1 THEN 2 END; END',
+        'CREATE TRIGGER t2 AFTER INSERT ON a BEGIN SELECT x AS end FROM a; END',
+        'CREATE TRIGGER t3 AFTER INSERT ON a BEGIN UPDATE a SET x = 1 WHERE c=end; END',
+        'CREATE /* c */ TRIGGER t4 AFTER INSERT ON a BEGIN UPDATE a SET x=1; END /* c */',
+    ];
+    $sql = implode(";\n", $triggers)." ; SELECT 9;\nINSERT INTO a (x) VALUES (5);";
+
+    $pieces = sqlStreamPieces($sql, 'sqlite', $chunk);
+
+    expect(sqlStreamShape($pieces))->toBe([
+        ...array_map(fn ($t) => ['sql', $t], $triggers),
+        ['sql', 'SELECT 9'],
+        ['sql', 'INSERT INTO a (x) VALUES (5)'],
+    ]);
+
+    // Every piece is a statement SQLite itself accepts, and the triggers fire.
+    $pdo = new PDO('sqlite::memory:', options: [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $pdo->exec('CREATE TABLE a (x, c, "end")');
+    foreach ($pieces as $piece) {
+        $pdo->exec($piece->text);
+    }
+    expect($pdo->query('SELECT count(*) FROM sqlite_master WHERE type = \'trigger\'')->fetchColumn())->toBe(4)
+        ->and($pdo->query('SELECT x FROM a')->fetchColumn())->toBeIn([1, 2]); // the triggers fired
+})->with([1, 7, 4096]);
+
 it('splits triggers at every semicolon outside SQLite', function () {
     // MySQL uses DELIMITER for trigger bodies and PostgreSQL uses dollar-quoted functions.
     expect(sqlStreamShape(sqlStreamPieces('CREATE TRIGGER t BEGIN SELECT 1; END;', 'mysql')))
