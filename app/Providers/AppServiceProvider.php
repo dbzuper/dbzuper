@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Database\SqlitePathPolicy;
 use App\Transfers\Export\BuiltinExporters;
 use App\Transfers\Export\MySqlBuiltinExporter;
+use App\Transfers\Export\PostgresBuiltinExporter;
 use App\Transfers\Export\SqliteBuiltinExporter;
 use App\Transfers\WorkerHeartbeat;
 use Carbon\CarbonImmutable;
@@ -30,6 +31,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(BuiltinExporters::class, fn () => new BuiltinExporters([
             'mysql' => MySqlBuiltinExporter::class,
             'mariadb' => MySqlBuiltinExporter::class,
+            'pgsql' => PostgresBuiltinExporter::class,
             'sqlite' => SqliteBuiltinExporter::class,
         ]));
         $this->app->bind(SqlitePathPolicy::class, fn () => new SqlitePathPolicy(config('dbzuper.sqlite_paths')));
