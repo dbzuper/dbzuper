@@ -17,7 +17,7 @@ export class ApiError extends Error {
     }
 }
 
-function xsrfToken(): string | null {
+export function xsrfToken(): string | null {
     const match = document.cookie
         .split('; ')
         .find((c) => c.startsWith('XSRF-TOKEN='));
