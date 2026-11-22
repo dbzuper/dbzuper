@@ -241,7 +241,7 @@ If Docker Engine runs inside a WSL distribution (not Docker Desktop) and the dat
       [wsl2]
       networkingMode=mirrored
 
-    Then run the container with host networking (`network_mode: host` in Compose, `--network host` with `docker run`) and connect to `127.0.0.1`. With host networking the container uses the WSL network directly, so `ports` is ignored and DBZuper listens on port 8080 of WSL, which mirrored mode shares with Windows.
+    Then run the container with host networking (`network_mode: host` in Compose, `--network host` with `docker run`) and connect to `127.0.0.1`. With host networking the container uses the WSL network directly, so `ports` is ignored and DBZuper listens on port 8080 of WSL, which mirrored mode shares with Windows. Docker refuses a host name together with host networking, so also remove `hostname: dbzuper` from `docker-compose.yml` (or `--hostname` from `docker run`); the container then has the WSL host name, which stays the same across restarts anyway.
 
 ## Adding SQLite files
 
