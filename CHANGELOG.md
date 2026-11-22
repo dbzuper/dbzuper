@@ -17,8 +17,9 @@
   it marks backups and restores cut off by a restart as failed (`php artisan dbzuper:transfers:recover`), so their
   database is free again; Compose now sets `hostname: dbzuper` for this (with `docker run`, add `--hostname dbzuper`).
   PHP's `post_max_size` is 16M in the image. Behind a reverse proxy, allow request bodies of at least 16 MB (nginx:
-  `client_max_body_size 16m`). Outside Docker, run `php artisan queue:work transfers --queue=transfers --sleep=1
-  --tries=1 --timeout=0` (`composer dev` already does). See [self-hosting](docs/self-hosting.md#backup-and-restore).
+  `client_max_body_size 16m`). Outside Docker, run a transfer worker (`composer dev` already does):
+  `php artisan queue:work transfers --queue=transfers --sleep=1 --tries=1 --timeout=0`. See
+  [self-hosting](docs/self-hosting.md#backup-and-restore).
 - **New settings**: `DBZUPER_TRANSFER_TTL`, `DBZUPER_TRANSFER_MAX_BYTES`, `DBZUPER_TRANSFER_UPLOAD_IDLE_MINUTES`,
   `DBZUPER_TRANSFER_RETRY_AFTER`, `DBZUPER_TRANSFER_WORKERS`, `DBZUPER_VERSION`, and `DBZUPER_*_PATH` to point at a
   specific native tool.

@@ -124,9 +124,9 @@ What built-in leaves out (the dialog lists it before you start, and the file hea
 - Built-in can't run `COPY … FROM stdin` (the `pg_dump` default for data): such files need the native method, which
   needs `psql`.
 - **Stops at the first failing statement**, and shows its number, the start of the statement and the database's error.
-  - PostgreSQL and SQLite: all or nothing. The restore runs in one transaction, so a failure changes nothing; the
-    database stays locked until the restore finishes.
-  - MySQL/MariaDB: DDL commits on its own, so the statements before the failing one stay applied.
+    - PostgreSQL and SQLite: all or nothing. The restore runs in one transaction, so a failure changes nothing; the
+      database stays locked until the restore finishes.
+    - MySQL/MariaDB: DDL commits on its own, so the statements before the failing one stay applied.
 - **Upload:** the file is sent in pieces, and a dropped connection picks up where the server left off. Keep the dialog
   open until the upload finishes: closing it stops the upload. An upload with no progress for 10 minutes
   (`DBZUPER_TRANSFER_UPLOAD_IDLE_MINUTES`) is abandoned. The largest file accepted is 20 GB by default

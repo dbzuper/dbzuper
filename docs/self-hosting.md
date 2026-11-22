@@ -333,8 +333,9 @@ background worker is running"). One-off commands (`docker compose run --rm app p
       php artisan queue:work transfers --queue=transfers --sleep=1 --tries=1 --timeout=0
       php artisan queue:work database --queue=default --sleep=3 --tries=3
 
-  `composer dev` already runs one transfer worker and the default queue for local development. Without a transfer
-  worker, the dialog says "No background worker is running" and shows the command.
+    `composer dev` already runs one transfer worker and the default queue for local development. Without a transfer
+    worker, the dialog says "No background worker is running" and shows the command.
+
 - Outside Docker, restart the workers after changing configuration or upgrading (`php artisan queue:restart` makes
   them exit once idle, for the process manager to start again). In the image they start fresh with the container.
 
@@ -391,14 +392,14 @@ nginx (the example above allows 25m). Caddy has no limit by default.
 
 ### Settings
 
-| Variable                               | Default       | Meaning                                                                                            |
-| -------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------- |
-| `DBZUPER_TRANSFER_WORKERS`             | `2`           | Transfer workers the image starts (Docker only).                                                   |
-| `DBZUPER_TRANSFER_TTL`                 | `24`          | Hours a backup stays downloadable.                                                                 |
-| `DBZUPER_TRANSFER_MAX_BYTES`           | `20000000000` | Largest restore file accepted (bytes; 20 GB).                                                      |
-| `DBZUPER_TRANSFER_UPLOAD_IDLE_MINUTES` | `10`          | Minutes an upload may go without a new piece before it is abandoned.                               |
-| `DBZUPER_TRANSFER_RETRY_AFTER`         | `604800`      | Seconds before the queue hands a running transfer to another worker; keep it longer than any job.  |
-| `DBZUPER_VERSION`                      | detected      | Version written in backup file headers (read from `composer.json` or `CHANGELOG.md` when unset).   |
+| Variable                               | Default       | Meaning                                                                                           |
+| -------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------- |
+| `DBZUPER_TRANSFER_WORKERS`             | `2`           | Transfer workers the image starts (Docker only).                                                  |
+| `DBZUPER_TRANSFER_TTL`                 | `24`          | Hours a backup stays downloadable.                                                                |
+| `DBZUPER_TRANSFER_MAX_BYTES`           | `20000000000` | Largest restore file accepted (bytes; 20 GB).                                                     |
+| `DBZUPER_TRANSFER_UPLOAD_IDLE_MINUTES` | `10`          | Minutes an upload may go without a new piece before it is abandoned.                              |
+| `DBZUPER_TRANSFER_RETRY_AFTER`         | `604800`      | Seconds before the queue hands a running transfer to another worker; keep it longer than any job. |
+| `DBZUPER_VERSION`                      | detected      | Version written in backup file headers (read from `composer.json` or `CHANGELOG.md` when unset).  |
 
 ## Backups and the APP_KEY
 
