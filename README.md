@@ -46,11 +46,15 @@ the frontend once.
 
     git clone https://github.com/dbzuper/dbzuper && cd dbzuper
     composer setup    # dependencies, .env, app key, database and frontend build; prints the setup code
-    composer start    # serves http://localhost:8000
+    composer start    # serves http://localhost:8000, with the background workers for backup and restore
 
-Open <http://localhost:8000> and enter the setup code. No queue worker or other process is needed. To serve it with
-Herd, Valet or your own web server instead, point the site at the `public/` directory and set `APP_URL` in `.env`.
-`php artisan dbzuper:setup-code` shows the code again.
+Open <http://localhost:8000> and enter the setup code. `php artisan dbzuper:setup-code` shows the code again. To serve it
+with Herd, Valet or your own web server instead, point the site at the `public/` directory, set `APP_URL` in `.env`, and
+keep the background workers running yourself (see [Workers](docs/self-hosting.md#workers)): without them, backups and
+restores wait with "No background worker is running".
+
+To upgrade: `git pull && composer install && npm ci && npm run build && php artisan migrate --force`, then start it
+again (see [Upgrades](docs/self-hosting.md#upgrades)).
 
 ### From source with Docker
 
