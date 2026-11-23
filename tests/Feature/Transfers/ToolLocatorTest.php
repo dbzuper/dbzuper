@@ -4,6 +4,7 @@ use App\Enums\DriverName;
 use App\Enums\TransferDirection;
 use App\Transfers\Native\Compatibility;
 use App\Transfers\Native\ToolLocator;
+use Illuminate\Filesystem\Filesystem;
 
 it('finds a configured override and ignores a missing one', function () {
     config(['dbzuper.transfer_tools.pg_dump' => __FILE__]);
@@ -35,15 +36,20 @@ it('falls back to the newest laman version directory', function () {
     touch("{$root}/bin/postgres/18.6/bin/pg_dump");
     touch("{$root}/bin/postgres/9.9/bin/pg_dump");
     touch("{$root}/bin/postgres/16.2/bin/psql");
-    config(['dbzuper.transfer_tools.pg_dump' => null, 'dbzuper.transfer_tools.psql' => null]);
-    putenv('PATH='.sys_get_temp_dir());
+    // Nothing from the machine: no configured tool paths (CI sets DBZUPER_*_PATH for every tool) and a PATH of one
+    // empty directory (CI also has mariadb-dump on its PATH).
+    config(['dbzuper.transfer_tools.pg_dump' => null, 'dbzuper.transfer_tools.psql' => null, 'dbzuper.transfer_tools.mariadb-dump' => null]);
+    mkdir("{$root}/empty-path");
+    $path = getenv('PATH');
+    putenv("PATH={$root}/empty-path");
 
     try {
         expect(ToolLocator::find('pg_dump', $root))->toBe("{$root}/bin/postgres/18.6/bin/pg_dump")
             ->and(ToolLocator::find('psql', $root))->toBe("{$root}/bin/postgres/16.2/bin/psql")
             ->and(ToolLocator::find('mariadb-dump', $root))->toBeNull();
     } finally {
-        putenv('PATH='.$_SERVER['PATH']);
+        putenv($path === false ? 'PATH' : "PATH={$path}");
+        (new Filesystem)->deleteDirectory($root);
     }
 });
 
