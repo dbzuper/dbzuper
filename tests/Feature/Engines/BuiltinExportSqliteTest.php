@@ -184,6 +184,24 @@ it('writes a file the sqlite3 CLI loads as is', function () {
     });
 });
 
+it('writes a file that survives the CLI dropping the CR of every CRLF', function () {
+    // The sqlite3 CLI reads line by line and drops each line's trailing CR, inside string literals too: the fixture's
+    // "line\r\ntext" came back as "line\ntext". Run without the CLI: its line handling, then the file as is via PDO.
+    sqliteBuiltinRoundTrip(function (Connection $source, Connection $target) {
+        $path = sqliteBuiltinExport($source, sqliteBuiltinOptions());
+        try {
+            $sql = (string) file_get_contents($path);
+        } finally {
+            @unlink($path);
+        }
+        $target->getPdo()->exec(str_replace("\r\n", "\n", $sql));
+
+        expect(Fingerprint::of($target, 'sqlite'))->toBe(Fingerprint::of($source, 'sqlite'))
+            ->and($target->selectOne("SELECT hex(body) AS h FROM rt_types WHERE code = 'full'")->h)
+            ->toBe(strtoupper(bin2hex("multi\nline\r\ntext\twith tab and a trailing space ")));
+    });
+});
+
 it('keeps every value with its storage class, and rowids', function () {
     sqliteBuiltinRoundTrip(function (Connection $source, Connection $target) {
         $source->statement('DROP TABLE IF EXISTS rt_dyn');

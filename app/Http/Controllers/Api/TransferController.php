@@ -19,6 +19,7 @@ use App\Jobs\TransferJob;
 use App\Models\SavedConnection;
 use App\Models\Transfer;
 use App\Models\User;
+use App\Support\BrowserTimezone;
 use App\Transfers\Export\BuiltinExporters;
 use App\Transfers\Export\DumpObject;
 use App\Transfers\Export\ExportOptions;
@@ -29,7 +30,6 @@ use App\Transfers\TransferPlanner;
 use App\Transfers\TransferStarter;
 use App\Transfers\TransferStorage;
 use App\Transfers\TransferTarget;
-use DateTimeZone;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -417,8 +417,8 @@ class TransferController extends Controller
     /**
      * "{database}-{YYYYMMDD-HHmmss}.sql[.gz]" in the browser's timezone (the time the user's own clock showed, as in
      * the Recent list), else the app timezone; SQLite uses the file name without its extension. The browser's zone is
-     * not validated: any name PHP knows (legacy ones like Asia/Calcutta included) is used, anything else is ignored, so
-     * a backup never fails over it.
+     * not validated: any name PHP knows, or ICU maps to one (legacy ones like Asia/Calcutta), is used, anything else is
+     * ignored, so a backup never fails over it.
      */
     private function fileName(SavedConnection $connection, TransferPlanner $planner, bool $gzip, mixed $timezone = null): string
     {
@@ -429,9 +429,7 @@ class TransferController extends Controller
         // Characters no file system or Content-Disposition header takes.
         $name = trim((string) preg_replace('~[\x00-\x1F\x7F/\\\\:*?"<>|]+~u', '_', $name));
 
-        $zone = is_string($timezone) && in_array($timezone, DateTimeZone::listIdentifiers(DateTimeZone::ALL_WITH_BC), true)
-            ? $timezone
-            : (string) config('app.timezone');
+        $zone = BrowserTimezone::resolve($timezone) ?? (string) config('app.timezone');
 
         return ($name === '' ? 'database' : $name).'-'.now()->timezone($zone)->format('Ymd-His').'.sql'.($gzip ? '.gz' : '');
     }

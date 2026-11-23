@@ -2,6 +2,7 @@
 
 namespace App\Transfers\Io;
 
+use Closure;
 use InflateContext;
 use RuntimeException;
 
@@ -29,7 +30,7 @@ class DumpReader
 
     public function __construct(private readonly string $path)
     {
-        $handle = @fopen($path, 'rb');
+        $handle = self::quietly(fn () => fopen($path, 'rb'));
         if ($handle === false) {
             throw new RuntimeException("Cannot open {$path} for reading.");
         }
@@ -149,7 +150,7 @@ class DumpReader
             }
 
             $before = inflate_get_read_len($this->inflate);
-            $out = @inflate_add($this->inflate, $raw, ZLIB_SYNC_FLUSH);
+            $out = self::quietly(fn () => inflate_add($this->inflate, $raw, ZLIB_SYNC_FLUSH));
             if ($out === false) {
                 throw new RuntimeException("{$this->path} is not a valid gzip file (corrupt data).");
             }
@@ -179,6 +180,25 @@ class DumpReader
     {
         if ($this->gzip && $this->inflate !== null && inflate_get_status($this->inflate) !== ZLIB_STREAM_END) {
             throw new RuntimeException("{$this->path} is a truncated gzip file.");
+        }
+    }
+
+    /**
+     * Runs $call with its PHP warning dropped: the caller reports the failure itself. Unlike @, the warning never
+     * reaches the error handler (where the test runner counts it).
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $call
+     * @return T
+     */
+    private static function quietly(Closure $call): mixed
+    {
+        set_error_handler(static fn (): bool => true);
+        try {
+            return $call();
+        } finally {
+            restore_error_handler();
         }
     }
 }

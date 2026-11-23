@@ -91,6 +91,17 @@ final class Literals
             // A raw NUL truncates the statement on restore; build the text from hex instead.
             return "CAST(X'".bin2hex($v)."' AS TEXT)";
         }
+        if (str_contains($v, "\r")) {
+            // The sqlite3 CLI reads its input line by line and drops the CR of every CRLF, inside a string literal
+            // too. As sqlite3 .dump does, each CR is written as a marker the text doesn't contain, which replace()
+            // turns back into char(13). The marker is a backslash, an r and maybe digits: no match can straddle it.
+            $marker = '\\r';
+            for ($i = 0; str_contains($v, $marker); $i++) {
+                $marker = '\\r'.$i;
+            }
+
+            return "replace('".str_replace(["'", "\r"], ["''", $marker], $v)."','{$marker}',char(13))";
+        }
 
         return "'".str_replace("'", "''", $v)."'";
     }

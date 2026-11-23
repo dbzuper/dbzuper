@@ -7,7 +7,7 @@ final class AppVersion
 {
     public static function detect(string $basePath): string
     {
-        $composer = @file_get_contents($basePath.'/composer.json');
+        $composer = self::read($basePath.'/composer.json');
         if ($composer !== false) {
             $version = json_decode($composer, true)['version'] ?? null;
             if (is_string($version) && $version !== '') {
@@ -15,12 +15,18 @@ final class AppVersion
             }
         }
 
-        $changelog = @file_get_contents($basePath.'/CHANGELOG.md');
+        $changelog = self::read($basePath.'/CHANGELOG.md');
         // "## 0.3.0 (2026-11-10)", "## [0.3.0] - 2026-11-10" or "## v0.3.0".
         if ($changelog !== false && preg_match('/^##\s+\[?v?(\d+\.\d+\.\d+[\w.+-]*)\]?/m', $changelog, $m) === 1) {
             return $m[1];
         }
 
         return 'dev';
+    }
+
+    /** A missing file is no error here; checked first, since a warning is reported even when silenced. */
+    private static function read(string $path): string|false
+    {
+        return is_file($path) ? @file_get_contents($path) : false;
     }
 }
