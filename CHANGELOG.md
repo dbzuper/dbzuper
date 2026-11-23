@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-11-23)
 
 - **Back up and restore databases**: **Backup & restore** in the workspace header (or "Back up database…" / "Restore
   from file…" in the command palette) downloads the open database as a `.sql` or `.sql.gz` file, with all or chosen
