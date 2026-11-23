@@ -65,6 +65,9 @@ it('writes SQLite literals', function (mixed $value, bool $blob, string $expecte
     'empty binary' => ['', true, "X''"],
     'bool' => [false, false, '0'],
     'nul text' => ["a\0b", false, "CAST(X'610062' AS TEXT)"],
+    // The sqlite3 CLI drops the CR of a CRLF even inside a string literal, so CR is rebuilt by replace().
+    'carriage return' => ["a\r\nb'c", false, "replace('a\\r\nb''c','\\r',char(13))"],
+    'carriage return and the marker' => ["\\r\r\\r0", false, "replace('\\r\\r1\\r0','\\r1',char(13))"],
     'float 0.1' => [0.1, false, '0.1'],
     'float 1e100' => [1e100, false, '1.0E+100'],
     'float -0.0' => [-0.0, false, '-0.0'],
@@ -96,3 +99,19 @@ it('round-trips SQLite text containing NUL', function () {
 
     expect($got['v'])->toBe($value);
 });
+
+it('round-trips SQLite text with carriage returns, also after CRLF becomes LF', function (string $value) {
+    $pdo = new PDO('sqlite::memory:');
+    $literal = Literals::sqlite($value, false);
+
+    // What the sqlite3 CLI does to every line it reads.
+    foreach ([$literal, str_replace("\r\n", "\n", $literal)] as $sql) {
+        expect($pdo->query("SELECT typeof({$sql}) AS t, {$sql} AS v")->fetch(PDO::FETCH_ASSOC))->toBe(['t' => 'text', 'v' => $value]);
+    }
+})->with([
+    'crlf' => ["multi\nline\r\ntext\r\n"],
+    'lone cr' => ["a\rb"],
+    'quotes' => ["it's\r\n'quoted'"],
+    'marker-like text' => ['\\r\\r0\\r1'."\r\n".'\\'."\r".'\\r'],
+    'cr at the edges' => ["\r\\\r"],
+]);
