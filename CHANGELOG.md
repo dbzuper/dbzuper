@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **`composer start` runs the background workers**: without Docker, `composer start` now runs
+  `php artisan dbzuper:start`, which serves the app with one backup/restore worker and the default queue, restarts a
+  worker that exits, and stops them with the server, so backups and restores work without extra setup
+  (`--transfer-workers`, `--host` and `--port` to change it). The README no longer says no worker is needed, and
+  [self-hosting](docs/self-hosting.md#upgrades) lists the upgrade steps without Docker, including
+  `php artisan migrate --force`.
+
 ## 0.4.0 (2026-11-23)
 
 - **Back up and restore databases**: **Backup & restore** in the workspace header (or "Back up database…" / "Restore

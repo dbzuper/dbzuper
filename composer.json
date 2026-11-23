@@ -60,7 +60,7 @@
         ],
         "start": [
             "Composer\\Config::disableProcessTimeout",
-            "@php artisan serve"
+            "@php artisan dbzuper:start"
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",

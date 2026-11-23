@@ -327,14 +327,18 @@ background worker is running"). One-off commands (`docker compose run --rm app p
   notices its worker process is gone, at the latest after 6 hours without progress; until then that database can't start
   another one. To avoid all this, let transfers finish before stopping, or raise `stop_grace_period` in
   `docker-compose.yml`.
-- Outside Docker, run a worker yourself (under systemd, Supervisor or similar), and run
-  `php artisan dbzuper:transfers:recover` before starting the workers after a reboot:
+- Outside Docker, `composer start` (`php artisan dbzuper:start`) runs the web server with one transfer worker and one
+  default worker, the way the image does: it first runs `php artisan dbzuper:transfers:recover`, starts a worker that
+  exits again (after 1 second, then longer, up to 30 seconds), and stops them all when the server stops or on Ctrl+C.
+  `--transfer-workers=N` sets how many backups and restores run side by side (`0` for none); `--host` and `--port` are
+  passed to `artisan serve`. `composer dev` runs the same workers for local development.
+- With your own web server (nginx, Apache, Herd, Valet), run the workers yourself under systemd, Supervisor or similar,
+  and run `php artisan dbzuper:transfers:recover` before starting them after a reboot:
 
       php artisan queue:work transfers --queue=transfers --sleep=1 --tries=1 --timeout=0
       php artisan queue:work database --queue=default --sleep=3 --tries=3
 
-    `composer dev` already runs one transfer worker and the default queue for local development. Without a transfer
-    worker, the dialog says "No background worker is running" and shows the command.
+    Without a transfer worker, the dialog says "No background worker is running" and shows the command.
 
 - Outside Docker, restart the workers after changing configuration or upgrading (`php artisan queue:restart` makes
   them exit once idle, for the process manager to start again). In the image they start fresh with the container.
@@ -447,6 +451,17 @@ with Compose and the published image, `docker compose pull && docker compose up 
     docker compose up -d --build
 
 The volumes survive, the entrypoint runs `php artisan migrate --force` on start, and the key is reused. Changes that need action on your side are listed in the [changelog](../CHANGELOG.md).
+
+Without Docker, stop DBZuper (and its workers), then:
+
+    git pull
+    composer install --no-dev --optimize-autoloader
+    npm ci && npm run build
+    php artisan migrate --force
+
+and start it again (`composer start`, or restart your web server and workers; `php artisan queue:restart` makes running
+workers exit once idle, for the process manager to start again). Skipping `migrate` leaves new features failing with
+"Server Error" (for example `no such table: transfers` after upgrading to 0.4.0).
 
 ## Environment reference
 

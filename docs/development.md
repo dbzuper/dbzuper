@@ -7,7 +7,8 @@ Requires PHP 8.4 (pdo_mysql, pdo_pgsql, pdo_sqlite), Composer 2 and Node 24.
     composer setup       # install dependencies, create .env and the app key, migrate, build, print the setup code
     composer run dev     # app, queue and Vite with hot reload, for working on DBZuper
 
-`composer start` (`php artisan serve`) is enough to just run it. Create the administrator with the setup code, or run
+`composer start` (`php artisan dbzuper:start`: the web server plus a backup/restore worker and the default queue,
+without Vite) is enough to just run it. Create the administrator with the setup code, or run
 `php artisan dbzuper:install`.
 
 SQLite connections may open files in `storage/app/sqlite` (the `DBZUPER_SQLITE_PATHS` default in `.env.example`), and
