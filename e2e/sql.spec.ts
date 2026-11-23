@@ -436,11 +436,19 @@ test('records: palette, three hops, Back/Forward, Copy path as SQL, run, and the
     await expect(cards).toHaveCount(4);
 
     // 4. Hop 3: item 1 -> its product (opening a parent selects it).
+    // Item 1's own button, pressed from the keyboard: Fit View pans the canvas for 200 ms, and a
+    // mouse click during that pan can land on item 2's button where item 1's was a frame ago.
     await explorer.getByRole('button', { name: 'Fit View' }).click();
-    await explorer
-        .getByRole('button', { name: /^Open products \(product_id\)/ })
-        .first()
-        .click();
+    const itemOneProduct = cards
+        .filter({
+            has: page.getByRole('button', {
+                name: 'order_items 1',
+                exact: true,
+            }),
+        })
+        .getByRole('button', { name: /^Open products \(product_id\)/ });
+    await itemOneProduct.focus();
+    await itemOneProduct.press('Enter');
     await expect(cards).toHaveCount(5);
     await expect(
         explorer.getByText('Mechanical Keyboard').first(),
