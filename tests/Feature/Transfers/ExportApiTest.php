@@ -8,6 +8,7 @@ use App\Jobs\RunExport;
 use App\Models\SavedConnection;
 use App\Models\Transfer;
 use App\Models\User;
+use App\Support\BrowserTimezone;
 use App\Support\Demo\CommerceSchema;
 use App\Transfers\Export\BuiltinExporter;
 use App\Transfers\Export\BuiltinExporters;
@@ -373,6 +374,10 @@ it("puts the browser's local time in the file name, and the app time without one
 });
 
 it('uses a legacy zone name a browser may report', function () {
+    // Debian/Ubuntu PHP reads the system tzdata, which may lack the legacy names; then only intl can map them.
+    if (BrowserTimezone::resolve('Asia/Calcutta') === null) {
+        $this->markTestSkipped('This PHP knows no Asia/Calcutta and has no intl (ICU 74+) to map it');
+    }
     $this->travelTo(CarbonImmutable::parse('2026-11-23 22:30:05', 'UTC'));
     $stem = pathinfo($this->path, PATHINFO_FILENAME);
 
