@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.2 (2026-11-24)
 
 - **Choose structure and data per table in a backup**: under Tables → Choose…, each ticked table can be backed up as
   Structure + data, Structure only or Data only. A mix runs natively with `pg_dump` and `mariadb-dump` when it only
