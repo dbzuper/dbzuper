@@ -288,6 +288,16 @@ it('ignores structure-only table data with mariadb-dump', function () {
         ->and($argv)->not->toContain('--no-data')->and($argv)->not->toContain('--no-create-info');
 });
 
+it('names no tables for a mariadb mix and excludes the unchosen ones instead', function () {
+    $a = new DumpObject(null, 'a', 'table');
+    $b = new DumpObject(null, 'b', 'table');
+    $o = new ExportOptions(tables: ['a', 'b'], structure: true, data: true, dropFirst: false, gzip: false, modes: ['a' => 'both', 'b' => 'structure']);
+    $argv = ncbDump(ncbConnection(DriverName::MariaDb), ncbTool('mariadb-dump', '11.4.2'), $o, [$a, $b], false, false, null, ['c'])->argv;
+
+    expect($argv)->toContain('--ignore-table=shop.c')
+        ->and(array_slice($argv, -2))->toBe(['--', 'shop']);
+});
+
 it('dumps data when the globals were structure only but a table is both', function () {
     $a = new DumpObject(null, 'a', 'table');
     $b = new DumpObject(null, 'b', 'table');

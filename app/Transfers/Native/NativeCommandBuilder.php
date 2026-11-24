@@ -20,8 +20,11 @@ final class NativeCommandBuilder
      * @param  list<DumpObject>  $objects  the chosen objects, used when $o->tables is not null
      * @param  string|null  $outputFile  the tool writes the dump there instead of stdout (pg_dump --file,
      *                                   mysqldump --result-file); it is deleted with the command's temp files
+     * @param  list<string>  $unchosen  MariaDB, mixed tables: every table and view that was not chosen. The tool
+     *                                  ignores --ignore-table-data for tables named on its command line, so a mix
+     *                                  names none and excludes the others instead.
      */
-    public static function dump(SavedConnection $c, ToolCheck $t, ExportOptions $o, array $objects, bool $routines, bool $events, ?string $outputFile = null): NativeCommand
+    public static function dump(SavedConnection $c, ToolCheck $t, ExportOptions $o, array $objects, bool $routines, bool $events, ?string $outputFile = null, array $unchosen = []): NativeCommand
     {
         $path = self::toolPath($t);
 
@@ -50,8 +53,12 @@ final class NativeCommandBuilder
         if ($c->driver === DriverName::MySql) {
             $argv[] = '--set-gtid-purged=OFF';
         }
-        if ($o->isMixed() && $c->driver === DriverName::MariaDb) {
+        $mixed = $o->isMixed() && $c->driver === DriverName::MariaDb && $o->tables !== null;
+        if ($mixed) {
             // Tables chosen as structure only are created but their rows left out (coversMix allows no other mix).
+            foreach ($unchosen as $name) {
+                $argv[] = '--ignore-table='.$c->database.'.'.$name;
+            }
             foreach ($objects as $object) {
                 if (! $o->dataFor($object->key())) {
                     $argv[] = '--ignore-table-data='.$c->database.'.'.$object->name;
@@ -62,7 +69,7 @@ final class NativeCommandBuilder
             $argv[] = '--result-file='.$outputFile;
         }
         array_push($argv, '--', (string) $c->database);
-        if ($o->tables !== null) {
+        if ($o->tables !== null && ! $mixed) {
             foreach ($objects as $object) {
                 $argv[] = $object->name;
             }

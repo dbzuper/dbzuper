@@ -54,13 +54,13 @@ final class NativeExporter
         $command = null;
 
         try {
-            [$serverVersion, $objects, $routines, $events, $found, $o] = $this->inspect($c, $t, $o, $objects);
+            [$serverVersion, $objects, $routines, $events, $found, $o, $unchosen] = $this->inspect($c, $t, $o, $objects);
             // Windows: the tool writes its own file next to the output (the transfer's storage directory), tailed
             // from there; see NativeProcess. Elsewhere stdout is a pipe.
             $outputFile = PHP_OS_FAMILY === 'Windows'
                 ? dirname($w->path()).DIRECTORY_SEPARATOR.'.dbz-native-'.bin2hex(random_bytes(8)).'.sql'
                 : null;
-            $command = NativeCommandBuilder::dump($c, $t, $o, $objects, $routines, $events, $outputFile);
+            $command = NativeCommandBuilder::dump($c, $t, $o, $objects, $routines, $events, $outputFile, $unchosen);
 
             $w->write(DumpHeader::render([
                 'app_version' => (string) (config('dbzuper.version') ?? 'dev'),
@@ -170,7 +170,7 @@ final class NativeExporter
 
     /**
      * @param  list<DumpObject>  $objects
-     * @return array{0: string, 1: list<DumpObject>, 2: bool, 3: bool, 4: list<string>, 5: ExportOptions}
+     * @return array{0: string, 1: list<DumpObject>, 2: bool, 3: bool, 4: list<string>, 5: ExportOptions, 6: list<string>}
      */
     private function inspect(SavedConnection $c, ToolCheck $t, ExportOptions $o, array $objects): array
     {
@@ -178,6 +178,7 @@ final class NativeExporter
             $version = (string) $db->selectOne($this->drivers->for($c->driver)->versionQuery())->version;
             $routines = $events = false;
             $gaps = [];
+            $unchosen = [];
 
             if ($c->driver === DriverName::Postgres) {
                 $gaps[] = self::PG_GAP;
@@ -187,6 +188,11 @@ final class NativeExporter
                     $o = self::withPartitionModes($o, $partitions);
                 }
             } else {
+                if ($c->driver === DriverName::MariaDb && $o->isMixed() && $o->tables !== null) {
+                    $chosen = array_map(fn (DumpObject $object) => $object->name, $objects);
+                    $all = array_map(fn ($r) => (string) $r->n, $db->select('SELECT table_name AS n FROM information_schema.tables WHERE table_schema = DATABASE()'));
+                    $unchosen = array_values(array_diff($all, $chosen));
+                }
                 if ($o->tables === null && $o->anyStructure()) {
                     // Routines and events come with "All" and structure only (spec §2).
                     $access = MySqlPrivilegeProbe::check($db, (string) $c->database);
@@ -198,7 +204,7 @@ final class NativeExporter
                 }
             }
 
-            return [$version, $objects, $routines, $events, $gaps, $o];
+            return [$version, $objects, $routines, $events, $gaps, $o, $unchosen];
         });
     }
 
