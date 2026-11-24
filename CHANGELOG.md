@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 (2026-11-24)
 
 - **`composer start` runs the background workers**: without Docker, `composer start` now runs
   `php artisan dbzuper:start`, which serves the app with one backup/restore worker and the default queue, restarts a
