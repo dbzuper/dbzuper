@@ -37,10 +37,9 @@ final readonly class ExportOptions
             throw new \InvalidArgumentException('table_modes must map tables to both, structure or data');
         }
 
-        if ($modes !== [] && count(array_unique($modes)) === 1) {
-            $only = reset($modes);
-            $structure = $only !== 'data';
-            $data = $only !== 'structure';
+        // Every mode equal to the globals' mode: nothing is per table, so the request runs exactly as without a map.
+        // A single mode that differs from the globals is still a mix, since keys without a mode keep the globals.
+        if ($modes !== [] && array_unique($modes) === [array_key_first($modes) => self::modeOf($structure, $data)]) {
             $modes = [];
         }
 
@@ -79,15 +78,26 @@ final readonly class ExportOptions
         return $this->modes !== [];
     }
 
-    /** @return list<'both'|'structure'|'data'> the distinct effective modes over the chosen tables */
+    /**
+     * The distinct per-table modes of a mix; [] when not mixed. Only the map counts: views and other keys without
+     * a mode take the globals, which a native run applies to them as it does without a mix.
+     *
+     * @return list<'both'|'structure'|'data'>
+     */
     public function modeKinds(): array
     {
-        $kinds = [];
-        foreach ($this->tables ?? [] as $key) {
-            $kinds[] = $this->structureFor($key) ? ($this->dataFor($key) ? 'both' : 'structure') : 'data';
-        }
+        return array_values(array_unique($this->modes));
+    }
 
-        return array_values(array_unique($kinds));
+    /** @return 'both'|'structure'|'data'|null the mode the global flags describe; null when neither is on */
+    private static function modeOf(bool $structure, bool $data): ?string
+    {
+        return match (true) {
+            $structure && $data => 'both',
+            $structure => 'structure',
+            $data => 'data',
+            default => null,
+        };
     }
 
     /** @return array{tables: list<string>|null, structure: bool, data: bool, drop: bool, gzip: bool, table_modes: array<string, 'both'|'structure'|'data'>} */
