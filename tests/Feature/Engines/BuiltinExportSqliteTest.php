@@ -684,7 +684,7 @@ it('keeps user tables named like shadow tables beside a loaded fts5 table', func
 const SQLITE_MODES_SETUP = [
     'CREATE TABLE a (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)',
     'CREATE TABLE b (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)',
-    'CREATE TABLE c (id INTEGER PRIMARY KEY, v TEXT)',
+    'CREATE TABLE c (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)',
     "INSERT INTO a VALUES (1, 'a1'), (2, 'a2')",
     "INSERT INTO b VALUES (5, 'b5')",
     "INSERT INTO c VALUES (1, 'c1'), (2, 'c2'), (3, 'c3')",
@@ -708,7 +708,7 @@ it('backs up structure and data per table', function () {
             try {
                 $sql = (string) file_get_contents($path);
                 // A data-only table goes into one that exists already.
-                $target->unprepared('CREATE TABLE c (id INTEGER PRIMARY KEY, v TEXT)');
+                $target->unprepared('CREATE TABLE c (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)');
                 sqliteBuiltinRestore($target, $path);
             } finally {
                 @unlink($path);
@@ -733,6 +733,7 @@ it('backs up structure and data per table', function () {
                 ->and($sql)->not->toContain('c_t')
                 ->and($sql)->toContain('CREATE VIEW v')
                 ->and($sql)->toContain("INSERT INTO sqlite_sequence (name, seq) VALUES ('a', 2);")
+                ->and($sql)->toContain("INSERT INTO sqlite_sequence (name, seq) VALUES ('c', 3);")
                 ->and($sql)->not->toContain("sqlite_sequence WHERE name = 'b'");
 
             expect(sqliteBuiltinObjects($target))->toBe([
@@ -743,7 +744,8 @@ it('backs up structure and data per table', function () {
             ])
                 ->and(sqliteBuiltinRows($target, 'SELECT * FROM a ORDER BY id'))->toBe(sqliteBuiltinRows($source, 'SELECT * FROM a ORDER BY id'))
                 ->and((int) $target->selectOne('SELECT COUNT(*) AS n FROM b')->n)->toBe(0)
-                ->and(sqliteBuiltinRows($target, 'SELECT * FROM c ORDER BY id'))->toBe(sqliteBuiltinRows($source, 'SELECT * FROM c ORDER BY id'));
+                ->and(sqliteBuiltinRows($target, 'SELECT * FROM c ORDER BY id'))->toBe(sqliteBuiltinRows($source, 'SELECT * FROM c ORDER BY id'))
+                ->and((int) $target->selectOne("SELECT seq FROM sqlite_sequence WHERE name = 'c'")->seq)->toBe(3);
         } finally {
             sqliteBuiltinSource($source, SQLITE_MODES_DROP);
         }

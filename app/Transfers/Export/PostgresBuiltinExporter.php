@@ -122,12 +122,13 @@ final class PostgresBuiltinExporter implements BuiltinExporter
         // schemas come with any structure at all. $relations are the ones whose structure is written.
         $relations = array_values(array_filter($chosenRelations, fn (array $rel) => $o->structureFor(self::modeKey($rel, $byOid))));
         $withData = array_values(array_filter($chosenRelations, fn (array $rel) => $o->dataFor(self::modeKey($rel, $byOid))));
-        $sequences = PostgresDdl::sequences($db, $relations, $all);
+        $sequences = null;
 
         $w->write(implode(";\n", self::RESTORE_SETTINGS).";\n\n");
         $viewSql = [];
 
         if ($o->anyStructure()) {
+            $sequences = PostgresDdl::sequences($db, $relations, $all);
             $enums = PostgresDdl::enumTypes($db, $relations, $all);
             $viewSql = PostgresDdl::views($db, $views);
 
@@ -206,12 +207,22 @@ final class PostgresBuiltinExporter implements BuiltinExporter
                 self::statements($w, PostgresDdl::foreignKeys($db, $rel), blank: false);
                 self::statements($w, PostgresDdl::keyComments($db, $rel), blank: false);
             }
+            if ($o->dropFirst && $o->isMixed()) {
+                // DROP TABLE … CASCADE took the data-only tables' keys to the tables it drops; they come back as
+                // the source has them (validated: a violation fails the restore rather than passing unnoticed).
+                $dropped = array_column($relations, 'oid');
+                foreach ($withData as $rel) {
+                    if (! in_array($rel['oid'], $dropped, true)) {
+                        self::statements($w, PostgresDdl::foreignKeysTo($db, $rel, $relations), blank: false);
+                    }
+                }
+            }
             $w->write("\n");
         }
 
         if ($o->anyData()) {
             // The positions of the sequences the tables with data own or use.
-            $dataSequences = $withData === $relations ? $sequences : PostgresDdl::sequences($db, $withData, $all);
+            $dataSequences = $sequences !== null && $withData === $relations ? $sequences : PostgresDdl::sequences($db, $withData, $all);
             self::statements($w, PostgresDdl::setvals($db, $dataSequences, $withData));
         }
 

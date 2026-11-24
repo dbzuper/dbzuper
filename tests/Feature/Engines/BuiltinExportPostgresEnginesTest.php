@@ -683,3 +683,31 @@ it("gives a partition its parent table's mode", function () {
             ->and($target->select('SELECT * FROM pd_low ORDER BY id'))->toEqual($source->select('SELECT * FROM pd_low ORDER BY id'));
     });
 });
+
+it("keeps a data-only table's foreign keys to tables it drops and recreates", function () {
+    $setup = [
+        'CREATE TABLE a (id int PRIMARY KEY, v text)',
+        'CREATE TABLE c (id int PRIMARY KEY, a_id int CONSTRAINT c_a_fk REFERENCES a (id), v text)',
+        "INSERT INTO a VALUES (1, 'a1'), (2, 'a2')",
+        "INSERT INTO c VALUES (1, 1, 'c1'), (2, 2, 'c2')",
+    ];
+    pgBuiltinOwnTables($setup, 'DROP TABLE IF EXISTS c, a', function (Connection $source, Connection $target) use ($setup) {
+        $o = new ExportOptions(
+            tables: [pgKey('public', 'a'), pgKey('public', 'c')],
+            structure: true, data: true, dropFirst: true, gzip: false,
+            modes: [pgKey('public', 'a') => 'both', pgKey('public', 'c') => 'data'],
+        );
+        // The target has both tables, c's key to a included; DROP TABLE a CASCADE takes that key with it.
+        $target->unprepared($setup[0].'; '.$setup[1]);
+        $sql = pgBuiltinRoundTripFile($source, $target, $o);
+
+        expect($sql)->toContain('DROP TABLE IF EXISTS "public"."a" CASCADE;')
+            ->and($sql)->not->toContain('CREATE TABLE "public"."c"')
+            ->and($sql)->toContain('ALTER TABLE "public"."c" ADD CONSTRAINT "c_a_fk" FOREIGN KEY (a_id) REFERENCES public.a(id)')
+            ->and(strpos($sql, 'ADD CONSTRAINT "c_a_fk"'))->toBeGreaterThan(strpos($sql, 'INSERT INTO "public"."c"'))
+            ->and($target->selectOne("SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = 'c_a_fk' AND conrelid = 'public.c'::regclass")?->d)
+            ->toBe('FOREIGN KEY (a_id) REFERENCES a(id)')
+            ->and($target->select('SELECT * FROM a ORDER BY id'))->toEqual($source->select('SELECT * FROM a ORDER BY id'))
+            ->and($target->select('SELECT * FROM c ORDER BY id'))->toEqual($source->select('SELECT * FROM c ORDER BY id'));
+    });
+});

@@ -410,6 +410,27 @@ final class PostgresDdl
     }
 
     /**
+     * Foreign keys of $rel that reference one of $referenced: the ones a DROP TABLE … CASCADE of those removes.
+     *
+     * @param  Relation  $rel
+     * @param  list<Relation>  $referenced
+     * @return list<string>
+     */
+    public static function foreignKeysTo(Connection $db, array $rel, array $referenced): array
+    {
+        if ($referenced === []) {
+            return [];
+        }
+
+        return array_map(
+            fn (array $r) => 'ALTER TABLE '.self::qualified($rel['schema'], $rel['name']).' ADD CONSTRAINT '.self::quote((string) $r['name']).' '.$r['definition'],
+            self::rows($db, "SELECT con.conname AS name, pg_get_constraintdef(con.oid) AS definition FROM pg_constraint con
+                WHERE con.conrelid = ? AND con.conislocal AND con.conparentid = 0 AND con.contype = 'f' AND con.confrelid = ANY(?::oid[])
+                ORDER BY con.conname", [$rel['oid'], self::oids($referenced)]),
+        );
+    }
+
+    /**
      * Indexes that don't back a constraint, and aren't a partition's copy of its parent's index (that copy comes
      * with the parent's index, which is created on the whole partition tree rather than ON ONLY the parent).
      *
