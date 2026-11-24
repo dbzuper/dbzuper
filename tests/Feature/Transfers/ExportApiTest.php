@@ -109,6 +109,27 @@ it('starts an export and queues it on the transfers connection', function () {
         ->and($transfer->database)->toBe('');
 });
 
+it('rejects table_modes with all tables', function () {
+    startExport(['table_modes' => ['users' => 'structure']])->assertUnprocessable()->assertJsonValidationErrors('table_modes');
+});
+
+it('rejects a table_modes key that is not chosen', function () {
+    startExport(['tables' => ['users'], 'table_modes' => ['users' => 'both', 'orders' => 'data']])
+        ->assertUnprocessable()->assertJsonValidationErrors('table_modes');
+});
+
+it('rejects an unknown mode', function () {
+    startExport(['tables' => ['users'], 'table_modes' => ['users' => 'schema']])
+        ->assertUnprocessable()->assertJsonValidationErrors('table_modes');
+});
+
+it('stores per-table modes on the transfer', function () {
+    $json = startExport(['tables' => ['users', 'orders'], 'table_modes' => ['users' => 'both', 'orders' => 'structure']])
+        ->assertAccepted()->json();
+
+    expect(Transfer::query()->findOrFail($json['id'])->options['table_modes'])->toBe(['users' => 'both', 'orders' => 'structure']);
+});
+
 it('names the file with the app timezone and no .gz when uncompressed', function () {
     config(['app.timezone' => 'Asia/Jakarta']);
     $this->travelTo(CarbonImmutable::parse('2026-11-22 20:30:15', 'UTC'));

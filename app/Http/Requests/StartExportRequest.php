@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\TransferMethod;
+use App\Transfers\Export\ExportOptions;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -35,6 +36,7 @@ class StartExportRequest extends FormRequest
             'drop' => ['sometimes', 'boolean'],
             'gzip' => ['sometimes', 'boolean'],
             'method' => ['nullable', Rule::enum(TransferMethod::class)],
+            'table_modes' => ['sometimes'],
         ];
 
         if (is_array($this->input('tables'))) {
@@ -51,6 +53,12 @@ class StartExportRequest extends FormRequest
     public function after(): array
     {
         return [function (Validator $validator): void {
+            if ($this->has('table_modes') && ! $validator->errors()->has('table_modes')) {
+                $error = self::validateTableModes($this->input('table_modes'), $this->input('tables'));
+                if ($error !== null) {
+                    $validator->errors()->add('table_modes', $error);
+                }
+            }
             if ($validator->errors()->hasAny(['structure', 'data'])) {
                 return;
             }
@@ -58,6 +66,30 @@ class StartExportRequest extends FormRequest
                 $validator->errors()->add('data', 'Include the structure, the data or both.');
             }
         }];
+    }
+
+    /** An error message when $modes is not a valid per-table mode map for the chosen $tables, else null. */
+    public static function validateTableModes(mixed $modes, mixed $tables): ?string
+    {
+        if (! is_array($tables) || ! array_is_list($tables)) {
+            return 'Per-table modes need a list of chosen tables.';
+        }
+        if (! is_array($modes) || ($modes !== [] && array_is_list($modes))) {
+            return 'Per-table modes must map each table to a mode.';
+        }
+        if (count($modes) > self::MAX_TABLES) {
+            return self::TOO_MANY_TABLES;
+        }
+        foreach ($modes as $key => $mode) {
+            if (! in_array((string) $key, $tables, true)) {
+                return 'Per-table modes name a table that is not chosen.';
+            }
+            if (! in_array($mode, ExportOptions::MODES, true)) {
+                return 'A table mode must be both, structure or data.';
+            }
+        }
+
+        return null;
     }
 
     /** @return array<string, string> */
