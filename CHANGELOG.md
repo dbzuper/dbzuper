@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Choose structure and data per table in a backup**: under Tables → Choose…, each ticked table can be backed up as
+  Structure + data, Structure only or Data only. A mix runs natively with `pg_dump` and `mariadb-dump` when it only
+  combines Structure + data and Structure only; otherwise it uses the built-in method, and the dialog warns before a
+  backup of about 1 million rows or more that would be slower. Data only tables are added to an existing table on
+  restore. See the [user guide](docs/user-guide.md#backing-up).
+
 ## 0.4.1 (2026-11-24)
 
 - **`composer start` runs the background workers**: without Docker, `composer start` now runs
