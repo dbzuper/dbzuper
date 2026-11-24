@@ -542,8 +542,7 @@ it('backs up a covered mix of tables natively, structure for one and data for th
                 $rowsOf = fn (string $table) => $engine === 'pgsql'
                     ? preg_match('/^COPY public\.'.$table.' /m', $text)
                     : preg_match('/^INSERT INTO `'.$table.'` /m', $text);
-                expect($text)->toContain('-- Method: native
-')
+                expect($text)->toContain("-- Method: native\n")
                     ->and($text)->toMatch('/CREATE TABLE (public\.)?`?rt_floats`?/')
                     ->and($text)->toMatch('/CREATE TABLE (public\.)?`?'.$second.'`?/')
                     ->and($rowsOf('rt_floats'))->toBe(1)

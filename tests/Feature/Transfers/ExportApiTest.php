@@ -133,6 +133,24 @@ it('stores per-table modes on the transfer', function () {
     expect(Transfer::query()->findOrFail($json['id'])->options['table_modes'])->toBe(['users' => 'both', 'orders' => 'structure']);
 });
 
+it('rejects a mix that leaves a chosen table without a mode', function () {
+    startExport(['tables' => ['users', 'orders'], 'structure' => false, 'data' => true, 'table_modes' => ['users' => 'both']])
+        ->assertUnprocessable()->assertJsonValidationErrors(['table_modes' => 'Give every chosen table a mode.']);
+
+    expect(Transfer::query()->count())->toBe(0);
+});
+
+it('accepts a mix with a chosen view that has no mode', function () {
+    $db = DB::connectUsing('fixture', ['driver' => 'sqlite', 'database' => $this->path, 'prefix' => ''], force: true);
+    $db->statement('CREATE VIEW v_users AS SELECT id FROM users');
+    DB::purge('fixture');
+
+    $json = startExport(['tables' => ['users', 'orders', 'v_users'], 'table_modes' => ['users' => 'both', 'orders' => 'structure']])
+        ->assertAccepted()->json();
+
+    expect(Transfer::query()->findOrFail($json['id'])->options['table_modes'])->toBe(['users' => 'both', 'orders' => 'structure']);
+});
+
 it('names the file with the app timezone and no .gz when uncompressed', function () {
     config(['app.timezone' => 'Asia/Jakarta']);
     $this->travelTo(CarbonImmutable::parse('2026-11-22 20:30:15', 'UTC'));

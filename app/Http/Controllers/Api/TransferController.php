@@ -130,12 +130,22 @@ class TransferController extends Controller
         $options = ExportOptions::fromRequest($request->validated());
 
         if ($options->tables !== null) {
-            $keys = array_map(fn (DumpObject $o) => $o->key(), $this->listObjects($connection, $factory, $errors));
+            $objects = $this->listObjects($connection, $factory, $errors);
+            $keys = array_map(fn (DumpObject $o) => $o->key(), $objects);
             $missing = array_values(array_diff($options->tables, $keys));
             if ($options->tables === [] || $missing !== []) {
                 throw ValidationException::withMessages(['tables' => $options->tables === []
                     ? 'Choose at least one table.'
                     : 'These tables no longer exist: '.implode(', ', array_slice($missing, 0, 5)).(count($missing) > 5 ? ', …' : '')]);
+            }
+            // A table without a mode would take the globals, which a native run cannot apply per table. Views are exempt.
+            if ($options->isMixed()) {
+                $chosen = array_flip($options->tables);
+                foreach ($objects as $object) {
+                    if ($object->kind === 'table' && isset($chosen[$object->key()]) && ! isset($options->modes[$object->key()])) {
+                        throw ValidationException::withMessages(['table_modes' => 'Give every chosen table a mode.']);
+                    }
+                }
             }
         }
 
