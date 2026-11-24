@@ -67,7 +67,8 @@ dialog shows progress and can cancel. For setting up the background workers and 
 - **Per table:** with Choose…, each ticked table has its own choice: Structure + data, Structure only or Data only.
   Views have no choice; they are included whenever the backup includes any structure. Triggers, indexes and
   constraints follow their table's structure, and **DROP** applies to the tables that include structure.
-- **Include:** Structure, Data, or both. **Add DROP … IF EXISTS before each CREATE** is on by default, so the file
+- **Include:** Structure, Data, or both. With Choose…, changing Include sets every ticked table (and tables ticked
+  after) to that choice; a table's own choice can still change it afterwards. **Add DROP … IF EXISTS before each CREATE** is on by default, so the file
   restores over an existing copy.
 - **Compress (.sql.gz)** gzips the file. The download is named `{database}-{YYYYMMDD-HHmmss}.sql[.gz]`.
 - The file is kept for 24 hours (`DBZUPER_TRANSFER_TTL`), so a failed download can be retried. Recent backups are

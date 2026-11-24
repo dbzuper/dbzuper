@@ -51,6 +51,9 @@ const selectClass =
 
 const includesStructure = (m: TableMode) => m !== 'data';
 const includesData = (m: TableMode) => m !== 'structure';
+/** The mode the Include checkboxes describe; null when neither is on. */
+const modeOf = (structure: boolean, data: boolean): TableMode | null =>
+    structure && data ? 'both' : structure ? 'structure' : data ? 'data' : null;
 
 function Check({
     label,
@@ -154,7 +157,6 @@ function TablePicker({
     onToggle,
     onSetMany,
     onMode,
-    onSetModes,
     filterRef,
     bySchema,
 }: {
@@ -166,7 +168,6 @@ function TablePicker({
     onToggle: (key: string, on: boolean) => void;
     onSetMany: (keys: string[], on: boolean) => void;
     onMode: (key: string, mode: TableMode) => void;
-    onSetModes: (keys: string[], mode: TableMode) => void;
     filterRef: React.Ref<HTMLInputElement>;
     bySchema: boolean;
 }) {
@@ -206,9 +207,6 @@ function TablePicker({
             onMode={onMode}
         />
     );
-    const tickedTables = objects
-        .filter((o) => o.kind === 'table' && chosen.has(o.key))
-        .map((o) => o.key);
     const chosenShown = q
         ? visible.some((o) => chosen.has(o.key))
         : chosen.size > 0;
@@ -243,23 +241,6 @@ function TablePicker({
                 >
                     Clear {q ? 'shown' : 'all'}
                 </Button>
-                <select
-                    aria-label="Set ticked to"
-                    className={selectClass}
-                    value=""
-                    disabled={tickedTables.length === 0}
-                    onChange={(e) =>
-                        e.target.value &&
-                        onSetModes(tickedTables, e.target.value as TableMode)
-                    }
-                >
-                    <option value="">Set ticked to…</option>
-                    {MODES.map((m) => (
-                        <option key={m} value={m}>
-                            {MODE_LABELS[m]}
-                        </option>
-                    ))}
-                </select>
             </div>
             <div className="max-h-56 overflow-auto rounded-md border p-1">
                 {visible.length === 0 && (
@@ -382,15 +363,22 @@ export function BackupDialog({
     }, [open, workspace]);
 
     useEffect(() => {
-        defaultMode.current =
-            structure && data
-                ? 'both'
-                : structure
-                  ? 'structure'
-                  : data
-                    ? 'data'
-                    : 'both';
+        defaultMode.current = modeOf(structure, data) ?? 'both';
     }, [structure, data]);
+
+    /**
+     * The Include checkboxes set the mode of every ticked table (and of tables ticked later); a table's own
+     * selector can still change it afterwards. Both off changes nothing: the backup can't start that way.
+     */
+    const setInclude = (nextStructure: boolean, nextData: boolean) => {
+        setStructure(nextStructure);
+        setData(nextData);
+        const m = modeOf(nextStructure, nextData);
+        if (m === null) return;
+        setModes((prev) =>
+            Object.fromEntries(Object.keys(prev).map((k) => [k, m])),
+        );
+    };
 
     /** Ticking a table gives it the Include checkboxes' mode; unticking forgets it. */
     const onSetMany = useCallback((keys: string[], on: boolean) => {
@@ -418,15 +406,6 @@ export function BackupDialog({
             setModes((prev) => ({ ...prev, [key]: mode })),
         [],
     );
-    const onSetModes = useCallback(
-        (keys: string[], mode: TableMode) =>
-            setModes((prev) => {
-                const next = { ...prev };
-                keys.forEach((k) => (next[k] = mode));
-                return next;
-            }),
-        [],
-    );
 
     /**
      * Only the All radio means "all" (which also takes routines and events where the engine has them). Choose…
@@ -440,13 +419,26 @@ export function BackupDialog({
         for (const k of [...chosen].sort()) if (modes[k]) out[k] = modes[k];
         return out;
     }, [everything, chosen, modes]);
+    const tickedModes = Object.values(tableModes);
+    const distinctModes = new Set(tickedModes);
+    /**
+     * Only ticked tables that differ are sent per table. When they all share one mode, that mode becomes the
+     * global structure / data and the backup runs exactly as one without per-table modes (natively when it can).
+     */
+    const mixed = distinctModes.size > 1;
+    const uniformMode =
+        distinctModes.size === 1 ? (tickedModes[0] as TableMode) : null;
+    const sentStructure =
+        uniformMode !== null ? includesStructure(uniformMode) : structure;
+    const sentData = uniformMode !== null ? includesData(uniformMode) : data;
+    const sentModes = mixed ? tableModes : null;
     // Capabilities for the chosen set: at once on open, then debounced while the choice changes.
     const keysId = useMemo(
         () =>
             everything
                 ? '*'
-                : JSON.stringify({ k: [...chosen].sort(), m: tableModes }),
-        [everything, chosen, tableModes],
+                : JSON.stringify({ k: [...chosen].sort(), m: sentModes ?? {} }),
+        [everything, chosen, sentModes],
     );
     // The warning must describe the current choice.
     useEffect(() => setConfirming(false), [keysId]);
@@ -554,8 +546,12 @@ export function BackupDialog({
         setRecentKey((k) => k + 1);
     }, []);
 
-    const modeValues = Object.values(tableModes);
-    const anyStructure = structure || modeValues.some(includesStructure);
+    /** Will the request write any structure (and so DROP statements)? Views take the global structure. */
+    const anyStructure =
+        everything || chosen.size === 0
+            ? structure
+            : tickedModes.some(includesStructure) ||
+              ([...chosen].some((k) => !(k in tableModes)) && sentStructure);
     /** Estimated rows the backup writes from tables whose mode includes data. */
     const dataRows = useMemo(() => {
         const rows = new Map(objects?.map((o) => [o.key, o.rows]) ?? []);
@@ -565,7 +561,7 @@ export function BackupDialog({
     }, [objects, tableModes]);
     const warnBig =
         caps?.export.mix_needs_builtin === true &&
-        Object.keys(tableModes).length > 0 &&
+        mixed &&
         dataRows >= BIG_BACKUP_ROWS;
 
     const start = (confirmed = false) => {
@@ -580,11 +576,9 @@ export function BackupDialog({
         transfersApi
             .startExport(workspace, {
                 tables: everything ? 'all' : [...chosen],
-                ...(Object.keys(tableModes).length > 0
-                    ? { table_modes: tableModes }
-                    : {}),
-                structure,
-                data,
+                ...(sentModes ? { table_modes: sentModes } : {}),
+                structure: sentStructure,
+                data: sentData,
                 drop: anyStructure && drop,
                 gzip,
                 // A native choice made before native turned out unusable (for the chosen tables) falls back.
@@ -680,7 +674,6 @@ export function BackupDialog({
                                     onToggle={onToggle}
                                     onSetMany={onSetMany}
                                     onMode={onMode}
-                                    onSetModes={onSetModes}
                                     filterRef={filterRef}
                                     bySchema={connection.driver === 'pgsql'}
                                 />
@@ -691,12 +684,12 @@ export function BackupDialog({
                                 <Check
                                     label="Structure"
                                     checked={structure}
-                                    onChange={setStructure}
+                                    onChange={(v) => setInclude(v, data)}
                                 />
                                 <Check
                                     label="Data"
                                     checked={data}
-                                    onChange={setData}
+                                    onChange={(v) => setInclude(structure, v)}
                                 />
                             </div>
                             {!structure && !data && (

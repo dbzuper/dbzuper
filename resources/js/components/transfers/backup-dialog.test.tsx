@@ -240,9 +240,11 @@ describe('BackupDialog', () => {
         expect(backUp()).toBeDisabled();
         fireEvent.click(screen.getByRole('checkbox', { name: /^users/ }));
         await waitFor(() =>
-            expect(capabilities).toHaveBeenCalledWith('5', ['users'], {
-                users: 'both',
-            }),
+            expect(capabilities).toHaveBeenCalledWith(
+                '5',
+                ['users'],
+                undefined,
+            ),
         );
         fireEvent.click(backUp());
         await waitFor(() =>
@@ -364,10 +366,11 @@ describe('BackupDialog choices and capabilities', () => {
                 expect.objectContaining({ tables: ['orders', 'users'] }),
             ),
         );
-        expect(capabilities).toHaveBeenCalledWith('5', ['orders', 'users'], {
-            orders: 'both',
-            users: 'both',
-        });
+        expect(capabilities).toHaveBeenCalledWith(
+            '5',
+            ['orders', 'users'],
+            undefined,
+        );
     });
 
     it('says Checking… and holds Back up while the chosen set is re-read', async () => {
@@ -403,9 +406,11 @@ describe('BackupDialog choices and capabilities', () => {
         fireEvent.click(screen.getByLabelText('Choose…'));
         fireEvent.click(screen.getByRole('checkbox', { name: /^users/ }));
         await waitFor(() =>
-            expect(capabilities).toHaveBeenCalledWith('5', ['users'], {
-                users: 'both',
-            }),
+            expect(capabilities).toHaveBeenCalledWith(
+                '5',
+                ['users'],
+                undefined,
+            ),
         );
         fireEvent.click(screen.getByRole('checkbox', { name: /^orders/ }));
         await screen.findByText('Not included: NEW gap.');
@@ -533,11 +538,9 @@ describe('BackupDialog per-table modes', () => {
         expect(
             screen.queryByRole('combobox', { name: 'Mode for orders' }),
         ).toBeNull();
-        fireEvent.click(screen.getByRole('checkbox', { name: 'Data' }));
-        fireEvent.click(screen.getByRole('checkbox', { name: /^orders/ }));
-        expect(modeSelect('orders')).toHaveValue('both');
-        expect(modeSelect('users')).toHaveValue('structure');
         fireEvent.change(modeSelect('users'), { target: { value: 'data' } });
+        fireEvent.click(screen.getByRole('checkbox', { name: /^orders/ }));
+        expect(modeSelect('orders')).toHaveValue('structure');
         expect(modeSelect('users')).toHaveValue('data');
         expect(
             screen.getAllByRole('option', { name: 'Structure + data' }).length,
@@ -545,33 +548,108 @@ describe('BackupDialog per-table modes', () => {
     });
 
     it('gives views no mode', async () => {
-        mockApi(caps(), [obj('orders'), { ...obj('v_totals'), kind: 'view' }]);
+        mockApi(caps(), [
+            obj('orders'),
+            obj('users'),
+            { ...obj('v_totals'), kind: 'view' },
+        ]);
         const start = vi
             .spyOn(transfersApi, 'startExport')
             .mockResolvedValue(started);
         open();
-        await tick('orders', 'v_totals');
+        await tick('orders', 'users', 'v_totals');
         expect(
             screen.queryByRole('combobox', { name: 'Mode for v_totals' }),
         ).toBeNull();
+        fireEvent.change(modeSelect('users'), {
+            target: { value: 'structure' },
+        });
         await waitFor(() => expect(backUp()).toBeEnabled());
         fireEvent.click(backUp());
         await waitFor(() =>
             expect(start).toHaveBeenCalledWith(
                 '5',
-                expect.objectContaining({ table_modes: { orders: 'both' } }),
+                expect.objectContaining({
+                    table_modes: { orders: 'both', users: 'structure' },
+                }),
             ),
         );
     });
 
-    it('sets every ticked table with Set ticked to', async () => {
+    it('sets every ticked table from the Include checkboxes', async () => {
         open();
         await tick('orders', 'users');
-        fireEvent.change(screen.getByLabelText('Set ticked to'), {
-            target: { value: 'structure' },
-        });
+        fireEvent.change(modeSelect('orders'), { target: { value: 'data' } });
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Data' }));
         expect(modeSelect('orders')).toHaveValue('structure');
         expect(modeSelect('users')).toHaveValue('structure');
+        fireEvent.change(modeSelect('users'), { target: { value: 'both' } });
+        expect(modeSelect('users')).toHaveValue('both');
+        expect(modeSelect('orders')).toHaveValue('structure');
+    });
+
+    it('makes ticked tables data only when Structure is unchecked after ticking', async () => {
+        const start = vi
+            .spyOn(transfersApi, 'startExport')
+            .mockResolvedValue(started);
+        open();
+        await tick('users');
+        expect(modeSelect('users')).toHaveValue('both');
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Structure' }));
+        expect(modeSelect('users')).toHaveValue('data');
+        expect(
+            screen.queryByRole('checkbox', {
+                name: 'Add DROP … IF EXISTS before each CREATE',
+            }),
+        ).toBeNull();
+        await waitFor(() => expect(backUp()).toBeEnabled());
+        fireEvent.click(backUp());
+        await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+        expect(start.mock.calls[0][1]).toEqual(
+            expect.objectContaining({
+                tables: ['users'],
+                structure: false,
+                data: true,
+                drop: false,
+            }),
+        );
+        expect(start.mock.calls[0][1]).not.toHaveProperty('table_modes');
+    });
+
+    it('sends one shared mode as the global structure and data, without table_modes', async () => {
+        const start = vi
+            .spyOn(transfersApi, 'startExport')
+            .mockResolvedValue(started);
+        open();
+        await tick('orders', 'users');
+        fireEvent.change(modeSelect('orders'), {
+            target: { value: 'structure' },
+        });
+        fireEvent.change(modeSelect('users'), {
+            target: { value: 'structure' },
+        });
+        await waitFor(() => expect(backUp()).toBeEnabled());
+        expect(capabilities).toHaveBeenLastCalledWith(
+            '5',
+            ['orders', 'users'],
+            undefined,
+        );
+        fireEvent.click(backUp());
+        await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+        expect(start.mock.calls[0][1]).toEqual(
+            expect.objectContaining({ structure: true, data: false }),
+        );
+        expect(start.mock.calls[0][1]).not.toHaveProperty('table_modes');
+    });
+
+    it('offers DROP for a ticked view only with Structure on', async () => {
+        mockApi(caps(), [obj('orders'), { ...obj('v_totals'), kind: 'view' }]);
+        open();
+        await tick('v_totals');
+        const drop = { name: 'Add DROP … IF EXISTS before each CREATE' };
+        expect(screen.getByRole('checkbox', drop)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Structure' }));
+        expect(screen.queryByRole('checkbox', drop)).toBeNull();
     });
 
     it('sends table_modes and re-reads capabilities when a mode changes', async () => {
@@ -584,7 +662,7 @@ describe('BackupDialog per-table modes', () => {
             expect(capabilities).toHaveBeenLastCalledWith(
                 '5',
                 ['orders', 'users'],
-                { orders: 'both', users: 'both' },
+                undefined,
             ),
         );
         fireEvent.change(modeSelect('users'), { target: { value: 'data' } });
@@ -625,7 +703,6 @@ describe('BackupDialog per-table modes', () => {
         const note =
             'Data only: on restore its rows are added to an existing table; the table is not created or replaced.';
         expect(screen.queryByText(note)).toBeNull();
-        fireEvent.click(screen.getByRole('checkbox', { name: 'Structure' }));
         fireEvent.change(modeSelect('users'), { target: { value: 'data' } });
         expect(screen.getByText(note)).toBeInTheDocument();
         const drop = { name: 'Add DROP … IF EXISTS before each CREATE' };
@@ -654,6 +731,9 @@ describe('BackupDialog per-table modes', () => {
             .mockResolvedValue(started);
         open();
         await tick('orders', 'users');
+        fireEvent.change(modeSelect('users'), {
+            target: { value: 'structure' },
+        });
         await waitFor(() => expect(backUp()).toBeEnabled());
         fireEvent.click(backUp());
         const alert = await screen.findByRole('alert');
@@ -668,12 +748,15 @@ describe('BackupDialog per-table modes', () => {
     });
 
     it('closes the warning on Change tables and focuses the filter', async () => {
-        mockApi(mixCaps(), [big('orders', 1_200_000)]);
+        mockApi(mixCaps(), [big('orders', 1_200_000), big('users', 5)]);
         const start = vi
             .spyOn(transfersApi, 'startExport')
             .mockResolvedValue(started);
         open();
-        await tick('orders');
+        await tick('orders', 'users');
+        fireEvent.change(modeSelect('users'), {
+            target: { value: 'structure' },
+        });
         await waitFor(() => expect(backUp()).toBeEnabled());
         fireEvent.click(backUp());
         fireEvent.click(
@@ -689,7 +772,10 @@ describe('BackupDialog per-table modes', () => {
     it('closes the warning when the choice changes', async () => {
         mockApi(mixCaps(), [big('orders', 1_200_000), big('users', 5)]);
         open();
-        await tick('orders');
+        await tick('orders', 'users');
+        fireEvent.change(modeSelect('users'), {
+            target: { value: 'structure' },
+        });
         await waitFor(() => expect(backUp()).toBeEnabled());
         fireEvent.click(backUp());
         await screen.findByRole('alert');
@@ -706,6 +792,7 @@ describe('BackupDialog per-table modes', () => {
             .mockResolvedValue(started);
         open();
         await tick('orders', 'users');
+        fireEvent.change(modeSelect('users'), { target: { value: 'data' } });
         await waitFor(() => expect(backUp()).toBeEnabled());
         fireEvent.click(backUp());
         await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
@@ -713,24 +800,30 @@ describe('BackupDialog per-table modes', () => {
     });
 
     it('does not warn when native covers the mix, however big', async () => {
-        mockApi(caps({ mix_needs_builtin: false }), [big('orders', 5_000_000)]);
+        mockApi(caps({ mix_needs_builtin: false }), [
+            big('orders', 5_000_000),
+            big('users', 5),
+        ]);
         const start = vi
             .spyOn(transfersApi, 'startExport')
             .mockResolvedValue(started);
         open();
-        await tick('orders');
+        await tick('orders', 'users');
+        fireEvent.change(modeSelect('users'), {
+            target: { value: 'structure' },
+        });
         await waitFor(() => expect(backUp()).toBeEnabled());
         fireEvent.click(backUp());
         await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
     });
 
     it('does not count structure-only tables toward the warning', async () => {
-        mockApi(mixCaps(), [big('orders', 5_000_000)]);
+        mockApi(mixCaps(), [big('orders', 5_000_000), big('users', 5)]);
         const start = vi
             .spyOn(transfersApi, 'startExport')
             .mockResolvedValue(started);
         open();
-        await tick('orders');
+        await tick('orders', 'users');
         fireEvent.change(modeSelect('orders'), {
             target: { value: 'structure' },
         });
