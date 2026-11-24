@@ -22,7 +22,8 @@ final class NativeCommandBuilder
      *                                   mysqldump --result-file); it is deleted with the command's temp files
      * @param  list<string>  $unchosen  MariaDB, mixed tables: every table and view that was not chosen. The tool
      *                                  ignores --ignore-table-data for tables named on its command line, so a mix
-     *                                  names none and excludes the others instead.
+     *                                  names none and excludes the others instead. The exclusions go in the options
+     *                                  file, not argv: Windows caps a command line at 32,767 characters.
      */
     public static function dump(SavedConnection $c, ToolCheck $t, ExportOptions $o, array $objects, bool $routines, bool $events, ?string $outputFile = null, array $unchosen = []): NativeCommand
     {
@@ -32,7 +33,22 @@ final class NativeCommandBuilder
             return self::pgDump($c, $path, $t, $o, $objects, $outputFile);
         }
 
-        [$file, $temp] = self::defaultsFile($c);
+        $mixed = $o->isMixed() && $c->driver === DriverName::MariaDb && $o->tables !== null;
+        $exclusions = [];
+        if ($mixed) {
+            // Tables chosen as structure only are created but their rows left out (coversMix allows no other mix).
+            // mariadb-dump may match these names case-insensitively, even on a lower_case_table_names=0 server.
+            foreach ($unchosen as $name) {
+                $exclusions[] = self::optionLine('ignore-table', $c->database.'.'.$name);
+            }
+            foreach ($objects as $object) {
+                if (! $o->dataFor($object->key())) {
+                    $exclusions[] = self::optionLine('ignore-table-data', $c->database.'.'.$object->name);
+                }
+            }
+        }
+
+        [$file, $temp] = self::defaultsFile($c, $exclusions);
         $argv = [...self::clientHead($c, $path, $file), '--single-transaction', '--no-tablespaces', '--comments'];
         if ($routines) {
             $argv[] = '--routines';
@@ -52,18 +68,6 @@ final class NativeCommandBuilder
         array_push($argv, '--hex-blob', '--default-character-set=utf8mb4');
         if ($c->driver === DriverName::MySql) {
             $argv[] = '--set-gtid-purged=OFF';
-        }
-        $mixed = $o->isMixed() && $c->driver === DriverName::MariaDb && $o->tables !== null;
-        if ($mixed) {
-            // Tables chosen as structure only are created but their rows left out (coversMix allows no other mix).
-            foreach ($unchosen as $name) {
-                $argv[] = '--ignore-table='.$c->database.'.'.$name;
-            }
-            foreach ($objects as $object) {
-                if (! $o->dataFor($object->key())) {
-                    $argv[] = '--ignore-table-data='.$c->database.'.'.$object->name;
-                }
-            }
         }
         if ($outputFile !== null) {
             $argv[] = '--result-file='.$outputFile;
@@ -219,8 +223,12 @@ final class NativeCommandBuilder
         return $env;
     }
 
-    /** @return array{0: string, 1: list<string>} the options file and the paths to delete (file, then its directory) */
-    private static function defaultsFile(SavedConnection $c): array
+    /**
+     * @param  list<string>  $dumpLines  option lines for the dump tool alone, written under [mysqldump] (read by
+     *                                   mysqldump and every mariadb-dump, which reads [mariadb-dump] too)
+     * @return array{0: string, 1: list<string>} the options file and the paths to delete (file, then its directory)
+     */
+    private static function defaultsFile(SavedConnection $c, array $dumpLines = []): array
     {
         $options = $c->options ?? [];
         $maria = $c->driver === DriverName::MariaDb;
@@ -256,6 +264,10 @@ final class NativeCommandBuilder
                     $lines[] = 'ssl-mode=VERIFY_IDENTITY';
                 }
                 break;
+        }
+
+        if ($dumpLines !== []) {
+            array_push($lines, '[mysqldump]', ...$dumpLines);
         }
 
         $dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbzuper-'.bin2hex(random_bytes(8));

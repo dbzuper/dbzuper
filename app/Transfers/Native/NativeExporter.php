@@ -189,6 +189,8 @@ final class NativeExporter
                 }
             } else {
                 if ($c->driver === DriverName::MariaDb && $o->isMixed() && $o->tables !== null) {
+                    // Read before the dump's own snapshot: a table created in between is not excluded, so it is
+                    // dumped too.
                     $chosen = array_map(fn (DumpObject $object) => $object->name, $objects);
                     $all = array_map(fn ($r) => (string) $r->n, $db->select('SELECT table_name AS n FROM information_schema.tables WHERE table_schema = DATABASE()'));
                     $unchosen = array_values(array_diff($all, $chosen));

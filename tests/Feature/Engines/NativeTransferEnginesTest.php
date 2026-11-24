@@ -510,12 +510,24 @@ it('leaves no temporary output file behind when the dump fails or is cancelled',
 it('backs up a covered mix of tables natively, structure for one and data for the other', function (string $engine) {
     nativeInto($engine, function (SavedConnection $target) use ($engine) {
         nativeWithFixture($engine, function (SavedConnection $source) use ($engine, $target) {
+            $factory = app(ConnectionFactory::class);
+            // A chosen view on a chosen table, and a trigger on an unchosen table (the fixture's views are unchosen).
+            $factory->using($source, function (Connection $db) use ($engine) {
+                $db->statement('CREATE VIEW rt_mix_view AS SELECT id FROM rt_floats');
+                if ($engine === 'pgsql') {
+                    $db->statement('CREATE FUNCTION rt_mix_touch() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$');
+                    $db->statement('CREATE TRIGGER rt_mix_unchosen BEFORE UPDATE ON rt_order_items FOR EACH ROW EXECUTE FUNCTION rt_mix_touch()');
+                } else {
+                    $db->statement('CREATE TRIGGER rt_mix_unchosen BEFORE UPDATE ON rt_order_items FOR EACH ROW SET NEW.qty = NEW.qty');
+                }
+            });
             $schema = $engine === 'pgsql' ? 'public' : null;
             $a = new DumpObject($schema, 'rt_floats', 'table');
             $second = $engine === 'pgsql' ? 'rt_serial' : 'rt_insert_log';
             $b = new DumpObject($schema, $second, 'table');
+            $view = new DumpObject($schema, 'rt_mix_view', 'view');
             $options = new ExportOptions(
-                tables: [$a->key(), $b->key()],
+                tables: [$a->key(), $b->key(), $view->key()],
                 structure: true,
                 data: true,
                 dropFirst: false,
@@ -524,27 +536,45 @@ it('backs up a covered mix of tables natively, structure for one and data for th
             );
             $path = nativeTempPath();
             try {
-                nativeExport($engine, $source, $path, $options, objects: [$a, $b]);
+                nativeExport($engine, $source, $path, $options, objects: [$a, $b, $view]);
 
                 $text = nativeFileText($path);
                 $rowsOf = fn (string $table) => $engine === 'pgsql'
                     ? preg_match('/^COPY public\.'.$table.' /m', $text)
                     : preg_match('/^INSERT INTO `'.$table.'` /m', $text);
-                expect($text)->toContain("-- Method: native\n")
+                expect($text)->toContain('-- Method: native
+')
                     ->and($text)->toMatch('/CREATE TABLE (public\.)?`?rt_floats`?/')
                     ->and($text)->toMatch('/CREATE TABLE (public\.)?`?'.$second.'`?/')
                     ->and($rowsOf('rt_floats'))->toBe(1)
-                    ->and($rowsOf($second))->toBe(0);
+                    ->and($rowsOf($second))->toBe(0)
+                    ->and($text)->toContain('rt_mix_view')
+                    ->and($text)->not->toContain('rt_order_items')
+                    ->and($text)->not->toContain('rt_order_totals')
+                    ->and($text)->not->toContain('rt_big_orders')
+                    ->and($text)->not->toContain('rt_mix_unchosen');
 
                 nativeRestore($engine, $target, $path);
 
                 expect(nativeTables($target, $engine))->toBe(['rt_floats', $second]);
-                app(ConnectionFactory::class)->using($target, function (Connection $db) use ($second) {
-                    expect($db->table('rt_floats')->count())->toBeGreaterThan(0)
+                $factory->using($target, function (Connection $db) use ($second, $engine) {
+                    $views = array_map(fn ($r) => (string) $r->n, $db->select($engine === 'pgsql'
+                        ? "SELECT viewname AS n FROM pg_views WHERE schemaname = 'public'"
+                        : 'SELECT table_name AS n FROM information_schema.views WHERE table_schema = DATABASE()'));
+                    expect($views)->toBe(['rt_mix_view'])
+                        ->and($db->table('rt_floats')->count())->toBeGreaterThan(0)
+                        ->and($db->table('rt_mix_view')->count())->toBeGreaterThan(0)
                         ->and($db->table($second)->count())->toBe(0);
                 });
             } finally {
                 @unlink($path);
+                $factory->using($source, function (Connection $db) use ($engine) {
+                    $db->statement('DROP VIEW IF EXISTS rt_mix_view');
+                    $db->statement('DROP TRIGGER IF EXISTS rt_mix_unchosen'.($engine === 'pgsql' ? ' ON rt_order_items' : ''));
+                    if ($engine === 'pgsql') {
+                        $db->statement('DROP FUNCTION IF EXISTS rt_mix_touch()');
+                    }
+                });
             }
         });
     });
