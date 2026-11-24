@@ -413,3 +413,20 @@ it('never fails a backup over the timezone: anything unknown falls back to the a
     expect(startExport(['timezone' => $zone])->assertAccepted()->json('file_name'))
         ->toBe("{$stem}-20261123-223005.sql.gz");
 })->with(['garbage' => 'Mars/Olympus', 'an array' => [['x']], 'a number' => 5, 'empty' => '']);
+
+it('backs up structure and data per table, counting only the rows it writes', function () {
+    // A snapshot gives the row total.
+    $this->actingAs($this->user)->getJson("/api/c/{$this->connection->id}/schema")->assertOk();
+    $id = startExport(['tables' => ['users', 'orders'], 'table_modes' => ['users' => 'both', 'orders' => 'structure'], 'gzip' => false])
+        ->assertAccepted()->json('id');
+
+    $transfer = runExport($id);
+    $sql = (string) file_get_contents($transfer->file_path);
+
+    expect($transfer->status)->toBe(TransferStatus::Done)
+        // The three users; the orders' rows are left out.
+        ->and($transfer->rows_total)->toBe(3)
+        ->and($sql)->toContain('-- Options: structure and data per table, 2 chosen')
+        ->and($sql)->toContain('INSERT INTO "users"')
+        ->and($sql)->not->toContain('INSERT INTO "orders"');
+});

@@ -50,7 +50,7 @@ class RunExport extends TransferJob
         try {
             $chosen = $this->chosen($db, $connection, $options);
             $transfer->forceFill([
-                'rows_total' => $options->data ? $this->rowsTotal($connection, $chosen) : null,
+                'rows_total' => $options->anyData() ? $this->rowsTotal($connection, $options, $chosen) : null,
                 'options' => [...($transfer->options ?? []), 'table_count' => count(array_filter($chosen, fn (DumpObject $o) => $o->kind === 'table'))],
             ])->save();
 
@@ -152,12 +152,13 @@ class RunExport extends TransferJob
     }
 
     /**
-     * The chosen tables' rows by the stored snapshot (no new introspection), or null when any of them is not in it
-     * or has no count. A snapshot covers one schema: the connection's, or "public" for PostgreSQL.
+     * The rows of the chosen tables whose data is backed up, by the stored snapshot (no new introspection), or null
+     * when any of them is not in it or has no count. A snapshot covers one schema: the connection's, or "public" for
+     * PostgreSQL.
      *
      * @param  list<DumpObject>  $chosen
      */
-    private function rowsTotal(SavedConnection $connection, array $chosen): ?int
+    private function rowsTotal(SavedConnection $connection, ExportOptions $options, array $chosen): ?int
     {
         $snapshot = $connection->snapshots()->latest('id')->first();
         if ($snapshot === null) {
@@ -174,7 +175,7 @@ class RunExport extends TransferJob
 
         $total = 0;
         foreach ($chosen as $object) {
-            if ($object->kind !== 'table') {
+            if ($object->kind !== 'table' || ! $options->dataFor($object->key())) {
                 continue;
             }
             $count = $object->schema === null || $object->schema === $schema ? ($counts[$object->name] ?? null) : null;
@@ -195,13 +196,17 @@ class RunExport extends TransferJob
     private function describe(ExportOptions $o): string
     {
         $parts = [];
-        if ($o->structure) {
-            $parts[] = 'structure';
+        if ($o->isMixed()) {
+            $parts[] = 'structure and data per table';
+        } else {
+            if ($o->structure) {
+                $parts[] = 'structure';
+            }
+            if ($o->data) {
+                $parts[] = 'data';
+            }
         }
-        if ($o->data) {
-            $parts[] = 'data';
-        }
-        if ($o->structure && $o->dropFirst) {
+        if ($o->anyStructure() && $o->dropFirst) {
             $parts[] = 'drop before create';
         }
         $parts[] = $o->tables === null ? 'all tables' : count($o->tables).' chosen';

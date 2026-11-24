@@ -29,6 +29,9 @@ use UnexpectedValueException;
  * schema (PRAGMA writable_schema) and its shadow tables are created and filled like any table, so the module's
  * own storage comes back byte for byte. Structure only, it is a plain CREATE VIRTUAL TABLE (the module creates
  * empty shadow tables itself) and the shadow tables are left out.
+ *
+ * Structure and data are decided per table (ExportOptions::structureFor/dataFor): a shadow table goes by its
+ * virtual table, an index or trigger by the table it is on, and the views come with any structure at all.
  */
 final class SqliteBuiltinExporter implements BuiltinExporter
 {
@@ -110,10 +113,12 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             }
         }
 
-        /** @var array<string, array{sql: string, virtual: bool, shadow: bool, without_rowid: bool}> $tables */
+        /** @var array<string, array{sql: string, virtual: bool, shadow: bool, without_rowid: bool, structure: bool, data: bool}> $tables */
         $tables = [];
         $views = [];
+        /** @var list<array{string, string}> $indexes [table, CREATE INDEX] */
         $indexes = [];
+        /** @var list<array{string, string}> $triggers [table or view, CREATE TRIGGER] */
         $triggers = [];
         foreach ($master as [$type, $name, $table, $sql]) {
             [$name, $table] = [(string) $name, (string) $table];
@@ -124,42 +129,52 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             if ($type === 'table') {
                 $kind = $kinds[$name] ?? ['virtual' => false, 'module' => true, 'shadow_of' => null, 'without_rowid' => false];
                 // Its rows live only in its shadow tables: never write one without them.
-                if ($kind['virtual'] && ! $kind['module'] && $o->data && ! isset($owners[$name])) {
+                if ($kind['virtual'] && ! $kind['module'] && $o->dataFor($name) && ! isset($owners[$name])) {
                     throw new RuntimeException("Cannot back up virtual table {$name}: its module isn't available and its storage tables couldn't be identified");
                 }
+                $shadow = $kind['shadow_of'] !== null && isset($chosen[$kind['shadow_of']]);
+                // A shadow table is part of its virtual table, so it goes by that table's mode.
+                $modeOf = $shadow ? (string) $kind['shadow_of'] : $name;
                 $tables[$name] = [
                     'sql' => $sql,
                     'virtual' => $kind['virtual'],
-                    'shadow' => $kind['shadow_of'] !== null && isset($chosen[$kind['shadow_of']]),
+                    'shadow' => $shadow,
                     'without_rowid' => $kind['without_rowid'],
+                    'structure' => $o->structureFor($modeOf),
+                    'data' => $o->dataFor($modeOf),
                 ];
             } elseif ($type === 'view') {
                 $views[$name] = $sql;
             } elseif ($type === 'index') {
-                $indexes[] = $sql;
+                $indexes[] = [$table, $sql];
             } elseif ($type === 'trigger') {
-                $triggers[] = $sql;
+                $triggers[] = [$table, $sql];
             }
         }
 
         $w->write("PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\n\n");
 
-        if ($o->structure) {
+        if ($o->anyStructure()) {
             if ($o->dropFirst) {
                 foreach (array_keys($views) as $view) {
                     $w->write('DROP VIEW IF EXISTS '.self::quote($view).";\n");
                 }
                 // Creation order puts a virtual table before its shadow tables: dropping it drops them too.
-                foreach (array_keys($tables) as $table) {
-                    $w->write('DROP TABLE IF EXISTS '.self::quote($table).";\n");
+                foreach ($tables as $name => $table) {
+                    if ($table['structure']) {
+                        $w->write('DROP TABLE IF EXISTS '.self::quote($name).";\n");
+                    }
                 }
                 $w->write("\n");
             }
 
             $writable = false;
             foreach ($tables as $name => $table) {
+                if (! $table['structure']) {
+                    continue;
+                }
                 $p->checkCancelled();
-                if ($table['virtual'] && $o->data) {
+                if ($table['virtual'] && $table['data']) {
                     // As sqlite3 .dump does: into the schema without running the module, which would create
                     // shadow tables of its own (they follow, with their rows).
                     if (! $writable) {
@@ -169,7 +184,7 @@ final class SqliteBuiltinExporter implements BuiltinExporter
                     $quoted = Literals::sqlite($name, false);
                     $w->write("INSERT INTO sqlite_master (type, name, tbl_name, rootpage, sql) VALUES ('table', {$quoted}, {$quoted}, 0, "
                         .Literals::sqlite($table['sql'], false).");\n\n");
-                } elseif (! $table['shadow'] || $o->data) {
+                } elseif (! $table['shadow'] || $table['data']) {
                     $w->write($table['sql'].";\n\n");
                 }
             }
@@ -181,30 +196,33 @@ final class SqliteBuiltinExporter implements BuiltinExporter
             }
         }
 
-        if ($o->data) {
-            foreach ($tables as $name => $table) {
+        if ($o->anyData()) {
+            $withData = array_filter($tables, fn (array $table) => $table['data']);
+            foreach ($withData as $name => $table) {
                 $p->checkCancelled();
                 if ($table['virtual']) {
                     continue; // its shadow tables hold the data
                 }
-                if ($table['shadow'] && ! $o->structure) {
+                if ($table['shadow'] && ! $table['structure']) {
                     // Data only: the target's virtual table already has shadow rows of its own.
                     $w->write('DELETE FROM '.self::quote($name).";\n");
                 }
                 $this->data($pdo, $name, $table['without_rowid'], $w, $p);
             }
-            $this->sequences($pdo, $tables, $w);
+            $this->sequences($pdo, $withData, $w);
             $w->write("\n");
         }
 
-        if ($o->structure) {
-            foreach ($indexes as $create) {
+        if ($o->anyStructure()) {
+            // An index or trigger comes with its table's structure; one on a view (INSTEAD OF) with the views.
+            $withStructure = fn (array $object) => isset($views[$object[0]]) || ($tables[$object[0]]['structure'] ?? false);
+            foreach (array_filter($indexes, $withStructure) as [, $create]) {
                 $w->write($create.";\n");
             }
             foreach (self::inDependencyOrder($views) as $create) {
                 $w->write($create.";\n");
             }
-            foreach ($triggers as $create) {
+            foreach (array_filter($triggers, $withStructure) as [, $create]) {
                 $w->write($create.";\n");
             }
             $w->write("\n");

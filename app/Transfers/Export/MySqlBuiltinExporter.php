@@ -96,37 +96,41 @@ final class MySqlBuiltinExporter implements BuiltinExporter
         $w->write("SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\nSET UNIQUE_CHECKS=0;\n"
             ."SET SQL_MODE='".self::RESTORE_SQL_MODE."';\nSET TIME_ZONE='+00:00';\n\n");
 
-        if ($o->structure) {
+        // Each table's structure and data as its mode says; the views come with any structure at all.
+        $withStructure = array_values(array_filter($tables, fn (string $t) => $o->structureFor($t)));
+        $withData = array_values(array_filter($tables, fn (string $t) => $o->dataFor($t)));
+
+        if ($o->anyStructure()) {
             if ($o->dropFirst) {
                 foreach ($views as $view) {
                     $w->write('DROP VIEW IF EXISTS '.self::quote($view).";\n");
                 }
-                foreach ($tables as $table) {
+                foreach ($withStructure as $table) {
                     $w->write('DROP TABLE IF EXISTS '.self::quote($table).";\n");
                 }
                 $w->write("\n");
             }
 
-            foreach ($tables as $table) {
+            foreach ($withStructure as $table) {
                 $p->checkCancelled();
                 $w->write(self::showCreate($pdo, 'TABLE', $table).";\n\n");
             }
         }
 
-        if ($o->data) {
+        if ($o->anyData()) {
             $columns = $this->columns($pdo);
-            foreach ($tables as $table) {
+            foreach ($withData as $table) {
                 $p->checkCancelled();
                 $this->data($pdo, $table, self::columnsOf($columns, $table), $w, $p);
             }
             $w->write("\n");
         }
 
-        if ($o->structure) {
+        if ($o->anyStructure()) {
             foreach ($this->viewsInOrder($pdo, $views) as $create) {
                 $w->write($create.";\n\n");
             }
-            $this->triggers($pdo, $tables, $w);
+            $this->triggers($pdo, $withStructure, $w);
         }
 
         $w->write("SET FOREIGN_KEY_CHECKS=1;\nSET UNIQUE_CHECKS=1;\n");
