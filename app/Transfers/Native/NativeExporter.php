@@ -54,7 +54,7 @@ final class NativeExporter
         $command = null;
 
         try {
-            [$serverVersion, $objects, $routines, $events, $found] = $this->inspect($c, $t, $o, $objects);
+            [$serverVersion, $objects, $routines, $events, $found, $o] = $this->inspect($c, $t, $o, $objects);
             // Windows: the tool writes its own file next to the output (the transfer's storage directory), tailed
             // from there; see NativeProcess. Elsewhere stdout is a pipe.
             $outputFile = PHP_OS_FAMILY === 'Windows'
@@ -144,8 +144,33 @@ final class NativeExporter
     }
 
     /**
+     * Gives every partition the mode of its (root) parent, so a structure-only parent's partitions lose their rows too.
+     *
+     * @param  array<string, list<DumpObject>>  $partitionsOf  every partition by its parent's key
+     */
+    public static function withPartitionModes(ExportOptions $o, array $partitionsOf): ExportOptions
+    {
+        if (! $o->isMixed()) {
+            return $o;
+        }
+
+        $modes = $o->modes;
+        $queue = array_keys($modes);
+        for ($i = 0; $i < count($queue); $i++) {
+            foreach ($partitionsOf[$queue[$i]] ?? [] as $partition) {
+                if (! isset($modes[$partition->key()])) {
+                    $modes[$partition->key()] = $modes[$queue[$i]];
+                    $queue[] = $partition->key();
+                }
+            }
+        }
+
+        return new ExportOptions($o->tables, $o->structure, $o->data, $o->dropFirst, $o->gzip, $modes);
+    }
+
+    /**
      * @param  list<DumpObject>  $objects
-     * @return array{0: string, 1: list<DumpObject>, 2: bool, 3: bool, 4: list<string>}
+     * @return array{0: string, 1: list<DumpObject>, 2: bool, 3: bool, 4: list<string>, 5: ExportOptions}
      */
     private function inspect(SavedConnection $c, ToolCheck $t, ExportOptions $o, array $objects): array
     {
@@ -157,7 +182,9 @@ final class NativeExporter
             if ($c->driver === DriverName::Postgres) {
                 $gaps[] = self::PG_GAP;
                 if ($o->tables !== null && (int) explode('.', (string) $t->version)[0] < 16) {
-                    $objects = self::withPartitions($objects, $this->partitions($db));
+                    $partitions = $this->partitions($db);
+                    $objects = self::withPartitions($objects, $partitions);
+                    $o = self::withPartitionModes($o, $partitions);
                 }
             } else {
                 if ($o->tables === null && $o->anyStructure()) {
@@ -171,7 +198,7 @@ final class NativeExporter
                 }
             }
 
-            return [$version, $objects, $routines, $events, $gaps];
+            return [$version, $objects, $routines, $events, $gaps, $o];
         });
     }
 

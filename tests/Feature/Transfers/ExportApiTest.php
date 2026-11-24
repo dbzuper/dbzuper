@@ -1,8 +1,5 @@
 <?php
 
-use App\Database\ConnectionFactory;
-use App\Database\DriverRegistry;
-use App\Database\Errors\DbErrorMapper;
 use App\Enums\DriverName;
 use App\Enums\TransferDirection;
 use App\Enums\TransferMethod;
@@ -17,7 +14,6 @@ use App\Transfers\Export\BuiltinExporter;
 use App\Transfers\Export\BuiltinExporters;
 use App\Transfers\Export\ExportOptions;
 use App\Transfers\Io\DumpWriter;
-use App\Transfers\Native\NativeExporter;
 use App\Transfers\Native\ToolCheck;
 use App\Transfers\TransferPlanner;
 use App\Transfers\TransferProgress;
@@ -30,6 +26,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Tests\Support\Engines;
+use Tests\Support\FakePlanner;
 
 class ThrowingExporter implements BuiltinExporter
 {
@@ -439,11 +436,7 @@ it('backs up structure and data per table, counting only the rows it writes', fu
 
 function fakeUsableTool(): void
 {
-    $tool = new ToolCheck(true, 'mysqldump', '/usr/bin/mysqldump', '8.4.0', 'mysqldump 8.4.0');
-    // The real planner, except that its tool check finds this tool usable.
-    $planner = Mockery::mock(TransferPlanner::class, [app(ConnectionFactory::class), app(DriverRegistry::class), app(DbErrorMapper::class), app(BuiltinExporters::class), app(NativeExporter::class)])->makePartial();
-    $planner->shouldReceive('check')->andReturn($tool);
-    app()->instance(TransferPlanner::class, $planner);
+    FakePlanner::bind(new ToolCheck(true, 'mysqldump', '/usr/bin/mysqldump', '8.4.0', 'mysqldump 8.4.0'));
 }
 
 it('refuses native for a mix it cannot cover', function () {

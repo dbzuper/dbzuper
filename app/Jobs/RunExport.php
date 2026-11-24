@@ -17,6 +17,7 @@ use App\Transfers\Export\ExportOptions;
 use App\Transfers\Export\ObjectLister;
 use App\Transfers\Io\DumpWriter;
 use App\Transfers\Native\Compatibility;
+use App\Transfers\Native\NativeCommandBuilder;
 use App\Transfers\Native\NativeExporter;
 use App\Transfers\TransferPlanner;
 use App\Transfers\TransferProgress;
@@ -64,6 +65,9 @@ class RunExport extends TransferJob
                 $check = Compatibility::check($connection->driver, $version, TransferDirection::Export);
                 if (! $check->usable) {
                     throw new RuntimeException('The native backup tool can no longer be used: '.preg_replace('/ — using built-in$/u', '', $check->reason));
+                }
+                if (! NativeCommandBuilder::coversMix($connection->driver, $options)) {
+                    throw new RuntimeException(TransferPlanner::MIX_REASON);
                 }
                 app(NativeExporter::class)->run($connection, $check, $options, $chosen, $writer, $progress, []);
             } else {

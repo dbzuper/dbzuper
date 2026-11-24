@@ -1,16 +1,12 @@
 <?php
 
-use App\Database\ConnectionFactory;
-use App\Database\DriverRegistry;
-use App\Database\Errors\DbErrorMapper;
 use App\Enums\DriverName;
 use App\Enums\TransferDirection;
 use App\Enums\TransferMethod;
 use App\Models\SavedConnection;
 use App\Models\User;
 use App\Support\Demo\CommerceSchema;
-use App\Transfers\Export\BuiltinExporters;
-use App\Transfers\Native\NativeExporter;
+use App\Transfers\Export\ExportOptions;
 use App\Transfers\Native\ToolCheck;
 use App\Transfers\TransferPlanner;
 use App\Transfers\WorkerHeartbeat;
@@ -20,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\Engines;
+use Tests\Support\FakePlanner;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -212,11 +209,7 @@ it('keeps the tool path in the cached form but never in the browser form', funct
 });
 
 it('reports that a mix needs the built-in method', function () {
-    $tool = new ToolCheck(true, 'mysqldump', '/usr/bin/mysqldump', '8.4.0', 'mysqldump 8.4.0');
-    // The real planner, except that its tool check finds this tool usable.
-    $planner = Mockery::mock(TransferPlanner::class, [app(ConnectionFactory::class), app(DriverRegistry::class), app(DbErrorMapper::class), app(BuiltinExporters::class), app(NativeExporter::class)])->makePartial();
-    $planner->shouldReceive('check')->andReturn($tool);
-    app()->instance(TransferPlanner::class, $planner);
+    FakePlanner::bind(new ToolCheck(true, 'mysqldump', '/usr/bin/mysqldump', '8.4.0', 'mysqldump 8.4.0'));
     $url = "/api/c/{$this->connection->id}/transfers/capabilities";
 
     $json = $this->actingAs($this->user)->postJson($url, ['tables' => ['a', 'b'], 'table_modes' => ['a' => 'both', 'b' => 'structure']])
@@ -235,3 +228,25 @@ it('rejects invalid table_modes on the capabilities body', function () {
     $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => ['a'], 'table_modes' => ['z' => 'both']])
         ->assertUnprocessable()->assertJsonValidationErrors('table_modes');
 });
+
+it('decides per engine whether native covers a mix', function (DriverName $driver, string $tool, bool $covered) {
+    FakePlanner::bind(new ToolCheck(true, $tool, '/usr/bin/'.$tool, '17.0', $tool.' 17.0'), '17.0');
+    $c = new SavedConnection(['driver' => $driver, 'database' => 'shop']);
+    $options = ExportOptions::fromRequest(['tables' => ['a', 'b'], 'table_modes' => ['a' => 'both', 'b' => 'structure']]);
+    $planner = app(TransferPlanner::class);
+
+    $export = $planner->capabilities($c, ['a', 'b'], $options)['export'];
+    expect($export['mix_needs_builtin'])->toBe(! $covered)
+        ->and($export['native']['usable'])->toBe($covered)
+        ->and($export['default_method'])->toBe($covered ? 'native' : 'builtin');
+
+    if ($covered) {
+        [$method] = $planner->resolve($c, TransferDirection::Export, TransferMethod::Native, $options);
+        expect($method)->toBe(TransferMethod::Native);
+    } else {
+        expect(fn () => $planner->resolve($c, TransferDirection::Export, TransferMethod::Native, $options))->toThrow(HttpException::class, TransferPlanner::MIX_REASON);
+    }
+})->with([
+    'postgres' => [DriverName::Postgres, 'pg_dump', true],
+    'mysql' => [DriverName::MySql, 'mysqldump', false],
+]);

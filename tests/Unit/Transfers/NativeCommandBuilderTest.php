@@ -6,6 +6,7 @@ use App\Transfers\Export\DumpObject;
 use App\Transfers\Export\ExportOptions;
 use App\Transfers\Native\NativeCommand;
 use App\Transfers\Native\NativeCommandBuilder;
+use App\Transfers\Native\NativeExporter;
 use App\Transfers\Native\ToolCheck;
 use Tests\TestCase;
 
@@ -314,3 +315,18 @@ it('covers mixes', function (DriverName $driver, array $modes, bool $expected) {
     'mysql not mixed' => [DriverName::MySql, [], true],
     'sqlite not mixed' => [DriverName::Sqlite, [], true],
 ]);
+
+it('gives partitions the mode of their structure-only parent before PostgreSQL 16', function () {
+    $parent = new DumpObject('public', 'events', 'table');
+    $child = new DumpObject('public', 'events_2026', 'table');
+    $other = new DumpObject('public', 'users', 'table');
+    $o = NativeExporter::withPartitionModes(
+        ncbMix([$parent->key() => 'structure', $other->key() => 'both']),
+        [$parent->key() => [$child]],
+    );
+
+    $argv = ncbDump(ncbConnection(DriverName::Postgres), ncbTool('pg_dump', '15.4'), $o, [$parent, $other, $child], false, false)->argv;
+    expect($argv)->toContain('--exclude-table-data="public"."events"')
+        ->and($argv)->toContain('--exclude-table-data="public"."events_2026"')
+        ->and($argv)->not->toContain('--exclude-table-data="public"."users"');
+});

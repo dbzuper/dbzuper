@@ -109,7 +109,7 @@ class TransferPlanner
         return ToolCheck::fromArray($cached);
     }
 
-    private function serverVersion(SavedConnection $c): string
+    protected function serverVersion(SavedConnection $c): string
     {
         if ($c->driver === DriverName::Sqlite) {
             return '';

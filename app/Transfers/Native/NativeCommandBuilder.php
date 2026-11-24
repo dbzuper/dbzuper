@@ -147,19 +147,17 @@ final class NativeCommandBuilder
             // --table-and-children (PG 16+) also matches plain tables and pulls in partitions; older tools only have -t.
             $modern = self::major($t) >= 16;
             foreach ($objects as $object) {
-                $pattern = ($object->schema !== null ? self::pgQuote($object->schema).'.' : '').self::pgQuote($object->name);
                 if ($modern) {
-                    $argv[] = '--table-and-children='.$pattern;
+                    $argv[] = '--table-and-children='.self::pgPattern($object);
                 } else {
-                    array_push($argv, '-t', $pattern);
+                    array_push($argv, '-t', self::pgPattern($object));
                 }
             }
             if ($o->isMixed()) {
                 // Structure-only tables stay in the dump but lose their rows.
                 foreach ($objects as $object) {
                     if (! $o->dataFor($object->key())) {
-                        $pattern = ($object->schema !== null ? self::pgQuote($object->schema).'.' : '').self::pgQuote($object->name);
-                        $argv[] = ($modern ? '--exclude-table-data-and-children=' : '--exclude-table-data=').$pattern;
+                        $argv[] = ($modern ? '--exclude-table-data-and-children=' : '--exclude-table-data=').self::pgPattern($object);
                     }
                 }
             }
@@ -170,6 +168,11 @@ final class NativeCommandBuilder
         }
 
         return new NativeCommand($argv, self::pgEnv($c), $outputFile !== null ? [$outputFile] : []);
+    }
+
+    private static function pgPattern(DumpObject $object): string
+    {
+        return ($object->schema !== null ? self::pgQuote($object->schema).'.' : '').self::pgQuote($object->name);
     }
 
     /** Inside double quotes pg_dump patterns take `*`, `?` and `.` literally; only `"` needs doubling. */
