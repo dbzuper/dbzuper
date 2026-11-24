@@ -64,7 +64,7 @@ dialog shows progress and can cancel. For setting up the background workers and 
 
 - **Tables:** All, or Choose… to pick tables and views from a searchable list (grouped by schema on PostgreSQL). Triggers
   follow their table. Routines and events (MySQL/MariaDB) are only included with All.
-- **Per table:** with Choose�, each ticked table has its own choice: Structure + data, Structure only or Data only.
+- **Per table:** with Choose…, each ticked table has its own choice: Structure + data, Structure only or Data only.
   Views have no choice; they are included whenever the backup includes any structure. Triggers, indexes and
   constraints follow their table's structure, and **DROP** applies to the tables that include structure.
 - **Include:** Structure, Data, or both. **Add DROP … IF EXISTS before each CREATE** is on by default, so the file
