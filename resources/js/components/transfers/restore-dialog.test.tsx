@@ -58,6 +58,7 @@ const caps = (
         default_method: 'builtin',
         builtin_gaps: [],
         native_gaps: [],
+        mix_needs_builtin: false,
     },
     import: {
         native: {

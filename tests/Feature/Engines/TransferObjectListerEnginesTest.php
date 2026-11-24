@@ -59,9 +59,9 @@ it('lists tables and views, with schemas on PostgreSQL', function (string $engin
 })->with(Engines::ENGINES);
 
 it('builds export options from a validated request', function () {
-    $o = ExportOptions::fromRequest(['tables' => ['a'], 'structure' => true, 'data' => false, 'drop' => true, 'gzip' => true]);
+    $o = ExportOptions::fromRequest(['tables' => ['a'], 'structure' => true, 'data' => false, 'drop' => true, 'gzip' => true, 'table_modes' => []]);
     expect($o->tables)->toBe(['a'])->and($o->data)->toBeFalse()->and($o->dropFirst)->toBeTrue()
-        ->and($o->toArray())->toBe(['tables' => ['a'], 'structure' => true, 'data' => false, 'drop' => true, 'gzip' => true]);
+        ->and($o->toArray())->toBe(['tables' => ['a'], 'structure' => true, 'data' => false, 'drop' => true, 'gzip' => true, 'table_modes' => []]);
 
     $d = ExportOptions::fromRequest([]);
     expect($d->tables)->toBeNull()->and($d->structure)->toBeTrue()->and($d->data)->toBeTrue()

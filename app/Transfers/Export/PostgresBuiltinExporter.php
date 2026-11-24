@@ -114,15 +114,21 @@ final class PostgresBuiltinExporter implements BuiltinExporter
             fn (DumpObject $obj) => $all || in_array($obj->key(), $o->tables, true),
         ));
         $views = array_values(array_filter($chosen, fn (DumpObject $obj) => $obj->kind === 'view'));
-        $relations = PostgresDdl::relations($db, array_values(array_filter($chosen, fn (DumpObject $obj) => $obj->kind === 'table')));
-        $byOid = array_column($relations, null, 'oid');
-        $sequences = PostgresDdl::sequences($db, $relations, $all);
+        $chosenRelations = PostgresDdl::relations($db, array_values(array_filter($chosen, fn (DumpObject $obj) => $obj->kind === 'table')));
+        $byOid = array_column($chosenRelations, null, 'oid');
         $version = PostgresDdl::serverVersion($db);
+
+        // Each table's structure and data as its mode says (a partition as its top table's); the views, enums and
+        // schemas come with any structure at all. $relations are the ones whose structure is written.
+        $relations = array_values(array_filter($chosenRelations, fn (array $rel) => $o->structureFor(self::modeKey($rel, $byOid))));
+        $withData = array_values(array_filter($chosenRelations, fn (array $rel) => $o->dataFor(self::modeKey($rel, $byOid))));
+        $sequences = null;
 
         $w->write(implode(";\n", self::RESTORE_SETTINGS).";\n\n");
         $viewSql = [];
 
-        if ($o->structure) {
+        if ($o->anyStructure()) {
+            $sequences = PostgresDdl::sequences($db, $relations, $all);
             $enums = PostgresDdl::enumTypes($db, $relations, $all);
             $viewSql = PostgresDdl::views($db, $views);
 
@@ -180,8 +186,8 @@ final class PostgresBuiltinExporter implements BuiltinExporter
             self::statements($w, PostgresDdl::ownedBy($sequences, $relations));
         }
 
-        if ($o->data) {
-            foreach ($relations as $rel) {
+        if ($o->anyData()) {
+            foreach ($withData as $rel) {
                 // A partitioned table's rows are read (and restored) once, through the top table.
                 if ($rel['top']) {
                     $p->checkCancelled();
@@ -191,7 +197,7 @@ final class PostgresBuiltinExporter implements BuiltinExporter
             $w->write("\n");
         }
 
-        if ($o->structure) {
+        if ($o->anyStructure()) {
             foreach ($relations as $rel) {
                 $p->checkCancelled();
                 self::statements($w, PostgresDdl::postDataConstraints($db, $rel, false), blank: false);
@@ -201,16 +207,43 @@ final class PostgresBuiltinExporter implements BuiltinExporter
                 self::statements($w, PostgresDdl::foreignKeys($db, $rel), blank: false);
                 self::statements($w, PostgresDdl::keyComments($db, $rel), blank: false);
             }
+            if ($o->dropFirst && $o->isMixed()) {
+                // DROP TABLE … CASCADE took the data-only tables' keys to the tables it drops; they come back as
+                // the source has them (validated: a violation fails the restore rather than passing unnoticed).
+                $dropped = array_column($relations, 'oid');
+                foreach ($withData as $rel) {
+                    if (! in_array($rel['oid'], $dropped, true)) {
+                        self::statements($w, PostgresDdl::foreignKeysTo($db, $rel, $relations), blank: false);
+                    }
+                }
+            }
             $w->write("\n");
         }
 
-        if ($o->data) {
-            self::statements($w, PostgresDdl::setvals($db, $sequences, $relations));
+        if ($o->anyData()) {
+            // The positions of the sequences the tables with data own or use.
+            $dataSequences = $sequences !== null && $withData === $relations ? $sequences : PostgresDdl::sequences($db, $withData, $all);
+            self::statements($w, PostgresDdl::setvals($db, $dataSequences, $withData));
         }
 
-        if ($o->structure) {
+        if ($o->anyStructure()) {
             self::statements($w, $viewSql);
         }
+    }
+
+    /**
+     * The key whose mode a relation follows: its own, or for a partition its top table's.
+     *
+     * @param  array{oid: int, schema: string, name: string, top: bool, partitionOf: ?int}  $rel
+     * @param  array<int, array{oid: int, schema: string, name: string, top: bool, partitionOf: ?int}>  $byOid
+     */
+    private static function modeKey(array $rel, array $byOid): string
+    {
+        while (! $rel['top'] && $rel['partitionOf'] !== null && isset($byOid[$rel['partitionOf']])) {
+            $rel = $byOid[$rel['partitionOf']];
+        }
+
+        return (new DumpObject($rel['schema'], $rel['name'], 'table'))->key();
     }
 
     /** @param array{oid: int, schema: string, name: string, kind: string} $rel */

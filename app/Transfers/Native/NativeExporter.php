@@ -54,13 +54,13 @@ final class NativeExporter
         $command = null;
 
         try {
-            [$serverVersion, $objects, $routines, $events, $found] = $this->inspect($c, $t, $o, $objects);
+            [$serverVersion, $objects, $routines, $events, $found, $o, $unchosen] = $this->inspect($c, $t, $o, $objects);
             // Windows: the tool writes its own file next to the output (the transfer's storage directory), tailed
             // from there; see NativeProcess. Elsewhere stdout is a pipe.
             $outputFile = PHP_OS_FAMILY === 'Windows'
                 ? dirname($w->path()).DIRECTORY_SEPARATOR.'.dbz-native-'.bin2hex(random_bytes(8)).'.sql'
                 : null;
-            $command = NativeCommandBuilder::dump($c, $t, $o, $objects, $routines, $events, $outputFile);
+            $command = NativeCommandBuilder::dump($c, $t, $o, $objects, $routines, $events, $outputFile, $unchosen);
 
             $w->write(DumpHeader::render([
                 'app_version' => (string) (config('dbzuper.version') ?? 'dev'),
@@ -144,8 +144,33 @@ final class NativeExporter
     }
 
     /**
+     * Gives every partition the mode of its (root) parent, so a structure-only parent's partitions lose their rows too.
+     *
+     * @param  array<string, list<DumpObject>>  $partitionsOf  every partition by its parent's key
+     */
+    public static function withPartitionModes(ExportOptions $o, array $partitionsOf): ExportOptions
+    {
+        if (! $o->isMixed()) {
+            return $o;
+        }
+
+        $modes = $o->modes;
+        $queue = array_keys($modes);
+        for ($i = 0; $i < count($queue); $i++) {
+            foreach ($partitionsOf[$queue[$i]] ?? [] as $partition) {
+                if (! isset($modes[$partition->key()])) {
+                    $modes[$partition->key()] = $modes[$queue[$i]];
+                    $queue[] = $partition->key();
+                }
+            }
+        }
+
+        return new ExportOptions($o->tables, $o->structure, $o->data, $o->dropFirst, $o->gzip, $modes);
+    }
+
+    /**
      * @param  list<DumpObject>  $objects
-     * @return array{0: string, 1: list<DumpObject>, 2: bool, 3: bool, 4: list<string>}
+     * @return array{0: string, 1: list<DumpObject>, 2: bool, 3: bool, 4: list<string>, 5: ExportOptions, 6: list<string>}
      */
     private function inspect(SavedConnection $c, ToolCheck $t, ExportOptions $o, array $objects): array
     {
@@ -153,25 +178,35 @@ final class NativeExporter
             $version = (string) $db->selectOne($this->drivers->for($c->driver)->versionQuery())->version;
             $routines = $events = false;
             $gaps = [];
+            $unchosen = [];
 
             if ($c->driver === DriverName::Postgres) {
                 $gaps[] = self::PG_GAP;
                 if ($o->tables !== null && (int) explode('.', (string) $t->version)[0] < 16) {
-                    $objects = self::withPartitions($objects, $this->partitions($db));
+                    $partitions = $this->partitions($db);
+                    $objects = self::withPartitions($objects, $partitions);
+                    $o = self::withPartitionModes($o, $partitions);
                 }
             } else {
-                if ($o->tables === null && $o->structure) {
+                if ($c->driver === DriverName::MariaDb && $o->isMixed() && $o->tables !== null) {
+                    // Read before the dump's own snapshot: a table created in between is not excluded, so it is
+                    // dumped too.
+                    $chosen = array_map(fn (DumpObject $object) => $object->name, $objects);
+                    $all = array_map(fn ($r) => (string) $r->n, $db->select('SELECT table_name AS n FROM information_schema.tables WHERE table_schema = DATABASE()'));
+                    $unchosen = array_values(array_diff($all, $chosen));
+                }
+                if ($o->tables === null && $o->anyStructure()) {
                     // Routines and events come with "All" and structure only (spec §2).
                     $access = MySqlPrivilegeProbe::check($db, (string) $c->database);
                     ['routines' => $routines, 'events' => $events] = $access;
                     $gaps = MySqlPrivilegeProbe::gaps($access);
                 }
-                if ($o->data && $this->hasFloatColumns($db, (string) $c->database, $o->tables)) {
+                if ($o->anyData() && $this->hasFloatColumns($db, (string) $c->database, $o->tables)) {
                     $gaps[] = self::FLOAT_GAP;
                 }
             }
 
-            return [$version, $objects, $routines, $events, $gaps];
+            return [$version, $objects, $routines, $events, $gaps, $o, $unchosen];
         });
     }
 
@@ -244,13 +279,17 @@ final class NativeExporter
     private function describe(ToolCheck $t, ExportOptions $o): string
     {
         $parts = [];
-        if ($o->structure) {
-            $parts[] = 'structure';
+        if ($o->isMixed()) {
+            $parts[] = 'structure and data per table';
+        } else {
+            if ($o->structure) {
+                $parts[] = 'structure';
+            }
+            if ($o->data) {
+                $parts[] = 'data';
+            }
         }
-        if ($o->data) {
-            $parts[] = 'data';
-        }
-        if ($o->structure && $o->dropFirst) {
+        if ($o->anyStructure() && $o->dropFirst) {
             $parts[] = 'drop before create';
         }
         $parts[] = $o->tables === null ? 'all tables' : count($o->tables).' chosen';

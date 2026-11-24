@@ -14,6 +14,8 @@ use App\Transfers\Export\BuiltinExporter;
 use App\Transfers\Export\BuiltinExporters;
 use App\Transfers\Export\ExportOptions;
 use App\Transfers\Io\DumpWriter;
+use App\Transfers\Native\ToolCheck;
+use App\Transfers\TransferPlanner;
 use App\Transfers\TransferProgress;
 use App\Transfers\TransferStorage;
 use App\Transfers\WorkerHeartbeat;
@@ -24,6 +26,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Tests\Support\Engines;
+use Tests\Support\FakePlanner;
 
 class ThrowingExporter implements BuiltinExporter
 {
@@ -107,6 +110,45 @@ it('starts an export and queues it on the transfers connection', function () {
         ->and($transfer->options['method_reason'])->toBe('SQLite always uses the built-in method')
         ->and($transfer->user_id)->toBe($this->user->id)
         ->and($transfer->database)->toBe('');
+});
+
+it('rejects table_modes with all tables', function () {
+    startExport(['table_modes' => ['users' => 'structure']])->assertUnprocessable()->assertJsonValidationErrors('table_modes');
+});
+
+it('rejects a table_modes key that is not chosen', function () {
+    startExport(['tables' => ['users'], 'table_modes' => ['users' => 'both', 'orders' => 'data']])
+        ->assertUnprocessable()->assertJsonValidationErrors('table_modes');
+});
+
+it('rejects an unknown mode', function () {
+    startExport(['tables' => ['users'], 'table_modes' => ['users' => 'schema']])
+        ->assertUnprocessable()->assertJsonValidationErrors('table_modes');
+});
+
+it('stores per-table modes on the transfer', function () {
+    $json = startExport(['tables' => ['users', 'orders'], 'table_modes' => ['users' => 'both', 'orders' => 'structure']])
+        ->assertAccepted()->json();
+
+    expect(Transfer::query()->findOrFail($json['id'])->options['table_modes'])->toBe(['users' => 'both', 'orders' => 'structure']);
+});
+
+it('rejects a mix that leaves a chosen table without a mode', function () {
+    startExport(['tables' => ['users', 'orders'], 'structure' => false, 'data' => true, 'table_modes' => ['users' => 'both']])
+        ->assertUnprocessable()->assertJsonValidationErrors(['table_modes' => 'Give every chosen table a mode.']);
+
+    expect(Transfer::query()->count())->toBe(0);
+});
+
+it('accepts a mix with a chosen view that has no mode', function () {
+    $db = DB::connectUsing('fixture', ['driver' => 'sqlite', 'database' => $this->path, 'prefix' => ''], force: true);
+    $db->statement('CREATE VIEW v_users AS SELECT id FROM users');
+    DB::purge('fixture');
+
+    $json = startExport(['tables' => ['users', 'orders', 'v_users'], 'table_modes' => ['users' => 'both', 'orders' => 'structure']])
+        ->assertAccepted()->json();
+
+    expect(Transfer::query()->findOrFail($json['id'])->options['table_modes'])->toBe(['users' => 'both', 'orders' => 'structure']);
 });
 
 it('names the file with the app timezone and no .gz when uncompressed', function () {
@@ -392,3 +434,39 @@ it('never fails a backup over the timezone: anything unknown falls back to the a
     expect(startExport(['timezone' => $zone])->assertAccepted()->json('file_name'))
         ->toBe("{$stem}-20261123-223005.sql.gz");
 })->with(['garbage' => 'Mars/Olympus', 'an array' => [['x']], 'a number' => 5, 'empty' => '']);
+
+it('backs up structure and data per table, counting only the rows it writes', function () {
+    // A snapshot gives the row total.
+    $this->actingAs($this->user)->getJson("/api/c/{$this->connection->id}/schema")->assertOk();
+    $id = startExport(['tables' => ['users', 'orders'], 'table_modes' => ['users' => 'both', 'orders' => 'structure'], 'gzip' => false])
+        ->assertAccepted()->json('id');
+
+    $transfer = runExport($id);
+    $sql = (string) file_get_contents($transfer->file_path);
+
+    expect($transfer->status)->toBe(TransferStatus::Done)
+        // The three users; the orders' rows are left out.
+        ->and($transfer->rows_total)->toBe(3)
+        ->and($sql)->toContain('-- Options: structure and data per table, 2 chosen')
+        ->and($sql)->toContain('INSERT INTO "users"')
+        ->and($sql)->not->toContain('INSERT INTO "orders"');
+});
+
+function fakeUsableTool(): void
+{
+    FakePlanner::bind(new ToolCheck(true, 'mysqldump', '/usr/bin/mysqldump', '8.4.0', 'mysqldump 8.4.0'));
+}
+
+it('refuses native for a mix it cannot cover', function () {
+    fakeUsableTool();
+
+    startExport(['tables' => ['users', 'orders'], 'table_modes' => ['users' => 'both', 'orders' => 'structure'], 'method' => 'native'])
+        ->assertUnprocessable()->assertJsonPath('message', TransferPlanner::MIX_REASON);
+});
+
+it('falls back to built-in for such a mix by default', function () {
+    fakeUsableTool();
+
+    startExport(['tables' => ['users', 'orders'], 'table_modes' => ['users' => 'both', 'orders' => 'structure']])
+        ->assertAccepted()->assertJsonPath('method', 'builtin');
+});

@@ -64,7 +64,11 @@ dialog shows progress and can cancel. For setting up the background workers and 
 
 - **Tables:** All, or Choose… to pick tables and views from a searchable list (grouped by schema on PostgreSQL). Triggers
   follow their table. Routines and events (MySQL/MariaDB) are only included with All.
-- **Include:** Structure, Data, or both. **Add DROP … IF EXISTS before each CREATE** is on by default, so the file
+- **Per table:** with Choose…, each ticked table has its own choice: Structure + data, Structure only or Data only.
+  Views have no choice; they are included whenever the backup includes any structure. Triggers, indexes and
+  constraints follow their table's structure, and **DROP** applies to the tables that include structure.
+- **Include:** Structure, Data, or both. With Choose…, changing Include sets every ticked table (and tables ticked
+  after) to that choice; a table's own choice can still change it afterwards. **Add DROP … IF EXISTS before each CREATE** is on by default, so the file
   restores over an existing copy.
 - **Compress (.sql.gz)** gzips the file. The download is named `{database}-{YYYYMMDD-HHmmss}.sql[.gz]`.
 - The file is kept for 24 hours (`DBZUPER_TRANSFER_TTL`), so a failed download can be retried. Recent backups are
@@ -90,6 +94,11 @@ Each backup and restore uses one of two methods, shown under **Method**:
   `mysqldump` 8.4 dumps MySQL 5.7 to 8.4). For MariaDB any MariaDB tool from 10 on works. Otherwise the dialog says why
   ("pg_dump 16 found, server is 18 — using built-in") and uses built-in. You can always switch to built-in; native can't
   be forced.
+- A mix of tables uses the built-in method unless the tool can do it in one run: `pg_dump` and `mariadb-dump` can mix
+  Structure + data with Structure only, but MySQL's `mysqldump` can't, and no tool can mix in Data only tables. The
+  Method line then says "This mix of tables needs the built-in method". When that is slower, and the tables that
+  include data have an estimated 1 million rows or more, the dialog warns before you start, with **Back up anyway**
+  and **Change tables**.
 - SQLite always uses built-in, in both directions (it runs in-process, so a tool gains nothing).
 - Native MySQL/MariaDB backups round `FLOAT` (single-precision) columns to 6 significant digits, a `mysqldump` limit.
   When the chosen tables have `FLOAT` columns the dialog warns; use built-in for exact values.
@@ -118,6 +127,12 @@ What built-in leaves out (the dialog lists it before you start, and the file hea
   `SCHEMA` synonyms on MySQL/MariaDB), PostgreSQL `COMMENT ON DATABASE` and psql `\connect` are removed from the file.
   This is what lets a production dump restore into a local copy under another name. A file that switches between two or more
   databases (`--databases a b`, `--all-databases`) is refused when the second one appears.
+- **Data only tables** are added to an existing table on restore: the table is not created or replaced, so it has to
+  exist already with matching columns.
+- **PostgreSQL, tables chosen per table:** with DROP on, the foreign keys of a Data only table to tables the file
+  recreates are added back after the data, so its rows must match the backed-up tables or the restore fails. A table
+  backed up with data that references a Structure only table fails its foreign key on restore if it has rows pointing
+  there.
 - Client commands are refused, for security: psql meta-commands other than `\restrict`/`\unrestrict` (`\!`, `\copy`,
   `\i`, …) and mysql client commands (`system`, `source`, …). A dump file is untrusted input, and these could run
   programs or read files on the DBZuper server.

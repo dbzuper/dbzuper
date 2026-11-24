@@ -379,3 +379,94 @@ it('keeps memory flat on a big table', function (string $engine) {
         $factory->release($db);
     }
 })->with(['mysql', 'mariadb']);
+
+/**
+ * Tables a (both), b (structure) and c (data) in dbzuper_test with a view on a and a trigger on each table, and an
+ * empty dbzuper_test_restore; always cleaned up.
+ *
+ * @param  Closure(Connection $source, Connection $target): mixed  $test
+ */
+function mysqlBuiltinModes(string $engine, Closure $test): void
+{
+    Engines::skipUnlessAvailable($engine);
+    $factory = app(ConnectionFactory::class);
+    $source = $factory->make(Engines::savedConnection($engine));
+    $target = $factory->make(Engines::prepareRestoreTarget($engine));
+    $drop = function () use ($source): void {
+        $source->statement('DROP VIEW IF EXISTS v');
+        $source->statement('DROP TABLE IF EXISTS a, b, c');
+    };
+
+    try {
+        $drop();
+        foreach (['a', 'b', 'c'] as $t) {
+            $source->statement("CREATE TABLE {$t} (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v VARCHAR(20), KEY {$t}_v (v))");
+            $source->statement("CREATE TRIGGER {$t}_t BEFORE INSERT ON {$t} FOR EACH ROW SET NEW.v = UPPER(NEW.v)");
+        }
+        $source->insert("INSERT INTO a (id, v) VALUES (1, 'A1'), (2, 'A2')");
+        $source->insert("INSERT INTO b (id, v) VALUES (5, 'B5')");
+        $source->insert("INSERT INTO c (id, v) VALUES (1, 'C1'), (2, 'C2'), (3, 'C3')");
+        $source->statement('CREATE VIEW v AS SELECT id FROM a');
+
+        $test($source, $target);
+    } finally {
+        $factory->release($target);
+        $drop();
+        $factory->release($source);
+        Engines::dropRestoreTarget($engine);
+    }
+}
+
+function mysqlBuiltinModeOptions(): ExportOptions
+{
+    return new ExportOptions(tables: ['a', 'b', 'c', 'v'], structure: true, data: true, dropFirst: true, gzip: false,
+        modes: ['a' => 'both', 'b' => 'structure', 'c' => 'data']);
+}
+
+it('backs up structure and data per table', function (string $engine) {
+    mysqlBuiltinModes($engine, function (Connection $source, Connection $target) use ($engine) {
+        $path = mysqlBuiltinExport($source, $engine, mysqlBuiltinModeOptions());
+        try {
+            $sql = (string) file_get_contents($path);
+            // A data-only table goes into one that exists already.
+            $target->statement('CREATE TABLE c (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v VARCHAR(20))');
+            mysqlBuiltinRestore($target, $engine, $path);
+        } finally {
+            @unlink($path);
+        }
+
+        expect($sql)->toStartWith("SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n")
+            ->and($sql)->toEndWith("SET FOREIGN_KEY_CHECKS=1;\nSET UNIQUE_CHECKS=1;\n")
+            ->and($sql)->toContain('CREATE TABLE `a`')
+            ->and($sql)->toContain('CREATE TABLE `b`')
+            ->and($sql)->not->toContain('CREATE TABLE `c`')
+            ->and($sql)->toContain('INSERT INTO `a`')
+            ->and($sql)->toContain('INSERT INTO `c`')
+            ->and($sql)->not->toContain('INSERT INTO `b`')
+            ->and($sql)->toContain('DROP TABLE IF EXISTS `a`;')
+            ->and($sql)->toContain('DROP TABLE IF EXISTS `b`;')
+            ->and($sql)->not->toContain('DROP TABLE IF EXISTS `c`;')
+            ->and($sql)->toContain('DROP VIEW IF EXISTS `v`;')
+            ->and($sql)->toMatch('/CREATE (?:ALGORITHM=\w+ )?(?:SQL SECURITY \w+ )?VIEW `v`/');
+
+        expect(mysqlBuiltinObjects($target))->toBe(['tables' => ['a', 'b', 'c'], 'views' => ['v'], 'triggers' => ['a_t', 'b_t']])
+            ->and($target->select('SELECT * FROM a ORDER BY id'))->toEqual($source->select('SELECT * FROM a ORDER BY id'))
+            ->and((int) $target->selectOne('SELECT COUNT(*) AS n FROM b')->n)->toBe(0)
+            ->and($target->select('SELECT * FROM c ORDER BY id'))->toEqual($source->select('SELECT * FROM c ORDER BY id'));
+    });
+})->with(['mysql', 'mariadb']);
+
+it('writes triggers only for tables with structure', function (string $engine) {
+    mysqlBuiltinModes($engine, function (Connection $source) use ($engine) {
+        $path = mysqlBuiltinExport($source, $engine, mysqlBuiltinModeOptions());
+        try {
+            $sql = (string) file_get_contents($path);
+        } finally {
+            @unlink($path);
+        }
+
+        expect($sql)->toMatch('/CREATE TRIGGER `?a_t`? /')
+            ->and($sql)->toMatch('/CREATE TRIGGER `?b_t`? /')
+            ->and($sql)->not->toMatch('/CREATE TRIGGER `?c_t`? /');
+    });
+})->with(['mysql', 'mariadb']);

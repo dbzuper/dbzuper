@@ -20,8 +20,12 @@ final class NativeCommandBuilder
      * @param  list<DumpObject>  $objects  the chosen objects, used when $o->tables is not null
      * @param  string|null  $outputFile  the tool writes the dump there instead of stdout (pg_dump --file,
      *                                   mysqldump --result-file); it is deleted with the command's temp files
+     * @param  list<string>  $unchosen  MariaDB, mixed tables: every table and view that was not chosen. The tool
+     *                                  ignores --ignore-table-data for tables named on its command line, so a mix
+     *                                  names none and excludes the others instead. The exclusions go in the options
+     *                                  file, not argv: Windows caps a command line at 32,767 characters.
      */
-    public static function dump(SavedConnection $c, ToolCheck $t, ExportOptions $o, array $objects, bool $routines, bool $events, ?string $outputFile = null): NativeCommand
+    public static function dump(SavedConnection $c, ToolCheck $t, ExportOptions $o, array $objects, bool $routines, bool $events, ?string $outputFile = null, array $unchosen = []): NativeCommand
     {
         $path = self::toolPath($t);
 
@@ -29,19 +33,34 @@ final class NativeCommandBuilder
             return self::pgDump($c, $path, $t, $o, $objects, $outputFile);
         }
 
-        [$file, $temp] = self::defaultsFile($c);
+        $mixed = $o->isMixed() && $c->driver === DriverName::MariaDb && $o->tables !== null;
+        $exclusions = [];
+        if ($mixed) {
+            // Tables chosen as structure only are created but their rows left out (coversMix allows no other mix).
+            // mariadb-dump may match these names case-insensitively, even on a lower_case_table_names=0 server.
+            foreach ($unchosen as $name) {
+                $exclusions[] = self::optionLine('ignore-table', $c->database.'.'.$name);
+            }
+            foreach ($objects as $object) {
+                if (! $o->dataFor($object->key())) {
+                    $exclusions[] = self::optionLine('ignore-table-data', $c->database.'.'.$object->name);
+                }
+            }
+        }
+
+        [$file, $temp] = self::defaultsFile($c, $exclusions);
         $argv = [...self::clientHead($c, $path, $file), '--single-transaction', '--no-tablespaces', '--comments'];
         if ($routines) {
             $argv[] = '--routines';
         }
-        $argv[] = $o->structure ? '--triggers' : '--skip-triggers';
+        $argv[] = $o->anyStructure() ? '--triggers' : '--skip-triggers';
         if ($events) {
             $argv[] = '--events';
         }
-        if (! $o->data) {
+        if (! $o->anyData()) {
             $argv[] = '--no-data';
         }
-        if (! $o->structure) {
+        if (! $o->anyStructure()) {
             $argv[] = '--no-create-info';
         } else {
             $argv[] = $o->dropFirst ? '--add-drop-table' : '--skip-add-drop-table';
@@ -54,13 +73,27 @@ final class NativeCommandBuilder
             $argv[] = '--result-file='.$outputFile;
         }
         array_push($argv, '--', (string) $c->database);
-        if ($o->tables !== null) {
+        if ($o->tables !== null && ! $mixed) {
             foreach ($objects as $object) {
                 $argv[] = $object->name;
             }
         }
 
         return new NativeCommand($argv, [], $outputFile !== null ? [$outputFile, ...$temp] : $temp);
+    }
+
+    /**
+     * Can one run of the native tool produce this table mix? Only mixes of "structure + data" and "structure only"
+     * tables on PostgreSQL and MariaDB can; a data-only table, or MySQL's mysqldump, cannot.
+     */
+    public static function coversMix(DriverName $driver, ExportOptions $o): bool
+    {
+        if (! $o->isMixed()) {
+            return true;
+        }
+
+        return in_array($driver, [DriverName::Postgres, DriverName::MariaDb], true)
+            && array_diff($o->modeKinds(), ['both', 'structure']) === [];
     }
 
     public static function restore(SavedConnection $c, ToolCheck $t): NativeCommand
@@ -113,23 +146,30 @@ final class NativeCommandBuilder
     private static function pgDump(SavedConnection $c, string $path, ToolCheck $t, ExportOptions $o, array $objects, ?string $outputFile): NativeCommand
     {
         $argv = [$path, '--format=plain', '--no-owner', '--no-privileges', '--no-password', ...self::pgConnectionArgs($c)];
-        if (! $o->data) {
+        if (! $o->anyData()) {
             $argv[] = '--schema-only';
-        } elseif (! $o->structure) {
+        } elseif (! $o->anyStructure()) {
             $argv[] = '--data-only';
         }
-        if ($o->dropFirst && $o->structure) {
+        if ($o->dropFirst && $o->anyStructure()) {
             array_push($argv, '--clean', '--if-exists');
         }
         if ($o->tables !== null) {
             // --table-and-children (PG 16+) also matches plain tables and pulls in partitions; older tools only have -t.
             $modern = self::major($t) >= 16;
             foreach ($objects as $object) {
-                $pattern = ($object->schema !== null ? self::pgQuote($object->schema).'.' : '').self::pgQuote($object->name);
                 if ($modern) {
-                    $argv[] = '--table-and-children='.$pattern;
+                    $argv[] = '--table-and-children='.self::pgPattern($object);
                 } else {
-                    array_push($argv, '-t', $pattern);
+                    array_push($argv, '-t', self::pgPattern($object));
+                }
+            }
+            if ($o->isMixed()) {
+                // Structure-only tables stay in the dump but lose their rows.
+                foreach ($objects as $object) {
+                    if (! $o->dataFor($object->key())) {
+                        $argv[] = ($modern ? '--exclude-table-data-and-children=' : '--exclude-table-data=').self::pgPattern($object);
+                    }
                 }
             }
         }
@@ -139,6 +179,11 @@ final class NativeCommandBuilder
         }
 
         return new NativeCommand($argv, self::pgEnv($c), $outputFile !== null ? [$outputFile] : []);
+    }
+
+    private static function pgPattern(DumpObject $object): string
+    {
+        return ($object->schema !== null ? self::pgQuote($object->schema).'.' : '').self::pgQuote($object->name);
     }
 
     /** Inside double quotes pg_dump patterns take `*`, `?` and `.` literally; only `"` needs doubling. */
@@ -178,8 +223,12 @@ final class NativeCommandBuilder
         return $env;
     }
 
-    /** @return array{0: string, 1: list<string>} the options file and the paths to delete (file, then its directory) */
-    private static function defaultsFile(SavedConnection $c): array
+    /**
+     * @param  list<string>  $dumpLines  option lines for the dump tool alone, written under [mysqldump] (read by
+     *                                   mysqldump and every mariadb-dump, which reads [mariadb-dump] too)
+     * @return array{0: string, 1: list<string>} the options file and the paths to delete (file, then its directory)
+     */
+    private static function defaultsFile(SavedConnection $c, array $dumpLines = []): array
     {
         $options = $c->options ?? [];
         $maria = $c->driver === DriverName::MariaDb;
@@ -215,6 +264,10 @@ final class NativeCommandBuilder
                     $lines[] = 'ssl-mode=VERIFY_IDENTITY';
                 }
                 break;
+        }
+
+        if ($dumpLines !== []) {
+            array_push($lines, '[mysqldump]', ...$dumpLines);
         }
 
         $dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'dbzuper-'.bin2hex(random_bytes(8));

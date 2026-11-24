@@ -53,8 +53,9 @@ class TransferController extends Controller
     public function capabilities(Request $request, SavedConnection $connection, TransferPlanner $planner): JsonResponse
     {
         Gate::authorize('view', $connection);
+        $options = null;
         if ($request->isMethod('post')) {
-            // JSON body: {tables: 'all' | list<string>}.
+            // JSON body: {tables: 'all' | list<string>, table_modes?: map of table key to both|structure|data}.
             $tables = $request->json('tables', 'all');
             $valid = $tables === 'all' || (is_array($tables) && array_is_list($tables)
                 && array_filter($tables, fn ($t) => ! is_string($t) || $t === '' || strlen($t) > 1000) === []);
@@ -62,6 +63,14 @@ class TransferController extends Controller
                 throw ValidationException::withMessages(['tables' => "Choose 'all' or a list of tables."]);
             }
             $keys = $tables === 'all' ? null : $tables;
+            if ($request->has('table_modes')) {
+                $modes = $request->json('table_modes');
+                $error = StartExportRequest::validateTableModes($modes, $tables);
+                if ($error !== null) {
+                    throw ValidationException::withMessages(['table_modes' => $error]);
+                }
+                $options = ExportOptions::fromRequest(['tables' => $keys, 'structure' => true, 'data' => true, 'table_modes' => $modes]);
+            }
         } else {
             $tables = $request->query('tables');
             $keys = is_array($tables) ? array_values(array_filter($tables, 'is_string')) : null;
@@ -70,7 +79,7 @@ class TransferController extends Controller
             throw ValidationException::withMessages(['tables' => StartExportRequest::TOO_MANY_TABLES]);
         }
 
-        return response()->json($planner->capabilities($connection, $keys));
+        return response()->json($planner->capabilities($connection, $keys, $options));
     }
 
     public function objects(SavedConnection $connection, ConnectionFactory $factory, DbErrorMapper $errors, SnapshotService $snapshots): JsonResponse
@@ -121,17 +130,27 @@ class TransferController extends Controller
         $options = ExportOptions::fromRequest($request->validated());
 
         if ($options->tables !== null) {
-            $keys = array_map(fn (DumpObject $o) => $o->key(), $this->listObjects($connection, $factory, $errors));
+            $objects = $this->listObjects($connection, $factory, $errors);
+            $keys = array_map(fn (DumpObject $o) => $o->key(), $objects);
             $missing = array_values(array_diff($options->tables, $keys));
             if ($options->tables === [] || $missing !== []) {
                 throw ValidationException::withMessages(['tables' => $options->tables === []
                     ? 'Choose at least one table.'
                     : 'These tables no longer exist: '.implode(', ', array_slice($missing, 0, 5)).(count($missing) > 5 ? ', …' : '')]);
             }
+            // A table without a mode would take the globals, which a native run cannot apply per table. Views are exempt.
+            if ($options->isMixed()) {
+                $chosen = array_flip($options->tables);
+                foreach ($objects as $object) {
+                    if ($object->kind === 'table' && isset($chosen[$object->key()]) && ! isset($options->modes[$object->key()])) {
+                        throw ValidationException::withMessages(['table_modes' => 'Give every chosen table a mode.']);
+                    }
+                }
+            }
         }
 
         $requested = $request->validated('method');
-        [$method, $check] = $planner->resolve($connection, TransferDirection::Export, is_string($requested) ? TransferMethod::from($requested) : null);
+        [$method, $check] = $planner->resolve($connection, TransferDirection::Export, is_string($requested) ? TransferMethod::from($requested) : null, $options);
         $warnings = $method === TransferMethod::Native
             ? $native->gapsFor($connection, $options->tables)
             : $builtin->for($connection->driver)->gaps();

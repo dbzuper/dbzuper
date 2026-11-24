@@ -574,3 +574,140 @@ it('fails instead of backing up a table that row-level security filters', functi
         $factory->release($admin);
     }
 });
+
+/**
+ * Runs $test on dbzuper_test with $setup applied (and the fixture dropped) and an empty dbzuper_test_restore; always
+ * cleans up with $drop.
+ *
+ * @param  list<string>  $setup
+ * @param  Closure(Connection $source, Connection $target): mixed  $test
+ */
+function pgBuiltinOwnTables(array $setup, string $drop, Closure $test): void
+{
+    Engines::skipUnlessAvailable('pgsql');
+    $factory = app(ConnectionFactory::class);
+    $source = $factory->make(Engines::savedConnection('pgsql'));
+    $target = $factory->make(Engines::prepareRestoreTarget('pgsql'));
+    try {
+        TransferFixture::drop($source, 'pgsql');
+        $source->unprepared($drop);
+        foreach ($setup as $sql) {
+            $source->unprepared($sql);
+        }
+        $test($source, $target);
+    } finally {
+        $factory->release($target);
+        $source->unprepared($drop);
+        $factory->release($source);
+        Engines::dropRestoreTarget('pgsql');
+    }
+}
+
+it('backs up structure and data per table', function () {
+    pgBuiltinOwnTables([
+        'CREATE TABLE a (id serial PRIMARY KEY, v text)',
+        'CREATE TABLE b (id serial PRIMARY KEY, v text)',
+        'CREATE TABLE c (id serial PRIMARY KEY, v text)',
+        'CREATE INDEX a_v ON a (v)',
+        'CREATE INDEX b_v ON b (v)',
+        'CREATE INDEX c_v ON c (v)',
+        "INSERT INTO a (v) VALUES ('a1'), ('a2')",
+        "INSERT INTO b (v) VALUES ('b1')",
+        "INSERT INTO c (v) VALUES ('c1'), ('c2'), ('c3')",
+        'CREATE VIEW v AS SELECT id FROM a',
+    ], 'DROP VIEW IF EXISTS v; DROP TABLE IF EXISTS a, b, c', function (Connection $source, Connection $target) {
+        $o = new ExportOptions(
+            tables: [pgKey('public', 'a'), pgKey('public', 'b'), pgKey('public', 'c'), pgKey('public', 'v')],
+            structure: true, data: true, dropFirst: true, gzip: false,
+            modes: [pgKey('public', 'a') => 'both', pgKey('public', 'b') => 'structure', pgKey('public', 'c') => 'data'],
+        );
+        // A data-only table goes into one that exists already, with its own sequence.
+        $target->unprepared('CREATE TABLE c (id serial PRIMARY KEY, v text)');
+        $sql = pgBuiltinRoundTripFile($source, $target, $o);
+
+        expect($sql)->toStartWith(PG_SESSION_HEADER)
+            ->and($sql)->toContain('CREATE TABLE "public"."a"')
+            ->and($sql)->toContain('CREATE TABLE "public"."b"')
+            ->and($sql)->not->toContain('CREATE TABLE "public"."c"')
+            ->and($sql)->toContain('INSERT INTO "public"."a"')
+            ->and($sql)->toContain('INSERT INTO "public"."c"')
+            ->and($sql)->not->toContain('INSERT INTO "public"."b"')
+            ->and($sql)->toContain('DROP TABLE IF EXISTS "public"."a" CASCADE;')
+            ->and($sql)->toContain('DROP TABLE IF EXISTS "public"."b" CASCADE;')
+            ->and($sql)->not->toContain('DROP TABLE IF EXISTS "public"."c"')
+            ->and($sql)->toContain('DROP VIEW IF EXISTS "public"."v" CASCADE;')
+            ->and($sql)->toContain('"public"."b_id_seq"')
+            ->and($sql)->not->toContain('SEQUENCE "public"."c_id_seq"')
+            ->and($sql)->not->toContain('c_v')
+            ->and($sql)->toContain("SELECT pg_catalog.setval('\"public\".\"a_id_seq\"', 2, true);")
+            ->and($sql)->toContain("SELECT pg_catalog.setval('\"public\".\"c_id_seq\"', 3, true);")
+            ->and($sql)->not->toContain("setval('\"public\".\"b_id_seq\"'");
+
+        $indexes = array_map(fn ($r) => (string) $r->n, $target->select("SELECT indexname AS n FROM pg_indexes WHERE schemaname = 'public' AND tablename IN ('a', 'b', 'c') ORDER BY 1"));
+        expect(pgBuiltinRelations($target))->toBe(['public.a:r', 'public.b:r', 'public.c:r', 'public.v:v'])
+            ->and($indexes)->toBe(['a_pkey', 'a_v', 'b_pkey', 'b_v', 'c_pkey'])
+            ->and($target->select('SELECT * FROM a ORDER BY id'))->toEqual($source->select('SELECT * FROM a ORDER BY id'))
+            ->and((int) $target->selectOne('SELECT COUNT(*) AS n FROM b')->n)->toBe(0)
+            ->and($target->select('SELECT * FROM c ORDER BY id'))->toEqual($source->select('SELECT * FROM c ORDER BY id'))
+            ->and($target->selectOne("INSERT INTO c (v) VALUES ('c4') RETURNING id")->id)->toBe(4);
+    });
+});
+
+it("gives a partition its parent table's mode", function () {
+    pgBuiltinOwnTables([
+        'CREATE TABLE ps (id int NOT NULL, v text) PARTITION BY RANGE (id)',
+        'CREATE TABLE ps_low PARTITION OF ps FOR VALUES FROM (0) TO (100)',
+        'CREATE INDEX ps_low_v ON ps_low (v)',
+        'CREATE TABLE pd (id int NOT NULL, v text) PARTITION BY RANGE (id)',
+        'CREATE TABLE pd_low PARTITION OF pd FOR VALUES FROM (0) TO (100)',
+        'CREATE INDEX pd_low_v ON pd_low (v)',
+        "INSERT INTO ps VALUES (1, 's1'), (2, 's2')",
+        "INSERT INTO pd VALUES (1, 'd1'), (2, 'd2')",
+    ], 'DROP TABLE IF EXISTS ps, pd', function (Connection $source, Connection $target) {
+        $o = new ExportOptions(
+            tables: [pgKey('public', 'ps'), pgKey('public', 'pd')],
+            structure: true, data: true, dropFirst: false, gzip: false,
+            modes: [pgKey('public', 'ps') => 'structure', pgKey('public', 'pd') => 'data'],
+        );
+        $target->unprepared('CREATE TABLE pd (id int NOT NULL, v text) PARTITION BY RANGE (id); CREATE TABLE pd_low PARTITION OF pd FOR VALUES FROM (0) TO (100)');
+        $sql = pgBuiltinRoundTripFile($source, $target, $o);
+
+        expect($sql)->toContain('CREATE TABLE "public"."ps"')
+            ->and($sql)->toContain('CREATE TABLE "public"."ps_low" PARTITION OF "public"."ps"')
+            ->and($sql)->toContain('ps_low_v')
+            ->and($sql)->not->toContain('INSERT INTO "public"."ps')
+            ->and($sql)->not->toContain('CREATE TABLE "public"."pd')
+            ->and($sql)->not->toContain('pd_low_v')
+            ->and($sql)->toContain('INSERT INTO "public"."pd"')
+            ->and((int) $target->selectOne('SELECT COUNT(*) AS n FROM ps_low')->n)->toBe(0)
+            ->and($target->select('SELECT * FROM pd_low ORDER BY id'))->toEqual($source->select('SELECT * FROM pd_low ORDER BY id'));
+    });
+});
+
+it("keeps a data-only table's foreign keys to tables it drops and recreates", function () {
+    $setup = [
+        'CREATE TABLE a (id int PRIMARY KEY, v text)',
+        'CREATE TABLE c (id int PRIMARY KEY, a_id int CONSTRAINT c_a_fk REFERENCES a (id), v text)',
+        "INSERT INTO a VALUES (1, 'a1'), (2, 'a2')",
+        "INSERT INTO c VALUES (1, 1, 'c1'), (2, 2, 'c2')",
+    ];
+    pgBuiltinOwnTables($setup, 'DROP TABLE IF EXISTS c, a', function (Connection $source, Connection $target) use ($setup) {
+        $o = new ExportOptions(
+            tables: [pgKey('public', 'a'), pgKey('public', 'c')],
+            structure: true, data: true, dropFirst: true, gzip: false,
+            modes: [pgKey('public', 'a') => 'both', pgKey('public', 'c') => 'data'],
+        );
+        // The target has both tables, c's key to a included; DROP TABLE a CASCADE takes that key with it.
+        $target->unprepared($setup[0].'; '.$setup[1]);
+        $sql = pgBuiltinRoundTripFile($source, $target, $o);
+
+        expect($sql)->toContain('DROP TABLE IF EXISTS "public"."a" CASCADE;')
+            ->and($sql)->not->toContain('CREATE TABLE "public"."c"')
+            ->and($sql)->toContain('ALTER TABLE "public"."c" ADD CONSTRAINT "c_a_fk" FOREIGN KEY (a_id) REFERENCES public.a(id)')
+            ->and(strpos($sql, 'ADD CONSTRAINT "c_a_fk"'))->toBeGreaterThan(strpos($sql, 'INSERT INTO "public"."c"'))
+            ->and($target->selectOne("SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = 'c_a_fk' AND conrelid = 'public.c'::regclass")?->d)
+            ->toBe('FOREIGN KEY (a_id) REFERENCES a(id)')
+            ->and($target->select('SELECT * FROM a ORDER BY id'))->toEqual($source->select('SELECT * FROM a ORDER BY id'))
+            ->and($target->select('SELECT * FROM c ORDER BY id'))->toEqual($source->select('SELECT * FROM c ORDER BY id'));
+    });
+});

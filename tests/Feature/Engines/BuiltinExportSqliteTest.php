@@ -680,3 +680,111 @@ it('keeps user tables named like shadow tables beside a loaded fts5 table', func
         }
     }, fixture: false);
 });
+
+const SQLITE_MODES_SETUP = [
+    'CREATE TABLE a (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)',
+    'CREATE TABLE b (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)',
+    'CREATE TABLE c (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)',
+    "INSERT INTO a VALUES (1, 'a1'), (2, 'a2')",
+    "INSERT INTO b VALUES (5, 'b5')",
+    "INSERT INTO c VALUES (1, 'c1'), (2, 'c2'), (3, 'c3')",
+    'CREATE INDEX a_v ON a (v)',
+    'CREATE INDEX b_v ON b (v)',
+    'CREATE INDEX c_v ON c (v)',
+    'CREATE TRIGGER b_t AFTER INSERT ON b BEGIN SELECT 1; END',
+    'CREATE TRIGGER c_t AFTER INSERT ON c BEGIN SELECT 1; END',
+    'CREATE VIEW v AS SELECT id FROM a',
+];
+
+const SQLITE_MODES_DROP = ['DROP VIEW IF EXISTS v', 'DROP TABLE IF EXISTS a', 'DROP TABLE IF EXISTS b', 'DROP TABLE IF EXISTS c'];
+
+it('backs up structure and data per table', function () {
+    sqliteBuiltinRoundTrip(function (Connection $source, Connection $target) {
+        try {
+            sqliteBuiltinSource($source, SQLITE_MODES_SETUP);
+            $o = new ExportOptions(tables: ['a', 'b', 'c', 'v'], structure: true, data: true, dropFirst: true, gzip: false,
+                modes: ['a' => 'both', 'b' => 'structure', 'c' => 'data']);
+            $path = sqliteBuiltinExport($source, $o);
+            try {
+                $sql = (string) file_get_contents($path);
+                // A data-only table goes into one that exists already.
+                $target->unprepared('CREATE TABLE c (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)');
+                sqliteBuiltinRestore($target, $path);
+            } finally {
+                @unlink($path);
+            }
+
+            expect($sql)->toStartWith("PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\n")
+                ->and($sql)->toEndWith("COMMIT;\n")
+                ->and($sql)->toContain('CREATE TABLE a ')
+                ->and($sql)->toContain('CREATE TABLE b ')
+                ->and($sql)->not->toContain('CREATE TABLE c ')
+                ->and($sql)->toContain('INSERT INTO "a"')
+                ->and($sql)->toContain('INSERT INTO "c"')
+                ->and($sql)->not->toContain('INSERT INTO "b"')
+                ->and($sql)->toContain('DROP TABLE IF EXISTS "a";')
+                ->and($sql)->toContain('DROP TABLE IF EXISTS "b";')
+                ->and($sql)->not->toContain('DROP TABLE IF EXISTS "c";')
+                ->and($sql)->toContain('DROP VIEW IF EXISTS "v";')
+                ->and($sql)->toContain('CREATE INDEX a_v')
+                ->and($sql)->toContain('CREATE INDEX b_v')
+                ->and($sql)->not->toContain('c_v')
+                ->and($sql)->toContain('CREATE TRIGGER b_t')
+                ->and($sql)->not->toContain('c_t')
+                ->and($sql)->toContain('CREATE VIEW v')
+                ->and($sql)->toContain("INSERT INTO sqlite_sequence (name, seq) VALUES ('a', 2);")
+                ->and($sql)->toContain("INSERT INTO sqlite_sequence (name, seq) VALUES ('c', 3);")
+                ->and($sql)->not->toContain("sqlite_sequence WHERE name = 'b'");
+
+            expect(sqliteBuiltinObjects($target))->toBe([
+                'table' => ['a', 'b', 'c'],
+                'index' => ['a_v', 'b_v'],
+                'view' => ['v'],
+                'trigger' => ['b_t'],
+            ])
+                ->and(sqliteBuiltinRows($target, 'SELECT * FROM a ORDER BY id'))->toBe(sqliteBuiltinRows($source, 'SELECT * FROM a ORDER BY id'))
+                ->and((int) $target->selectOne('SELECT COUNT(*) AS n FROM b')->n)->toBe(0)
+                ->and(sqliteBuiltinRows($target, 'SELECT * FROM c ORDER BY id'))->toBe(sqliteBuiltinRows($source, 'SELECT * FROM c ORDER BY id'))
+                ->and((int) $target->selectOne("SELECT seq FROM sqlite_sequence WHERE name = 'c'")->seq)->toBe(3);
+        } finally {
+            sqliteBuiltinSource($source, SQLITE_MODES_DROP);
+        }
+    }, fixture: false);
+});
+
+it("gives shadow tables their virtual table's mode", function () {
+    sqliteBuiltinRoundTrip(function (Connection $source, Connection $target) {
+        try {
+            sqliteBuiltinSource($source, SQLITE_VTAB_SETUP);
+            $o = new ExportOptions(tables: ['docs', 'plain'], structure: true, data: true, dropFirst: true, gzip: false,
+                modes: ['docs' => 'both', 'plain' => 'data']);
+            $path = sqliteBuiltinExport($source, $o);
+            try {
+                $sql = (string) file_get_contents($path);
+                // Data only: the virtual table (and so its storage) exists in the target already.
+                $target->unprepared('CREATE VIRTUAL TABLE plain USING fts5(a)');
+                $target->unprepared("INSERT INTO plain (rowid, a) VALUES (1, 'stale')");
+                sqliteBuiltinRestore($target, $path);
+            } finally {
+                @unlink($path);
+            }
+
+            expect($sql)->toContain('CREATE TABLE docs ')
+                ->and($sql)->not->toContain('CREATE VIRTUAL TABLE plain')
+                ->and($sql)->not->toContain('writable_schema')
+                ->and(preg_match('/CREATE TABLE [^;]*plain_/', $sql))->toBe(0)
+                ->and($sql)->not->toContain('DROP TABLE IF EXISTS "plain')
+                ->and($sql)->toContain("DELETE FROM \"plain_data\";\n")
+                ->and($sql)->toContain('INSERT INTO "plain_data"')
+                ->and($sql)->toContain('INSERT INTO "plain_content"');
+
+            $same = fn (string $q) => expect(sqliteBuiltinRows($target, $q))->toBe(sqliteBuiltinRows($source, $q));
+            $same('SELECT rowid, a FROM plain ORDER BY rowid');
+            $same("SELECT rowid, a FROM plain WHERE plain MATCH 'forty'");
+            $same('SELECT * FROM docs ORDER BY id');
+            $target->unprepared("INSERT INTO plain (plain) VALUES ('integrity-check')");
+        } finally {
+            sqliteBuiltinSource($source, SQLITE_VTAB_DROP);
+        }
+    }, fixture: false);
+});

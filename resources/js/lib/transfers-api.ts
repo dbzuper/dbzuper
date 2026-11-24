@@ -60,6 +60,8 @@ export type TransferCapabilities = {
         default_method: TransferMethod;
         builtin_gaps: string[];
         native_gaps: string[];
+        /** The chosen mix of table modes can only be written by the built-in method. */
+        mix_needs_builtin: boolean;
     };
     import: {
         native: ToolCheck;
@@ -76,8 +78,13 @@ export type DumpObject = {
     rows: number | null;
 };
 
+/** What a backup includes for one table. */
+export type TableMode = 'both' | 'structure' | 'data';
+
 export type StartExportBody = {
     tables: 'all' | string[];
+    /** A mode for every ticked table (never views, never with 'all'); the globals below apply to the rest. */
+    table_modes?: Record<string, TableMode>;
     structure: boolean;
     data: boolean;
     drop?: boolean;
@@ -105,10 +112,22 @@ export type StartImportBody = {
 
 export const transfersApi = {
     /** Without tables, a GET; with them, a POST: a long list doesn't fit a query string (414, max_input_vars). */
-    capabilities: (ref: WorkspaceRef, tables?: 'all' | string[]) =>
+    capabilities: (
+        ref: WorkspaceRef,
+        tables?: 'all' | string[],
+        tableModes?: Record<string, TableMode>,
+    ) =>
         apiFetch<TransferCapabilities>(
             `${apiBase(ref)}/transfers/capabilities`,
-            tables === undefined ? {} : { method: 'POST', body: { tables } },
+            tables === undefined
+                ? {}
+                : {
+                      method: 'POST',
+                      body:
+                          tableModes === undefined
+                              ? { tables }
+                              : { tables, table_modes: tableModes },
+                  },
         ),
     objects: (ref: WorkspaceRef) =>
         apiFetch<{ objects: DumpObject[] }>(

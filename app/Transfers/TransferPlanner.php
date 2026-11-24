@@ -11,7 +11,9 @@ use App\Enums\TransferDirection;
 use App\Enums\TransferMethod;
 use App\Models\SavedConnection;
 use App\Transfers\Export\BuiltinExporters;
+use App\Transfers\Export\ExportOptions;
 use App\Transfers\Native\Compatibility;
+use App\Transfers\Native\NativeCommandBuilder;
 use App\Transfers\Native\NativeExporter;
 use App\Transfers\Native\ToolCheck;
 use Illuminate\Database\Connection;
@@ -22,6 +24,8 @@ use Throwable;
 /** Decides which method a backup or restore will use, and what the dialogs say about it. */
 class TransferPlanner
 {
+    public const MIX_REASON = 'This mix of tables needs the built-in method';
+
     public function __construct(
         private readonly ConnectionFactory $connections,
         private readonly DriverRegistry $drivers,
@@ -32,12 +36,14 @@ class TransferPlanner
 
     /**
      * @param  list<string>|null  $tables  object keys the backup is limited to; null = everything
-     * @return array{read_only: bool, database_name: string, worker_alive: bool, export: array{native: array<string, mixed>, default_method: string, builtin_gaps: list<string>, native_gaps: list<string>}, import: array{native: array<string, mixed>, default_method: string, all_or_nothing: bool}}
+     * @return array{read_only: bool, database_name: string, worker_alive: bool, export: array{native: array<string, mixed>, default_method: string, mix_needs_builtin: bool, builtin_gaps: list<string>, native_gaps: list<string>}, import: array{native: array<string, mixed>, default_method: string, all_or_nothing: bool}}
      */
-    public function capabilities(SavedConnection $c, ?array $tables = null): array
+    public function capabilities(SavedConnection $c, ?array $tables = null, ?ExportOptions $options = null): array
     {
         $version = $this->serverVersion($c);
         $export = $this->check($c, $version, TransferDirection::Export);
+        $mixNeedsBuiltin = $export->usable && $options !== null && ! NativeCommandBuilder::coversMix($c->driver, $options);
+        $exportNative = $mixNeedsBuiltin ? ToolCheck::unusable(self::MIX_REASON, $export->tool) : $export;
         $import = $this->check($c, $version, TransferDirection::Import);
 
         return [
@@ -45,10 +51,11 @@ class TransferPlanner
             'database_name' => $this->databaseName($c),
             'worker_alive' => WorkerHeartbeat::alive(),
             'export' => [
-                'native' => $export->toApiArray(),
-                'default_method' => $export->usable ? TransferMethod::Native->value : TransferMethod::Builtin->value,
+                'native' => $exportNative->toApiArray(),
+                'default_method' => $exportNative->usable ? TransferMethod::Native->value : TransferMethod::Builtin->value,
+                'mix_needs_builtin' => $mixNeedsBuiltin,
                 'builtin_gaps' => $this->builtin->for($c->driver)->gaps(),
-                'native_gaps' => $export->usable ? $this->native->gapsFor($c, $tables) : [],
+                'native_gaps' => $exportNative->usable ? $this->native->gapsFor($c, $tables) : [],
             ],
             'import' => [
                 'native' => $import->toApiArray(),
@@ -63,9 +70,12 @@ class TransferPlanner
      *
      * @throws HttpException 422 when native is requested but unusable
      */
-    public function resolve(SavedConnection $c, TransferDirection $d, ?TransferMethod $requested): array
+    public function resolve(SavedConnection $c, TransferDirection $d, ?TransferMethod $requested, ?ExportOptions $options = null): array
     {
         $check = $this->check($c, $this->serverVersion($c), $d);
+        if ($d === TransferDirection::Export && $check->usable && $options !== null && ! NativeCommandBuilder::coversMix($c->driver, $options)) {
+            $check = ToolCheck::unusable(self::MIX_REASON, $check->tool);
+        }
 
         if ($requested === TransferMethod::Native) {
             abort_unless($check->usable, 422, $check->reason);
@@ -99,7 +109,7 @@ class TransferPlanner
         return ToolCheck::fromArray($cached);
     }
 
-    private function serverVersion(SavedConnection $c): string
+    protected function serverVersion(SavedConnection $c): string
     {
         if ($c->driver === DriverName::Sqlite) {
             return '';

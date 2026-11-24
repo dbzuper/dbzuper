@@ -24,6 +24,7 @@ import { shortVersion } from '@/lib/format';
 import { ACTIVE_STATUSES, transfersApi } from '@/lib/transfers-api';
 import type {
     DumpObject,
+    TableMode,
     Transfer,
     TransferCapabilities,
 } from '@/lib/transfers-api';
@@ -34,6 +35,25 @@ import { TransferStatus, apiMessage } from './transfer-status';
 
 /** Capabilities are read again this long after the chosen tables last changed (the native gaps depend on them). */
 export const CAPABILITIES_DEBOUNCE_MS = 400;
+
+/** A mix that needs the built-in method warns from this many estimated rows (with data) on. */
+export const BIG_BACKUP_ROWS = 1_000_000;
+
+const MODE_LABELS: Record<TableMode, string> = {
+    both: 'Structure + data',
+    structure: 'Structure only',
+    data: 'Data only',
+};
+const MODES = Object.keys(MODE_LABELS) as TableMode[];
+
+const selectClass =
+    'h-6 shrink-0 rounded-md border bg-background px-1 text-[11px] outline-none focus-visible:ring-1 focus-visible:ring-ring';
+
+const includesStructure = (m: TableMode) => m !== 'data';
+const includesData = (m: TableMode) => m !== 'structure';
+/** The mode the Include checkboxes describe; null when neither is on. */
+const modeOf = (structure: boolean, data: boolean): TableMode | null =>
+    structure && data ? 'both' : structure ? 'structure' : data ? 'data' : null;
 
 function Check({
     label,
@@ -75,12 +95,17 @@ const PickerRow = memo(function PickerRow({
     object: o,
     id,
     checked,
+    mode,
     onToggle,
+    onMode,
 }: {
     object: DumpObject;
     id: string;
     checked: boolean;
+    /** The ticked table's mode; undefined for a view or an unticked row (no selector). */
+    mode: TableMode | undefined;
     onToggle: (key: string, on: boolean) => void;
+    onMode: (key: string, mode: TableMode) => void;
 }) {
     return (
         <li className="flex items-center gap-2 px-1 py-0.5">
@@ -102,6 +127,20 @@ const PickerRow = memo(function PickerRow({
                     </span>
                 )}
             </label>
+            {mode !== undefined && (
+                <select
+                    aria-label={`Mode for ${o.name}`}
+                    className={selectClass}
+                    value={mode}
+                    onChange={(e) => onMode(o.key, e.target.value as TableMode)}
+                >
+                    {MODES.map((m) => (
+                        <option key={m} value={m}>
+                            {MODE_LABELS[m]}
+                        </option>
+                    ))}
+                </select>
+            )}
             {o.rows !== null && (
                 <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
                     {o.rows.toLocaleString('en')} rows
@@ -114,15 +153,22 @@ const PickerRow = memo(function PickerRow({
 function TablePicker({
     objects,
     chosen,
+    modes,
     onToggle,
     onSetMany,
+    onMode,
+    filterRef,
     bySchema,
 }: {
     objects: DumpObject[];
     chosen: Set<string>;
-    /** Both stable (useCallback): the memoised rows rely on it. */
+    /** The mode of each ticked table (views have none). */
+    modes: Record<string, TableMode>;
+    /** All callbacks stable (useCallback): the memoised rows rely on it. */
     onToggle: (key: string, on: boolean) => void;
     onSetMany: (keys: string[], on: boolean) => void;
+    onMode: (key: string, mode: TableMode) => void;
+    filterRef: React.Ref<HTMLInputElement>;
     bySchema: boolean;
 }) {
     const [query, setQuery] = useState('');
@@ -156,7 +202,9 @@ function TablePicker({
             object={o}
             id={`${baseId}-${positions.get(o.key) ?? 0}`}
             checked={chosen.has(o.key)}
+            mode={chosen.has(o.key) ? modes[o.key] : undefined}
             onToggle={onToggle}
+            onMode={onMode}
         />
     );
     const chosenShown = q
@@ -167,6 +215,7 @@ function TablePicker({
         <div className="grid gap-1.5">
             <div className="flex items-center gap-2">
                 <Input
+                    ref={filterRef}
                     type="search"
                     aria-label="Filter tables"
                     placeholder="Filter tables…"
@@ -224,6 +273,14 @@ function TablePicker({
                 {chosen.size.toLocaleString('en')} of{' '}
                 {objects.length.toLocaleString('en')} chosen
             </p>
+            {Object.entries(modes).some(
+                ([k, m]) => chosen.has(k) && m === 'data',
+            ) && (
+                <p className="text-xs text-muted-foreground">
+                    Data only: on restore its rows are added to an existing
+                    table; the table is not created or replaced.
+                </p>
+            )}
         </div>
     );
 }
@@ -252,6 +309,9 @@ export function BackupDialog({
 
     const [mode, setMode] = useState<'all' | 'choose'>('all');
     const [chosen, setChosen] = useState<Set<string>>(() => new Set());
+    /** The mode of each ticked table; views never get one. */
+    const [modes, setModes] = useState<Record<string, TableMode>>({});
+    const [confirming, setConfirming] = useState(false);
     const [structure, setStructure] = useState(true);
     const [data, setData] = useState(true);
     const [drop, setDrop] = useState(true);
@@ -262,6 +322,10 @@ export function BackupDialog({
     const [startError, setStartError] = useState<string | null>(null);
     const [finished, setFinished] = useState(false);
     const [recentKey, setRecentKey] = useState(0);
+    const filterRef = useRef<HTMLInputElement>(null);
+    /** For the stable callbacks below: which keys are tables, and what a new tick starts as. */
+    const tableKeys = useRef(new Set<string>());
+    const defaultMode = useRef<TableMode>('both');
 
     // The object list, read again on every open.
     useEffect(() => {
@@ -273,6 +337,11 @@ export function BackupDialog({
             .then((r) => {
                 if (stopped) return;
                 setObjects(r.objects);
+                tableKeys.current = new Set(
+                    r.objects
+                        .filter((o) => o.kind === 'table')
+                        .map((o) => o.key),
+                );
                 // A table dropped since the list was last read must not stay chosen.
                 const known = new Set(r.objects.map((o) => o.key));
                 setChosen((prev) =>
@@ -293,23 +362,48 @@ export function BackupDialog({
         };
     }, [open, workspace]);
 
+    useEffect(() => {
+        defaultMode.current = modeOf(structure, data) ?? 'both';
+    }, [structure, data]);
+
+    /**
+     * The Include checkboxes set the mode of every ticked table (and of tables ticked later); a table's own
+     * selector can still change it afterwards. Both off changes nothing: the backup can't start that way.
+     */
+    const setInclude = (nextStructure: boolean, nextData: boolean) => {
+        setStructure(nextStructure);
+        setData(nextData);
+        const m = modeOf(nextStructure, nextData);
+        if (m === null) return;
+        setModes((prev) =>
+            Object.fromEntries(Object.keys(prev).map((k) => [k, m])),
+        );
+    };
+
+    /** Ticking a table gives it the Include checkboxes' mode; unticking forgets it. */
+    const onSetMany = useCallback((keys: string[], on: boolean) => {
+        setChosen((prev) => {
+            const next = new Set(prev);
+            keys.forEach((k) => (on ? next.add(k) : next.delete(k)));
+            return next;
+        });
+        setModes((prev) => {
+            const next = { ...prev };
+            for (const k of keys) {
+                if (!on) delete next[k];
+                else if (tableKeys.current.has(k) && !(k in next))
+                    next[k] = defaultMode.current;
+            }
+            return next;
+        });
+    }, []);
     const onToggle = useCallback(
-        (key: string, on: boolean) =>
-            setChosen((prev) => {
-                const next = new Set(prev);
-                if (on) next.add(key);
-                else next.delete(key);
-                return next;
-            }),
-        [],
+        (key: string, on: boolean) => onSetMany([key], on),
+        [onSetMany],
     );
-    const onSetMany = useCallback(
-        (keys: string[], on: boolean) =>
-            setChosen((prev) => {
-                const next = new Set(prev);
-                keys.forEach((k) => (on ? next.add(k) : next.delete(k)));
-                return next;
-            }),
+    const onMode = useCallback(
+        (key: string, mode: TableMode) =>
+            setModes((prev) => ({ ...prev, [key]: mode })),
         [],
     );
 
@@ -318,11 +412,36 @@ export function BackupDialog({
      * always sends its explicit list, even with every box ticked.
      */
     const everything = mode === 'all';
+    /** The ticked tables' modes (never with All, never for views, none for a table that has gone). */
+    const tableModes = useMemo(() => {
+        const out: Record<string, TableMode> = {};
+        if (everything) return out;
+        for (const k of [...chosen].sort()) if (modes[k]) out[k] = modes[k];
+        return out;
+    }, [everything, chosen, modes]);
+    const tickedModes = Object.values(tableModes);
+    const distinctModes = new Set(tickedModes);
+    /**
+     * Only ticked tables that differ are sent per table. When they all share one mode, that mode becomes the
+     * global structure / data and the backup runs exactly as one without per-table modes (natively when it can).
+     */
+    const mixed = distinctModes.size > 1;
+    const uniformMode =
+        distinctModes.size === 1 ? (tickedModes[0] as TableMode) : null;
+    const sentStructure =
+        uniformMode !== null ? includesStructure(uniformMode) : structure;
+    const sentData = uniformMode !== null ? includesData(uniformMode) : data;
+    const sentModes = mixed ? tableModes : null;
     // Capabilities for the chosen set: at once on open, then debounced while the choice changes.
     const keysId = useMemo(
-        () => (everything ? '*' : JSON.stringify([...chosen].sort())),
-        [everything, chosen],
+        () =>
+            everything
+                ? '*'
+                : JSON.stringify({ k: [...chosen].sort(), m: sentModes ?? {} }),
+        [everything, chosen, sentModes],
     );
+    // The warning must describe the current choice.
+    useEffect(() => setConfirming(false), [keysId]);
     const capsReadOnce = useRef(false);
     /** A re-read is due or on its way: what's included isn't known yet. */
     const [capsPending, setCapsPending] = useState(false);
@@ -331,8 +450,16 @@ export function BackupDialog({
             capsReadOnce.current = false;
             return;
         }
-        const keys =
-            keysId === '*' ? undefined : (JSON.parse(keysId) as string[]);
+        const parsed =
+            keysId === '*'
+                ? null
+                : (JSON.parse(keysId) as {
+                      k: string[];
+                      m: Record<string, TableMode>;
+                  });
+        const keys = parsed?.k;
+        const keyModes =
+            parsed && Object.keys(parsed.m).length > 0 ? parsed.m : undefined;
         if (keys !== undefined && keys.length === 0) {
             setCapsPending(false);
             return;
@@ -342,7 +469,7 @@ export function BackupDialog({
         setCapsPending(true);
         const read = () =>
             transfersApi
-                .capabilities(workspace, keys)
+                .capabilities(workspace, keys, keyModes)
                 .then((c) => {
                     if (stopped) return;
                     setCaps(c);
@@ -419,16 +546,40 @@ export function BackupDialog({
         setRecentKey((k) => k + 1);
     }, []);
 
-    const start = () => {
+    /** Will the request write any structure (and so DROP statements)? Views take the global structure. */
+    const anyStructure =
+        everything || chosen.size === 0
+            ? structure
+            : tickedModes.some(includesStructure) ||
+              ([...chosen].some((k) => !(k in tableModes)) && sentStructure);
+    /** Estimated rows the backup writes from tables whose mode includes data. */
+    const dataRows = useMemo(() => {
+        const rows = new Map(objects?.map((o) => [o.key, o.rows]) ?? []);
+        return Object.entries(tableModes)
+            .filter(([, m]) => includesData(m))
+            .reduce((sum, [k]) => sum + (rows.get(k) ?? 0), 0);
+    }, [objects, tableModes]);
+    const warnBig =
+        caps?.export.mix_needs_builtin === true &&
+        mixed &&
+        dataRows >= BIG_BACKUP_ROWS;
+
+    const start = (confirmed = false) => {
         if (!canStart) return;
+        if (warnBig && !confirmed) {
+            setConfirming(true);
+            return;
+        }
+        setConfirming(false);
         setStarting(true);
         setStartError(null);
         transfersApi
             .startExport(workspace, {
                 tables: everything ? 'all' : [...chosen],
-                structure,
-                data,
-                drop: structure && drop,
+                ...(sentModes ? { table_modes: sentModes } : {}),
+                structure: sentStructure,
+                data: sentData,
+                drop: anyStructure && drop,
                 gzip,
                 // A native choice made before native turned out unusable (for the chosen tables) falls back.
                 method: requestedMethod,
@@ -519,8 +670,11 @@ export function BackupDialog({
                                 <TablePicker
                                     objects={objects}
                                     chosen={chosen}
+                                    modes={tableModes}
                                     onToggle={onToggle}
                                     onSetMany={onSetMany}
+                                    onMode={onMode}
+                                    filterRef={filterRef}
                                     bySchema={connection.driver === 'pgsql'}
                                 />
                             )}
@@ -530,12 +684,12 @@ export function BackupDialog({
                                 <Check
                                     label="Structure"
                                     checked={structure}
-                                    onChange={setStructure}
+                                    onChange={(v) => setInclude(v, data)}
                                 />
                                 <Check
                                     label="Data"
                                     checked={data}
-                                    onChange={setData}
+                                    onChange={(v) => setInclude(structure, v)}
                                 />
                             </div>
                             {!structure && !data && (
@@ -544,7 +698,7 @@ export function BackupDialog({
                                 </p>
                             )}
                         </Row>
-                        {structure && (
+                        {anyStructure && (
                             <Row label="Structure">
                                 <Check
                                     label="Add DROP … IF EXISTS before each CREATE"
@@ -582,6 +736,41 @@ export function BackupDialog({
                                 </p>
                             )}
                         </Row>
+                        {confirming && (
+                            <div
+                                role="alert"
+                                className="grid gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
+                            >
+                                <p>
+                                    This mix of tables needs the built-in
+                                    method, which is slower than{' '}
+                                    {caps?.export.native.tool ??
+                                        'the native tool'}{' '}
+                                    for about {(dataRows / 1e6).toFixed(1)}{' '}
+                                    million rows.
+                                </p>
+                                <div className="flex gap-2">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={() => start(true)}
+                                    >
+                                        Back up anyway
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                            setConfirming(false);
+                                            filterRef.current?.focus();
+                                        }}
+                                    >
+                                        Change tables
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                         {startError && (
                             <p
                                 role="alert"
@@ -637,7 +826,7 @@ export function BackupDialog({
                             <Button
                                 type="button"
                                 disabled={!canStart}
-                                onClick={start}
+                                onClick={() => start()}
                             >
                                 {starting ? 'Starting…' : 'Back up'}
                             </Button>

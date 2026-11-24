@@ -6,6 +6,7 @@ use App\Enums\TransferMethod;
 use App\Models\SavedConnection;
 use App\Models\User;
 use App\Support\Demo\CommerceSchema;
+use App\Transfers\Export\ExportOptions;
 use App\Transfers\Native\ToolCheck;
 use App\Transfers\TransferPlanner;
 use App\Transfers\WorkerHeartbeat;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\Engines;
+use Tests\Support\FakePlanner;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -205,3 +207,46 @@ it('keeps the tool path in the cached form but never in the browser form', funct
     expect($check->toApiArray())->toBe(['usable' => true, 'tool' => 'mysqldump', 'version' => '8.4.3', 'reason' => 'mysqldump 8.4.3'])
         ->and(ToolCheck::fromArray($check->toArray()))->toEqual($check);
 });
+
+it('reports that a mix needs the built-in method', function () {
+    FakePlanner::bind(new ToolCheck(true, 'mysqldump', '/usr/bin/mysqldump', '8.4.0', 'mysqldump 8.4.0'));
+    $url = "/api/c/{$this->connection->id}/transfers/capabilities";
+
+    $json = $this->actingAs($this->user)->postJson($url, ['tables' => ['a', 'b'], 'table_modes' => ['a' => 'both', 'b' => 'structure']])
+        ->assertOk()->json('export');
+    expect($json['mix_needs_builtin'])->toBeTrue()
+        ->and($json['native']['usable'])->toBeFalse()
+        ->and($json['native']['reason'])->toBe(TransferPlanner::MIX_REASON)
+        ->and($json['native']['tool'])->toBe('mysqldump')
+        ->and($json['default_method'])->toBe('builtin');
+
+    $plain = $this->actingAs($this->user)->postJson($url, ['tables' => ['a', 'b']])->assertOk()->json('export');
+    expect($plain['mix_needs_builtin'])->toBeFalse();
+});
+
+it('rejects invalid table_modes on the capabilities body', function () {
+    $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => ['a'], 'table_modes' => ['z' => 'both']])
+        ->assertUnprocessable()->assertJsonValidationErrors('table_modes');
+});
+
+it('decides per engine whether native covers a mix', function (DriverName $driver, string $tool, bool $covered) {
+    FakePlanner::bind(new ToolCheck(true, $tool, '/usr/bin/'.$tool, '17.0', $tool.' 17.0'), '17.0');
+    $c = new SavedConnection(['driver' => $driver, 'database' => 'shop']);
+    $options = ExportOptions::fromRequest(['tables' => ['a', 'b'], 'table_modes' => ['a' => 'both', 'b' => 'structure']]);
+    $planner = app(TransferPlanner::class);
+
+    $export = $planner->capabilities($c, ['a', 'b'], $options)['export'];
+    expect($export['mix_needs_builtin'])->toBe(! $covered)
+        ->and($export['native']['usable'])->toBe($covered)
+        ->and($export['default_method'])->toBe($covered ? 'native' : 'builtin');
+
+    if ($covered) {
+        [$method] = $planner->resolve($c, TransferDirection::Export, TransferMethod::Native, $options);
+        expect($method)->toBe(TransferMethod::Native);
+    } else {
+        expect(fn () => $planner->resolve($c, TransferDirection::Export, TransferMethod::Native, $options))->toThrow(HttpException::class, TransferPlanner::MIX_REASON);
+    }
+})->with([
+    'postgres' => [DriverName::Postgres, 'pg_dump', true],
+    'mysql' => [DriverName::MySql, 'mysqldump', false],
+]);
