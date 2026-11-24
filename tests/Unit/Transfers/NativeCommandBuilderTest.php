@@ -254,3 +254,63 @@ it('keeps the dump comments the trailer check relies on', function (DriverName $
     'mariadb' => [DriverName::MariaDb, 'mariadb-dump'],
     'pgsql' => [DriverName::Postgres, 'pg_dump'],
 ]);
+
+function ncbMix(array $modes, bool $structure = true, bool $data = true): ExportOptions
+{
+    return new ExportOptions(array_keys($modes), $structure, $data, false, false, $modes);
+}
+
+it('excludes structure-only table data with pg_dump', function () {
+    $a = new DumpObject('public', 'a', 'table');
+    $b = new DumpObject('public', 'b', 'table');
+    $o = ncbMix([$a->key() => 'both', $b->key() => 'structure']);
+    $c = ncbConnection(DriverName::Postgres);
+
+    $new = ncbDump($c, ncbTool('pg_dump', '17.0'), $o, [$a, $b], false, false)->argv;
+    expect($new)->toContain('--exclude-table-data-and-children="public"."b"')
+        ->and($new)->not->toContain('--exclude-table-data-and-children="public"."a"')
+        ->and($new)->toContain('--table-and-children="public"."a"')
+        ->and($new)->not->toContain('--schema-only')->and($new)->not->toContain('--data-only');
+
+    $old = ncbDump($c, ncbTool('pg_dump', '15.4'), $o, [$a, $b], false, false)->argv;
+    expect($old)->toContain('--exclude-table-data="public"."b"')
+        ->and($old)->not->toContain('--schema-only')->and($old)->not->toContain('--data-only');
+});
+
+it('ignores structure-only table data with mariadb-dump', function () {
+    $a = new DumpObject(null, 'a', 'table');
+    $b = new DumpObject(null, 'b', 'table');
+    $argv = ncbDump(ncbConnection(DriverName::MariaDb), ncbTool('mariadb-dump', '11.4.2'), ncbMix(['a' => 'both', 'b' => 'structure']), [$a, $b], false, false)->argv;
+
+    expect($argv)->toContain('--ignore-table-data=shop.b')
+        ->and($argv)->not->toContain('--ignore-table-data=shop.a')
+        ->and($argv)->not->toContain('--no-data')->and($argv)->not->toContain('--no-create-info');
+});
+
+it('dumps data when the globals were structure only but a table is both', function () {
+    $a = new DumpObject(null, 'a', 'table');
+    $b = new DumpObject(null, 'b', 'table');
+    $o = ncbMix(['a' => 'both', 'b' => 'structure'], structure: true, data: false);
+
+    $maria = ncbDump(ncbConnection(DriverName::MariaDb), ncbTool('mariadb-dump', '11.4.2'), $o, [$a, $b], false, false)->argv;
+    expect($maria)->not->toContain('--no-data')->and($maria)->toContain('--ignore-table-data=shop.b');
+
+    $pa = new DumpObject('public', 'a', 'table');
+    $pb = new DumpObject('public', 'b', 'table');
+    $pg = ncbDump(ncbConnection(DriverName::Postgres), ncbTool('pg_dump', '17.0'), ncbMix([$pa->key() => 'both', $pb->key() => 'structure'], true, false), [$pa, $pb], false, false)->argv;
+    expect($pg)->not->toContain('--schema-only');
+});
+
+it('covers mixes', function (DriverName $driver, array $modes, bool $expected) {
+    expect(NativeCommandBuilder::coversMix($driver, ncbMix($modes)))->toBe($expected);
+})->with([
+    'pg both+structure' => [DriverName::Postgres, ['a' => 'both', 'b' => 'structure'], true],
+    'mariadb both+structure' => [DriverName::MariaDb, ['a' => 'both', 'b' => 'structure'], true],
+    'mysql both+structure' => [DriverName::MySql, ['a' => 'both', 'b' => 'structure'], false],
+    'pg both+data' => [DriverName::Postgres, ['a' => 'both', 'b' => 'data'], false],
+    'pg structure+data' => [DriverName::Postgres, ['a' => 'structure', 'b' => 'data'], false],
+    'sqlite mix' => [DriverName::Sqlite, ['a' => 'both', 'b' => 'structure'], false],
+    'pg not mixed' => [DriverName::Postgres, [], true],
+    'mysql not mixed' => [DriverName::MySql, [], true],
+    'sqlite not mixed' => [DriverName::Sqlite, [], true],
+]);

@@ -160,13 +160,13 @@ final class NativeExporter
                     $objects = self::withPartitions($objects, $this->partitions($db));
                 }
             } else {
-                if ($o->tables === null && $o->structure) {
+                if ($o->tables === null && $o->anyStructure()) {
                     // Routines and events come with "All" and structure only (spec §2).
                     $access = MySqlPrivilegeProbe::check($db, (string) $c->database);
                     ['routines' => $routines, 'events' => $events] = $access;
                     $gaps = MySqlPrivilegeProbe::gaps($access);
                 }
-                if ($o->data && $this->hasFloatColumns($db, (string) $c->database, $o->tables)) {
+                if ($o->anyData() && $this->hasFloatColumns($db, (string) $c->database, $o->tables)) {
                     $gaps[] = self::FLOAT_GAP;
                 }
             }
@@ -244,13 +244,17 @@ final class NativeExporter
     private function describe(ToolCheck $t, ExportOptions $o): string
     {
         $parts = [];
-        if ($o->structure) {
-            $parts[] = 'structure';
+        if ($o->isMixed()) {
+            $parts[] = 'structure and data per table';
+        } else {
+            if ($o->structure) {
+                $parts[] = 'structure';
+            }
+            if ($o->data) {
+                $parts[] = 'data';
+            }
         }
-        if ($o->data) {
-            $parts[] = 'data';
-        }
-        if ($o->structure && $o->dropFirst) {
+        if ($o->anyStructure() && $o->dropFirst) {
             $parts[] = 'drop before create';
         }
         $parts[] = $o->tables === null ? 'all tables' : count($o->tables).' chosen';

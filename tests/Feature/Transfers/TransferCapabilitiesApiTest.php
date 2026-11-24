@@ -1,11 +1,16 @@
 <?php
 
+use App\Database\ConnectionFactory;
+use App\Database\DriverRegistry;
+use App\Database\Errors\DbErrorMapper;
 use App\Enums\DriverName;
 use App\Enums\TransferDirection;
 use App\Enums\TransferMethod;
 use App\Models\SavedConnection;
 use App\Models\User;
 use App\Support\Demo\CommerceSchema;
+use App\Transfers\Export\BuiltinExporters;
+use App\Transfers\Native\NativeExporter;
 use App\Transfers\Native\ToolCheck;
 use App\Transfers\TransferPlanner;
 use App\Transfers\WorkerHeartbeat;
@@ -204,4 +209,29 @@ it('keeps the tool path in the cached form but never in the browser form', funct
 
     expect($check->toApiArray())->toBe(['usable' => true, 'tool' => 'mysqldump', 'version' => '8.4.3', 'reason' => 'mysqldump 8.4.3'])
         ->and(ToolCheck::fromArray($check->toArray()))->toEqual($check);
+});
+
+it('reports that a mix needs the built-in method', function () {
+    $tool = new ToolCheck(true, 'mysqldump', '/usr/bin/mysqldump', '8.4.0', 'mysqldump 8.4.0');
+    // The real planner, except that its tool check finds this tool usable.
+    $planner = Mockery::mock(TransferPlanner::class, [app(ConnectionFactory::class), app(DriverRegistry::class), app(DbErrorMapper::class), app(BuiltinExporters::class), app(NativeExporter::class)])->makePartial();
+    $planner->shouldReceive('check')->andReturn($tool);
+    app()->instance(TransferPlanner::class, $planner);
+    $url = "/api/c/{$this->connection->id}/transfers/capabilities";
+
+    $json = $this->actingAs($this->user)->postJson($url, ['tables' => ['a', 'b'], 'table_modes' => ['a' => 'both', 'b' => 'structure']])
+        ->assertOk()->json('export');
+    expect($json['mix_needs_builtin'])->toBeTrue()
+        ->and($json['native']['usable'])->toBeFalse()
+        ->and($json['native']['reason'])->toBe(TransferPlanner::MIX_REASON)
+        ->and($json['native']['tool'])->toBe('mysqldump')
+        ->and($json['default_method'])->toBe('builtin');
+
+    $plain = $this->actingAs($this->user)->postJson($url, ['tables' => ['a', 'b']])->assertOk()->json('export');
+    expect($plain['mix_needs_builtin'])->toBeFalse();
+});
+
+it('rejects invalid table_modes on the capabilities body', function () {
+    $this->actingAs($this->user)->postJson("/api/c/{$this->connection->id}/transfers/capabilities", ['tables' => ['a'], 'table_modes' => ['z' => 'both']])
+        ->assertUnprocessable()->assertJsonValidationErrors('table_modes');
 });

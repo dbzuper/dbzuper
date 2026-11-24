@@ -34,14 +34,14 @@ final class NativeCommandBuilder
         if ($routines) {
             $argv[] = '--routines';
         }
-        $argv[] = $o->structure ? '--triggers' : '--skip-triggers';
+        $argv[] = $o->anyStructure() ? '--triggers' : '--skip-triggers';
         if ($events) {
             $argv[] = '--events';
         }
-        if (! $o->data) {
+        if (! $o->anyData()) {
             $argv[] = '--no-data';
         }
-        if (! $o->structure) {
+        if (! $o->anyStructure()) {
             $argv[] = '--no-create-info';
         } else {
             $argv[] = $o->dropFirst ? '--add-drop-table' : '--skip-add-drop-table';
@@ -49,6 +49,14 @@ final class NativeCommandBuilder
         array_push($argv, '--hex-blob', '--default-character-set=utf8mb4');
         if ($c->driver === DriverName::MySql) {
             $argv[] = '--set-gtid-purged=OFF';
+        }
+        if ($o->isMixed() && $c->driver === DriverName::MariaDb) {
+            // Tables chosen as structure only are created but their rows left out (coversMix allows no other mix).
+            foreach ($objects as $object) {
+                if (! $o->dataFor($object->key())) {
+                    $argv[] = '--ignore-table-data='.$c->database.'.'.$object->name;
+                }
+            }
         }
         if ($outputFile !== null) {
             $argv[] = '--result-file='.$outputFile;
@@ -61,6 +69,20 @@ final class NativeCommandBuilder
         }
 
         return new NativeCommand($argv, [], $outputFile !== null ? [$outputFile, ...$temp] : $temp);
+    }
+
+    /**
+     * Can one run of the native tool produce this table mix? Only mixes of "structure + data" and "structure only"
+     * tables on PostgreSQL and MariaDB can; a data-only table, or MySQL's mysqldump, cannot.
+     */
+    public static function coversMix(DriverName $driver, ExportOptions $o): bool
+    {
+        if (! $o->isMixed()) {
+            return true;
+        }
+
+        return in_array($driver, [DriverName::Postgres, DriverName::MariaDb], true)
+            && array_diff($o->modeKinds(), ['both', 'structure']) === [];
     }
 
     public static function restore(SavedConnection $c, ToolCheck $t): NativeCommand
@@ -113,12 +135,12 @@ final class NativeCommandBuilder
     private static function pgDump(SavedConnection $c, string $path, ToolCheck $t, ExportOptions $o, array $objects, ?string $outputFile): NativeCommand
     {
         $argv = [$path, '--format=plain', '--no-owner', '--no-privileges', '--no-password', ...self::pgConnectionArgs($c)];
-        if (! $o->data) {
+        if (! $o->anyData()) {
             $argv[] = '--schema-only';
-        } elseif (! $o->structure) {
+        } elseif (! $o->anyStructure()) {
             $argv[] = '--data-only';
         }
-        if ($o->dropFirst && $o->structure) {
+        if ($o->dropFirst && $o->anyStructure()) {
             array_push($argv, '--clean', '--if-exists');
         }
         if ($o->tables !== null) {
@@ -130,6 +152,15 @@ final class NativeCommandBuilder
                     $argv[] = '--table-and-children='.$pattern;
                 } else {
                     array_push($argv, '-t', $pattern);
+                }
+            }
+            if ($o->isMixed()) {
+                // Structure-only tables stay in the dump but lose their rows.
+                foreach ($objects as $object) {
+                    if (! $o->dataFor($object->key())) {
+                        $pattern = ($object->schema !== null ? self::pgQuote($object->schema).'.' : '').self::pgQuote($object->name);
+                        $argv[] = ($modern ? '--exclude-table-data-and-children=' : '--exclude-table-data=').$pattern;
+                    }
                 }
             }
         }

@@ -1,5 +1,8 @@
 <?php
 
+use App\Database\ConnectionFactory;
+use App\Database\DriverRegistry;
+use App\Database\Errors\DbErrorMapper;
 use App\Enums\DriverName;
 use App\Enums\TransferDirection;
 use App\Enums\TransferMethod;
@@ -14,6 +17,9 @@ use App\Transfers\Export\BuiltinExporter;
 use App\Transfers\Export\BuiltinExporters;
 use App\Transfers\Export\ExportOptions;
 use App\Transfers\Io\DumpWriter;
+use App\Transfers\Native\NativeExporter;
+use App\Transfers\Native\ToolCheck;
+use App\Transfers\TransferPlanner;
 use App\Transfers\TransferProgress;
 use App\Transfers\TransferStorage;
 use App\Transfers\WorkerHeartbeat;
@@ -429,4 +435,27 @@ it('backs up structure and data per table, counting only the rows it writes', fu
         ->and($sql)->toContain('-- Options: structure and data per table, 2 chosen')
         ->and($sql)->toContain('INSERT INTO "users"')
         ->and($sql)->not->toContain('INSERT INTO "orders"');
+});
+
+function fakeUsableTool(): void
+{
+    $tool = new ToolCheck(true, 'mysqldump', '/usr/bin/mysqldump', '8.4.0', 'mysqldump 8.4.0');
+    // The real planner, except that its tool check finds this tool usable.
+    $planner = Mockery::mock(TransferPlanner::class, [app(ConnectionFactory::class), app(DriverRegistry::class), app(DbErrorMapper::class), app(BuiltinExporters::class), app(NativeExporter::class)])->makePartial();
+    $planner->shouldReceive('check')->andReturn($tool);
+    app()->instance(TransferPlanner::class, $planner);
+}
+
+it('refuses native for a mix it cannot cover', function () {
+    fakeUsableTool();
+
+    startExport(['tables' => ['users', 'orders'], 'table_modes' => ['users' => 'both', 'orders' => 'structure'], 'method' => 'native'])
+        ->assertUnprocessable()->assertJsonPath('message', TransferPlanner::MIX_REASON);
+});
+
+it('falls back to built-in for such a mix by default', function () {
+    fakeUsableTool();
+
+    startExport(['tables' => ['users', 'orders'], 'table_modes' => ['users' => 'both', 'orders' => 'structure']])
+        ->assertAccepted()->assertJsonPath('method', 'builtin');
 });
