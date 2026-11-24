@@ -506,3 +506,46 @@ it('leaves no temporary output file behind when the dump fails or is cancelled',
         @rmdir($dir);
     }
 });
+
+it('backs up a covered mix of tables natively, structure for one and data for the other', function (string $engine) {
+    nativeInto($engine, function (SavedConnection $target) use ($engine) {
+        nativeWithFixture($engine, function (SavedConnection $source) use ($engine, $target) {
+            $schema = $engine === 'pgsql' ? 'public' : null;
+            $a = new DumpObject($schema, 'rt_floats', 'table');
+            $second = $engine === 'pgsql' ? 'rt_serial' : 'rt_insert_log';
+            $b = new DumpObject($schema, $second, 'table');
+            $options = new ExportOptions(
+                tables: [$a->key(), $b->key()],
+                structure: true,
+                data: true,
+                dropFirst: false,
+                gzip: false,
+                modes: [$a->key() => 'both', $b->key() => 'structure'],
+            );
+            $path = nativeTempPath();
+            try {
+                nativeExport($engine, $source, $path, $options, objects: [$a, $b]);
+
+                $text = nativeFileText($path);
+                $rowsOf = fn (string $table) => $engine === 'pgsql'
+                    ? preg_match('/^COPY public\.'.$table.' /m', $text)
+                    : preg_match('/^INSERT INTO `'.$table.'` /m', $text);
+                expect($text)->toContain("-- Method: native\n")
+                    ->and($text)->toMatch('/CREATE TABLE (public\.)?`?rt_floats`?/')
+                    ->and($text)->toMatch('/CREATE TABLE (public\.)?`?'.$second.'`?/')
+                    ->and($rowsOf('rt_floats'))->toBe(1)
+                    ->and($rowsOf($second))->toBe(0);
+
+                nativeRestore($engine, $target, $path);
+
+                expect(nativeTables($target, $engine))->toBe(['rt_floats', $second]);
+                app(ConnectionFactory::class)->using($target, function (Connection $db) use ($second) {
+                    expect($db->table('rt_floats')->count())->toBeGreaterThan(0)
+                        ->and($db->table($second)->count())->toBe(0);
+                });
+            } finally {
+                @unlink($path);
+            }
+        });
+    });
+})->with(['mariadb', 'pgsql']);
