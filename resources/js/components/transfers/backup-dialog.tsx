@@ -746,7 +746,7 @@ export function BackupDialog({
                         {confirming && (
                             <div
                                 role="alert"
-                                className="grid gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+                                className="grid gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
                             >
                                 <p>
                                     This mix of tables needs the built-in
